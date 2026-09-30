@@ -19,7 +19,20 @@ interface Confirm {
   resolve(ok: boolean): void;
 }
 
+export type SidebarTab = "files" | "search" | "tags";
+
 interface UiState {
+  sidebarTab: SidebarTab;
+  searchQuery: string;
+  /** Bumped to focus the search box. */
+  searchFocus: number;
+  switcher: boolean;
+  rightPanel: boolean;
+  setSidebarTab(tab: SidebarTab): void;
+  setSearchQuery(q: string): void;
+  showSearch(q?: string): void;
+  setSwitcher(open: boolean): void;
+  toggleRightPanel(): void;
   menu: { x: number; y: number; items: MenuItem[] } | null;
   confirm: Confirm | null;
   showMenu(x: number, y: number, items: MenuItem[]): void;
@@ -29,6 +42,17 @@ interface UiState {
 }
 
 export const useUi = create<UiState>((set, get) => ({
+  sidebarTab: "files",
+  searchQuery: "",
+  searchFocus: 0,
+  switcher: false,
+  rightPanel: true,
+  setSidebarTab: (sidebarTab) => set({ sidebarTab }),
+  setSearchQuery: (searchQuery) => set({ searchQuery }),
+  showSearch: (q) =>
+    set((s) => ({ sidebarTab: "search", searchQuery: q ?? s.searchQuery, searchFocus: s.searchFocus + 1 })),
+  setSwitcher: (switcher) => set({ switcher }),
+  toggleRightPanel: () => set((s) => ({ rightPanel: !s.rightPanel })),
   menu: null,
   confirm: null,
   showMenu: (x, y, items) => set({ menu: { x, y, items } }),

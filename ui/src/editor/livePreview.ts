@@ -353,6 +353,12 @@ const livePreviewField = StateField.define<DecorationSet>({
 /** Opens links on click. Rendered links open on a plain click; source links need ⌘-click. */
 const linkClicks = EditorView.domEventHandlers({
   mousedown(e, view) {
+    const tag = (e.target as HTMLElement).closest<HTMLElement>(".cm-tag");
+    if (tag?.dataset.tag && e.button === 0 && (e.metaKey || !lineTouches(view.state, view.posAtDOM(tag)))) {
+      e.preventDefault();
+      view.state.facet(editorContext).openTag(tag.dataset.tag);
+      return true;
+    }
     const el = (e.target as HTMLElement).closest<HTMLElement>(".cm-wikilink, .cm-link");
     if (!el || e.button !== 0) return false;
     const ctx = view.state.facet(editorContext);

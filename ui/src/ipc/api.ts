@@ -1,7 +1,7 @@
 // Typed access to the backend. Inside Tauri this goes through `invoke`; in a plain browser (UI
 // development and tests) it falls back to an in-memory mock vault.
 
-import type { Entry, FileContent, VaultInfo, Written } from "./types";
+import type { Backlink, Entry, FileContent, IndexProgress, Renamed, SearchHit, TagCount, VaultInfo, Written } from "./types";
 import { mockInvoke } from "./mock";
 
 export const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -24,9 +24,13 @@ export const api = {
   write: (path: string, content: string, expectedHash?: string | null) =>
     call<Written>("write_file", { path, content, expectedHash: expectedHash ?? null }),
   mkdir: (path: string) => call<void>("make_dir", { path }),
-  rename: (from: string, to: string) => call<string>("rename_path", { from, to }),
+  rename: (from: string, to: string) => call<Renamed>("rename_path", { from, to }),
   remove: (path: string) => call<void>("delete_path", { path }),
   absolutePath: (path: string) => call<string>("absolute_path", { path }),
+  search: (query: string, limit = 50) => call<SearchHit[]>("search", { query, limit }),
+  backlinks: (path: string) => call<Backlink[]>("backlinks", { path }),
+  tags: () => call<TagCount[]>("tags"),
+  aliases: () => call<[string, string][]>("aliases"),
 };
 
 /** Asks the user for a folder with the native dialog (or a prompt-free mock in the browser). */
@@ -57,4 +61,14 @@ export async function openExternal(url: string): Promise<void> {
   }
   const { openUrl } = await import("@tauri-apps/plugin-opener");
   await openUrl(url);
+}
+
+/** Subscribes to background indexing progress. Returns an unsubscribe function. */
+export async function onIndexProgress(cb: (p: IndexProgress) => void): Promise<() => void> {
+  if (!inTauri) {
+    cb({ done: 0, total: 0, finished: true });
+    return () => {};
+  }
+  const { listen } = await import("@tauri-apps/api/event");
+  return listen<IndexProgress>("index-progress", (e) => cb(e.payload));
 }

@@ -69,7 +69,7 @@ function wikiCompletion(ctx: CompletionContext): CompletionResult | null {
     options: ectx.linkCandidates().map((c) => ({
       label: c.label,
       detail: c.detail,
-      apply: after === "]]" ? c.label : `${c.label}]]`,
+      apply: after === "]]" ? (c.insert ?? c.label) : `${c.insert ?? c.label}]]`,
     })),
     validFor: /^[^[\]|#\n]*$/,
   };

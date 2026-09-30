@@ -8,10 +8,11 @@ export interface EditorContext {
   /** Opens a wikilink / markdown link target (creating the note if unresolved). */
   openLink(target: string, newTab: boolean): void;
   openExternal(url: string): void;
+  openTag(tag: string): void;
   fileUrl(path: string): Promise<string>;
   readText(path: string): Promise<string>;
   /** Candidates for [[ completion. */
-  linkCandidates(): { label: string; detail: string }[];
+  linkCandidates(): { label: string; detail: string; insert?: string }[];
 }
 
 export const editorContext = Facet.define<EditorContext, EditorContext>({

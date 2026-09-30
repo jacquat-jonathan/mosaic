@@ -2,7 +2,7 @@
 // It mirrors the core's semantics closely enough for UI work; it is not a second implementation to keep in sync
 // feature-for-feature.
 
-import type { CoreError, Entry, FileContent } from "./types";
+import type { Backlink, CoreError, Entry, FileContent, SearchHit } from "./types";
 import { kindOf } from "./kinds";
 
 interface MockFile {
@@ -184,7 +184,7 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
       for (const [p, f] of [...files]) if (under(p)) { files.delete(p); files.set(move(p), f); }
       for (const d of [...dirs]) if (under(d)) { dirs.delete(d); dirs.add(move(d)); }
       addParents(to);
-      return to;
+      return { path: to, updated_links_in: [] };
     }
     case "delete_path": {
       const p = norm(a.path);
@@ -194,6 +194,38 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
       for (const d of [...dirs]) if (under(d)) dirs.delete(d);
       return null;
     }
+    case "search": {
+      const terms = String(a.query ?? "").toLowerCase().split(/\s+/).filter(Boolean);
+      if (!terms.length) return [];
+      const hits: SearchHit[] = [];
+      for (const [path, f] of files) {
+        const hay = `${path}\n${f.content}`.toLowerCase();
+        if (!terms.every((t) => hay.includes(t))) continue;
+        const i = f.content.toLowerCase().indexOf(terms[0]);
+        const snippet = i < 0 ? "" : `…${f.content.slice(Math.max(0, i - 40), i)}**${f.content.slice(i, i + terms[0].length)}**${f.content.slice(i + terms[0].length, i + 60)}…`;
+        hits.push({ path, title: path.split("/").pop()!.replace(/\.md$/, ""), snippet: snippet.replace(/\n/g, " "), score: 1 });
+      }
+      return hits;
+    }
+    case "backlinks": {
+      const target = norm(a.path).split("/").pop()!.replace(/\.md$/, "").toLowerCase();
+      const out: Backlink[] = [];
+      for (const [path, f] of files) {
+        f.content.split("\n").forEach((l, i) => {
+          for (const m of l.matchAll(/(!?)\[\[([^\]|#^]+)/g)) {
+            if (m[2].split("/").pop()!.toLowerCase() === target) out.push({ source: path, line: i + 1, context: l.trim(), embed: m[1] === "!" });
+          }
+        });
+      }
+      return out;
+    }
+    case "tags": {
+      const counts = new Map<string, number>();
+      for (const f of files.values()) for (const m of f.content.matchAll(/(?:^|\s)#([\w/-]+)/g)) counts.set(m[1], (counts.get(m[1]) ?? 0) + 1);
+      return [...counts].map(([tag, count]) => ({ tag, count }));
+    }
+    case "aliases":
+      return [];
     case "absolute_path":
       return `/mock/vault/${norm(a.path)}`;
     default:

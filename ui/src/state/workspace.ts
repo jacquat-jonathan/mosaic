@@ -5,6 +5,7 @@
 import { create } from "zustand";
 import { api } from "../ipc/api";
 import { errorMessage, isCoreError, type FileKind } from "../ipc/types";
+import { useVault } from "./vault";
 
 export interface Buffer {
   path: string;
@@ -211,6 +212,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
         const w = await api.write(path, content, b.baseHash || null);
         const now = get().buffers[path];
         if (now) updateBuffer(path, { baseHash: w.hash, dirty: now.content !== content, error: null });
+        useVault.getState().touched();
       } catch (e) {
         if (isCoreError(e) && e.code === "conflict") updateBuffer(path, { conflict: { diskHash: e.current_hash } });
         else updateBuffer(path, { error: errorMessage(e) });

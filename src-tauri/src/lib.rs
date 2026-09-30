@@ -1,40 +1,49 @@
-//! Tauri front end: every command is a thin mapping onto `mosaic_core`.
+//! Tauri front end: every command is a thin mapping onto `mosaic_core::Workspace`.
 
+use mosaic_core::api::{Outline, Renamed};
+use mosaic_core::index::{Backlink, SearchHit, TagCount};
 use mosaic_core::settings::Settings;
-use mosaic_core::{Entry, Error, FileContent, Vault, Written};
+use mosaic_core::{Entry, Error, FileContent, Workspace, Written};
 use serde::Serialize;
 use std::path::PathBuf;
-use std::sync::RwLock;
-use tauri::{Manager, State};
+use std::sync::{Arc, RwLock};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 type CmdResult<T> = Result<T, Error>;
 
 #[derive(Default)]
 struct AppState {
-    vault: RwLock<Option<Vault>>,
+    ws: RwLock<Option<Arc<Workspace>>>,
 }
 
 impl AppState {
-    fn with<T>(&self, f: impl FnOnce(&Vault) -> CmdResult<T>) -> CmdResult<T> {
-        let guard = self.vault.read().expect("vault lock poisoned");
-        let vault = guard
-            .as_ref()
-            .ok_or_else(|| Error::Invalid("no vault is open".into()))?;
-        f(vault)
+    fn get(&self) -> CmdResult<Arc<Workspace>> {
+        self.ws
+            .read()
+            .expect("workspace lock poisoned")
+            .clone()
+            .ok_or_else(|| Error::Invalid("no vault is open".into()))
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 struct VaultInfo {
     root: String,
     name: String,
 }
 
-fn info(v: &Vault) -> VaultInfo {
+#[derive(Serialize, Clone)]
+struct IndexProgress {
+    done: usize,
+    total: usize,
+    finished: bool,
+}
+
+fn info(ws: &Workspace) -> VaultInfo {
+    let root = ws.vault.root();
     VaultInfo {
-        root: v.root().display().to_string(),
-        name: v
-            .root()
+        root: root.display().to_string(),
+        name: root
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default(),
@@ -42,22 +51,38 @@ fn info(v: &Vault) -> VaultInfo {
 }
 
 #[tauri::command]
-fn open_vault(app: tauri::AppHandle, state: State<AppState>, path: String) -> CmdResult<VaultInfo> {
-    let vault = Vault::open(&path)?;
+fn open_vault(app: AppHandle, state: State<AppState>, path: String) -> CmdResult<VaultInfo> {
+    let ws = Arc::new(Workspace::open(&path)?);
     let _ = app
         .asset_protocol_scope()
-        .allow_directory(vault.root(), true);
+        .allow_directory(ws.vault.root(), true);
     let mut settings = Settings::load();
-    settings.remember_vault(vault.root().to_path_buf());
+    settings.remember_vault(ws.vault.root().to_path_buf());
     let _ = settings.save();
-    let out = info(&vault);
-    *state.vault.write().expect("vault lock poisoned") = Some(vault);
+    let out = info(&ws);
+    *state.ws.write().expect("workspace lock poisoned") = Some(ws.clone());
+
+    // Index in the background; the UI shows progress and search uses the last consistent index.
+    std::thread::spawn(move || {
+        let emit = |done, total, finished| {
+            let _ = app.emit(
+                "index-progress",
+                IndexProgress {
+                    done,
+                    total,
+                    finished,
+                },
+            );
+        };
+        let _ = ws.sync(|done, total| emit(done, total, false));
+        emit(0, 0, true);
+    });
     Ok(out)
 }
 
 #[tauri::command]
 fn current_vault(state: State<AppState>) -> Option<VaultInfo> {
-    state.vault.read().ok()?.as_ref().map(info)
+    state.get().ok().map(|ws| info(&ws))
 }
 
 #[tauri::command]
@@ -67,17 +92,17 @@ fn last_vault() -> Option<PathBuf> {
 
 #[tauri::command]
 fn list_dir(state: State<AppState>, dir: String, recursive: bool) -> CmdResult<Vec<Entry>> {
-    state.with(|v| v.list(&dir, recursive))
+    state.get()?.list(&dir, recursive)
 }
 
 #[tauri::command]
 fn read_file(state: State<AppState>, path: String) -> CmdResult<FileContent> {
-    state.with(|v| v.read(&path))
+    state.get()?.read(&path)
 }
 
 #[tauri::command]
 fn create_file(state: State<AppState>, path: String, content: String) -> CmdResult<Written> {
-    state.with(|v| v.create(&path, &content))
+    state.get()?.create(&path, &content)
 }
 
 #[tauri::command]
@@ -87,27 +112,58 @@ fn write_file(
     content: String,
     expected_hash: Option<String>,
 ) -> CmdResult<Written> {
-    state.with(|v| v.write(&path, &content, expected_hash.as_deref()))
+    state
+        .get()?
+        .write(&path, &content, expected_hash.as_deref())
 }
 
 #[tauri::command]
 fn make_dir(state: State<AppState>, path: String) -> CmdResult<()> {
-    state.with(|v| v.mkdir(&path))
+    state.get()?.mkdir(&path)
 }
 
 #[tauri::command]
-fn rename_path(state: State<AppState>, from: String, to: String) -> CmdResult<String> {
-    state.with(|v| v.rename(&from, &to))
+fn rename_path(state: State<AppState>, from: String, to: String) -> CmdResult<Renamed> {
+    state.get()?.rename(&from, &to, true)
 }
 
 #[tauri::command]
 fn delete_path(state: State<AppState>, path: String) -> CmdResult<()> {
-    state.with(|v| v.delete(&path))
+    state.get()?.delete(&path)
 }
 
 #[tauri::command]
 fn absolute_path(state: State<AppState>, path: String) -> CmdResult<String> {
-    state.with(|v| Ok(v.resolve(&path)?.display().to_string()))
+    Ok(state.get()?.vault.resolve(&path)?.display().to_string())
+}
+
+#[tauri::command]
+fn search(
+    state: State<AppState>,
+    query: String,
+    limit: Option<usize>,
+) -> CmdResult<Vec<SearchHit>> {
+    state.get()?.search(&query, limit.unwrap_or(50))
+}
+
+#[tauri::command]
+fn backlinks(state: State<AppState>, path: String) -> CmdResult<Vec<Backlink>> {
+    state.get()?.backlinks(&path)
+}
+
+#[tauri::command]
+fn tags(state: State<AppState>) -> CmdResult<Vec<TagCount>> {
+    state.get()?.tags()
+}
+
+#[tauri::command]
+fn aliases(state: State<AppState>) -> CmdResult<Vec<(String, String)>> {
+    state.get()?.aliases()
+}
+
+#[tauri::command]
+fn outline(state: State<AppState>, path: String) -> CmdResult<Outline> {
+    state.get()?.outline(&path)
 }
 
 pub fn run() {
@@ -127,6 +183,11 @@ pub fn run() {
             rename_path,
             delete_path,
             absolute_path,
+            search,
+            backlinks,
+            tags,
+            aliases,
+            outline,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Mosaic");

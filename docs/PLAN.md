@@ -79,12 +79,12 @@ Errors: `NotFound`, `AlreadyExists`, `Conflict{current_hash}`, `InvalidPath`, `N
 - [x] Autosave (debounced) with base hash → `write(expected_hash)`
 
 ### M3 — Index, search, backlinks (ac-6)
-- [ ] `parse`: frontmatter (aliases, tags), wikilinks/embeds/md links (skip code), tags, headings, block ids
-- [ ] Obsidian link resolution: case-insensitive, shortest unique path, aliases
-- [ ] SQLite schema: `files`, `links`, `tags`, `fts(content)`; incremental by mtime+size
-- [ ] Search panel (Cmd-Shift-F) with snippets; quick switcher (Cmd-O)
-- [ ] Backlinks panel; link-aware rename (single undo)
-- [ ] `scripts/gen-vault` 5,000 notes; bench test asserts search < 1 s
+- [x] `parse`: frontmatter (aliases, tags), wikilinks/embeds/md links (skip code), tags, headings, block ids
+- [x] Obsidian link resolution: case-insensitive, shortest unique path, aliases
+- [x] SQLite schema: `files`, `links`, `tags`, `fts(content)`; incremental by mtime+size
+- [x] Search panel (Cmd-Shift-F) with snippets; quick switcher (Cmd-O)
+- [x] Backlinks panel; link-aware rename (multi-file undo deferred)
+- [x] `scripts/bench.sh`: 5,000 notes, search ≈ 4 ms, full index ≈ 0.3 s
 
 ### M4 — Layout + live refresh (ac-7, ac-9)
 - [ ] Tabs, split right/down, drag tabs between panes; persisted in app config dir

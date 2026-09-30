@@ -48,7 +48,12 @@ export function linkLabel(l: WikiLink): string {
  * case-insensitive; `.md` optional for notes; an exact vault path wins, then a file in the same
  * folder as the source, then the shortest path.
  */
-export function resolveLink(target: string, entries: Entry[], fromPath: string | null): string | null {
+export function resolveLink(
+  target: string,
+  entries: Entry[],
+  fromPath: string | null,
+  aliases: [string, string][] = [],
+): string | null {
   if (!target) return fromPath;
   let t = target.replace(/\\/g, "/").replace(/^\.?\//, "").toLowerCase();
   if (t.startsWith("../") && fromPath) {
@@ -71,6 +76,10 @@ export function resolveLink(target: string, entries: Entry[], fromPath: string |
     const same = matches.find((e) => parentOf(e.path).toLowerCase() === dir);
     if (same) return same.path;
     return matches.sort((a, b) => a.path.length - b.path.length || a.path.localeCompare(b.path))[0].path;
+  }
+  if (!t.includes("/")) {
+    const alias = aliases.find(([a]) => a.toLowerCase() === t);
+    if (alias) return alias[1];
   }
   return null;
 }

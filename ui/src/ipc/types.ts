@@ -65,3 +65,34 @@ export function errorMessage(e: unknown): string {
   if (e instanceof Error) return e.message;
   return String(e);
 }
+
+export interface SearchHit {
+  path: string;
+  title: string;
+  /** Excerpt with matched terms wrapped in `**`. */
+  snippet: string;
+  score: number;
+}
+
+export interface Backlink {
+  source: string;
+  line: number;
+  context: string;
+  embed: boolean;
+}
+
+export interface TagCount {
+  tag: string;
+  count: number;
+}
+
+export interface Renamed {
+  path: string;
+  updated_links_in: string[];
+}
+
+export interface IndexProgress {
+  done: number;
+  total: number;
+  finished: boolean;
+}

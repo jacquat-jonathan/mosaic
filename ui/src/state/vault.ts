@@ -31,6 +31,11 @@ interface VaultState {
   /** Path currently being renamed inline in the tree. */
   renaming: string | null;
   error: string | null;
+  /** Bumped on every change to vault content, so derived views (backlinks, tags) refetch. */
+  revision: number;
+  indexing: { done: number; total: number } | null;
+  /** Frontmatter aliases: [alias, path]. */
+  aliases: [string, string][];
 
   openVault(path: string): Promise<void>;
   refresh(): Promise<void>;
@@ -42,6 +47,7 @@ interface VaultState {
   rename(from: string, to: string): Promise<string | null>;
   remove(path: string): Promise<boolean>;
   setError(msg: string | null): void;
+  touched(): void;
 }
 
 export const useVault = create<VaultState>((set, get) => {
@@ -57,6 +63,9 @@ export const useVault = create<VaultState>((set, get) => {
     expanded: new Set(),
     renaming: null,
     error: null,
+    revision: 0,
+    indexing: null,
+    aliases: [],
 
     async openVault(path) {
       try {
@@ -70,7 +79,8 @@ export const useVault = create<VaultState>((set, get) => {
 
     async refresh() {
       try {
-        set({ entries: await api.list("", true) });
+        const [entries, aliases] = await Promise.all([api.list("", true), api.aliases().catch(() => [])]);
+        set((s) => ({ entries, aliases, revision: s.revision + 1 }));
       } catch (e) {
         fail(e);
       }
@@ -120,7 +130,13 @@ export const useVault = create<VaultState>((set, get) => {
     async rename(from, to) {
       if (from === to) return from;
       try {
-        const out = await api.rename(from, to);
+        const { path: out, updated_links_in } = await api.rename(from, to);
+        // Reload open notes whose links were rewritten (unsaved ones get the conflict prompt).
+        const { useWorkspace } = await import("./workspace");
+        for (const p of updated_links_in) {
+          const b = useWorkspace.getState().buffers[p];
+          if (b && !b.dirty) void useWorkspace.getState().reload(p);
+        }
         const expanded = new Set(
           [...get().expanded].map((p) => (p === from || p.startsWith(`${from}/`) ? to + p.slice(from.length) : p)),
         );
@@ -145,5 +161,6 @@ export const useVault = create<VaultState>((set, get) => {
     },
 
     setError: (error) => set({ error }),
+    touched: () => set((s) => ({ revision: s.revision + 1 })),
   };
 });

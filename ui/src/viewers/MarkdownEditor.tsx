@@ -9,13 +9,14 @@ import { useVault } from "../state/vault";
 import { api, fileUrl, openExternal } from "../ipc/api";
 import { resolveLink, linkTextFor } from "../links";
 import { newFileOfKind } from "../actions";
+import { useUi } from "../state/ui";
 
 /** Files above this size open read-only so the UI stays responsive. */
 export const LARGE_FILE_BYTES = 5 * 1024 * 1024;
 
 export function editorContextFor(path: string): EditorContext {
   const entries = () => useVault.getState().entries;
-  const resolve = (target: string) => resolveLink(target, entries(), path);
+  const resolve = (target: string) => resolveLink(target, entries(), path, useVault.getState().aliases);
   return {
     path,
     resolve,
@@ -31,13 +32,20 @@ export function editorContextFor(path: string): EditorContext {
       if (!created) useVault.getState().setError(`Couldn't create “${name}”.`);
     },
     openExternal: (url) => void openExternal(url),
+    openTag: (tag) => useUi.getState().showSearch(`tag:${tag}`),
     fileUrl,
     readText: async (p) => (await api.read(p)).content ?? "",
     linkCandidates: () => {
       const all = entries();
-      return all
+      const files = all
         .filter((e) => !e.is_dir && e.path !== path)
         .map((e) => ({ label: linkTextFor(e.path, all), detail: e.path.includes("/") ? e.path : "" }));
+      const aliases = useVault.getState().aliases.map(([alias, p]) => ({
+        label: alias,
+        detail: `alias of ${p}`,
+        insert: `${linkTextFor(p, all)}|${alias}`,
+      }));
+      return [...files, ...aliases];
     },
   };
 }

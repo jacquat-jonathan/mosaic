@@ -1,5 +1,5 @@
 import { EditorState, type Extension } from "@codemirror/state";
-import { EditorView, drawSelection, dropCursor, keymap, highlightSpecialChars, rectangularSelection } from "@codemirror/view";
+import { EditorView, ViewPlugin, type ViewUpdate, drawSelection, dropCursor, keymap, highlightSpecialChars, rectangularSelection } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { bracketMatching, indentOnInput, syntaxHighlighting, HighlightStyle, type LanguageSupport } from "@codemirror/language";
 import { closeBrackets, closeBracketsKeymap, autocompletion, completionKeymap, type CompletionContext, type CompletionResult } from "@codemirror/autocomplete";
@@ -39,6 +39,33 @@ const highlight = HighlightStyle.define([
   { tag: t.processingInstruction, class: "tok-meta" },
 ]);
 
+/**
+ * Reports the document to the store shortly after typing pauses (serialising a large note on every
+ * keystroke is what makes big files feel slow). Pending changes are flushed when the editor closes.
+ */
+function changeReporter(onChange: (text: string) => void) {
+  return ViewPlugin.fromClass(
+    class {
+      timer: ReturnType<typeof setTimeout> | undefined;
+      constructor(readonly view: EditorView) {}
+      update(u: ViewUpdate) {
+        if (!u.docChanged) return;
+        clearTimeout(this.timer);
+        this.timer = setTimeout(() => this.flush(), u.state.doc.length > 50_000 ? 150 : 0);
+      }
+      flush() {
+        if (this.timer === undefined) return;
+        clearTimeout(this.timer);
+        this.timer = undefined;
+        onChange(this.view.state.doc.toString());
+      }
+      destroy() {
+        this.flush();
+      }
+    },
+  );
+}
+
 function base(onChange: (text: string) => void): Extension {
   return [
     history(),
@@ -54,9 +81,7 @@ function base(onChange: (text: string) => void): Extension {
     EditorState.allowMultipleSelections.of(true),
     syntaxHighlighting(highlight),
     keymap.of([...closeBracketsKeymap, ...defaultKeymap, ...searchKeymap, ...historyKeymap, ...completionKeymap, indentWithTab]),
-    EditorView.updateListener.of((u) => {
-      if (u.docChanged) onChange(u.state.doc.toString());
-    }),
+    changeReporter(onChange),
   ];
 }
 

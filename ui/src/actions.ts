@@ -51,3 +51,39 @@ export async function deletePath(path: string, isDir: boolean) {
     ws.deleted(path);
   }
 }
+
+const CHART_TEMPLATE = JSON.stringify(
+  {
+    $schema: "https://vega.github.io/schema/vega-lite/v5.json",
+    description: "Edit the data or point data.url at a CSV/JSON file in the vault.",
+    data: { values: [ { item: "A", value: 28 }, { item: "B", value: 55 }, { item: "C", value: 43 } ] },
+    mark: "bar",
+    encoding: { x: { field: "item", type: "nominal" }, y: { field: "value", type: "quantitative" } },
+  },
+  null,
+  2,
+);
+
+const GRAPH_TEMPLATE = `digraph G {
+  rankdir=LR;
+  node [shape=box, style=rounded];
+  Idea -> Draft -> Review -> Published;
+  Review -> Draft [label="changes"];
+}
+`;
+
+/** "New …" commands for every kind of file Mosaic can create. */
+export const NEW_KINDS = [
+  { label: "New note", stem: "Untitled", ext: "md", content: "" },
+  { label: "New canvas", stem: "Untitled", ext: "canvas", content: '{\n\t"nodes":[],\n\t"edges":[]\n}' },
+  { label: "New drawing", stem: "Drawing", ext: "excalidraw", content: "" },
+  { label: "New chart", stem: "Chart", ext: "vl.json", content: CHART_TEMPLATE },
+  { label: "New graph (Graphviz)", stem: "Graph", ext: "dot", content: GRAPH_TEMPLATE },
+] as const;
+
+export async function newOfKind(dir: string, kind: (typeof NEW_KINDS)[number]) {
+  if (kind.ext === "md") return newNote(dir);
+  const { EMPTY_DRAWING } = await import("./viewers/ExcalidrawEditor");
+  const path = await newFileOfKind(dir, kind.stem, kind.ext, kind.ext === "excalidraw" ? EMPTY_DRAWING : kind.content);
+  if (path) useVault.getState().setRenaming(path);
+}

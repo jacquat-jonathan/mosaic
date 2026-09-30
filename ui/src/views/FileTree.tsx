@@ -16,7 +16,7 @@ import type { Entry, FileKind } from "../ipc/types";
 import { parentOf, useVault } from "../state/vault";
 import { useWorkspace } from "../state/workspace";
 import { useUi, type MenuItem } from "../state/ui";
-import { deletePath, moveInto, newNote, renamePath } from "../actions";
+import { deletePath, moveInto, NEW_KINDS, newOfKind, renamePath } from "../actions";
 
 const DRAG_TYPE = "application/x-mosaic-path";
 
@@ -69,7 +69,7 @@ export function FileTree() {
     if (ev.target !== ev.currentTarget) return;
     ev.preventDefault();
     useUi.getState().showMenu(ev.clientX, ev.clientY, [
-      { label: "New note", action: () => void newNote("") },
+      ...NEW_KINDS.map((k) => ({ label: k.label, action: () => void newOfKind("", k) })),
       { label: "New folder", action: () => void useVault.getState().newFolder("") },
     ]);
   };
@@ -146,7 +146,7 @@ function TreeRow({
             { label: "Open in new tab", action: () => void useWorkspace.getState().open(entry.path, { newTab: true }) },
             { label: "", separator: true },
           ]),
-      { label: "New note", action: () => void newNote(dir) },
+      ...NEW_KINDS.map((k) => ({ label: k.label, action: () => void newOfKind(dir, k) })),
       { label: "New folder", action: () => void useVault.getState().newFolder(dir) },
       { label: "", separator: true },
       { label: "Rename", action: () => useVault.getState().setRenaming(entry.path) },

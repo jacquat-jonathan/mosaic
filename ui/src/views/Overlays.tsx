@@ -93,3 +93,33 @@ export function ErrorToast() {
     </div>
   );
 }
+
+export function PromptDialog() {
+  const p = useUi((s) => s.prompt);
+  const answer = useUi((s) => s.answerText);
+  const input = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    input.current?.focus();
+    input.current?.select();
+  }, [p]);
+  if (!p) return null;
+  return (
+    <div className="modal-backdrop" onMouseDown={() => answer(null)}>
+      <form
+        className="modal"
+        onMouseDown={(e) => e.stopPropagation()}
+        onSubmit={(e) => {
+          e.preventDefault();
+          answer(input.current?.value ?? "");
+        }}
+      >
+        <h2>{p.title}</h2>
+        <input ref={input} className="text-input" defaultValue={p.value} placeholder={p.placeholder} onKeyDown={(e) => e.key === "Escape" && answer(null)} />
+        <div className="modal-actions">
+          <button type="button" onClick={() => answer(null)}>Cancel</button>
+          <button type="submit" className="primary">OK</button>
+        </div>
+      </form>
+    </div>
+  );
+}

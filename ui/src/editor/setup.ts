@@ -11,6 +11,7 @@ import { editorContext, type EditorContext } from "./context";
 import { livePreview } from "./livePreview";
 import { registerBlockRenderer } from "./widgets";
 import { renderMath, renderMermaid } from "./render";
+import { renderChart, renderGraphviz } from "../viewers/visuals";
 
 registerBlockRenderer(["mermaid"], async (src, el) => {
   el.innerHTML = await renderMermaid(src);
@@ -18,6 +19,8 @@ registerBlockRenderer(["mermaid"], async (src, el) => {
 registerBlockRenderer(["math", "latex", "tex"], (src, el) => {
   el.innerHTML = renderMath(src, true);
 });
+registerBlockRenderer(["vega-lite", "vegalite", "chart"], (src, el, ctx) => renderChart(src, el, ctx.path));
+registerBlockRenderer(["dot", "graphviz"], (src, el) => renderGraphviz(src, el));
 
 const highlight = HighlightStyle.define([
   { tag: t.keyword, class: "tok-keyword" },

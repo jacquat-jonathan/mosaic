@@ -11,6 +11,13 @@ export interface MenuItem {
   shortcut?: string;
 }
 
+interface Prompt {
+  title: string;
+  value: string;
+  placeholder?: string;
+  resolve(value: string | null): void;
+}
+
 interface Confirm {
   title: string;
   body: string;
@@ -35,6 +42,9 @@ interface UiState {
   toggleRightPanel(): void;
   menu: { x: number; y: number; items: MenuItem[] } | null;
   confirm: Confirm | null;
+  prompt: Prompt | null;
+  askText(opts: Omit<Prompt, "resolve">): Promise<string | null>;
+  answerText(value: string | null): void;
   showMenu(x: number, y: number, items: MenuItem[]): void;
   hideMenu(): void;
   ask(opts: Omit<Confirm, "resolve">): Promise<boolean>;
@@ -55,6 +65,12 @@ export const useUi = create<UiState>((set, get) => ({
   toggleRightPanel: () => set((s) => ({ rightPanel: !s.rightPanel })),
   menu: null,
   confirm: null,
+  prompt: null,
+  askText: (opts) => new Promise<string | null>((resolve) => set({ prompt: { ...opts, resolve } })),
+  answerText(value) {
+    get().prompt?.resolve(value);
+    set({ prompt: null });
+  },
   showMenu: (x, y, items) => set({ menu: { x, y, items } }),
   hideMenu: () => set({ menu: null }),
   ask: (opts) => new Promise<boolean>((resolve) => set({ confirm: { ...opts, resolve } })),

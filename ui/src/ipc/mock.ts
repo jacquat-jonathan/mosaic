@@ -68,7 +68,26 @@ function seed() {
   add("Ideas.md", "# Ideas\n\nBack to [[Welcome]].\n\n## Later\n\n- Graph view\n");
   add("Projects/Mosaic/Plan.md", "# Plan\n\n1. Build it\n");
   add("Projects/Data.csv", 'name,value,note\nalpha,1,"quoted, with comma"\nbeta,2,"multi\nline"\ngamma,3,\n');
-  add("Board.canvas", '{"nodes":[],"edges":[]}');
+  add(
+    "Board.canvas",
+    JSON.stringify(
+      {
+        nodes: [
+          { id: "g1", type: "group", x: -40, y: -60, width: 760, height: 360, label: "Mosaic", color: "5" },
+          { id: "t1", type: "text", x: 0, y: 0, width: 260, height: 140, text: "# Humans\nWrite **Markdown** here and link [[Ideas]].", color: "4" },
+          { id: "f1", type: "file", x: 400, y: 0, width: 280, height: 220, file: "Ideas.md" },
+          { id: "l1", type: "link", x: 0, y: 380, width: 260, height: 70, url: "https://jsoncanvas.org" },
+        ],
+        edges: [{ id: "e1", fromNode: "t1", fromSide: "right", toNode: "f1", toSide: "left", label: "links to", keepMe: true }],
+        customTopLevel: "preserved",
+      },
+      null,
+      "\t",
+    ),
+  );
+  add("Charts/Sales.vl.json", JSON.stringify({ data: { url: "sales.csv" }, mark: "line", encoding: { x: { field: "month", type: "ordinal", sort: null }, y: { field: "amount", type: "quantitative" } } }, null, 2));
+  add("Charts/sales.csv", "month,amount\nJan,12\nFeb,19\nMar,15\nApr,26\n");
+  add("Graph.dot", "digraph G {\n  rankdir=LR;\n  node [shape=box, style=rounded];\n  Human -> Vault; AI -> Vault; Vault -> Docs;\n}\n");
   // Binary files are stored as data URLs in the mock.
   add("Attachments/diagram.svg", "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzMjAiIGhlaWdodD0iMTIwIj48cmVjdCB3aWR0aD0iMzIwIiBoZWlnaHQ9IjEyMCIgcng9IjE0IiBmaWxsPSIjNDA5Y2ZmIi8+PHRleHQgeD0iMTYwIiB5PSI3MCIgZm9udC1zaXplPSIyOCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0id2hpdGUiIGZvbnQtZmFtaWx5PSJzYW5zLXNlcmlmIj5kaWFncmFtLnN2ZzwvdGV4dD48L3N2Zz4=");
   add("Docs/sample.pdf", "data:application/pdf;base64,JVBERi0xLjQKMSAwIG9iago8PCAvVHlwZSAvQ2F0YWxvZyAvUGFnZXMgMiAwIFIgPj4KZW5kb2JqCjIgMCBvYmoKPDwgL1R5cGUgL1BhZ2VzIC9LaWRzIFszIDAgUiA1IDAgUl0gL0NvdW50IDIgPj4KZW5kb2JqCjMgMCBvYmoKPDwgL1R5cGUgL1BhZ2UgL1BhcmVudCAyIDAgUiAvTWVkaWFCb3ggWzAgMCA0MjAgMzAwXSAvQ29udGVudHMgNCAwIFIgL1Jlc291cmNlcyA8PCAvRm9udCA8PCAvRjEgNiAwIFIgPj4gPj4gPj4KZW5kb2JqCjQgMCBvYmoKPDwgL0xlbmd0aCA4OCA+PgpzdHJlYW0KQlQgL0YxIDI0IFRmIDQwIDIwMCBUZCAoTW9zYWljIHNhbXBsZSBQREYpIFRqIEVUIEJUIC9GMSAxNCBUZiA0MCAxNjAgVGQgKFBhZ2Ugb25lKSBUaiBFVAplbmRzdHJlYW0KZW5kb2JqCjUgMCBvYmoKPDwgL1R5cGUgL1BhZ2UgL1BhcmVudCAyIDAgUiAvTWVkaWFCb3ggWzAgMCA0MjAgMzAwXSAvQ29udGVudHMgNyAwIFIgL1Jlc291cmNlcyA8PCAvRm9udCA8PCAvRjEgNiAwIFIgPj4gPj4gPj4KZW5kb2JqCjYgMCBvYmoKPDwgL1R5cGUgL0ZvbnQgL1N1YnR5cGUgL1R5cGUxIC9CYXNlRm9udCAvSGVsdmV0aWNhID4+CmVuZG9iago3IDAgb2JqCjw8IC9MZW5ndGggNDIgPj4Kc3RyZWFtCkJUIC9GMSAyNCBUZiA0MCAyMDAgVGQgKFNlY29uZCBwYWdlKSBUaiBFVAplbmRzdHJlYW0KZW5kb2JqCnhyZWYKMCA4CjAwMDAwMDAwMDAgNjU1MzUgZiAKMDAwMDAwMDAwOSAwMDAwMCBuIAowMDAwMDAwMDU4IDAwMDAwIG4gCjAwMDAwMDAxMjEgMDAwMDAgbiAKMDAwMDAwMDI0NyAwMDAwMCBuIAowMDAwMDAwMzg1IDAwMDAwIG4gCjAwMDAwMDA1MTEgMDAwMDAgbiAKMDAwMDAwMDU4MSAwMDAwMCBuIAp0cmFpbGVyCjw8IC9TaXplIDggL1Jvb3QgMSAwIFIgPj4Kc3RhcnR4cmVmCjY3MwolJUVPRgo=");

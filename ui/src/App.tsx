@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
-import { FilePlus, FolderPlus, FolderOpen, Files, Search, Hash, PanelRight } from "lucide-react";
+import { FilePlus, FolderPlus, FolderOpen, Files, Search, Hash, PanelRight, Shapes } from "lucide-react";
 import { api, onIndexProgress, pickFolder } from "./ipc/api";
 import { useVault } from "./state/vault";
 import { FileTree } from "./views/FileTree";
 import { Workspace } from "./views/Workspace";
-import { ConfirmDialog, ContextMenu, ErrorToast } from "./views/Overlays";
-import { newNote } from "./actions";
+import { ConfirmDialog, ContextMenu, ErrorToast, PromptDialog } from "./views/Overlays";
+import { newNote, NEW_KINDS, newOfKind } from "./actions";
 import { useShortcuts } from "./shortcuts";
 import { useUi, type SidebarTab } from "./state/ui";
 import { SearchPanel } from "./views/SearchPanel";
@@ -49,6 +49,7 @@ export function App() {
       {vault ? <Main /> : <Welcome />}
       <ContextMenu />
       <ConfirmDialog />
+      <PromptDialog />
       <QuickSwitcher />
       <ErrorToast />
     </>
@@ -96,6 +97,16 @@ function Main() {
           <div className="sidebar-actions">
             <button aria-label="New note" title="New note (⌘N)" onClick={() => void newNote("")}>
               <FilePlus size={16} />
+            </button>
+            <button
+              aria-label="New…"
+              title="New canvas, drawing, chart or graph"
+              onClick={(e) => {
+                const r = e.currentTarget.getBoundingClientRect();
+                useUi.getState().showMenu(r.left, r.bottom + 4, NEW_KINDS.map((k) => ({ label: k.label, action: () => void newOfKind("", k) })));
+              }}
+            >
+              <Shapes size={16} />
             </button>
             <button aria-label="New folder" title="New folder" onClick={() => void useVault.getState().newFolder("")}>
               <FolderPlus size={16} />

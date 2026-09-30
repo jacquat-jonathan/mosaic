@@ -8,6 +8,10 @@ import { PdfViewer } from "./PdfViewer";
 import { CsvEditor } from "./CsvEditor";
 import { ConflictBar } from "../views/ConflictBar";
 import { openInDefaultApp } from "../ipc/api";
+import { CanvasEditor } from "./canvas/CanvasEditor";
+import { ExcalidrawEditor } from "./ExcalidrawEditor";
+import { RenderedSourceViewer } from "./RenderedSourceViewer";
+import { renderChart, renderGraphviz } from "./visuals";
 
 /** Picks the viewer or editor for a file by its kind. */
 export function FileView({ path }: { path: string }) {
@@ -25,14 +29,21 @@ export function FileView({ path }: { path: string }) {
   );
 }
 
-export function viewerFor(buffer: Buffer) {
-  return <Viewer buffer={buffer} />;
-}
-
 function Viewer({ buffer }: { buffer: Buffer }) {
   switch (buffer.kind) {
     case "markdown":
       return <MarkdownEditor buffer={buffer} />;
+    case "canvas":
+      return <CanvasEditor buffer={buffer} />;
+    case "excalidraw":
+      return <ExcalidrawEditor buffer={buffer} />;
+    case "graphviz":
+      return <RenderedSourceViewer buffer={buffer} label="Graph" render={renderGraphviz} />;
+    case "json":
+      if (buffer.path.toLowerCase().endsWith(".vl.json")) {
+        return <RenderedSourceViewer buffer={buffer} label="Chart" render={(src, el) => renderChart(src, el, buffer.path)} />;
+      }
+      return <CodeEditor buffer={buffer} />;
     case "html":
       return <HtmlViewer buffer={buffer} />;
     case "csv":

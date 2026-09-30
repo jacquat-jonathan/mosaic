@@ -101,12 +101,12 @@ Errors: `NotFound`, `AlreadyExists`, `Conflict{current_hash}`, `InvalidPath`, `N
 - [x] JSON/YAML/code/text: CodeMirror language packs; >5 MB → read-only
 
 ### M6 — Visuals (ac-5)
-- [ ] JSON Canvas: @xyflow/react; text/file/link/group nodes, edges, colors; save preserves unknown fields
-- [ ] Excalidraw `.excalidraw` editor (assets bundled, no CDN fonts)
-- [ ] Vega-Lite: fenced `vega-lite` blocks + `.vl.json`, data from relative CSV/JSON
-- [ ] Graphviz: fenced `dot` blocks + `.dot` via @viz-js/viz
-- [ ] Parse errors inline, never overwrite on error
-- [ ] "New note / canvas / drawing / chart" commands
+- [x] JSON Canvas: @xyflow/react; text/file/link/group nodes, edges, colors; save preserves unknown fields
+- [x] Excalidraw `.excalidraw` editor (assets bundled, no CDN fonts)
+- [x] Vega-Lite: fenced `vega-lite` blocks + `.vl.json`, data from relative CSV/JSON
+- [x] Graphviz: fenced `dot` blocks + `.dot` via @viz-js/viz
+- [x] Parse errors inline, never overwrite on error
+- [x] "New note / canvas / drawing / chart" commands
 
 ### M7 — CLI + MCP (ac-8)
 - [ ] `mosaic` CLI (clap): every api op, `--vault` / `MOSAIC_VAULT` / last vault, `--json`

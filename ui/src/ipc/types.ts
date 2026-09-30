@@ -43,6 +43,11 @@ export interface VaultInfo {
   name: string;
 }
 
+export interface RecentVault extends VaultInfo {
+  /** False when the folder is gone (deleted, or on an unplugged disk). */
+  exists: boolean;
+}
+
 export interface CoreError {
   code:
     | "not_found"

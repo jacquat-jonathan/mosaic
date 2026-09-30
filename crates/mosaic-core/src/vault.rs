@@ -88,6 +88,21 @@ fn is_hidden(name: &str) -> bool {
 }
 
 impl Vault {
+    /// Creates `<parent>/<name>` as a new, empty vault folder and opens it. The folder must not exist.
+    pub fn create_new(parent: impl AsRef<Path>, name: &str) -> Result<Self> {
+        let name = name.trim();
+        if name.is_empty() || name.contains('/') || name.starts_with('.') {
+            return Err(Error::InvalidPath(format!("invalid vault name: {name:?}")));
+        }
+        let parent = parent.as_ref();
+        if !parent.is_dir() {
+            return Err(Error::NotFound(parent.display().to_string()));
+        }
+        let root = parent.join(name);
+        fs::create_dir(&root).map_err(|e| Error::io(root.display().to_string(), e))?;
+        Self::open(root)
+    }
+
     pub fn open(root: impl AsRef<Path>) -> Result<Self> {
         let shown = root.as_ref().display().to_string();
         let root = fs::canonicalize(root.as_ref()).map_err(|e| Error::io(&shown, e))?;
@@ -429,6 +444,25 @@ impl Vault {
         Ok(to_n)
     }
 
+    /// Copies a file (text or binary) to a new path; fails if the target exists. Folders aren't copied.
+    pub fn copy(&self, from: &str, to: &str) -> Result<Written> {
+        let from_n = normalize(from)?;
+        let to_n = normalize(to)?;
+        if to_n.is_empty() {
+            return Err(Error::InvalidPath("empty path".into()));
+        }
+        let bytes = self.read_bytes(&from_n)?;
+        let dst = self.resolve(&to_n)?;
+        if dst.exists() {
+            return Err(Error::AlreadyExists(to_n));
+        }
+        self.atomic_write(&to_n, &dst, &bytes, true)?;
+        Ok(Written {
+            hash: hash_bytes(&bytes),
+            path: to_n,
+        })
+    }
+
     /// Moves a file or folder to the macOS Trash (never deletes permanently).
     pub fn delete(&self, rel: &str) -> Result<()> {
         let norm = normalize(rel)?;
@@ -484,6 +518,38 @@ mod tests {
             Err(Error::Conflict { .. })
         ));
         assert_eq!(v.read("notes/a.md").unwrap().hash, w2.hash);
+    }
+
+    #[test]
+    fn copy_files_but_never_overwrite() {
+        let (_d, v) = vault();
+        v.create("a.md", "# A\n").unwrap();
+        let w = v.copy("a.md", "sub/a 1.md").unwrap();
+        assert_eq!(v.read("sub/a 1.md").unwrap().hash, w.hash);
+        assert!(matches!(
+            v.copy("a.md", "sub/a 1.md"),
+            Err(Error::AlreadyExists(_))
+        ));
+        assert!(matches!(
+            v.copy("missing.md", "b.md"),
+            Err(Error::NotFound(_))
+        ));
+        assert!(v.copy("sub", "sub2").is_err());
+        assert!(v.copy("a.md", "../out.md").is_err());
+    }
+
+    #[test]
+    fn create_new_vault_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let v = Vault::create_new(dir.path(), "Notes").unwrap();
+        assert!(v.root().ends_with("Notes"));
+        assert!(matches!(
+            Vault::create_new(dir.path(), "Notes"),
+            Err(Error::AlreadyExists(_))
+        ));
+        assert!(Vault::create_new(dir.path(), "a/b").is_err());
+        assert!(Vault::create_new(dir.path(), ".hidden").is_err());
+        assert!(Vault::create_new(dir.path(), "  ").is_err());
     }
 
     #[test]

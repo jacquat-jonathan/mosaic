@@ -2,7 +2,8 @@
 //! `~/Library/Application Support/dev.jona.mosaic/settings.json`.
 
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
 
 pub const APP_ID: &str = "dev.jona.mosaic";
 
@@ -11,6 +12,8 @@ pub const APP_ID: &str = "dev.jona.mosaic";
 pub struct Settings {
     pub last_vault: Option<PathBuf>,
     pub recent_vaults: Vec<PathBuf>,
+    /// Bookmarked vault-relative paths, per vault root. Kept here so the vault holds only user content.
+    pub bookmarks: BTreeMap<PathBuf, Vec<String>>,
 }
 
 pub fn app_support_dir() -> Option<PathBuf> {
@@ -52,5 +55,68 @@ impl Settings {
         self.recent_vaults.insert(0, root.clone());
         self.recent_vaults.truncate(10);
         self.last_vault = Some(root);
+    }
+
+    /// Drops a vault from the recent list (its folder is left untouched).
+    pub fn forget_vault(&mut self, root: &Path) {
+        self.recent_vaults.retain(|p| p != root);
+        if self.last_vault.as_deref() == Some(root) {
+            self.last_vault = None;
+        }
+    }
+
+    pub fn bookmarks(&self, root: &Path) -> Vec<String> {
+        self.bookmarks.get(root).cloned().unwrap_or_default()
+    }
+
+    /// Replaces a vault's bookmarks, keeping their order and dropping duplicates.
+    pub fn set_bookmarks(&mut self, root: &Path, paths: Vec<String>) {
+        let mut seen = std::collections::HashSet::new();
+        let paths: Vec<String> = paths
+            .into_iter()
+            .filter(|p| seen.insert(p.clone()))
+            .collect();
+        if paths.is_empty() {
+            self.bookmarks.remove(root);
+        } else {
+            self.bookmarks.insert(root.to_path_buf(), paths);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn recent_vaults_are_ordered_capped_and_forgettable() {
+        let mut s = Settings::default();
+        for i in 0..12 {
+            s.remember_vault(PathBuf::from(format!("/v{i}")));
+        }
+        s.remember_vault(PathBuf::from("/v5"));
+        assert_eq!(s.recent_vaults.len(), 10);
+        assert_eq!(s.recent_vaults[0], PathBuf::from("/v5"));
+        assert_eq!(
+            s.recent_vaults
+                .iter()
+                .filter(|p| p.as_path() == Path::new("/v5"))
+                .count(),
+            1
+        );
+        s.forget_vault(Path::new("/v5"));
+        assert!(!s.recent_vaults.contains(&PathBuf::from("/v5")));
+        assert_eq!(s.last_vault, None);
+    }
+
+    #[test]
+    fn bookmarks_are_per_vault_and_deduplicated() {
+        let mut s = Settings::default();
+        let a = Path::new("/a");
+        s.set_bookmarks(a, vec!["x.md".into(), "y.md".into(), "x.md".into()]);
+        assert_eq!(s.bookmarks(a), vec!["x.md", "y.md"]);
+        assert!(s.bookmarks(Path::new("/b")).is_empty());
+        s.set_bookmarks(a, vec![]);
+        assert!(!s.bookmarks.contains_key(a));
     }
 }

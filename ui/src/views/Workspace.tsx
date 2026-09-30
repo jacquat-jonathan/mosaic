@@ -1,11 +1,12 @@
 import { Fragment, useState, type DragEvent } from "react";
-import { X } from "lucide-react";
+import { PanelLeftOpen, PanelRight, X } from "lucide-react";
 import { useWorkspace, type Pane } from "../state/workspace";
 import { useVault } from "../state/vault";
 import { useUi } from "../state/ui";
 import { FileView } from "../viewers/FileView";
 import { displayName, kindIcon } from "./FileTree";
 import { kindOf } from "../ipc/kinds";
+import { shortcutOf } from "../commands";
 
 const TAB_DRAG = "application/x-mosaic-tab";
 
@@ -17,7 +18,8 @@ export function Workspace() {
       {panes.map((p, i) => (
         <Fragment key={p.id}>
           {i > 0 && <Divider index={i - 1} direction={direction} />}
-          <PaneView pane={p} />
+          {/* The panes touching the window's top corners carry the sidebar toggles. */}
+          <PaneView pane={p} topLeft={i === 0} topRight={direction === "row" ? i === panes.length - 1 : i === 0} />
         </Fragment>
       ))}
     </div>
@@ -51,7 +53,9 @@ function Divider({ index, direction }: { index: number; direction: "row" | "colu
   );
 }
 
-function PaneView({ pane }: { pane: Pane }) {
+function PaneView({ pane, topLeft, topRight }: { pane: Pane; topLeft: boolean; topRight: boolean }) {
+  const left = useUi((s) => s.leftSidebar);
+  const right = useUi((s) => s.rightPanel);
   const focused = useWorkspace((s) => s.focused === pane.id);
   const multi = useWorkspace((s) => s.panes.length > 1);
   const [dropping, setDropping] = useState(false);
@@ -68,7 +72,7 @@ function PaneView({ pane }: { pane: Pane }) {
 
   return (
     <section
-      className={`pane ${focused && multi ? "focused" : ""} ${dropping ? "drop" : ""}`}
+      className={`pane ${focused && multi ? "focused" : ""} ${dropping ? "drop" : ""} ${topLeft ? "top-left" : ""}`}
       style={{ flexGrow: pane.size ?? 1 }}
       onMouseDownCapture={() => useWorkspace.getState().focus(pane.id)}
       onDragOver={(ev) => {
@@ -81,9 +85,27 @@ function PaneView({ pane }: { pane: Pane }) {
       onDrop={(ev) => onDrop(ev)}
     >
       <div className="tabbar" data-tauri-drag-region>
-        {pane.tabs.map((path, i) => (
-          <Tab key={path} pane={pane} path={path} active={pane.active === path} onDropAt={(ev) => onDrop(ev, i)} />
-        ))}
+        {topLeft && !left && (
+          <button className="bar-toggle" aria-label="Show sidebar" title={`Show sidebar (${shortcutOf("toggle-left")})`} onClick={() => useUi.getState().toggleLeftSidebar()}>
+            <PanelLeftOpen size={16} />
+          </button>
+        )}
+        <div className="tabs" data-tauri-drag-region>
+          {pane.tabs.map((path, i) => (
+            <Tab key={path} pane={pane} path={path} active={pane.active === path} onDropAt={(ev) => onDrop(ev, i)} />
+          ))}
+        </div>
+        {topRight && (
+          <button
+            className={`bar-toggle ${right ? "active" : ""}`}
+            aria-label={right ? "Hide right panel" : "Show right panel"}
+            aria-pressed={right}
+            title={`${right ? "Hide" : "Show"} backlinks and outline (${shortcutOf("toggle-right")})`}
+            onClick={() => useUi.getState().toggleRightPanel()}
+          >
+            <PanelRight size={16} />
+          </button>
+        )}
       </div>
       <div className="pane-body">
         {pane.active ? <FileView key={pane.active} path={pane.active} /> : <EmptyPane />}

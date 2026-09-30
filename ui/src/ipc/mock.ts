@@ -13,6 +13,7 @@ interface MockFile {
 const files = new Map<string, MockFile>();
 const dirs = new Set<string>();
 let opened = false;
+let bookmarks: string[] = ["Welcome.md"];
 
 function seed() {
   const now = Date.now();
@@ -165,6 +166,29 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
       return opened ? { root: "/mock/vault", name: "Mock vault" } : null;
     case "last_vault":
       return null;
+    case "create_vault":
+      opened = true;
+      return { root: `${String(a.parent)}/${String(a.name)}`, name: String(a.name) };
+    case "recent_vaults":
+      return [
+        { root: "/mock/vault", name: "Mock vault", exists: true },
+        { root: "/mock/Work notes", name: "Work notes", exists: true },
+        { root: "/Volumes/USB/Old vault", name: "Old vault", exists: false },
+      ];
+    case "forget_vault":
+      return null;
+    case "get_bookmarks":
+      return bookmarks;
+    case "set_bookmarks":
+      bookmarks = [...(a.paths as string[])];
+      return null;
+    case "copy_path": {
+      const from = files.get(norm(a.from));
+      if (!from) throw err("not_found", `not found: ${norm(a.from)}`);
+      const to = norm(a.to);
+      if (exists(to)) throw err("already_exists", `already exists: ${to}`);
+      return write(to, from.content);
+    }
     case "list_dir":
       return list(norm(a.dir), Boolean(a.recursive));
     case "read_file": {

@@ -110,6 +110,12 @@ impl Workspace {
         Ok(w)
     }
 
+    pub fn copy(&self, from: &str, to: &str) -> Result<Written> {
+        let w = self.vault.copy(from, to)?;
+        self.reindex(&w.path);
+        Ok(w)
+    }
+
     pub fn mkdir(&self, path: &str) -> Result<()> {
         self.vault.mkdir(path)
     }

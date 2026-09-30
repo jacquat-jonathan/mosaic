@@ -1,5 +1,5 @@
-import { useEffect, useRef } from "react";
-import { useUi } from "../state/ui";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useUi, type MenuItem } from "../state/ui";
 import { useVault } from "../state/vault";
 
 export function ContextMenu() {
@@ -24,29 +24,73 @@ export function ContextMenu() {
   }, [menu, hide]);
 
   if (!menu) return null;
-  const x = Math.min(menu.x, window.innerWidth - 220);
-  const y = Math.min(menu.y, window.innerHeight - menu.items.length * 30 - 12);
   return (
-    <div ref={ref} className="menu" style={{ left: x, top: y }} role="menu">
-      {menu.items.map((it, i) =>
-        it.separator ? (
-          <div key={i} className="menu-sep" />
-        ) : (
-          <button
-            key={i}
-            role="menuitem"
-            className={it.danger ? "danger" : undefined}
-            onClick={() => {
-              hide();
-              it.action?.();
-            }}
-          >
-            <span>{it.label}</span>
-            {it.shortcut && <kbd>{it.shortcut}</kbd>}
-          </button>
-        ),
-      )}
+    <div ref={ref}>
+      <MenuList key={`${menu.x},${menu.y}`} items={menu.items} x={menu.x} y={menu.y} onDone={hide} />
     </div>
+  );
+}
+
+/** One level of a menu, kept inside the window; items with `children` open a submenu on hover. */
+function MenuList({ items, x, y, onDone, flipFrom }: { items: MenuItem[]; x: number; y: number; onDone(): void; flipFrom?: number }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState({ left: x, top: y });
+  const [sub, setSub] = useState<{ index: number; x: number; y: number; flip: number } | null>(null);
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    let left = x;
+    // A submenu that doesn't fit on the right opens to the left of its parent.
+    if (left + r.width > window.innerWidth - 6) left = flipFrom !== undefined ? flipFrom - r.width : window.innerWidth - r.width - 6;
+    const top = Math.max(6, Math.min(y, window.innerHeight - r.height - 6));
+    setPos({ left: Math.max(6, left), top });
+  }, [x, y, flipFrom]);
+
+  return (
+    <>
+      <div ref={ref} className="menu" style={pos} role="menu">
+        {items.map((it, i) =>
+          it.separator ? (
+            <div key={i} className="menu-sep" />
+          ) : (
+            <button
+              key={i}
+              role="menuitem"
+              aria-haspopup={it.children ? "menu" : undefined}
+              disabled={it.disabled}
+              className={[it.danger ? "danger" : "", sub?.index === i ? "open" : ""].join(" ").trim() || undefined}
+              onMouseEnter={(e) => {
+                if (!it.children) return setSub(null);
+                const r = e.currentTarget.getBoundingClientRect();
+                setSub({ index: i, x: r.right + 2, y: r.top - 5, flip: r.left - 2 });
+              }}
+              onClick={(e) => {
+                if (it.children) {
+                  const r = e.currentTarget.getBoundingClientRect();
+                  setSub({ index: i, x: r.right + 2, y: r.top - 5, flip: r.left - 2 });
+                  return;
+                }
+                onDone();
+                it.action?.();
+              }}
+            >
+              <span className="menu-check">{it.checked ? "✓" : ""}</span>
+              <span className="menu-label">
+                {it.label}
+                {it.detail && <small>{it.detail}</small>}
+              </span>
+              {it.shortcut && <kbd>{it.shortcut}</kbd>}
+              {it.children && <span className="menu-arrow">›</span>}
+            </button>
+          ),
+        )}
+      </div>
+      {sub && items[sub.index]?.children && (
+        <MenuList key={sub.index} items={items[sub.index].children!} x={sub.x} y={sub.y} flipFrom={sub.flip} onDone={onDone} />
+      )}
+    </>
   );
 }
 

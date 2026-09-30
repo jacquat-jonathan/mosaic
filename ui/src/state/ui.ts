@@ -9,6 +9,28 @@ export interface MenuItem {
   danger?: boolean;
   separator?: boolean;
   shortcut?: string;
+  /** Shows a submenu on hover instead of running an action. */
+  children?: MenuItem[];
+  checked?: boolean;
+  disabled?: boolean;
+  /** Small grey text under the label (e.g. a folder path). */
+  detail?: string;
+}
+
+export interface PickerItem {
+  id: string;
+  label: string;
+  detail?: string;
+  shortcut?: string;
+}
+
+/** A fuzzy-filtered list in a modal: the command palette, "Move to…" and similar. */
+export interface Picker {
+  placeholder: string;
+  items: PickerItem[];
+  onPick(item: PickerItem): void;
+  /** Hint line at the bottom. */
+  hint?: string;
 }
 
 interface Prompt {
@@ -26,7 +48,38 @@ interface Confirm {
   resolve(ok: boolean): void;
 }
 
-export type SidebarTab = "files" | "search" | "tags";
+export type SidebarTab = "files" | "search" | "tags" | "bookmarks";
+
+export const SIDEBAR_DEFAULT = 260;
+export const RIGHT_DEFAULT = 280;
+export const PANEL_MIN = 180;
+export const PANEL_MAX = 560;
+const PREFS_KEY = "mosaic:ui";
+
+interface Prefs {
+  sidebarWidth: number;
+  rightWidth: number;
+  leftSidebar: boolean;
+  rightPanel: boolean;
+}
+
+export const clampPanel = (w: number) => Math.round(Math.max(PANEL_MIN, Math.min(PANEL_MAX, w)));
+
+function loadPrefs(): Prefs {
+  const d: Prefs = { sidebarWidth: SIDEBAR_DEFAULT, rightWidth: RIGHT_DEFAULT, leftSidebar: true, rightPanel: true };
+  try {
+    const saved = JSON.parse(localStorage.getItem(PREFS_KEY) ?? "null") as Partial<Prefs> | null;
+    if (!saved) return d;
+    return {
+      sidebarWidth: typeof saved.sidebarWidth === "number" ? clampPanel(saved.sidebarWidth) : d.sidebarWidth,
+      rightWidth: typeof saved.rightWidth === "number" ? clampPanel(saved.rightWidth) : d.rightWidth,
+      leftSidebar: saved.leftSidebar ?? d.leftSidebar,
+      rightPanel: saved.rightPanel ?? d.rightPanel,
+    };
+  } catch {
+    return d;
+  }
+}
 
 interface UiState {
   sidebarTab: SidebarTab;
@@ -37,6 +90,15 @@ interface UiState {
   connectAi: boolean;
   setConnectAi(open: boolean): void;
   rightPanel: boolean;
+  leftSidebar: boolean;
+  sidebarWidth: number;
+  rightWidth: number;
+  setSidebarWidth(w: number): void;
+  setRightWidth(w: number): void;
+  toggleLeftSidebar(): void;
+  picker: Picker | null;
+  openPicker(p: Picker): void;
+  closePicker(): void;
   setSidebarTab(tab: SidebarTab): void;
   setSearchQuery(q: string): void;
   showSearch(q?: string): void;
@@ -53,6 +115,8 @@ interface UiState {
   answer(ok: boolean): void;
 }
 
+const prefs = loadPrefs();
+
 export const useUi = create<UiState>((set, get) => ({
   sidebarTab: "files",
   searchQuery: "",
@@ -60,11 +124,20 @@ export const useUi = create<UiState>((set, get) => ({
   switcher: false,
   connectAi: false,
   setConnectAi: (connectAi) => set({ connectAi }),
-  rightPanel: true,
-  setSidebarTab: (sidebarTab) => set({ sidebarTab }),
+  rightPanel: prefs.rightPanel,
+  leftSidebar: prefs.leftSidebar,
+  sidebarWidth: prefs.sidebarWidth,
+  rightWidth: prefs.rightWidth,
+  setSidebarWidth: (w) => set({ sidebarWidth: clampPanel(w) }),
+  setRightWidth: (w) => set({ rightWidth: clampPanel(w) }),
+  toggleLeftSidebar: () => set((s) => ({ leftSidebar: !s.leftSidebar })),
+  picker: null,
+  openPicker: (picker) => set({ picker, menu: null }),
+  closePicker: () => set({ picker: null }),
+  setSidebarTab: (sidebarTab) => set({ sidebarTab, leftSidebar: true }),
   setSearchQuery: (searchQuery) => set({ searchQuery }),
   showSearch: (q) =>
-    set((s) => ({ sidebarTab: "search", searchQuery: q ?? s.searchQuery, searchFocus: s.searchFocus + 1 })),
+    set((s) => ({ sidebarTab: "search", leftSidebar: true, searchQuery: q ?? s.searchQuery, searchFocus: s.searchFocus + 1 })),
   setSwitcher: (switcher) => set({ switcher }),
   toggleRightPanel: () => set((s) => ({ rightPanel: !s.rightPanel })),
   menu: null,
@@ -83,3 +156,20 @@ export const useUi = create<UiState>((set, get) => ({
     set({ confirm: null });
   },
 }));
+
+// Panel sizes and visibility are app preferences (the app's own storage, never the vault).
+useUi.subscribe((s, prev) => {
+  if (
+    s.sidebarWidth === prev.sidebarWidth &&
+    s.rightWidth === prev.rightWidth &&
+    s.leftSidebar === prev.leftSidebar &&
+    s.rightPanel === prev.rightPanel
+  )
+    return;
+  try {
+    const p: Prefs = { sidebarWidth: s.sidebarWidth, rightWidth: s.rightWidth, leftSidebar: s.leftSidebar, rightPanel: s.rightPanel };
+    localStorage.setItem(PREFS_KEY, JSON.stringify(p));
+  } catch {
+    // Storage unavailable: sizes just aren't remembered.
+  }
+});

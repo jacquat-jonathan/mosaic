@@ -19,8 +19,11 @@ Everything stays on your disk as ordinary files. The app makes no network reques
   (`.excalidraw`), charts (`.vl.json`) and graphs (`.dot`).
 - **Other files:** sandboxed HTML preview and source editing, a PDF viewer, an editable CSV/TSV
   table, and a syntax-highlighted editor for JSON, YAML, code and text.
-- **Navigation:** full-text search (`tag:`, `path:`, `"phrases"`), backlinks, outline, tags, the
-  ⌘O quick switcher, tabs and split panes.
+- **Navigation:** full-text search (`tag:`, `path:`, `"phrases"`), backlinks, outline, tags,
+  bookmarks, the ⌘O quick switcher, the ⌘P command palette, tabs, split panes and resizable sidebars.
+- **File tree:** drag and drop to move (links follow), ⌘/⇧-click multi-selection, and a right-click
+  menu to duplicate, move, copy links or paths and reveal in Finder. Click the vault name to switch
+  between recent vaults or create a new one.
 - **Safe editing:** deletes go to the macOS Trash; renames update links everywhere. When a file
   changes on disk while you're editing it, Mosaic asks you what to do instead of overwriting.
 

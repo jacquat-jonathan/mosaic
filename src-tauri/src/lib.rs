@@ -53,7 +53,26 @@ fn info(ws: &Workspace) -> VaultInfo {
 
 #[tauri::command]
 fn open_vault(app: AppHandle, state: State<AppState>, path: String) -> CmdResult<VaultInfo> {
-    let ws = Arc::new(Workspace::open(&path)?);
+    activate(app, &state, Workspace::open(&path)?)
+}
+
+/// Creates `<parent>/<name>` as a new, empty vault folder. The UI then opens it with `open_vault`.
+#[tauri::command]
+fn create_vault(parent: String, name: String) -> CmdResult<VaultInfo> {
+    let vault = mosaic_core::Vault::create_new(&parent, &name)?;
+    let root = vault.root();
+    Ok(VaultInfo {
+        root: root.display().to_string(),
+        name: root
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default(),
+    })
+}
+
+/// Makes `ws` the open vault: remembers it, starts the watcher and indexes in the background.
+fn activate(app: AppHandle, state: &AppState, ws: Workspace) -> CmdResult<VaultInfo> {
+    let ws = Arc::new(ws);
     let _ = app
         .asset_protocol_scope()
         .allow_directory(ws.vault.root(), true);
@@ -87,6 +106,58 @@ fn open_vault(app: AppHandle, state: State<AppState>, path: String) -> CmdResult
         emit(0, 0, true);
     });
     Ok(out)
+}
+
+#[derive(Serialize)]
+struct RecentVault {
+    root: String,
+    name: String,
+    /// False when the folder is gone (deleted, or on an unplugged disk).
+    exists: bool,
+}
+
+#[tauri::command]
+fn recent_vaults() -> Vec<RecentVault> {
+    Settings::load()
+        .recent_vaults
+        .into_iter()
+        .map(|p| RecentVault {
+            name: p
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default(),
+            exists: p.is_dir(),
+            root: p.display().to_string(),
+        })
+        .collect()
+}
+
+#[tauri::command]
+fn forget_vault(path: String) -> CmdResult<()> {
+    let mut settings = Settings::load();
+    settings.forget_vault(std::path::Path::new(&path));
+    settings.save().map_err(|e| Error::Io { path, source: e })
+}
+
+#[tauri::command]
+fn get_bookmarks(state: State<AppState>) -> CmdResult<Vec<String>> {
+    Ok(Settings::load().bookmarks(state.get()?.vault.root()))
+}
+
+#[tauri::command]
+fn set_bookmarks(state: State<AppState>, paths: Vec<String>) -> CmdResult<()> {
+    let ws = state.get()?;
+    let mut settings = Settings::load();
+    settings.set_bookmarks(ws.vault.root(), paths);
+    settings.save().map_err(|e| Error::Io {
+        path: "settings.json".into(),
+        source: e,
+    })
+}
+
+#[tauri::command]
+fn copy_path(state: State<AppState>, from: String, to: String) -> CmdResult<Written> {
+    state.get()?.copy(&from, &to)
 }
 
 #[tauri::command]
@@ -234,6 +305,12 @@ pub fn run() {
         .manage(AppState::default())
         .invoke_handler(tauri::generate_handler![
             open_vault,
+            create_vault,
+            recent_vaults,
+            forget_vault,
+            get_bookmarks,
+            set_bookmarks,
+            copy_path,
             current_vault,
             last_vault,
             list_dir,

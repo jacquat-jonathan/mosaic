@@ -1,7 +1,7 @@
 // Typed access to the backend. Inside Tauri this goes through `invoke`; in a plain browser (UI
 // development and tests) it falls back to an in-memory mock vault.
 
-import type { Backlink, CliInfo, Entry, FileContent, IndexProgress, Renamed, SearchHit, TagCount, VaultInfo, Written } from "./types";
+import type { Backlink, CliInfo, Entry, FileContent, IndexProgress, RecentVault, Renamed, SearchHit, TagCount, VaultInfo, Written } from "./types";
 import { mockInvoke } from "./mock";
 
 export const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -18,6 +18,12 @@ export const api = {
   openVault: (path: string) => call<VaultInfo>("open_vault", { path }),
   currentVault: () => call<VaultInfo | null>("current_vault"),
   lastVault: () => call<string | null>("last_vault"),
+  createVault: (parent: string, name: string) => call<VaultInfo>("create_vault", { parent, name }),
+  recentVaults: () => call<RecentVault[]>("recent_vaults"),
+  forgetVault: (path: string) => call<void>("forget_vault", { path }),
+  bookmarks: () => call<string[]>("get_bookmarks"),
+  setBookmarks: (paths: string[]) => call<void>("set_bookmarks", { paths }),
+  copy: (from: string, to: string) => call<Written>("copy_path", { from, to }),
   list: (dir = "", recursive = false) => call<Entry[]>("list_dir", { dir, recursive }),
   read: (path: string) => call<FileContent>("read_file", { path }),
   create: (path: string, content = "") => call<Written>("create_file", { path, content }),
@@ -36,10 +42,10 @@ export const api = {
 };
 
 /** Asks the user for a folder with the native dialog (or a prompt-free mock in the browser). */
-export async function pickFolder(): Promise<string | null> {
+export async function pickFolder(title = "Open a folder as a vault"): Promise<string | null> {
   if (!inTauri) return "/mock/vault";
   const { open } = await import("@tauri-apps/plugin-dialog");
-  const picked = await open({ directory: true, multiple: false, title: "Open a folder as a vault" });
+  const picked = await open({ directory: true, multiple: false, title });
   return typeof picked === "string" ? picked : null;
 }
 
@@ -98,4 +104,11 @@ export async function openInDefaultApp(path: string): Promise<void> {
   if (!inTauri) return;
   const { openPath } = await import("@tauri-apps/plugin-opener");
   await openPath(await api.absolutePath(path));
+}
+
+/** Shows a vault file (or the vault itself, with `""`) in Finder. */
+export async function revealInFinder(path: string): Promise<void> {
+  if (!inTauri) return;
+  const { revealItemInDir } = await import("@tauri-apps/plugin-opener");
+  await revealItemInDir(await api.absolutePath(path));
 }

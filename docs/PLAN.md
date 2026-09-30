@@ -121,6 +121,15 @@ Errors: `NotFound`, `AlreadyExists`, `Conflict{current_hash}`, `InvalidPath`, `N
 - [x] Universal2 release build, `scripts/install.sh` → /Applications
 - [x] README: prerequisites, build/install, Gatekeeper first launch, MCP setup for Claude Code + Desktop
 
+### M9 — UI foundations
+Tracked in detail in the Mosaic vault note `UI Foundations.md`.
+- [x] Resizable left bar and right panel (remembered); toggles moved to the main area's top corners
+- [x] Tree drag and drop works in the app (`dragDropEnabled: false`), multi-item moves, open folder on hover
+- [x] Vault switcher: recent vaults, open, create (`Vault::create_new`), remove from list, reveal in Finder
+- [x] Bookmarks (per vault, in `settings.json`), with a sidebar tab
+- [x] Command palette (⌘P) on a single command registry that also drives shortcuts
+- [x] Tree multi-selection and a richer right-click menu (duplicate via `Workspace::copy`, move to…, copy link/path)
+
 ## Working rules
 - `scripts/check.sh` green before each milestone commit.
 - Core logic gets Rust tests; UI logic gets Vitest; don't test third-party renderers beyond a smoke test.

@@ -1,9 +1,11 @@
 // User-level actions that touch both the vault tree and open tabs.
 
 import { useUi } from "./state/ui";
-import { baseName, parentOf, useVault } from "./state/vault";
+import { baseName, parentOf, topLevel, uniquePath, useVault } from "./state/vault";
 import { useWorkspace } from "./state/workspace";
 import { kindOf } from "./ipc/kinds";
+import { api, pickFolder } from "./ipc/api";
+import { errorMessage } from "./ipc/types";
 import { displayName } from "./views/FileTree";
 
 export async function newNote(dir: string) {
@@ -25,9 +27,144 @@ export async function renamePath(from: string, to: string) {
   return out;
 }
 
+/** Whether `path` can move into folder `dir` (not already there, not into itself). */
+export function canMoveInto(path: string, dir: string): boolean {
+  return parentOf(path) !== dir && dir !== path && !dir.startsWith(`${path}/`);
+}
+
 export async function moveInto(path: string, dir: string) {
-  if (parentOf(path) === dir || dir === path || dir.startsWith(`${path}/`)) return;
+  if (!canMoveInto(path, dir)) return;
   await renamePath(path, dir ? `${dir}/${baseName(path)}` : baseName(path));
+}
+
+/** Moves several files and folders into `dir`, one by one (links follow each move). */
+export async function moveAllInto(paths: string[], dir: string) {
+  for (const p of topLevel(paths)) await moveInto(p, dir);
+}
+
+/** "Move to…": pick a destination folder, then move `paths` there. */
+export function pickFolderAndMove(paths: string[]) {
+  const targets = topLevel(paths);
+  const folders = useVault.getState().entries.filter((e) => e.is_dir).map((e) => e.path);
+  const allowed = ["", ...folders].filter((d) => targets.some((p) => canMoveInto(p, d)));
+  const what = targets.length === 1 ? `“${displayName({ name: baseName(targets[0]), kind: kindOf(targets[0]) })}”` : `${targets.length} items`;
+  useUi.getState().openPicker({
+    placeholder: `Move ${what} to…`,
+    items: allowed.map((d) => ({ id: d, label: d ? baseName(d) : "Vault root", detail: d && parentOf(d) ? parentOf(d) : undefined })),
+    hint: "↵ move · esc cancel",
+    onPick: (item) => void moveAllInto(targets, item.id),
+  });
+}
+
+/** Moves several items to the Trash after one confirmation. */
+export async function deletePaths(paths: string[]) {
+  const targets = topLevel(paths);
+  if (targets.length === 0) return;
+  if (targets.length === 1) {
+    const e = useVault.getState().entries.find((x) => x.path === targets[0]);
+    return deletePath(targets[0], e?.is_dir ?? false);
+  }
+  const ws = useWorkspace.getState();
+  const under = (b: string) => targets.some((p) => b === p || b.startsWith(`${p}/`));
+  const dirty = Object.values(ws.buffers).some((b) => b.dirty && under(b.path));
+  const ok = await useUi.getState().ask({
+    title: `Move ${targets.length} items to the Trash?`,
+    body: "They will be moved to the macOS Trash." + (dirty ? " Some have unsaved changes, which will be lost." : " You can restore them from there."),
+    confirmLabel: "Move to Trash",
+    danger: true,
+  });
+  if (!ok) return;
+  for (const p of targets) {
+    if (!(await useVault.getState().remove(p))) break;
+    for (const b of Object.values(useWorkspace.getState().buffers)) {
+      if (b.path === p || b.path.startsWith(`${p}/`)) useWorkspace.setState((s) => ({ buffers: { ...s.buffers, [b.path]: { ...b, dirty: false } } }));
+    }
+    useWorkspace.getState().deleted(p);
+  }
+  useVault.getState().clearSelection();
+}
+
+/** Copies a file next to itself as "Name 1.ext" and starts renaming the copy. */
+export async function duplicatePath(path: string) {
+  const name = baseName(path);
+  const ext = name.toLowerCase().endsWith(".vl.json") ? "vl.json" : name.includes(".") ? name.slice(name.lastIndexOf(".") + 1) : "";
+  const stem = ext ? name.slice(0, -(ext.length + 1)) : name;
+  const vault = useVault.getState();
+  const target = uniquePath(new Set(vault.entries.map((e) => e.path.toLowerCase())), parentOf(path), stem, ext);
+  try {
+    await api.copy(path, target);
+    await vault.refresh();
+    vault.setSelection([target]);
+    vault.setRenaming(target);
+  } catch (e) {
+    vault.setError(errorMessage(e));
+  }
+}
+
+/** The shortest `[[link]]` that resolves to `path`: the bare name unless another file shares it. */
+export function wikilinkFor(path: string): string {
+  const name = baseName(path);
+  const md = kindOf(path) === "markdown";
+  const bare = md ? name.replace(/\.(md|markdown)$/i, "") : name;
+  const clash = useVault.getState().entries.some((e) => !e.is_dir && e.path !== path && e.name.toLowerCase() === name.toLowerCase());
+  const target = clash ? (md ? path.replace(/\.(md|markdown)$/i, "") : path) : bare;
+  return `[[${target}]]`;
+}
+
+export async function copyText(text: string) {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch (e) {
+    useVault.getState().setError(`Couldn't copy to the clipboard: ${errorMessage(e)}`);
+  }
+}
+
+/** Expands the folders above `path`, selects it and scrolls it into view in the file tree. */
+export function revealInTree(path: string) {
+  const vault = useVault.getState();
+  vault.revealParents(path);
+  vault.setSelection([path]);
+  useUi.getState().setSidebarTab("files");
+  requestAnimationFrame(() => document.querySelector(`[data-path="${CSS.escape(path)}"]`)?.scrollIntoView({ block: "nearest" }));
+}
+
+/** Expands or collapses a folder and every folder inside it. */
+export function setExpandedDeep(dir: string, open: boolean) {
+  const vault = useVault.getState();
+  const expanded = new Set(vault.expanded);
+  for (const e of vault.entries) {
+    if (e.is_dir && (e.path === dir || e.path.startsWith(`${dir}/`))) {
+      if (open) expanded.add(e.path);
+      else expanded.delete(e.path);
+    }
+  }
+  useVault.setState({ expanded });
+}
+
+/** Opens a file in a new pane to the right of the focused one. */
+export async function openToTheRight(path: string) {
+  const ws = useWorkspace.getState();
+  ws.split("row");
+  await useWorkspace.getState().open(path);
+}
+
+export async function openVaultFolder() {
+  const path = await pickFolder();
+  if (path) await useVault.getState().openVault(path);
+}
+
+/** Asks where and under which name, then creates and opens a new, empty vault. */
+export async function createVault() {
+  const parent = await pickFolder("Choose where to create the new vault");
+  if (!parent) return;
+  const name = await useUi.getState().askText({ title: "Name of the new vault", value: "", placeholder: "My vault" });
+  if (!name?.trim()) return;
+  try {
+    const vault = await api.createVault(parent, name.trim());
+    await useVault.getState().openVault(vault.root);
+  } catch (e) {
+    useVault.getState().setError(errorMessage(e));
+  }
 }
 
 export async function deletePath(path: string, isDir: boolean) {

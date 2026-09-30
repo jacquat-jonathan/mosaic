@@ -175,6 +175,58 @@ fn outline(state: State<AppState>, path: String) -> CmdResult<Outline> {
     state.get()?.outline(&path)
 }
 
+#[derive(Serialize)]
+struct CliInfo {
+    /// The `mosaic` binary shipped inside the app.
+    path: Option<String>,
+    /// Where `install_cli` links it (on the user's PATH).
+    link: String,
+    installed: bool,
+}
+
+fn bundled_cli() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let p = exe.parent()?.join("mosaic");
+    p.is_file().then_some(p)
+}
+
+fn cli_link() -> PathBuf {
+    PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".local/bin/mosaic")
+}
+
+#[tauri::command]
+fn cli_info() -> CliInfo {
+    let path = bundled_cli();
+    let link = cli_link();
+    let installed = match (&path, std::fs::read_link(&link)) {
+        (Some(p), Ok(target)) => &target == p,
+        _ => false,
+    };
+    CliInfo {
+        path: path.map(|p| p.display().to_string()),
+        link: link.display().to_string(),
+        installed,
+    }
+}
+
+/// Symlinks the bundled CLI into ~/.local/bin (no admin rights needed).
+#[tauri::command]
+fn install_cli() -> CmdResult<CliInfo> {
+    let src = bundled_cli()
+        .ok_or_else(|| Error::Invalid("the mosaic command isn't bundled in this build".into()))?;
+    let link = cli_link();
+    let io = |e| Error::Io {
+        path: link.display().to_string(),
+        source: e,
+    };
+    std::fs::create_dir_all(link.parent().expect("link has a parent")).map_err(io)?;
+    if std::fs::symlink_metadata(&link).is_ok() {
+        std::fs::remove_file(&link).map_err(io)?;
+    }
+    std::os::unix::fs::symlink(&src, &link).map_err(io)?;
+    Ok(cli_info())
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -197,6 +249,8 @@ pub fn run() {
             tags,
             aliases,
             outline,
+            cli_info,
+            install_cli,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Mosaic");

@@ -4,9 +4,9 @@
   "version": "0.1.0",
   "identifier": "dev.jona.mosaic",
   "build": {
-    "beforeDevCommand": "pnpm --dir ui dev",
+    "beforeDevCommand": "bash scripts/prepare-sidecar.sh debug && pnpm --dir ui dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "pnpm --dir ui build",
+    "beforeBuildCommand": "bash scripts/prepare-sidecar.sh ${MOSAIC_SIDECAR_PROFILE:-release} && pnpm --dir ui build",
     "frontendDist": "../ui/dist"
   },
   "app": {
@@ -46,6 +46,9 @@
     "macOS": {
       "minimumSystemVersion": "12.0",
       "signingIdentity": "-"
-    }
+    },
+    "externalBin": [
+      "binaries/mosaic"
+    ]
   }
 }

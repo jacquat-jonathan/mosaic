@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { api } from "../ipc/api";
 import { errorMessage, type Entry, type VaultInfo } from "../ipc/types";
+import { useWorkspace } from "./workspace";
 
 export function parentOf(path: string): string {
   const i = path.lastIndexOf("/");
@@ -75,7 +76,6 @@ export const useVault = create<VaultState>((set, get) => {
         const vault = await api.openVault(path);
         set({ vault, entries: [], expanded: new Set(), renaming: null, error: null, offline: false });
         await get().refresh();
-        const { useWorkspace } = await import("./workspace");
         await useWorkspace.getState().restoreLayout(vault.root);
       } catch (e) {
         fail(e);
@@ -137,7 +137,6 @@ export const useVault = create<VaultState>((set, get) => {
       try {
         const { path: out, updated_links_in } = await api.rename(from, to);
         // Reload open notes whose links were rewritten (unsaved ones get the conflict prompt).
-        const { useWorkspace } = await import("./workspace");
         for (const p of updated_links_in) {
           const b = useWorkspace.getState().buffers[p];
           if (b && !b.dirty) void useWorkspace.getState().reload(p);

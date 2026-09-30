@@ -251,6 +251,9 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
     }
     case "aliases":
       return [];
+    case "cli_info":
+    case "install_cli":
+      return { path: "/Applications/Mosaic.app/Contents/MacOS/mosaic", link: "~/.local/bin/mosaic", installed: cmd === "install_cli" };
     case "read_raw": {
       const f = files.get(norm(a.path));
       if (!f) throw err("not_found", `not found: ${a.path}`);

@@ -368,3 +368,14 @@ td.csv-rownum { color: var(--faint); text-align: right; padding: 5px 8px; min-wi
 .md-render blockquote { border-left: 3px solid var(--border); margin: 0.4em 0; padding-left: 10px; color: var(--muted); }
 .md-render table { border-collapse: collapse; }
 .md-render td, .md-render th { border: 1px solid var(--border); padding: 3px 8px; }
+
+/* Connect AI */
+.modal.connect-ai { width: min(640px, 92vw); max-height: 88vh; overflow: auto; }
+.modal h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: 18px 0 8px; }
+.copy-block { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.copy-head { display: flex; justify-content: space-between; align-items: center; padding: 4px 6px 4px 12px; background: var(--bg-side); font-size: 12px; color: var(--muted); }
+.copy-block pre { margin: 0; padding: 10px 12px; font: 12px/1.5 var(--font-mono); white-space: pre-wrap; word-break: break-all; user-select: text; -webkit-user-select: text; }
+.cli-status { display: flex; align-items: center; gap: 10px; }
+.cli-status span { flex: 1; }
+.error-text { color: var(--danger); }
+code { font-family: var(--font-mono); font-size: 0.92em; }

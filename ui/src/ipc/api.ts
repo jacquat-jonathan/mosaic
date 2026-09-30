@@ -1,7 +1,7 @@
 // Typed access to the backend. Inside Tauri this goes through `invoke`; in a plain browser (UI
 // development and tests) it falls back to an in-memory mock vault.
 
-import type { Backlink, Entry, FileContent, IndexProgress, Renamed, SearchHit, TagCount, VaultInfo, Written } from "./types";
+import type { Backlink, CliInfo, Entry, FileContent, IndexProgress, Renamed, SearchHit, TagCount, VaultInfo, Written } from "./types";
 import { mockInvoke } from "./mock";
 
 export const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -31,6 +31,8 @@ export const api = {
   backlinks: (path: string) => call<Backlink[]>("backlinks", { path }),
   tags: () => call<TagCount[]>("tags"),
   aliases: () => call<[string, string][]>("aliases"),
+  cliInfo: () => call<CliInfo>("cli_info"),
+  installCli: () => call<CliInfo>("install_cli"),
 };
 
 /** Asks the user for a folder with the native dialog (or a prompt-free mock in the browser). */

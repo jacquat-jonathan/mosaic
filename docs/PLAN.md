@@ -109,12 +109,12 @@ Errors: `NotFound`, `AlreadyExists`, `Conflict{current_hash}`, `InvalidPath`, `N
 - [x] "New note / canvas / drawing / chart" commands
 
 ### M7 — CLI + MCP (ac-8)
-- [ ] `mosaic` CLI (clap): every api op, `--vault` / `MOSAIC_VAULT` / last vault, `--json`
-- [ ] `mosaic mcp`: rmcp stdio server, one tool per api op with JSON schemas
-- [ ] `docs/AGENTS.md`: vault conventions, JSON Canvas cheat-sheet, Mermaid/Vega/DOT usage
-- [ ] MCP resource or tool exposing the AI guide
-- [ ] Integration tests: scripted MCP client + CLI against fixture vault
-- [ ] App menu "Install command line tool…" (symlink to /usr/local/bin)
+- [x] `mosaic` CLI (clap): every api op, `--vault` / `MOSAIC_VAULT` / last vault, `--json`
+- [x] `mosaic mcp`: rmcp stdio server, one tool per api op with JSON schemas
+- [x] `docs/AGENTS.md`: vault conventions, JSON Canvas cheat-sheet, Mermaid/Vega/DOT usage
+- [x] `vault_guide` tool + server instructions expose the AI guide
+- [x] Integration tests: scripted MCP client + CLI against fixture vault
+- [x] "Connect AI" dialog: install CLI (symlink to ~/.local/bin) + Claude Code / Desktop config
 
 ### M8 — Hardening + release (ac-1, ac-10)
 - [ ] Offline audit (no outbound requests), perf pass

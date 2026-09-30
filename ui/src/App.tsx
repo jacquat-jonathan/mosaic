@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { FilePlus, FolderPlus, FolderOpen, Files, Search, Hash, PanelRight, Shapes } from "lucide-react";
+import { FilePlus, FolderPlus, FolderOpen, Files, Search, Hash, PanelRight, Shapes, Bot } from "lucide-react";
 import { api, onIndexProgress, pickFolder } from "./ipc/api";
 import { useVault } from "./state/vault";
 import { FileTree } from "./views/FileTree";
@@ -13,6 +13,7 @@ import { TagsPanel } from "./views/TagsPanel";
 import { RightPanel } from "./views/RightPanel";
 import { QuickSwitcher } from "./views/QuickSwitcher";
 import { startVaultSync } from "./sync";
+import { ConnectAi } from "./views/ConnectAi";
 
 export function App() {
   const vault = useVault((s) => s.vault);
@@ -51,6 +52,7 @@ export function App() {
       <ConfirmDialog />
       <PromptDialog />
       <QuickSwitcher />
+      <ConnectAi />
       <ErrorToast />
     </>
   );
@@ -127,6 +129,9 @@ function Main() {
             </button>
           ))}
           <span className="spacer" />
+          <button title="Connect AI (MCP / CLI)" onClick={() => useUi.getState().setConnectAi(true)}>
+            <Bot size={15} />
+          </button>
           <button title="Toggle backlinks panel (⌥⌘B)" className={right ? "active" : ""} onClick={() => useUi.getState().toggleRightPanel()}>
             <PanelRight size={15} />
           </button>

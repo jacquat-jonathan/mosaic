@@ -96,3 +96,9 @@ export interface IndexProgress {
   total: number;
   finished: boolean;
 }
+
+export interface CliInfo {
+  path: string | null;
+  link: string;
+  installed: boolean;
+}

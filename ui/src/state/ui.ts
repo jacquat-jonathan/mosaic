@@ -34,6 +34,8 @@ interface UiState {
   /** Bumped to focus the search box. */
   searchFocus: number;
   switcher: boolean;
+  connectAi: boolean;
+  setConnectAi(open: boolean): void;
   rightPanel: boolean;
   setSidebarTab(tab: SidebarTab): void;
   setSearchQuery(q: string): void;
@@ -56,6 +58,8 @@ export const useUi = create<UiState>((set, get) => ({
   searchQuery: "",
   searchFocus: 0,
   switcher: false,
+  connectAi: false,
+  setConnectAi: (connectAi) => set({ connectAi }),
   rightPanel: true,
   setSidebarTab: (sidebarTab) => set({ sidebarTab }),
   setSearchQuery: (searchQuery) => set({ searchQuery }),

@@ -70,13 +70,13 @@ Errors: `NotFound`, `AlreadyExists`, `Conflict{current_hash}`, `InvalidPath`, `N
 - [x] Tree view: expand/collapse, create file/folder, inline rename, drag-move, delete (context menu)
 
 ### M2 — Markdown live preview (ac-3)
-- [ ] CodeMirror 6 with markdown language, hide syntax on inactive lines (headings, emphasis, links, lists, code, quotes)
-- [ ] Frontmatter block rendered as a properties widget; edited as text
-- [ ] Wikilinks `[[a|b]]`, `[[a#h]]`, `[[a^id]]` rendered and clickable (Cmd-click opens); unresolved styled distinctly
-- [ ] Embeds `![[note]]`, `![[img.png]]`, `![[x.pdf]]`
-- [ ] Tags `#tag` / nested `#a/b`
-- [ ] KaTeX inline `$…$` + block `$$…$$`; Mermaid fenced blocks
-- [ ] Autosave (debounced) with base hash → `write(expected_hash)`
+- [x] CodeMirror 6 with markdown language, hide syntax on inactive lines (headings, emphasis, links, lists, code, quotes)
+- [x] Frontmatter block rendered as a properties widget; edited as text
+- [x] Wikilinks `[[a|b]]`, `[[a#h]]`, `[[a^id]]` rendered and clickable (Cmd-click opens); unresolved styled distinctly
+- [x] Embeds `![[note]]`, `![[img.png]]`, `![[x.pdf]]`
+- [x] Tags `#tag` / nested `#a/b`
+- [x] KaTeX inline `$…$` + block `$$…$$`; Mermaid fenced blocks
+- [x] Autosave (debounced) with base hash → `write(expected_hash)`
 
 ### M3 — Index, search, backlinks (ac-6)
 - [ ] `parse`: frontmatter (aliases, tags), wikilinks/embeds/md links (skip code), tags, headings, block ids

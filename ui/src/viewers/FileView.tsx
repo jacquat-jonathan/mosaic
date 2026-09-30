@@ -1,5 +1,6 @@
 import { useWorkspace, type Buffer } from "../state/workspace";
-import { PlainEditor } from "./PlainEditor";
+import { MarkdownEditor } from "./MarkdownEditor";
+import { CodeEditor } from "./CodeEditor";
 import { ImageViewer } from "./ImageViewer";
 import { ConflictBar } from "../views/ConflictBar";
 
@@ -21,12 +22,16 @@ export function FileView({ path }: { path: string }) {
 
 function Viewer({ buffer }: { buffer: Buffer }) {
   switch (buffer.kind) {
+    case "markdown":
+      return <MarkdownEditor buffer={buffer} />;
+    case "text":
+      return <CodeEditor buffer={buffer} wrap />;
     case "image":
       return <ImageViewer path={buffer.path} />;
     case "pdf":
     case "other":
       return <div className="empty"><p>No preview for this file type yet.</p></div>;
     default:
-      return <PlainEditor buffer={buffer} />;
+      return <CodeEditor buffer={buffer} />;
   }
 }

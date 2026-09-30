@@ -47,3 +47,14 @@ export async function fileUrl(path: string): Promise<string> {
 function mockFileUrl(path: string): string {
   return `/mock-files/${path}`;
 }
+
+/** Opens an http(s)/mailto URL in the default browser — only ever on an explicit user click. */
+export async function openExternal(url: string): Promise<void> {
+  if (!/^(https?|mailto):/i.test(url)) return;
+  if (!inTauri) {
+    window.open(url, "_blank", "noopener");
+    return;
+  }
+  const { openUrl } = await import("@tauri-apps/plugin-opener");
+  await openUrl(url);
+}

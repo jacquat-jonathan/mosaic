@@ -6,5 +6,5 @@ export default defineConfig({
   plugins: [react()],
   clearScreen: false,
   server: { port: 1420, strictPort: true },
-  build: { target: "safari15", outDir: "dist", sourcemap: true },
+  build: { target: "safari15", outDir: "dist", sourcemap: true, chunkSizeWarningLimit: 5000 },
 });

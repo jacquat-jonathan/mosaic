@@ -1,0 +1,78 @@
+import { useEffect, useMemo, useRef } from "react";
+import type { EditorView } from "@codemirror/view";
+import { CodeMirror } from "../editor/CodeMirror";
+import { markdownExtensions } from "../editor/setup";
+import { refreshPreview, FRONTMATTER_RE } from "../editor/livePreview";
+import type { EditorContext } from "../editor/context";
+import { useWorkspace, type Buffer } from "../state/workspace";
+import { useVault } from "../state/vault";
+import { api, fileUrl, openExternal } from "../ipc/api";
+import { resolveLink, linkTextFor } from "../links";
+import { newFileOfKind } from "../actions";
+
+/** Files above this size open read-only so the UI stays responsive. */
+export const LARGE_FILE_BYTES = 5 * 1024 * 1024;
+
+export function editorContextFor(path: string): EditorContext {
+  const entries = () => useVault.getState().entries;
+  const resolve = (target: string) => resolveLink(target, entries(), path);
+  return {
+    path,
+    resolve,
+    async openLink(target, newTab) {
+      const resolved = resolve(target.split("#")[0].split("^")[0]);
+      if (resolved) {
+        await useWorkspace.getState().open(resolved, { newTab });
+        return;
+      }
+      const name = target.split(/[#^|]/)[0].trim();
+      if (!name) return;
+      const created = await newFileOfKind("", name, /\.[a-z0-9]+$/i.test(name) ? "" : "md", "");
+      if (!created) useVault.getState().setError(`Couldn't create “${name}”.`);
+    },
+    openExternal: (url) => void openExternal(url),
+    fileUrl,
+    readText: async (p) => (await api.read(p)).content ?? "",
+    linkCandidates: () => {
+      const all = entries();
+      return all
+        .filter((e) => !e.is_dir && e.path !== path)
+        .map((e) => ({ label: linkTextFor(e.path, all), detail: e.path.includes("/") ? e.path : "" }));
+    },
+  };
+}
+
+export function MarkdownEditor({ buffer }: { buffer: Buffer }) {
+  const path = buffer.path;
+  const readOnly = (buffer.content?.length ?? 0) > LARGE_FILE_BYTES;
+  const view = useRef<EditorView | null>(null);
+  const extensions = useMemo(
+    () => markdownExtensions(editorContextFor(path), (text) => useWorkspace.getState().edit(path, text), readOnly),
+    [path, readOnly],
+  );
+
+  // Re-render link states when files appear, disappear or move.
+  const entries = useVault((s) => s.entries);
+  useEffect(() => {
+    view.current?.dispatch({ effects: refreshPreview.of(null) });
+  }, [entries]);
+
+  return (
+    <div className="md-scroll">
+      {readOnly && <div className="notice warn"><span>This file is larger than 5 MB and opened read-only.</span></div>}
+      <CodeMirror
+        className="md-editor"
+        doc={buffer.content ?? ""}
+        version={buffer.version}
+        extensions={extensions}
+        onView={(v) => {
+          view.current = v;
+          // Start below the properties block so it opens rendered, like Obsidian.
+          const fm = v && FRONTMATTER_RE.exec(v.state.doc.toString());
+          if (v && fm) v.dispatch({ selection: { anchor: Math.min(fm[0].length + 1, v.state.doc.length) } });
+        }}
+        autoFocus
+      />
+    </div>
+  );
+}

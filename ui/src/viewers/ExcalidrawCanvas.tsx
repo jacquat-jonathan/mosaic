@@ -1,13 +1,14 @@
 import { useRef } from "react";
 import { Excalidraw, serializeAsJSON } from "@excalidraw/excalidraw";
 import "@excalidraw/excalidraw/index.css";
+import { isDark } from "../theme";
 
 type Scene = { elements: readonly { version: number }[]; appState?: Record<string, unknown>; files?: Record<string, unknown> };
 
 /** Loaded lazily: Excalidraw is large. Saves only when the drawing itself changes, not on selection/scroll. */
 export default function ExcalidrawCanvas({ initial, onSave }: { initial: Scene; onSave(json: string): void }) {
   const lastVersion = useRef<number | null>(null);
-  const dark = window.matchMedia?.("(prefers-color-scheme: dark)").matches;
+  const dark = isDark();
   return (
     <div className="excalidraw-host">
       <Excalidraw

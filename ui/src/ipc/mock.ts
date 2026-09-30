@@ -14,6 +14,46 @@ const files = new Map<string, MockFile>();
 const dirs = new Set<string>();
 let opened = false;
 let bookmarks: string[] = ["Welcome.md"];
+let updateSource: string | null = null;
+let updateBuilt = false;
+let updateRunning = false;
+
+const emit = (name: string, detail: unknown) => window.dispatchEvent(new CustomEvent(`mock-${name}`, { detail }));
+
+function updateStatus() {
+  return {
+    version: "0.1.0",
+    commit: "5320ff4",
+    source_dir: updateSource ?? "/Users/you/Developer/mosaic",
+    source_problem: updateSource?.includes("nope") ? `${updateSource} isn't a Mosaic source checkout (no .git or scripts/install.sh).` : null,
+    app_path: "/Applications/Mosaic.app",
+    running: updateRunning,
+    ready_to_install: updateBuilt,
+  };
+}
+
+/** Plays a short fake build log, so the update flow can be exercised in the browser. */
+function fakeUpdate() {
+  updateRunning = true;
+  const lines = [
+    "$ git pull --ff-only",
+    "Updating 5320ff4..9a1c2e7",
+    "Fast-forward",
+    "$ scripts/install.sh --build-only",
+    "Lockfile is up to date, resolution step is skipped",
+    "   Compiling mosaic-core v0.1.0",
+    "   Compiling mosaic-app v0.1.0",
+    "    Finished `release` profile [optimized] target(s) in 1m 42s",
+    "        Built application at: target/release/bundle/macos/Mosaic.app",
+    "BUILT_APP=/Users/you/Developer/mosaic/target/release/bundle/macos/Mosaic.app",
+  ];
+  lines.forEach((l, i) => setTimeout(() => emit("update-log", l), 250 * (i + 1)));
+  setTimeout(() => {
+    updateRunning = false;
+    updateBuilt = true;
+    emit("update-done", { ok: true, error: null });
+  }, 250 * (lines.length + 1));
+}
 
 function seed() {
   const now = Date.now();
@@ -176,6 +216,32 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
         { root: "/Volumes/USB/Old vault", name: "Old vault", exists: false },
       ];
     case "forget_vault":
+      return null;
+    case "update_status":
+      return updateStatus();
+    case "set_update_source":
+      updateSource = (a.path as string | null) ?? null;
+      return updateStatus();
+    case "check_updates":
+      await new Promise((r) => setTimeout(r, 600));
+      return {
+        branch: "main",
+        upstream: "origin/main",
+        behind: [
+          { hash: "9a1c2e7", subject: "M10: settings panel and in-app updates" },
+          { hash: "41d0b3a", subject: "Fix tree drag onto collapsed folders" },
+        ],
+        ahead: 0,
+        source_head: "5320ff4",
+        installed_outdated: false,
+        dirty: false,
+      };
+    case "start_update":
+      if (updateRunning) throw err("invalid", "An update is already running.");
+      fakeUpdate();
+      return null;
+    case "finish_update":
+      window.location.reload();
       return null;
     case "get_bookmarks":
       return bookmarks;

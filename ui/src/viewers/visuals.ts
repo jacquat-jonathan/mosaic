@@ -4,8 +4,8 @@
 import Papa from "papaparse";
 import { api } from "../ipc/api";
 import { parentOf } from "../state/vault";
+import { isDark } from "../theme";
 
-const isDark = () => window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false;
 
 function resolveRelative(fromFile: string, rel: string): string {
   const parts = parentOf(fromFile).split("/").filter(Boolean);

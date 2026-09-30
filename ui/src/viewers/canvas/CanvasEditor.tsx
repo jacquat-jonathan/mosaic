@@ -44,6 +44,7 @@ import {
   type CanvasNode,
   type Side,
 } from "./jsonCanvas";
+import { isDark } from "../../theme";
 
 const TREE_DRAG = "application/x-mosaic-path";
 const DEFAULT_EDGE_COLOR = "#8a8f9c";
@@ -145,7 +146,7 @@ function CanvasFlow({ path, doc: initial, toolsHost }: { path: string; doc: Canv
   const edgesRef = useRef(edges);
   nodesRef.current = nodes;
   edgesRef.current = edges;
-  const dark = window.matchMedia?.("(prefers-color-scheme: dark)").matches;
+  const dark = isDark();
 
   /** Writes the current flow back to JSON Canvas, keeping unknown fields of existing items. */
   const commit = useCallback(() => {

@@ -48,6 +48,8 @@ interface Confirm {
   resolve(ok: boolean): void;
 }
 
+export type SettingsSection = "appearance" | "editor" | "vault" | "ai" | "shortcuts" | "about";
+
 export type SidebarTab = "files" | "search" | "tags" | "bookmarks";
 
 export const SIDEBAR_DEFAULT = 260;
@@ -87,8 +89,10 @@ interface UiState {
   /** Bumped to focus the search box. */
   searchFocus: number;
   switcher: boolean;
-  connectAi: boolean;
-  setConnectAi(open: boolean): void;
+  /** Open Settings section, or null when Settings is closed. */
+  settings: SettingsSection | null;
+  openSettings(section?: SettingsSection): void;
+  closeSettings(): void;
   rightPanel: boolean;
   leftSidebar: boolean;
   sidebarWidth: number;
@@ -122,8 +126,9 @@ export const useUi = create<UiState>((set, get) => ({
   searchQuery: "",
   searchFocus: 0,
   switcher: false,
-  connectAi: false,
-  setConnectAi: (connectAi) => set({ connectAi }),
+  settings: null,
+  openSettings: (section = "appearance") => set({ settings: section, menu: null, picker: null }),
+  closeSettings: () => set({ settings: null }),
   rightPanel: prefs.rightPanel,
   leftSidebar: prefs.leftSidebar,
   sidebarWidth: prefs.sidebarWidth,

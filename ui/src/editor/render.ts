@@ -2,12 +2,12 @@
 
 import katex from "katex";
 import "katex/dist/katex.min.css";
+import { isDark } from "../theme";
 
 export function renderMath(src: string, display: boolean): string {
   return katex.renderToString(src, { displayMode: display, throwOnError: false, output: "htmlAndMathml" });
 }
 
-const isDark = () => window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false;
 
 let mermaidReady: Promise<typeof import("mermaid").default> | null = null;
 let mermaidTheme = "";

@@ -1,21 +1,38 @@
 #!/usr/bin/env bash
 # Builds Mosaic for this Mac and installs it into /Applications (plus the `mosaic` command in ~/.local/bin).
-# Usage: scripts/install.sh [--universal]
+# Usage: scripts/install.sh [--universal] [--build-only]
+#   --build-only  build but don't install; prints BUILT_APP=<path> (used by Settings › Update in the app,
+#                 which installs the new build itself after it quits).
 set -euo pipefail
 cd "$(dirname "$0")/.."
+
+universal=0
+build_only=0
+for arg in "$@"; do
+  case "$arg" in
+    --universal) universal=1 ;;
+    --build-only) build_only=1 ;;
+    *) echo "unknown option: $arg" >&2; exit 2 ;;
+  esac
+done
 export PATH="/opt/homebrew/opt/rustup/bin:$HOME/.cargo/bin:$PATH"
 
 command -v cargo >/dev/null || { echo "Rust is required: https://rustup.rs" >&2; exit 1; }
 command -v pnpm >/dev/null || { echo "pnpm is required: corepack enable pnpm" >&2; exit 1; }
 
 pnpm install --frozen-lockfile
-if [[ "${1:-}" == "--universal" ]]; then
+if [[ $universal == 1 ]]; then
   rustup target add aarch64-apple-darwin x86_64-apple-darwin >/dev/null
   MOSAIC_SIDECAR_PROFILE=universal pnpm tauri build --target universal-apple-darwin
   app="target/universal-apple-darwin/release/bundle/macos/Mosaic.app"
 else
   pnpm tauri build
   app="target/release/bundle/macos/Mosaic.app"
+fi
+
+if [[ $build_only == 1 ]]; then
+  echo "BUILT_APP=$PWD/$app"
+  exit 0
 fi
 
 # Quit a running copy, then replace it.

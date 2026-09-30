@@ -8,7 +8,8 @@ diagrams, HTML pages, PDFs and data files. AI agents (Claude Code, Claude Deskto
 get the same abilities through an **MCP server** and a **`mosaic` command-line tool**, and whatever
 they change appears in the app within a second.
 
-Everything stays on your disk as ordinary files. The app makes no network requests.
+Everything stays on your disk as ordinary files. The app makes no network requests, except `git fetch`/`git pull`
+of its own source when you click **Check for updates** or **Update** in Settings.
 
 ## Features
 
@@ -91,6 +92,13 @@ mosaic guide                              # conventions for AI agents (docs/AGEN
 ```
 
 The vault is chosen by `--vault`, then `$MOSAIC_VAULT`, then the vault last opened in the app.
+
+## Update
+
+Open **Settings › About & updates** (⌘,). Mosaic remembers the source folder it was built from:
+**Check for updates** fetches it and lists new commits, **Update** runs `git pull` and
+`scripts/install.sh --build-only` with a live log, and **Restart to finish** swaps in the new build.
+You can point it at another checkout with **Change…**. Updating needs the same tools as installing.
 
 ## Develop
 

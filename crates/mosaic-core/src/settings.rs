@@ -14,6 +14,8 @@ pub struct Settings {
     pub recent_vaults: Vec<PathBuf>,
     /// Bookmarked vault-relative paths, per vault root. Kept here so the vault holds only user content.
     pub bookmarks: BTreeMap<PathBuf, Vec<String>>,
+    /// The Mosaic source checkout that Settings › Update pulls and rebuilds. `None` = where the app was built.
+    pub update_source: Option<PathBuf>,
 }
 
 pub fn app_support_dir() -> Option<PathBuf> {

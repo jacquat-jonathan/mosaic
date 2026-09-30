@@ -9,7 +9,7 @@ This file turns the spec into ordered, checkable work. Tick boxes as work lands;
 - Tauri 2 · Rust (stable) · React 18 + TypeScript + Vite · pnpm · CodeMirror 6.
 - Index: SQLite FTS5 via `rusqlite` (bundled), in `~/Library/Caches/mosaic/<vault-hash>/index.db`, WAL mode. Never write inside the vault except user content.
 - Ad-hoc signing only. macOS 12+. Universal2 at release.
-- Offline: CSP `default-src 'self'`, no updater, no telemetry, every renderer bundled.
+- Offline: CSP `default-src 'self'`, no telemetry, every renderer bundled. No automatic updater: the only network access is `git fetch`/`git pull` of the source checkout when the user clicks Check for updates / Update in Settings (decided 2026-10-01).
 
 ## Repo layout
 
@@ -129,6 +129,13 @@ Tracked in detail in the Mosaic vault note `UI Foundations.md`.
 - [x] Bookmarks (per vault, in `settings.json`), with a sidebar tab
 - [x] Command palette (⌘P) on a single command registry that also drives shortcuts
 - [x] Tree multi-selection and a richer right-click menu (duplicate via `Workspace::copy`, move to…, copy link/path)
+
+### M10 — Settings and in-app updates
+Tracked in the Mosaic vault note `Settings and Updates.md`.
+- [x] Settings panel (⌘,): Appearance (theme, note size, line width), Editor & files, Vault, AI (was the Connect AI dialog), Shortcuts, About & updates
+- [x] Theme override: `data-theme` on `<html>`, native window theme, one `isDark()` for renderers
+- [x] Updates by pull and rebuild: `src-tauri/src/update.rs`, `scripts/install.sh --build-only`, build commit and source folder baked in by `build.rs`
+- [x] New build swapped in by a detached helper after the app quits, then reopened
 
 ## Working rules
 - `scripts/check.sh` green before each milestone commit.

@@ -12,6 +12,7 @@ import { livePreview } from "./livePreview";
 import { registerBlockRenderer } from "./widgets";
 import { renderMath, renderMermaid } from "./render";
 import { renderChart, renderGraphviz } from "../viewers/visuals";
+import { prefs } from "../state/settings";
 
 registerBlockRenderer(["mermaid"], async (src, el) => {
   el.innerHTML = await renderMermaid(src);
@@ -111,7 +112,7 @@ export function markdownExtensions(ctx: EditorContext, onChange: (text: string) 
     markdown({ base: markdownLanguage, codeLanguages: languages }),
     autocompletion({ override: [wikiCompletion], icons: false }),
     livePreview(),
-    EditorView.contentAttributes.of({ spellcheck: "true", autocorrect: "on" }),
+    EditorView.contentAttributes.of({ spellcheck: prefs().spellcheck ? "true" : "false", autocorrect: prefs().spellcheck ? "on" : "off" }),
     EditorState.readOnly.of(readOnly),
   ];
 }

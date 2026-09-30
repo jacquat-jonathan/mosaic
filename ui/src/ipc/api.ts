@@ -1,7 +1,7 @@
 // Typed access to the backend. Inside Tauri this goes through `invoke`; in a plain browser (UI
 // development and tests) it falls back to an in-memory mock vault.
 
-import type { Backlink, CliInfo, Entry, FileContent, IndexProgress, RecentVault, Renamed, SearchHit, TagCount, VaultInfo, Written } from "./types";
+import type { Backlink, CliInfo, Entry, FileContent, IndexProgress, RecentVault, Renamed, SearchHit, TagCount, UpdateCheck, UpdateDone, UpdateStatus, VaultInfo, Written } from "./types";
 import { mockInvoke } from "./mock";
 
 export const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -39,6 +39,11 @@ export const api = {
   aliases: () => call<[string, string][]>("aliases"),
   cliInfo: () => call<CliInfo>("cli_info"),
   installCli: () => call<CliInfo>("install_cli"),
+  updateStatus: () => call<UpdateStatus>("update_status"),
+  setUpdateSource: (path: string | null) => call<UpdateStatus>("set_update_source", { path }),
+  checkUpdates: () => call<UpdateCheck>("check_updates"),
+  startUpdate: () => call<void>("start_update"),
+  finishUpdate: () => call<void>("finish_update"),
 };
 
 /** Asks the user for a folder with the native dialog (or a prompt-free mock in the browser). */
@@ -112,3 +117,17 @@ export async function revealInFinder(path: string): Promise<void> {
   const { revealItemInDir } = await import("@tauri-apps/plugin-opener");
   await revealItemInDir(await api.absolutePath(path));
 }
+
+/** Subscribes to backend events (or the mock's window events in the browser). */
+async function listenTo<T>(name: string, cb: (payload: T) => void): Promise<() => void> {
+  if (!inTauri) {
+    const handler = (e: Event) => cb((e as CustomEvent<T>).detail);
+    window.addEventListener(`mock-${name}`, handler);
+    return () => window.removeEventListener(`mock-${name}`, handler);
+  }
+  const { listen } = await import("@tauri-apps/api/event");
+  return listen<T>(name, (e) => cb(e.payload));
+}
+
+export const onUpdateLog = (cb: (line: string) => void) => listenTo<string>("update-log", cb);
+export const onUpdateDone = (cb: (d: UpdateDone) => void) => listenTo<UpdateDone>("update-done", cb);

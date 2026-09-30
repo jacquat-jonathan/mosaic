@@ -4,7 +4,7 @@
 import { useUi } from "./state/ui";
 import { parentOf, useVault } from "./state/vault";
 import { useWorkspace } from "./state/workspace";
-import { createVault, deletePath, NEW_KINDS, newNote, newOfKind, openVaultFolder, revealInTree } from "./actions";
+import { createVault, deletePath, NEW_KINDS, newNote, newNoteDir, newOfKind, openVaultFolder, revealInTree } from "./actions";
 
 /** A shortcut: `code` is `KeyboardEvent.code` (layout- and ⌥-independent), e.g. "KeyP" or "Backslash". */
 export interface Keys {
@@ -53,7 +53,7 @@ const buildCommands = (): Command[] => [
   { id: "palette", label: "Open command palette", keys: { code: "KeyP", meta: true }, run: () => openPalette() },
   { id: "switcher", label: "Quick switcher: open a file", keys: { code: "KeyO", meta: true }, run: () => useUi.getState().setSwitcher(true) },
   { id: "search", label: "Search in all files", keys: { code: "KeyF", meta: true, shift: true }, run: () => useUi.getState().showSearch() },
-  { id: "new-note", label: "New note", keys: { code: "KeyN", meta: true }, run: () => void newNote(activeDir()) },
+  { id: "new-note", label: "New note", keys: { code: "KeyN", meta: true }, run: () => void newNote(newNoteDir()) },
   ...NEW_KINDS.filter((k) => k.ext !== "md").map<Command>((k) => ({
     id: `new-${k.ext}`,
     label: k.label,
@@ -100,7 +100,10 @@ const buildCommands = (): Command[] => [
   { id: "delete", label: "Move current file to the Trash", when: hasActive, run: () => void deletePath(active()!, false) },
   { id: "open-vault", label: "Open another vault…", run: () => void openVaultFolder() },
   { id: "create-vault", label: "Create new vault…", run: () => void createVault() },
-  { id: "connect-ai", label: "Connect AI (MCP / CLI)", run: () => useUi.getState().setConnectAi(true) },
+  { id: "settings", label: "Open settings", keys: { code: "Comma", meta: true }, run: () => useUi.getState().openSettings() },
+  { id: "check-updates", label: "Check for updates", run: () => useUi.getState().openSettings("about") },
+  { id: "shortcuts", label: "Show keyboard shortcuts", run: () => useUi.getState().openSettings("shortcuts") },
+  { id: "connect-ai", label: "Connect AI (MCP / CLI)", run: () => useUi.getState().openSettings("ai") },
 ];
 
 export function shortcutOf(id: string): string | undefined {

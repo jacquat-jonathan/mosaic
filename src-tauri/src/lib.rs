@@ -1,5 +1,7 @@
 //! Tauri front end: every command is a thin mapping onto `mosaic_core::Workspace`.
 
+mod update;
+
 use mosaic_core::api::{Outline, Renamed};
 use mosaic_core::index::{Backlink, SearchHit, TagCount};
 use mosaic_core::settings::Settings;
@@ -303,6 +305,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .manage(AppState::default())
+        .manage(update::UpdateState::default())
         .invoke_handler(tauri::generate_handler![
             open_vault,
             create_vault,
@@ -328,6 +331,11 @@ pub fn run() {
             outline,
             cli_info,
             install_cli,
+            update::update_status,
+            update::set_update_source,
+            update::check_updates,
+            update::start_update,
+            update::finish_update,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Mosaic");

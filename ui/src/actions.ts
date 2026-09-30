@@ -7,6 +7,14 @@ import { kindOf } from "./ipc/kinds";
 import { api, pickFolder } from "./ipc/api";
 import { errorMessage } from "./ipc/types";
 import { displayName } from "./views/FileTree";
+import { prefs } from "./state/settings";
+
+/** Folder for a new note, per Settings › "New notes go in". */
+export function newNoteDir(): string {
+  if (prefs().newNoteLocation === "root") return "";
+  const active = useWorkspace.getState().activePath();
+  return active ? parentOf(active) : "";
+}
 
 export async function newNote(dir: string) {
   const path = await useVault.getState().newFile(dir, "Untitled", "md");
@@ -67,7 +75,7 @@ export async function deletePaths(paths: string[]) {
   const ws = useWorkspace.getState();
   const under = (b: string) => targets.some((p) => b === p || b.startsWith(`${p}/`));
   const dirty = Object.values(ws.buffers).some((b) => b.dirty && under(b.path));
-  const ok = await useUi.getState().ask({
+  const ok = !prefs().confirmTrash && !dirty ? true : await useUi.getState().ask({
     title: `Move ${targets.length} items to the Trash?`,
     body: "They will be moved to the macOS Trash." + (dirty ? " Some have unsaved changes, which will be lost." : " You can restore them from there."),
     confirmLabel: "Move to Trash",
@@ -172,7 +180,7 @@ export async function deletePath(path: string, isDir: boolean) {
   const dirty = Object.values(ws.buffers).some(
     (b) => b.dirty && (b.path === path || b.path.startsWith(`${path}/`)),
   );
-  const ok = await useUi.getState().ask({
+  const ok = !prefs().confirmTrash && !dirty ? true : await useUi.getState().ask({
     title: `Move “${isDir ? baseName(path) : displayName({ name: baseName(path), kind: kindOf(path) })}” to the Trash?`,
     body:
       (isDir ? "The folder and everything in it will be moved to the macOS Trash." : "The file will be moved to the macOS Trash.") +

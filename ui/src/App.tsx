@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
-import { FilePlus, FolderPlus, FolderOpen, Files, Search, Hash, Shapes, Bot, Bookmark, ChevronDown, ChevronsDownUp, PanelLeftClose } from "lucide-react";
+import { FilePlus, FolderPlus, FolderOpen, Files, Search, Hash, Shapes, Bot, Bookmark, ChevronDown, ChevronsDownUp, PanelLeftClose, Settings as Gear } from "lucide-react";
 import { api, onIndexProgress, pickFolder, revealInFinder } from "./ipc/api";
 import { useVault } from "./state/vault";
 import { FileTree } from "./views/FileTree";
 import { Workspace } from "./views/Workspace";
 import { ConfirmDialog, ContextMenu, ErrorToast, PromptDialog } from "./views/Overlays";
-import { createVault, newNote, NEW_KINDS, newOfKind, openVaultFolder } from "./actions";
+import { createVault, newNote, newNoteDir, NEW_KINDS, newOfKind, openVaultFolder } from "./actions";
 import { useShortcuts } from "./shortcuts";
 import { RIGHT_DEFAULT, SIDEBAR_DEFAULT, useUi, type MenuItem, type SidebarTab } from "./state/ui";
 import { SearchPanel } from "./views/SearchPanel";
@@ -13,7 +13,8 @@ import { TagsPanel } from "./views/TagsPanel";
 import { RightPanel } from "./views/RightPanel";
 import { QuickSwitcher } from "./views/QuickSwitcher";
 import { startVaultSync } from "./sync";
-import { ConnectAi } from "./views/ConnectAi";
+import { Settings, startUpdateListeners } from "./views/Settings";
+import "./state/settings";
 import { Picker } from "./views/Picker";
 import { BookmarksPanel } from "./views/BookmarksPanel";
 import { Resizer } from "./views/Resizer";
@@ -35,16 +36,22 @@ export function App() {
   useShortcuts();
 
   useEffect(() => {
-    let off: (() => void) | undefined;
-    void onIndexProgress((p) => {
-      useVault.setState({ indexing: p.finished ? null : { done: p.done, total: p.total } });
-      if (p.finished) void useVault.getState().refresh();
-    }).then((u) => (off = u));
-    let offSync: (() => void) | undefined;
-    void startVaultSync().then((u) => (offSync = u));
+    // Subscriptions resolve asynchronously; if the effect is cleaned up first (React runs effects twice in
+    // development), unsubscribe as soon as they arrive instead of leaking a second listener.
+    let cancelled = false;
+    const offs: (() => void)[] = [];
+    const keep = (p: Promise<() => void>) => void p.then((off) => (cancelled ? off() : offs.push(off)));
+    keep(
+      onIndexProgress((p) => {
+        useVault.setState({ indexing: p.finished ? null : { done: p.done, total: p.total } });
+        if (p.finished) void useVault.getState().refresh();
+      }),
+    );
+    keep(startVaultSync());
+    keep(startUpdateListeners());
     return () => {
-      off?.();
-      offSync?.();
+      cancelled = true;
+      offs.forEach((off) => off());
     };
   }, []);
 
@@ -57,7 +64,7 @@ export function App() {
       <PromptDialog />
       <QuickSwitcher />
       <Picker />
-      <ConnectAi />
+      <Settings />
       <ErrorToast />
     </>
   );
@@ -166,14 +173,17 @@ function Main() {
               </button>
             ))}
             <span className="spacer" />
-            <button title="Connect AI (MCP / CLI)" onClick={() => ui().setConnectAi(true)}>
+            <button title="Connect AI (MCP / CLI)" aria-label="Connect AI" onClick={() => ui().openSettings("ai")}>
               <Bot size={15} />
+            </button>
+            <button title={`Settings (${shortcutOf("settings")})`} aria-label="Settings" onClick={() => ui().openSettings()}>
+              <Gear size={15} />
             </button>
           </div>
           {tab === "files" && (
             <>
               <div className="tree-toolbar">
-                <button aria-label="New note" title={`New note (${shortcutOf("new-note")})`} onClick={() => void newNote("")}>
+                <button aria-label="New note" title={`New note (${shortcutOf("new-note")})`} onClick={() => void newNote(newNoteDir())}>
                   <FilePlus size={15} />
                 </button>
                 <button

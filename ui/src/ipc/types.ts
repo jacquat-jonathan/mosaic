@@ -107,3 +107,31 @@ export interface CliInfo {
   link: string;
   installed: boolean;
 }
+
+export interface UpdateStatus {
+  version: string;
+  /** Short commit the app was built from ("" if unknown). */
+  commit: string;
+  source_dir: string;
+  /** Why the source folder can't be used, if it can't. */
+  source_problem: string | null;
+  /** The installed .app; null for a development build. */
+  app_path: string | null;
+  running: boolean;
+  ready_to_install: boolean;
+}
+
+export interface UpdateCheck {
+  branch: string;
+  upstream: string;
+  behind: { hash: string; subject: string }[];
+  ahead: number;
+  source_head: string;
+  installed_outdated: boolean;
+  dirty: boolean;
+}
+
+export interface UpdateDone {
+  ok: boolean;
+  error: string | null;
+}

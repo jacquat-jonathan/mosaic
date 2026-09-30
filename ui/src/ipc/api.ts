@@ -43,13 +43,15 @@ export async function pickFolder(): Promise<string | null> {
 
 /** URL the webview can load a vault file from (images, PDF). */
 export async function fileUrl(path: string): Promise<string> {
-  if (!inTauri) return mockFileUrl(path);
+  if (!inTauri) return await mockFileUrl(path);
   const { convertFileSrc } = await import("@tauri-apps/api/core");
   return convertFileSrc(await api.absolutePath(path));
 }
 
-function mockFileUrl(path: string): string {
-  return `/mock-files/${path}`;
+async function mockFileUrl(path: string): Promise<string> {
+  const { mockInvoke } = await import("./mock");
+  const raw = (await mockInvoke("read_raw", { path })) as string;
+  return raw.startsWith("data:") ? raw : `data:text/plain;charset=utf-8,${encodeURIComponent(raw)}`;
 }
 
 /** Opens an http(s)/mailto URL in the default browser — only ever on an explicit user click. */
@@ -87,4 +89,11 @@ export async function onVaultChanged(cb: (c: VaultChanges) => void): Promise<() 
   }
   const { listen } = await import("@tauri-apps/api/event");
   return listen<VaultChanges>("vault-changed", (e) => cb(e.payload));
+}
+
+/** Opens a vault file with its default macOS application (explicit user action only). */
+export async function openInDefaultApp(path: string): Promise<void> {
+  if (!inTauri) return;
+  const { openPath } = await import("@tauri-apps/plugin-opener");
+  await openPath(await api.absolutePath(path));
 }

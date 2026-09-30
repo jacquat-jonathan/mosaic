@@ -20,7 +20,10 @@ import {
   RenderedBlockWidget,
   RuleWidget,
   TableWidget,
+  ReactWidget,
+  createElement,
 } from "./widgets";
+import { PdfViewer } from "../viewers/PdfViewer";
 
 const hide = Decoration.replace({});
 const mark = (cls: string, attrs?: Record<string, string>) => Decoration.mark({ class: cls, attributes: attrs });
@@ -242,7 +245,9 @@ function build(state: EditorState): DecorationSet {
       const widget =
         kind === "image"
           ? new ImageWidget(resolved, link.target, embedWidth(link.alias), ctx)
-          : new NoteEmbedWidget(resolved, link.target, ctx);
+          : kind === "pdf" && resolved
+            ? new ReactWidget(`pdf:${resolved}`, () => createElement(PdfViewer, { path: resolved, maxPages: 3, compact: true }), "cm-embed-pdf")
+            : new NoteEmbedWidget(resolved, link.target, ctx);
       out.push(Decoration.replace({ widget }).range(from, to));
     } else {
       const target = m[2].split("|")[0];

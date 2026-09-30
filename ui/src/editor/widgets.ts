@@ -1,4 +1,6 @@
 import { EditorView, WidgetType } from "@codemirror/view";
+import { createElement, type ReactElement } from "react";
+import { createRoot, type Root } from "react-dom/client";
 import { parse as parseYaml } from "yaml";
 import { renderMath } from "./render";
 import type { EditorContext } from "./context";
@@ -339,3 +341,36 @@ export function splitRow(line: string): string[] {
   out.push(cur.trim());
   return out;
 }
+
+/** Hosts a React component inside the editor (PDF pages, canvases…). */
+export class ReactWidget extends WidgetType {
+  private roots = new WeakMap<HTMLElement, Root>();
+  constructor(
+    readonly key: string,
+    readonly render: () => ReactElement,
+    readonly className: string,
+  ) {
+    super();
+  }
+  eq(o: ReactWidget) {
+    return o.key === this.key;
+  }
+  toDOM(view: EditorView) {
+    const el = document.createElement("div");
+    el.className = this.className;
+    const root = createRoot(el);
+    root.render(this.render());
+    this.roots.set(el, root);
+    revealOnClick(el, view, () => view.posAtDOM(el));
+    return el;
+  }
+  destroy(dom: HTMLElement) {
+    const root = this.roots.get(dom);
+    if (root) setTimeout(() => root.unmount());
+  }
+  ignoreEvent() {
+    return true;
+  }
+}
+
+export { createElement };

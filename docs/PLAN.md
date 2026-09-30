@@ -94,11 +94,11 @@ Errors: `NotFound`, `AlreadyExists`, `Conflict{current_hash}`, `InvalidPath`, `N
 - [x] Test: external write visible < 1 s
 
 ### M5 — Other file types (ac-4)
-- [ ] Viewer registry by extension
-- [ ] HTML: sandboxed iframe (no scripts, CSP no network) + source tab
-- [ ] Images; PDF via pdfjs-dist (worker bundled)
-- [ ] CSV: papaparse + TanStack Table, editable cells, byte-identical round-trip when untouched
-- [ ] JSON/YAML/code/text: CodeMirror language packs; >5 MB → read-only
+- [x] Viewer registry by extension
+- [x] HTML: sandboxed iframe (no scripts, CSP no network) + source tab
+- [x] Images; PDF via pdfjs-dist (worker bundled)
+- [x] CSV: papaparse + own editable grid (own delimiter detection), byte-identical round-trip when untouched
+- [x] JSON/YAML/code/text: CodeMirror language packs; >5 MB → read-only
 
 ### M6 — Visuals (ac-5)
 - [ ] JSON Canvas: @xyflow/react; text/file/link/group nodes, edges, colors; save preserves unknown fields

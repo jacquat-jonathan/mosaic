@@ -21,6 +21,17 @@
           "url": "mailto:*"
         }
       ]
+    },
+    {
+      "identifier": "opener:allow-open-path",
+      "allow": [
+        {
+          "path": "$HOME/**"
+        },
+        {
+          "path": "/Volumes/**"
+        }
+      ]
     }
   ]
 }

@@ -6,7 +6,7 @@ use mosaic_core::settings::Settings;
 use mosaic_core::{Entry, Error, FileContent, Workspace, Written};
 use serde::Serialize;
 use std::path::PathBuf;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 type CmdResult<T> = Result<T, Error>;
@@ -14,6 +14,7 @@ type CmdResult<T> = Result<T, Error>;
 #[derive(Default)]
 struct AppState {
     ws: RwLock<Option<Arc<Workspace>>>,
+    watcher: Mutex<Option<mosaic_core::watch::Watcher>>,
 }
 
 impl AppState {
@@ -61,6 +62,14 @@ fn open_vault(app: AppHandle, state: State<AppState>, path: String) -> CmdResult
     let _ = settings.save();
     let out = info(&ws);
     *state.ws.write().expect("workspace lock poisoned") = Some(ws.clone());
+
+    // External changes (AI, CLI, other editors) are pushed to the UI as they happen.
+    let events = app.clone();
+    let watcher = mosaic_core::watch::watch(ws.clone(), move |changes| {
+        let _ = events.emit("vault-changed", changes);
+    })
+    .ok();
+    *state.watcher.lock().expect("watcher lock poisoned") = watcher;
 
     // Index in the background; the UI shows progress and search uses the last consistent index.
     std::thread::spawn(move || {

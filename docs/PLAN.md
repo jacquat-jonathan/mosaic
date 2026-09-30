@@ -87,11 +87,11 @@ Errors: `NotFound`, `AlreadyExists`, `Conflict{current_hash}`, `InvalidPath`, `N
 - [x] `scripts/bench.sh`: 5,000 notes, search ≈ 4 ms, full index ≈ 0.3 s
 
 ### M4 — Layout + live refresh (ac-7, ac-9)
-- [ ] Tabs, split right/down, drag tabs between panes; persisted in app config dir
-- [ ] `watch`: notify + debouncer (~100 ms), ignore `.obsidian/`, own-write suppression by hash, updates index
-- [ ] Emit `vault://changed` events; clean buffer reloads, dirty buffer → conflict prompt (reload / keep mine / compare)
-- [ ] Delete of open file closes tab (prompt if dirty); offline banner if root vanishes
-- [ ] Test: external write visible < 1 s
+- [x] Tabs, split right/down, drag tabs between panes; persisted per vault in the app's webview storage (never in the vault)
+- [x] `watch`: notify + debouncer (~100 ms), ignore `.obsidian/`, own-write suppression by hash, updates index
+- [x] Emit `vault://changed` events; clean buffer reloads, dirty buffer → conflict prompt (reload / keep mine / compare)
+- [x] Delete of open file closes tab (prompt if dirty); offline banner if root vanishes
+- [x] Test: external write visible < 1 s
 
 ### M5 — Other file types (ac-4)
 - [ ] Viewer registry by extension

@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { FilePlus, FolderPlus, FolderOpen, Files, Search, Hash, PanelRight } from "lucide-react";
 import { api, onIndexProgress, pickFolder } from "./ipc/api";
 import { useVault } from "./state/vault";
-import { useWorkspace } from "./state/workspace";
 import { FileTree } from "./views/FileTree";
 import { Workspace } from "./views/Workspace";
 import { ConfirmDialog, ContextMenu, ErrorToast } from "./views/Overlays";
@@ -13,6 +12,7 @@ import { SearchPanel } from "./views/SearchPanel";
 import { TagsPanel } from "./views/TagsPanel";
 import { RightPanel } from "./views/RightPanel";
 import { QuickSwitcher } from "./views/QuickSwitcher";
+import { startVaultSync } from "./sync";
 
 export function App() {
   const vault = useVault((s) => s.vault);
@@ -35,7 +35,12 @@ export function App() {
       useVault.setState({ indexing: p.finished ? null : { done: p.done, total: p.total } });
       if (p.finished) void useVault.getState().refresh();
     }).then((u) => (off = u));
-    return () => off?.();
+    let offSync: (() => void) | undefined;
+    void startVaultSync().then((u) => (offSync = u));
+    return () => {
+      off?.();
+      offSync?.();
+    };
   }, []);
 
   if (booting) return <div className="app-loading" data-tauri-drag-region />;
@@ -53,7 +58,6 @@ export function App() {
 async function chooseVault() {
   const path = await pickFolder();
   if (!path) return;
-  useWorkspace.setState({ panes: [{ id: "pane-0", tabs: [], active: null }], focused: "pane-0", buffers: {} });
   await useVault.getState().openVault(path);
 }
 
@@ -81,6 +85,7 @@ function Main() {
   const tab = useUi((s) => s.sidebarTab);
   const right = useUi((s) => s.rightPanel);
   const indexing = useVault((s) => s.indexing);
+  const offline = useVault((s) => s.offline);
   return (
     <div className="shell">
       <aside className="sidebar">
@@ -125,6 +130,12 @@ function Main() {
         )}
       </aside>
       <main className="main">
+        {offline && (
+          <div className="notice warn" role="alert">
+            <span>The vault folder is unavailable (disk ejected or folder moved). Unsaved changes are kept in memory.</span>
+            <button onClick={() => void useVault.getState().openVault(vault.root)}>Retry</button>
+          </div>
+        )}
         <Workspace />
       </main>
       {right && <RightPanel />}

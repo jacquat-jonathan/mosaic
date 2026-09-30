@@ -8,6 +8,7 @@ pub mod links;
 pub mod parse;
 pub mod settings;
 pub mod vault;
+pub mod watch;
 
 pub use api::Workspace;
 pub use error::{Error, Result};

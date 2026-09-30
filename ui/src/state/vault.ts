@@ -36,6 +36,8 @@ interface VaultState {
   indexing: { done: number; total: number } | null;
   /** Frontmatter aliases: [alias, path]. */
   aliases: [string, string][];
+  /** The vault folder disappeared (unmounted disk, moved folder). */
+  offline: boolean;
 
   openVault(path: string): Promise<void>;
   refresh(): Promise<void>;
@@ -66,12 +68,15 @@ export const useVault = create<VaultState>((set, get) => {
     revision: 0,
     indexing: null,
     aliases: [],
+    offline: false,
 
     async openVault(path) {
       try {
         const vault = await api.openVault(path);
-        set({ vault, entries: [], expanded: new Set(), renaming: null, error: null });
+        set({ vault, entries: [], expanded: new Set(), renaming: null, error: null, offline: false });
         await get().refresh();
+        const { useWorkspace } = await import("./workspace");
+        await useWorkspace.getState().restoreLayout(vault.root);
       } catch (e) {
         fail(e);
       }

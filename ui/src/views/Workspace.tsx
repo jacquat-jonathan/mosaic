@@ -16,11 +16,38 @@ export function Workspace() {
     <div className={`panes ${direction}`}>
       {panes.map((p, i) => (
         <Fragment key={p.id}>
-          {i > 0 && <div className="pane-divider" />}
+          {i > 0 && <Divider index={i - 1} direction={direction} />}
           <PaneView pane={p} />
         </Fragment>
       ))}
     </div>
+  );
+}
+
+function Divider({ index, direction }: { index: number; direction: "row" | "column" }) {
+  return (
+    <div
+      className="pane-divider"
+      onMouseDown={(e) => {
+        e.preventDefault();
+        const container = (e.currentTarget.parentElement as HTMLElement).getBoundingClientRect();
+        const extent = direction === "row" ? container.width : container.height;
+        let last = direction === "row" ? e.clientX : e.clientY;
+        const move = (ev: MouseEvent) => {
+          const pos = direction === "row" ? ev.clientX : ev.clientY;
+          useWorkspace.getState().resize(index, (pos - last) / extent);
+          last = pos;
+        };
+        const up = () => {
+          window.removeEventListener("mousemove", move);
+          window.removeEventListener("mouseup", up);
+          document.body.classList.remove("resizing");
+        };
+        document.body.classList.add("resizing");
+        window.addEventListener("mousemove", move);
+        window.addEventListener("mouseup", up);
+      }}
+    />
   );
 }
 
@@ -42,6 +69,7 @@ function PaneView({ pane }: { pane: Pane }) {
   return (
     <section
       className={`pane ${focused && multi ? "focused" : ""} ${dropping ? "drop" : ""}`}
+      style={{ flexGrow: pane.size ?? 1 }}
       onMouseDownCapture={() => useWorkspace.getState().focus(pane.id)}
       onDragOver={(ev) => {
         if (ev.dataTransfer.types.includes(TAB_DRAG)) {

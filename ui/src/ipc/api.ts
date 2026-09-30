@@ -72,3 +72,19 @@ export async function onIndexProgress(cb: (p: IndexProgress) => void): Promise<(
   const { listen } = await import("@tauri-apps/api/event");
   return listen<IndexProgress>("index-progress", (e) => cb(e.payload));
 }
+
+export interface VaultChanges {
+  paths: string[];
+  root_missing: boolean;
+}
+
+/** Subscribes to changes made on disk outside the app. */
+export async function onVaultChanged(cb: (c: VaultChanges) => void): Promise<() => void> {
+  if (!inTauri) {
+    const handler = (e: Event) => cb((e as CustomEvent<VaultChanges>).detail);
+    window.addEventListener("mock-vault-changed", handler);
+    return () => window.removeEventListener("mock-vault-changed", handler);
+  }
+  const { listen } = await import("@tauri-apps/api/event");
+  return listen<VaultChanges>("vault-changed", (e) => cb(e.payload));
+}

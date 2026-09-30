@@ -27,6 +27,8 @@ export interface Pane {
   id: string;
   tabs: string[];
   active: string | null;
+  /** Relative size (flex-grow) within the split. */
+  size?: number;
 }
 
 export type SplitDirection = "row" | "column";
@@ -48,14 +50,21 @@ interface WorkspaceState {
   save(path: string): Promise<void>;
   reload(path: string): Promise<void>;
   keepMine(path: string): Promise<void>;
+  /** Reconciles an open buffer with a change on disk made outside the app. */
+  externalChange(path: string): Promise<void>;
   renamed(from: string, to: string): void;
   deleted(path: string): void;
   activePath(): string | null;
+  resize(index: number, delta: number): void;
+  /** Restores the tabs and splits last used with this vault. */
+  restoreLayout(root: string): Promise<void>;
 }
 
 let paneSeq = 1;
 const newPaneId = () => `pane-${paneSeq++}`;
 const saveTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const saving = new Set<string>();
+let layoutRoot: string | null = null;
 export const AUTOSAVE_MS = 400;
 
 function remap(p: string, from: string, to: string): string {
@@ -208,6 +217,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
       const b = get().buffers[path];
       if (!b || !b.dirty || b.content === null || b.conflict || b.deleted) return;
       const content = b.content;
+      saving.add(path);
       try {
         const w = await api.write(path, content, b.baseHash || null);
         const now = get().buffers[path];
@@ -216,6 +226,39 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
       } catch (e) {
         if (isCoreError(e) && e.code === "conflict") updateBuffer(path, { conflict: { diskHash: e.current_hash } });
         else updateBuffer(path, { error: errorMessage(e) });
+      } finally {
+        saving.delete(path);
+      }
+    },
+
+    async externalChange(path) {
+      const b = get().buffers[path];
+      if (!b || saving.has(path)) return;
+      let disk: Awaited<ReturnType<typeof api.read>> | null = null;
+      try {
+        disk = await api.read(path);
+      } catch (e) {
+        if (!(isCoreError(e) && e.code === "not_found")) return;
+      }
+      const now = get().buffers[path];
+      if (!now) return;
+      if (!disk) {
+        // Deleted on disk: close clean tabs; keep dirty ones and ask.
+        if (now.dirty) updateBuffer(path, { deleted: true });
+        else get().deleted(path);
+        return;
+      }
+      if (disk.hash === now.baseHash) return; // our own save, or no real change
+      if (!now.dirty) {
+        const prev = now.version;
+        set((s) => ({
+          buffers: {
+            ...s.buffers,
+            [path]: { ...now, content: disk.content, kind: disk.kind, baseHash: disk.hash, conflict: null, deleted: false, error: null, version: prev + 1 },
+          },
+        }));
+      } else {
+        updateBuffer(path, { conflict: { diskHash: disk.hash } });
       }
     },
 
@@ -258,9 +301,60 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
       }
     },
 
+    resize(index, delta) {
+      // Moves `delta` (a fraction of the total) from pane index+1 to pane index.
+      set((s) => {
+        const panes = s.panes.map((p) => ({ ...p, size: p.size ?? 1 }));
+        const total = panes.reduce((n, p) => n + (p.size ?? 1), 0);
+        const d = delta * total;
+        const a = panes[index];
+        const b = panes[index + 1];
+        if (!a || !b) return s;
+        const min = total * 0.1;
+        const next = Math.max(min, Math.min(a.size! + b.size! - min, a.size! + d));
+        b.size = a.size! + b.size! - next;
+        a.size = next;
+        return { panes };
+      });
+    },
+
+    async restoreLayout(root) {
+      layoutRoot = root;
+      let saved: Pick<WorkspaceState, "panes" | "direction" | "focused"> | null = null;
+      try {
+        saved = JSON.parse(localStorage.getItem(`mosaic:layout:${root}`) ?? "null");
+      } catch {
+        saved = null;
+      }
+      const id = newPaneId();
+      if (!saved?.panes?.length) {
+        set({ panes: [{ id, tabs: [], active: null }], focused: id, buffers: {}, direction: "row" });
+        return;
+      }
+      const panes = saved.panes.map((p) => ({ ...p, id: newPaneId() }));
+      const focusedIndex = Math.max(0, saved.panes.findIndex((p) => p.id === saved!.focused));
+      set({ panes, direction: saved.direction ?? "row", focused: panes[focusedIndex].id, buffers: {} });
+      await Promise.all([...new Set(panes.map((p) => p.active).filter((a): a is string => !!a))].map(load));
+      // Drop tabs whose files are gone.
+      for (const p of get().panes) for (const t of p.tabs) if (get().buffers[t]?.deleted) get().closeTab(p.id, t);
+    },
+
     activePath() {
       const s = get();
       return s.panes.find((p) => p.id === s.focused)?.active ?? null;
     },
   };
+});
+
+// Persist the layout per vault (in the app's own storage, never in the vault).
+useWorkspace.subscribe((s, prev) => {
+  if (!layoutRoot || (s.panes === prev.panes && s.direction === prev.direction && s.focused === prev.focused)) return;
+  try {
+    localStorage.setItem(
+      `mosaic:layout:${layoutRoot}`,
+      JSON.stringify({ panes: s.panes, direction: s.direction, focused: s.focused }),
+    );
+  } catch {
+    // Storage unavailable: layout just isn't remembered.
+  }
 });

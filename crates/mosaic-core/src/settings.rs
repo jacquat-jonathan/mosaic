@@ -22,7 +22,11 @@ pub fn app_support_dir() -> Option<PathBuf> {
     )
 }
 
+/// Where search indexes live. `MOSAIC_CACHE_DIR` overrides it (used by tests).
 pub fn cache_dir() -> Option<PathBuf> {
+    if let Some(dir) = std::env::var_os("MOSAIC_CACHE_DIR") {
+        return Some(PathBuf::from(dir));
+    }
     let home = std::env::var_os("HOME")?;
     Some(PathBuf::from(home).join("Library/Caches/mosaic"))
 }

@@ -15,6 +15,8 @@ impl Client {
     fn start(vault: &std::path::Path) -> Self {
         let mut child = Command::new(env!("CARGO_BIN_EXE_mosaic"))
             .args(["--vault", vault.to_str().unwrap(), "mcp"])
+            // Keep the test's index out of ~/Library/Caches.
+            .env("MOSAIC_CACHE_DIR", vault.join(".test-cache"))
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())

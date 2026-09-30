@@ -15,7 +15,11 @@ case "$profile" in
     cargo build --release -p mosaic-cli
     cp target/release/mosaic "src-tauri/binaries/mosaic-$host" ;;
   universal)
-    for t in aarch64-apple-darwin x86_64-apple-darwin; do cargo build --release -p mosaic-cli --target "$t"; done
+    # Tauri builds each architecture separately (needs per-triple sidecars), then merges them.
+    for t in aarch64-apple-darwin x86_64-apple-darwin; do
+      cargo build --release -p mosaic-cli --target "$t"
+      cp "target/$t/release/mosaic" "src-tauri/binaries/mosaic-$t"
+    done
     lipo -create -output src-tauri/binaries/mosaic-universal-apple-darwin \
       target/aarch64-apple-darwin/release/mosaic target/x86_64-apple-darwin/release/mosaic ;;
   *) echo "unknown profile $profile" >&2; exit 1 ;;

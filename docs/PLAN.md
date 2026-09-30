@@ -117,9 +117,9 @@ Errors: `NotFound`, `AlreadyExists`, `Conflict{current_hash}`, `InvalidPath`, `N
 - [x] "Connect AI" dialog: install CLI (symlink to ~/.local/bin) + Claude Code / Desktop config
 
 ### M8 — Hardening + release (ac-1, ac-10)
-- [ ] Offline audit (no outbound requests), perf pass
-- [ ] Universal2 release build, `scripts/install.sh` → /Applications
-- [ ] README: prerequisites, build/install, Gatekeeper first launch, MCP setup for Claude Code + Desktop
+- [x] Offline audit (no HTTP client crates; release app + its WebKit networking process open zero sockets), perf pass (live preview ~2 ms/keystroke on 7.5k lines)
+- [x] Universal2 release build, `scripts/install.sh` → /Applications
+- [x] README: prerequisites, build/install, Gatekeeper first launch, MCP setup for Claude Code + Desktop
 
 ## Working rules
 - `scripts/check.sh` green before each milestone commit.

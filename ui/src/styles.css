@@ -1,0 +1,16 @@
+:root {
+  color-scheme: light dark;
+  --bg: #fbfbfc;
+  --fg: #1d1f26;
+  --muted: #6b7080;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  font-size: 14px;
+  background: var(--bg);
+  color: var(--fg);
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #1c1e26; --fg: #e6e7eb; --muted: #9096a6; }
+}
+html, body, #root { height: 100%; margin: 0; }
+.empty { height: 100%; display: grid; place-content: center; text-align: center; }
+.empty p { color: var(--muted); }

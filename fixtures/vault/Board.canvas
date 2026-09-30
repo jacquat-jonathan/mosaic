@@ -1,0 +1,1 @@
+{"nodes":[{"id":"a","type":"text","text":"Hello","x":0,"y":0,"width":200,"height":80},{"id":"b","type":"file","file":"Ideas.md","x":300,"y":0,"width":300,"height":200}],"edges":[{"id":"e1","fromNode":"a","toNode":"b"}]}

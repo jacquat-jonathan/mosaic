@@ -53,21 +53,21 @@ Errors: `NotFound`, `AlreadyExists`, `Conflict{current_hash}`, `InvalidPath`, `N
 ## Milestones
 
 ### M0 — Skeleton (ac-1 partial)
-- [ ] Cargo workspace with `mosaic-core`, `mosaic-cli`, `src-tauri`
-- [ ] Vite + React + TS app in `ui/`, wired as Tauri frontend
-- [ ] `tauri.conf.json`: identifier, CSP, macOS min 12, ad-hoc signing (`signingIdentity: "-"`)
-- [ ] `pnpm dev` opens a window; `pnpm tauri build --debug` produces `Mosaic.app`
-- [ ] `scripts/check.sh`: `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test`, `pnpm lint`, `pnpm test`
-- [ ] `.gitignore`, minimal README
+- [x] Cargo workspace with `mosaic-core`, `mosaic-cli`, `src-tauri`
+- [x] Vite + React + TS app in `ui/`, wired as Tauri frontend
+- [x] `tauri.conf.json`: identifier, CSP, macOS min 12, ad-hoc signing (`signingIdentity: "-"`)
+- [x] `pnpm dev` opens a window; `pnpm tauri build --debug` produces `Mosaic.app`
+- [x] `scripts/check.sh`: `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test`, `pnpm lint`, `pnpm test`
+- [x] `.gitignore`, minimal README
 
 ### M1 — Core vault + file tree (ac-1, ac-2)
-- [ ] `vault::Vault::open(root)`, path validation, `.obsidian/` + dotfiles excluded from listings
-- [ ] Atomic write (temp + rename, same dir), sha256 content hash
-- [ ] Delete via `trash` crate; rename/move; mkdir
-- [ ] Non-UTF-8 detection → `NotText`
-- [ ] Fixture vault + unit tests (traversal, symlink escape, trash, atomicity)
-- [ ] Tauri commands; open-vault dialog; remember last vault
-- [ ] Tree view: expand/collapse, create file/folder, inline rename, drag-move, delete (context menu)
+- [x] `vault::Vault::open(root)`, path validation, `.obsidian/` + dotfiles excluded from listings
+- [x] Atomic write (temp + rename, same dir), sha256 content hash
+- [x] Delete via `trash` crate; rename/move; mkdir
+- [x] Non-UTF-8 detection → `NotText`
+- [x] Fixture vault + unit tests (traversal, symlink escape, trash, atomicity)
+- [x] Tauri commands; open-vault dialog; remember last vault
+- [x] Tree view: expand/collapse, create file/folder, inline rename, drag-move, delete (context menu)
 
 ### M2 — Markdown live preview (ac-3)
 - [ ] CodeMirror 6 with markdown language, hide syntax on inactive lines (headings, emphasis, links, lists, code, quotes)

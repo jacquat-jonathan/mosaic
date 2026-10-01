@@ -11,6 +11,13 @@ they change appears in the app within a second.
 Everything stays on your disk as ordinary files. The app makes no network requests, except `git fetch`/`git pull`
 of its own source when you click **Check for updates** or **Update** in Settings.
 
+## Getting started
+
+1. Install the prerequisites and run `scripts/install.sh` (see [Install](#install-build-it-yourself)).
+2. Open Mosaic and pick a folder: an existing Obsidian vault works as it is, or create a new one.
+3. Optional: **Settings › AI** (⌘, or the robot icon) connects Claude Code or Claude Desktop to your vault.
+4. To get new versions: **Settings › About & updates › Check for updates** (see [Update](#update)).
+
 ## Features
 
 - **Markdown live preview:** formatting renders as you type; wikilinks `[[…]]`, embeds `![[…]]`,
@@ -54,8 +61,8 @@ refuse to open it the first time. Right-click the app, choose **Open**, then con
 
 ## Connect AI
 
-In the app, click the robot icon in the sidebar (**Connect AI**). It installs the CLI and shows the
-exact commands for your vault. Or set it up by hand:
+In the app, open **Settings › AI** (or click the robot icon in the sidebar). It installs the CLI and
+shows the exact commands for your vault. Or set it up by hand:
 
 **Claude Code**
 
@@ -99,10 +106,23 @@ The vault is chosen by `--vault`, then `$MOSAIC_VAULT`, then the vault last open
 
 ## Update
 
-Open **Settings › About & updates** (⌘,). Mosaic remembers the source folder it was built from:
-**Check for updates** fetches it and lists new commits, **Update** runs `git pull` and
-`scripts/install.sh --build-only` with a live log, and **Restart to finish** swaps in the new build.
-You can point it at another checkout with **Change…**. Updating needs the same tools as installing.
+Open **Settings › About & updates** (⌘,). It shows your version, e.g. **Mosaic 0.2.0 (668163f)**.
+Mosaic remembers the source folder it was built from; you can point it at another checkout with
+**Change…**.
+
+1. **Check for updates** fetches the source and lists the newer versions with what changed in each
+   (from `CHANGELOG.md`). The individual commits are listed underneath.
+2. **Update** runs `git pull` and `scripts/install.sh --build-only` with a live log. It takes a few
+   minutes and you can keep working. **Cancel** stops it at any point.
+3. **Restart to finish** saves your notes, swaps in the new build and reopens Mosaic.
+
+Your installed app is only replaced in step 3, so a failed or cancelled build never breaks it.
+Updating needs the same tools as installing.
+
+**If an update fails:** the build log in Settings shows the failing step. A common cause is
+uncommitted changes in the source folder (`git pull` refuses to run). Commit or stash them, then try
+again. If the swap in step 3 fails, Mosaic keeps the old app and says so in Settings; the details are
+in `~/Library/Logs/Mosaic/update.log`.
 
 ## Develop
 
@@ -124,6 +144,12 @@ Layout:
 | `ui` | React + TypeScript UI (CodeMirror 6, React Flow, Excalidraw, Mermaid, Vega-Lite, Graphviz, pdf.js) |
 | `docs/AGENTS.md` | Guide for AI agents, also served by the MCP server |
 | `docs/PLAN.md` | Implementation plan and milestones |
+
+**Releasing.** Describe each change under `## Unreleased` in `CHANGELOG.md` as you go, written for
+someone using the app. To cut a release, run `scripts/release.sh 0.3.0` on a clean tree: it bumps the
+version (workspace `Cargo.toml` and `src-tauri/tauri.conf.json`), turns the Unreleased section into
+the release, commits and tags `v0.3.0`. Push with `git push --follow-tags`; coworkers then see it in
+**Check for updates**.
 
 The search index lives in `~/Library/Caches/mosaic/` and is rebuilt automatically. Mosaic never
 writes anything into your vault except your own content.

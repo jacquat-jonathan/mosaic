@@ -393,6 +393,7 @@ pub fn run() {
             update::set_update_source,
             update::check_updates,
             update::start_update,
+            update::cancel_update,
             update::finish_update,
         ])
         .run(tauri::generate_context!())

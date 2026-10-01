@@ -19,5 +19,16 @@ fn main() {
     for p in [".git/HEAD", ".git/refs/heads", ".git/packed-refs"] {
         println!("cargo:rerun-if-changed={}", repo.join(p).display());
     }
+    // One version for the whole app: the workspace Cargo.toml. tauri.conf.json must match it
+    // (scripts/release.sh bumps both).
+    let conf = std::fs::read_to_string("tauri.conf.json").expect("read tauri.conf.json");
+    let conf: serde_json::Value = serde_json::from_str(&conf).expect("parse tauri.conf.json");
+    let version = env!("CARGO_PKG_VERSION");
+    assert_eq!(
+        conf["version"].as_str(),
+        Some(version),
+        "tauri.conf.json's version must match the workspace version {version} in Cargo.toml"
+    );
+    println!("cargo:rerun-if-changed=tauri.conf.json");
     tauri_build::build()
 }

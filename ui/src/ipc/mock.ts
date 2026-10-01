@@ -17,6 +17,7 @@ let bookmarks: string[] = ["Welcome.md"];
 let updateSource: string | null = null;
 let updateBuilt = false;
 let updateRunning = false;
+let updateTimers: ReturnType<typeof setTimeout>[] = [];
 
 const emit = (name: string, detail: unknown) => window.dispatchEvent(new CustomEvent(`mock-${name}`, { detail }));
 
@@ -48,12 +49,22 @@ function fakeUpdate() {
     "        Built application at: target/release/bundle/macos/Mosaic.app",
     "BUILT_APP=/Users/you/Developer/mosaic/target/release/bundle/macos/Mosaic.app",
   ];
-  lines.forEach((l, i) => setTimeout(() => emit("update-log", l), 250 * (i + 1)));
-  setTimeout(() => {
-    updateRunning = false;
-    updateBuilt = true;
-    emit("update-done", { ok: true, error: null });
-  }, 250 * (lines.length + 1));
+  updateTimers = lines.map((l, i) => setTimeout(() => emit("update-log", l), 250 * (i + 1)));
+  updateTimers.push(
+    setTimeout(() => {
+      updateRunning = false;
+      updateBuilt = true;
+      emit("update-done", { ok: true, cancelled: false, error: null });
+    }, 250 * (lines.length + 1)),
+  );
+}
+
+function cancelFakeUpdate() {
+  if (!updateRunning) return;
+  updateTimers.forEach(clearTimeout);
+  updateRunning = false;
+  emit("update-log", "Cancelling…");
+  emit("update-done", { ok: false, cancelled: true, error: "Update cancelled." });
 }
 
 function seed() {
@@ -228,6 +239,17 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
       return {
         branch: "main",
         upstream: "origin/main",
+        latest_version: "0.2.0",
+        releases: [
+          {
+            version: "0.2.0",
+            date: "2026-10-01",
+            notes: [
+              "The window can be moved again by dragging the sidebar header, the tab bar or the welcome screen.",
+              "A running update can be cancelled; the installed app stays as it was.",
+            ],
+          },
+        ],
         behind: [
           { hash: "9a1c2e7", subject: "M10: settings panel and in-app updates" },
           { hash: "41d0b3a", subject: "Fix tree drag onto collapsed folders" },
@@ -240,6 +262,9 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
     case "start_update":
       if (updateRunning) throw err("invalid", "An update is already running.");
       fakeUpdate();
+      return null;
+    case "cancel_update":
+      cancelFakeUpdate();
       return null;
     case "finish_update":
       window.location.reload();

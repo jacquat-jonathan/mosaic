@@ -1,0 +1,21 @@
+# Changelog
+
+What changed in each version of Mosaic. Settings › About & updates shows the sections newer than the installed app, so write each line for someone using the app. New work goes under **Unreleased**; `scripts/release.sh <version>` turns that section into a release.
+
+## Unreleased
+
+- The window can be moved again by dragging the sidebar header, the tab bar or the welcome screen.
+- Mosaic now has real version numbers: About shows the version and its commit, and "Check for updates" lists the new versions with what changed in each.
+- A running update can be cancelled; the installed app stays as it was.
+
+## 0.1.0 — 2026-10-01
+
+- Vault and file tree: open any folder of Markdown notes (Obsidian-compatible), create, rename, move and delete files, with link-aware renames.
+- Markdown live preview with wikilinks, embeds, tags, tasks, math, Mermaid, Graphviz and Vega-Lite.
+- Full-text search, backlinks and an outline panel, backed by a local index.
+- Split panes, tabs, live refresh when files change on disk, and a layout that's remembered.
+- Viewers for HTML, PDF, CSV, JSON, images and code; canvases, Excalidraw drawings, charts and graphs.
+- The `mosaic` command and an MCP server so AI agents can read and write the vault.
+- UI foundations: resizable sidebars, tree drag and drop and multi-selection, vault switcher, bookmarks, command palette (⌘P).
+- Settings (⌘,) with appearance, editor, vault, AI, shortcuts, and in-app updates from the source checkout.
+- Dropping files from Finder imports them into the vault; spellcheck in the editor.

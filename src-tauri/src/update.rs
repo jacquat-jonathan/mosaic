@@ -25,6 +25,10 @@ const EXTRA_PATH: &str = "/opt/homebrew/bin:/opt/homebrew/opt/rustup/bin:/usr/lo
 #[derive(Default)]
 pub struct UpdateState {
     running: AtomicBool,
+    /// Set by "Cancel"; the running step is killed and no further step starts.
+    cancelled: AtomicBool,
+    /// Process group of the step running now, so "Cancel" can stop it and everything it started.
+    step: Mutex<Option<u32>>,
     /// A finished build waiting for "Restart to finish".
     built: Mutex<Option<PathBuf>>,
 }
@@ -54,10 +58,22 @@ pub struct CommitInfo {
     subject: String,
 }
 
+#[derive(Serialize, Debug, PartialEq)]
+pub struct Release {
+    version: String,
+    date: String,
+    /// The release's top-level bullet points from CHANGELOG.md.
+    notes: Vec<String>,
+}
+
 #[derive(Serialize)]
 pub struct UpdateCheck {
     branch: String,
     upstream: String,
+    /// The version on the upstream branch (from its `Cargo.toml`), if it could be read.
+    latest_version: Option<String>,
+    /// Releases in the upstream CHANGELOG.md newer than this app (newest first).
+    releases: Vec<Release>,
     /// Commits on the upstream branch that the source checkout doesn't have yet (newest first).
     behind: Vec<CommitInfo>,
     /// Local commits not on the upstream branch.
@@ -72,7 +88,70 @@ pub struct UpdateCheck {
 #[derive(Serialize, Clone)]
 struct UpdateDone {
     ok: bool,
+    cancelled: bool,
     error: Option<String>,
+}
+
+const CANCELLED: &str = "Update cancelled.";
+
+/// `major.minor.patch`, ignoring any pre-release or build suffix.
+fn parse_version(s: &str) -> Option<(u64, u64, u64)> {
+    let core = s.trim().trim_start_matches('v');
+    let core = core.split(['-', '+']).next()?;
+    let mut parts = core.split('.').map(|p| p.parse::<u64>().ok());
+    let v = (parts.next()??, parts.next()??, parts.next()??);
+    parts.next().is_none().then_some(v)
+}
+
+/// The `[workspace.package]` version in a `Cargo.toml`.
+fn workspace_version(cargo_toml: &str) -> Option<String> {
+    let mut in_section = false;
+    for line in cargo_toml.lines().map(str::trim) {
+        if line.starts_with('[') {
+            in_section = line == "[workspace.package]";
+        } else if in_section && let Some(v) = line.strip_prefix("version") {
+            let v = v.trim_start().strip_prefix('=')?.trim().trim_matches('"');
+            return Some(v.to_string());
+        }
+    }
+    None
+}
+
+/// Releases in a CHANGELOG.md newer than `installed`, newest first. Headings look like
+/// `## 0.2.0 — 2026-10-01`; `## Unreleased` and anything that isn't a version are skipped.
+fn releases_since(changelog: &str, installed: &str) -> Vec<Release> {
+    let Some(installed) = parse_version(installed) else {
+        return Vec::new();
+    };
+    let mut out: Vec<(_, Release)> = Vec::new();
+    let mut current: Option<usize> = None;
+    for line in changelog.lines() {
+        if let Some(heading) = line.strip_prefix("## ") {
+            current = None;
+            let mut words = heading.splitn(2, char::is_whitespace);
+            let version = words.next().unwrap_or("").trim_matches(['[', ']']);
+            if let Some(v) = parse_version(version).filter(|v| *v > installed) {
+                let date = words
+                    .next()
+                    .unwrap_or("")
+                    .trim_start_matches(['—', '-', ' '])
+                    .trim();
+                out.push((
+                    v,
+                    Release {
+                        version: version.to_string(),
+                        date: date.to_string(),
+                        notes: Vec::new(),
+                    },
+                ));
+                current = Some(out.len() - 1);
+            }
+        } else if let (Some(i), Some(note)) = (current, line.strip_prefix("- ")) {
+            out[i].1.notes.push(note.trim().to_string());
+        }
+    }
+    out.sort_by_key(|(v, _)| std::cmp::Reverse(*v));
+    out.into_iter().map(|(_, r)| r).collect()
 }
 
 fn source_dir() -> PathBuf {
@@ -243,7 +322,16 @@ fn check() -> CmdResult<UpdateCheck> {
     let dirty = !git(&dir, &["status", "--porcelain", "--untracked-files=no"])
         .map_err(invalid)?
         .is_empty();
+    let installed_version = env!("CARGO_PKG_VERSION");
+    let latest_version = git(&dir, &["show", &format!("{upstream}:Cargo.toml")])
+        .ok()
+        .and_then(|t| workspace_version(&t));
+    let releases = git(&dir, &["show", &format!("{upstream}:CHANGELOG.md")])
+        .map(|t| releases_since(&t, installed_version))
+        .unwrap_or_default();
     Ok(UpdateCheck {
+        latest_version,
+        releases,
         installed_outdated: COMMIT.is_empty() || installed.map_or(true, |c| c != head),
         source_head: head.chars().take(7).collect(),
         branch,
@@ -268,26 +356,52 @@ pub fn start_update(app: AppHandle, state: State<UpdateState>) -> CmdResult<()> 
         return Err(invalid("An update is already running."));
     }
     *state.built.lock().expect("update lock") = None;
+    state.cancelled.store(false, Ordering::SeqCst);
     let universal = is_universal();
     std::thread::spawn(move || {
         let result = run_update(&app, &dir, universal);
         let st = app.state::<UpdateState>();
+        let cancelled = st.cancelled.load(Ordering::SeqCst);
         let done = match result {
-            Ok(built) => {
+            Ok(built) if !cancelled => {
                 *st.built.lock().expect("update lock") = Some(built);
                 UpdateDone {
                     ok: true,
+                    cancelled: false,
                     error: None,
                 }
             }
+            Ok(_) => UpdateDone {
+                ok: false,
+                cancelled: true,
+                error: Some(CANCELLED.into()),
+            },
             Err(e) => UpdateDone {
                 ok: false,
-                error: Some(e),
+                cancelled,
+                error: Some(if cancelled { CANCELLED.into() } else { e }),
             },
         };
         st.running.store(false, Ordering::SeqCst);
         let _ = app.emit("update-done", done);
     });
+    Ok(())
+}
+
+/// Stops a running update: kills the current step's whole process group (zsh, pnpm, cargo, rustc…).
+/// The installed app is only replaced by "Restart to finish", so stopping at any point is safe.
+#[tauri::command]
+pub fn cancel_update(app: AppHandle, state: State<UpdateState>) -> CmdResult<()> {
+    if !state.running.load(Ordering::SeqCst) {
+        return Ok(());
+    }
+    state.cancelled.store(true, Ordering::SeqCst);
+    if let Some(pgid) = *state.step.lock().expect("update lock") {
+        let _ = app.emit("update-log", "Cancelling…");
+        let _ = Command::new("kill")
+            .args(["-TERM", "--", &format!("-{pgid}")])
+            .status();
+    }
     Ok(())
 }
 
@@ -321,8 +435,15 @@ fn run_logged(app: &AppHandle, dir: &Path, script: &str) -> Result<Option<PathBu
         .env("GIT_TERMINAL_PROMPT", "0")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
+        .process_group(0)
         .spawn()
         .map_err(|e| format!("couldn't start {script}: {e}"))?;
+    let state = app.state::<UpdateState>();
+    *state.step.lock().expect("update lock") = Some(child.id());
+    // "Cancel" may have come in before this step was registered.
+    if state.cancelled.load(Ordering::SeqCst) {
+        let _ = child.kill();
+    }
     let mut built = None;
     if let Some(out) = child.stdout.take() {
         for line in BufReader::new(out).lines().map_while(Result::ok) {
@@ -332,7 +453,12 @@ fn run_logged(app: &AppHandle, dir: &Path, script: &str) -> Result<Option<PathBu
             let _ = app.emit("update-log", line);
         }
     }
-    let status = child.wait().map_err(|e| e.to_string())?;
+    let status = child.wait().map_err(|e| e.to_string());
+    *state.step.lock().expect("update lock") = None;
+    if state.cancelled.load(Ordering::SeqCst) {
+        return Err(CANCELLED.into());
+    }
+    let status = status?;
     if status.success() {
         Ok(built)
     } else {
@@ -395,4 +521,64 @@ open "$dest""#;
         })?;
     app.exit(0);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_versions() {
+        assert_eq!(parse_version("0.2.0"), Some((0, 2, 0)));
+        assert_eq!(parse_version("v1.10.3"), Some((1, 10, 3)));
+        assert_eq!(parse_version("1.0.0-beta.1"), Some((1, 0, 0)));
+        assert_eq!(parse_version("1.0"), None);
+        assert_eq!(parse_version("1.0.0.0"), None);
+        assert_eq!(parse_version("Unreleased"), None);
+    }
+
+    #[test]
+    fn reads_the_workspace_version() {
+        let toml = "[workspace]\nmembers = []\n\n[workspace.package]\nedition = \"2024\"\nversion = \"0.3.1\"\n\n[workspace.dependencies]\nversion = \"9\"\n";
+        assert_eq!(workspace_version(toml).as_deref(), Some("0.3.1"));
+        assert_eq!(workspace_version("[package]\nversion = \"1.0.0\"\n"), None);
+    }
+
+    #[test]
+    fn lists_releases_newer_than_installed() {
+        let log = "# Changelog\n\n## Unreleased\n\n- Not out yet\n\n## 0.10.0 — 2026-11-02\n\n- Diagrams\n  - nested detail\n- Graph view\n\n## 0.2.0 — 2026-10-01\n\n- Versions\n\n## 0.1.0 — 2026-09-30\n\n- First\n";
+        let got = releases_since(log, "0.1.0");
+        assert_eq!(
+            got,
+            vec![
+                Release {
+                    version: "0.10.0".into(),
+                    date: "2026-11-02".into(),
+                    notes: vec!["Diagrams".into(), "Graph view".into()],
+                },
+                Release {
+                    version: "0.2.0".into(),
+                    date: "2026-10-01".into(),
+                    notes: vec!["Versions".into()],
+                },
+            ]
+        );
+        assert!(releases_since(log, "0.10.0").is_empty());
+        assert!(releases_since(log, "").is_empty());
+    }
+
+    #[test]
+    fn the_repo_changelog_parses() {
+        let log = include_str!("../../CHANGELOG.md");
+        let all = releases_since(log, "0.0.0");
+        assert!(!all.is_empty(), "CHANGELOG.md has no release sections");
+        assert!(
+            all.iter().all(|r| !r.notes.is_empty()),
+            "a release has no notes"
+        );
+        assert!(
+            all.iter().any(|r| r.version == env!("CARGO_PKG_VERSION")),
+            "the current version isn't in CHANGELOG.md"
+        );
+    }
 }

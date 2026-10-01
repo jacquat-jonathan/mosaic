@@ -123,9 +123,20 @@ export interface UpdateStatus {
   last_install_error: string | null;
 }
 
+export interface Release {
+  version: string;
+  date: string;
+  /** Top-level bullet points of the release in CHANGELOG.md. */
+  notes: string[];
+}
+
 export interface UpdateCheck {
   branch: string;
   upstream: string;
+  /** The version on the upstream branch, if its Cargo.toml could be read. */
+  latest_version: string | null;
+  /** Releases newer than this app, newest first. */
+  releases: Release[];
   behind: { hash: string; subject: string }[];
   ahead: number;
   source_head: string;
@@ -135,5 +146,6 @@ export interface UpdateCheck {
 
 export interface UpdateDone {
   ok: boolean;
+  cancelled: boolean;
   error: string | null;
 }

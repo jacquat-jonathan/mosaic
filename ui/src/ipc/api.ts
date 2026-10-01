@@ -51,6 +51,7 @@ export const api = {
   setUpdateSource: (path: string | null) => call<UpdateStatus>("set_update_source", { path }),
   checkUpdates: () => call<UpdateCheck>("check_updates"),
   startUpdate: () => call<void>("start_update"),
+  cancelUpdate: () => call<void>("cancel_update"),
   finishUpdate: () => call<void>("finish_update"),
 };
 

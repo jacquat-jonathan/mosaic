@@ -232,7 +232,7 @@ function Shortcuts() {
 
 interface UpdateFlow {
   log: string[];
-  phase: "idle" | "running" | "built" | "failed";
+  phase: "idle" | "running" | "built" | "failed" | "cancelled";
   error: string | null;
 }
 
@@ -245,7 +245,9 @@ export async function startUpdateListeners(): Promise<() => void> {
   const offLog = await onUpdateLog((line) =>
     useUpdateFlow.setState((s) => ({ log: s.log.length >= LOG_LIMIT ? [...s.log.slice(-LOG_LIMIT + 1), line] : [...s.log, line] })),
   );
-  const offDone = await onUpdateDone((d) => useUpdateFlow.setState({ phase: d.ok ? "built" : "failed", error: d.error }));
+  const offDone = await onUpdateDone((d) =>
+    useUpdateFlow.setState(d.ok ? { phase: "built", error: null } : d.cancelled ? { phase: "cancelled", error: null } : { phase: "failed", error: d.error }),
+  );
   return () => {
     offLog();
     offDone();
@@ -319,6 +321,14 @@ function About() {
     }
   };
 
+  const cancel = async () => {
+    try {
+      await api.cancelUpdate();
+    } catch (e) {
+      setError(errorMessage(e));
+    }
+  };
+
   const restart = async () => {
     if (!(await saveAll())) {
       setError("Some notes couldn't be saved. Resolve them first, then restart.");
@@ -338,7 +348,7 @@ function About() {
 
   return (
     <>
-      <Row label={`Mosaic ${status.version}`} hint={status.commit ? `Built from commit ${status.commit}` : "Build commit unknown"}>
+      <Row label={status.commit ? `Mosaic ${status.version} (${status.commit})` : `Mosaic ${status.version}`} hint={status.commit ? undefined : "Build commit unknown"}>
         {dev ? <span className="badge">Development build</span> : <span className="badge">{status.app_path}</span>}
       </Row>
       {status.last_install_error && (
@@ -373,7 +383,12 @@ function About() {
           <button className="secondary" disabled={checking || !!status.source_problem || flow.phase === "running"} onClick={() => void runCheck()}>
             <RefreshCw size={14} className={checking ? "spin" : ""} /> {checking ? "Checking…" : "Check for updates"}
           </button>
-          {flow.phase !== "built" && (
+          {flow.phase === "running" && (
+            <button className="secondary" title="Stop the build; the installed app stays as it is" onClick={() => void cancel()}>
+              <X size={14} /> Cancel
+            </button>
+          )}
+          {flow.phase !== "built" && flow.phase !== "running" && (
             <button
               className={hasNews ? "primary" : "secondary"}
               disabled={!canUpdate}
@@ -394,11 +409,30 @@ function About() {
 
         {check && (
           <div className="update-result">
-            {check.behind.length > 0 ? (
+            {check.releases.length > 0 && (
               <>
                 <p>
-                  {check.behind.length} new {check.behind.length === 1 ? "commit" : "commits"} on <code>{check.upstream}</code>:
+                  Mosaic {check.releases[0].version} is available (you have {status.version}).
                 </p>
+                {check.releases.map((r) => (
+                  <div key={r.version} className="release">
+                    <p className="release-head">
+                      {r.version} {r.date && <span className="settings-note">{r.date}</span>}
+                    </p>
+                    <ul>
+                      {r.notes.map((n, i) => (
+                        <li key={i}>{n}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </>
+            )}
+            {check.behind.length > 0 ? (
+              <details className="commit-details" open={check.releases.length === 0}>
+                <summary>
+                  {check.behind.length} new {check.behind.length === 1 ? "commit" : "commits"} on <code>{check.upstream}</code>
+                </summary>
                 <ul className="commit-list">
                   {check.behind.map((c) => (
                     <li key={c.hash}>
@@ -406,7 +440,7 @@ function About() {
                     </li>
                   ))}
                 </ul>
-              </>
+              </details>
             ) : check.installed_outdated ? (
               <p>
                 No new commits on <code>{check.upstream}</code>, but the source folder (at <code>{check.source_head}</code>) is newer
@@ -430,6 +464,7 @@ function About() {
         {flow.phase === "running" && <p className="settings-note">Building… this takes a few minutes. You can keep working meanwhile.</p>}
         {flow.phase === "built" && <p className="ok-text">The new version is built. Restart to switch to it; unsaved notes are saved first.</p>}
         {flow.phase === "failed" && flow.error && <p className="error-text">{flow.error}</p>}
+        {flow.phase === "cancelled" && <p className="settings-note">Update cancelled. The installed app wasn't changed.</p>}
         {flow.log.length > 0 && (
           <details className="update-log" open={flow.phase !== "built"}>
             <summary>Build log</summary>

@@ -131,10 +131,17 @@ function buildBlocks(state: EditorState): Blocks {
           const lang = info ? doc.sliceString(info.from, info.to).trim().toLowerCase() : "";
           const start = doc.lineAt(from);
           const end = doc.lineAt(to);
-          if (blockRenderers.has(lang) && end.number > start.number && !touches(state, start.from, end.to)) {
+          if (blockRenderers.has(lang) && end.number > start.number) {
             const body = end.number - start.number >= 2 ? doc.sliceString(doc.line(start.number + 1).from, doc.line(end.number - 1).to) : "";
-            out.push(Decoration.replace({ widget: new RenderedBlockWidget(lang, body, ctx), block: true }).range(start.from, end.to));
-            blocked.push({ from: start.from, to: end.to });
+            if (!touches(state, start.from, end.to)) {
+              out.push(Decoration.replace({ widget: new RenderedBlockWidget(lang, body, ctx), block: true }).range(start.from, end.to));
+              blocked.push({ from: start.from, to: end.to });
+            } else {
+              // Editing the block: its source shows, with a live preview underneath that keeps the
+              // last good drawing while the source has an error.
+              const widget = new RenderedBlockWidget(lang, body, ctx, undefined, `${ctx.path}:${start.number}`);
+              out.push(Decoration.widget({ widget, block: true, side: 1 }).range(end.to));
+            }
           }
           return false;
         }

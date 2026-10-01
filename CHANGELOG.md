@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- Editing a Mermaid, Graphviz, chart or math block in a note shows a live preview under it; while the source has an error, the last good drawing stays with the error below.
+- Hovering a node of a Mermaid flowchart (in a note or a card) makes its connections flow and dims the rest.
 - **Present** a canvas (toolbar › ⋯): it fills the screen and steps through its groups and frames with the arrow keys, connections flowing; Esc to stop.
 - `![[Diagram.canvas]]` in a note shows the diagram as a picture; click it to open the canvas.
 - Export a canvas as SVG or PNG (canvas toolbar › ⋯); the file is saved next to the canvas.

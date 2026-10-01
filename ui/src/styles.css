@@ -585,3 +585,11 @@ button.secondary { border: 1px solid var(--border); padding: 5px 12px; }
 @media (prefers-reduced-motion: reduce) { .canvas-host.presenting .react-flow__viewport { transition: none; } }
 .present-hud { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); z-index: 10; font-size: 13px; color: var(--muted); background: var(--bg); border: 1px solid var(--border); border-radius: 999px; padding: 5px 14px; pointer-events: none; }
 .present-hud span { opacity: 0.7; }
+
+/* Hover flow on rendered Mermaid flowcharts (blocks.ts › addFlowHover). */
+svg.flow-hover g.node:not(.flow-near), svg.flow-hover path[data-edge]:not(.flow-on), svg.flow-hover .edgeLabel { opacity: 0.25; transition: opacity 0.15s; }
+svg path.flow-on { stroke-dasharray: 9 6 !important; animation: edge-flow 0.7s linear infinite; }
+@media (prefers-reduced-motion: reduce) { svg path.flow-on { animation: none; stroke-dasharray: none !important; } }
+/* The live preview under a diagram block being edited. */
+.cm-block-preview { border-top: 1px dashed var(--border); padding-top: 6px; flex-wrap: wrap; }
+.cm-block-preview > .cm-render-error { flex-basis: 100%; margin-top: 6px; }

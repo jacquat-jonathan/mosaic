@@ -19,6 +19,9 @@ function revealOnClick(dom: HTMLElement, view: EditorView, pos: () => number) {
   });
 }
 
+/** The last drawing that rendered without error, per block being edited (`path:line`). */
+const lastGood = new Map<string, string>();
+
 export class RenderedBlockWidget extends WidgetType {
   constructor(
     readonly lang: string,
@@ -26,22 +29,38 @@ export class RenderedBlockWidget extends WidgetType {
     readonly ctx: EditorContext,
     // Diagrams bake the theme into their SVG, so a theme change must produce an unequal widget.
     readonly dark = isDark(),
+    /** Set while the block's source is being edited: this is the live preview under it. */
+    readonly previewKey?: string,
   ) {
     super();
   }
   eq(o: RenderedBlockWidget) {
-    return o.lang === this.lang && o.source === this.source && o.dark === this.dark;
+    return o.lang === this.lang && o.source === this.source && o.dark === this.dark && o.previewKey === this.previewKey;
   }
   toDOM(view: EditorView) {
     const el = document.createElement("div");
-    el.className = `cm-rendered-block cm-lang-${this.lang}`;
+    el.className = `cm-rendered-block cm-lang-${this.lang}${this.previewKey ? " cm-block-preview" : ""}`;
     const r = blockRenderers.get(this.lang);
+    const key = this.previewKey;
+    const failed = (e: unknown) => {
+      const good = key && lastGood.get(key);
+      if (!good) return showError(el, e);
+      // Keep the last good drawing, with the error under it, instead of a blank box while typing.
+      el.innerHTML = good;
+      const note = document.createElement("div");
+      note.className = "cm-render-error";
+      note.textContent = e instanceof Error ? e.message : String(e);
+      el.appendChild(note);
+    };
+    const succeeded = () => key && lastGood.set(key, el.innerHTML);
     try {
       const out = r?.(this.source, el, this.ctx);
-      if (out instanceof Promise) out.catch((e) => showError(el, e));
+      if (out instanceof Promise) out.then(succeeded, failed);
+      else succeeded();
     } catch (e) {
-      showError(el, e);
+      failed(e);
     }
+    if (key) return el;
     if (this.lang === "mermaid" && this.ctx.openAsDiagram && diagramKind(this.source)) {
       const open = document.createElement("button");
       open.className = "block-action";

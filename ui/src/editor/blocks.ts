@@ -14,7 +14,54 @@ export function registerBlockRenderer(langs: string[], r: BlockRenderer) {
 
 registerBlockRenderer(["mermaid"], async (src, el) => {
   el.innerHTML = await renderMermaid(src);
+  addFlowHover(el);
 });
+
+/**
+ * Hovering a node of a rendered Mermaid flowchart animates its connections in their direction and
+ * dims the rest, like on canvases. Flowchart edges are named `L_<from>_<to>_<n>`.
+ */
+export function addFlowHover(root: HTMLElement): void {
+  const svg = root.querySelector("svg");
+  if (!svg) return;
+  const nodes = new Map<string, Element>();
+  for (const g of svg.querySelectorAll("g.node")) {
+    const m = /flowchart-(.+)-\d+$/.exec(g.id);
+    if (m) nodes.set(m[1], g);
+  }
+  if (!nodes.size) return;
+  const edges: { path: Element; from: string; to: string }[] = [];
+  for (const p of svg.querySelectorAll<SVGPathElement>("path[data-edge]")) {
+    const named = /^L_(.+)_\d+$/.exec(p.dataset.id ?? "");
+    if (!named) continue;
+    const parts = named[1].split("_");
+    for (let i = 1; i < parts.length; i++) {
+      const from = parts.slice(0, i).join("_");
+      const to = parts.slice(i).join("_");
+      if (nodes.has(from) && nodes.has(to)) {
+        edges.push({ path: p, from, to });
+        break;
+      }
+    }
+  }
+  for (const [id, g] of nodes) {
+    g.addEventListener("mouseenter", () => {
+      const mine = edges.filter((e) => e.from === id || e.to === id);
+      if (!mine.length) return;
+      svg.classList.add("flow-hover");
+      g.classList.add("flow-near");
+      for (const e of mine) {
+        e.path.classList.add("flow-on");
+        nodes.get(e.from)!.classList.add("flow-near");
+        nodes.get(e.to)!.classList.add("flow-near");
+      }
+    });
+    g.addEventListener("mouseleave", () => {
+      svg.classList.remove("flow-hover");
+      for (const el of svg.querySelectorAll(".flow-on, .flow-near")) el.classList.remove("flow-on", "flow-near");
+    });
+  }
+}
 registerBlockRenderer(["math", "latex", "tex"], (src, el) => {
   el.innerHTML = renderMath(src, true);
 });

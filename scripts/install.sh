@@ -15,7 +15,24 @@ for arg in "$@"; do
     *) echo "unknown option: $arg" >&2; exit 2 ;;
   esac
 done
-export PATH="/opt/homebrew/opt/rustup/bin:$HOME/.cargo/bin:$PATH"
+export PATH="/opt/homebrew/opt/rustup/bin:$HOME/.cargo/bin:$HOME/.volta/bin:$HOME/Library/pnpm:$PATH"
+
+# Settings › Update runs this in a non-interactive login shell, which doesn't read ~/.zshrc — where
+# nvm is usually set up. Load nvm ourselves, then fall back to pnpm shims made by corepack.
+if ! command -v pnpm >/dev/null; then
+  export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+  if [[ -s "$NVM_DIR/nvm.sh" ]]; then
+    set +u
+    # shellcheck disable=SC1091
+    source "$NVM_DIR/nvm.sh" >/dev/null
+    set -u
+  fi
+fi
+if ! command -v pnpm >/dev/null && command -v corepack >/dev/null; then
+  shims="$(mktemp -d)"
+  corepack enable --install-directory "$shims" pnpm
+  export PATH="$shims:$PATH"
+fi
 
 command -v cargo >/dev/null || { echo "Rust is required: https://rustup.rs" >&2; exit 1; }
 command -v pnpm >/dev/null || { echo "pnpm is required: corepack enable pnpm" >&2; exit 1; }

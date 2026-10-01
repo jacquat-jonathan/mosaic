@@ -13,12 +13,30 @@ struct Client {
 
 impl Client {
     fn start(vault: &std::path::Path) -> Self {
-        let mut child = Command::new(env!("CARGO_BIN_EXE_mosaic"))
-            .args(["--vault", vault.to_str().unwrap(), "mcp"])
+        Self::start_with(
+            Some(vault),
+            &vault.join(".test-settings"),
+            &vault.join(".test-cache"),
+        )
+    }
+
+    /// `vault: None` starts the server without `--vault`, so it follows the app's vault in `settings`.
+    fn start_with(
+        vault: Option<&std::path::Path>,
+        settings: &std::path::Path,
+        cache: &std::path::Path,
+    ) -> Self {
+        let mut cmd = Command::new(env!("CARGO_BIN_EXE_mosaic"));
+        if let Some(v) = vault {
+            cmd.args(["--vault", v.to_str().unwrap()]);
+        }
+        let mut child = cmd
+            .arg("mcp")
+            .env_remove("MOSAIC_VAULT")
             // Keep the test's index out of ~/Library/Caches.
-            .env("MOSAIC_CACHE_DIR", vault.join(".test-cache"))
+            .env("MOSAIC_CACHE_DIR", cache)
             // …and its bookmarks out of the real settings.json.
-            .env("MOSAIC_SETTINGS_DIR", vault.join(".test-settings"))
+            .env("MOSAIC_SETTINGS_DIR", settings)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
@@ -300,4 +318,60 @@ fn every_tool_works_end_to_end() {
     let (err, _) = c.call("create_folder", json!({ "path": "AI/Later" }));
     assert!(!err);
     assert!(dir.path().join("AI/Later").is_dir());
+}
+
+/// Points the "app" (settings.json) at `vault`, as opening it in Mosaic does.
+fn open_in_app(settings: &std::path::Path, vault: &std::path::Path) {
+    std::fs::create_dir_all(settings).unwrap();
+    std::fs::write(
+        settings.join("settings.json"),
+        json!({ "last_vault": vault }).to_string(),
+    )
+    .unwrap();
+}
+
+#[test]
+fn without_a_vault_it_follows_the_app() {
+    let home = tempfile::tempdir().unwrap();
+    let (a, b) = (home.path().join("A"), home.path().join("B"));
+    std::fs::create_dir_all(&a).unwrap();
+    std::fs::create_dir_all(&b).unwrap();
+    std::fs::write(a.join("In A.md"), "# A").unwrap();
+    let settings = home.path().join("settings");
+    open_in_app(&settings, &a);
+    let mut c = Client::start_with(None, &settings, &home.path().join("cache"));
+
+    let (_, files) = c.call("list_files", json!({}));
+    assert_eq!(files[0]["path"], "In A.md");
+
+    // The human switches vaults in the app: the next call works on the new one.
+    open_in_app(&settings, &b);
+    let (err, _) = c.call("create_file", json!({ "path": "New.md", "content": "hi" }));
+    assert!(!err);
+    assert!(b.join("New.md").exists());
+    assert!(!a.join("New.md").exists());
+    let (_, guide) = c.call("vault_guide", json!({}));
+    assert!(
+        !guide.as_str().unwrap().starts_with("Note:"),
+        "no warning when following"
+    );
+}
+
+#[test]
+fn a_pinned_vault_warns_when_the_app_shows_another() {
+    let home = tempfile::tempdir().unwrap();
+    let (pinned, other) = (home.path().join("Pinned"), home.path().join("Other"));
+    std::fs::create_dir_all(&pinned).unwrap();
+    std::fs::create_dir_all(&other).unwrap();
+    let settings = home.path().join("settings");
+    open_in_app(&settings, &other);
+    let mut c = Client::start_with(Some(&pinned), &settings, &home.path().join("cache"));
+    let (_, guide) = c.call("vault_guide", json!({}));
+    let guide = guide.as_str().unwrap();
+    assert!(
+        guide.starts_with("Note: this server is pinned"),
+        "{}",
+        &guide[..200]
+    );
+    assert!(guide.contains("Other"));
 }

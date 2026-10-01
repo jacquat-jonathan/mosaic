@@ -20,7 +20,8 @@ pub const AGENT_GUIDE: &str = include_str!("../../../docs/AGENTS.md");
     about = "Read, search and edit a Mosaic (Obsidian-compatible) vault."
 )]
 struct Cli {
-    /// Vault folder. Defaults to $MOSAIC_VAULT, then the vault last opened in the Mosaic app.
+    /// Vault folder. Defaults to $MOSAIC_VAULT, then the vault open in the Mosaic app (which `mosaic mcp`
+    /// keeps following when the app switches vaults).
     #[arg(long, global = true, env = "MOSAIC_VAULT")]
     vault: Option<PathBuf>,
     /// Print machine-readable JSON.
@@ -181,6 +182,11 @@ fn run(cli: Cli) -> Result<()> {
         print!("{AGENT_GUIDE}");
         return Ok(());
     }
+    let mode = if cli.vault.is_some() {
+        mcp::VaultMode::Pinned
+    } else {
+        mcp::VaultMode::FollowApp
+    };
     let root = vault_path(cli.vault)?;
     let ws = Workspace::open(&root)
         .with_context(|| format!("opening vault {}", root.display()))?
@@ -333,7 +339,7 @@ fn run(cli: Cli) -> Result<()> {
             let rt = tokio::runtime::Builder::new_multi_thread()
                 .enable_all()
                 .build()?;
-            rt.block_on(mcp::serve(ws))
+            rt.block_on(mcp::serve(ws, mode))
         }
     }
 }

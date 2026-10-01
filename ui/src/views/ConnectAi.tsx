@@ -38,8 +38,9 @@ export function ConnectAiSection() {
   if (!vault) return null;
   const bin = info?.installed ? "mosaic" : (info?.path ?? "mosaic");
   const quoted = (s: string) => (/[\s"']/.test(s) ? `"${s.replace(/"/g, '\\"')}"` : s);
-  const claudeCode = `claude mcp add mosaic -- ${quoted(bin)} --vault ${quoted(vault.root)} mcp`;
-  const desktop = JSON.stringify({ mcpServers: { mosaic: { command: info?.path ?? "mosaic", args: ["--vault", vault.root, "mcp"] } } }, null, 2);
+  // No --vault: the server follows the vault open here, so agents always write where you're looking.
+  const claudeCode = `claude mcp add mosaic -- ${quoted(bin)} mcp`;
+  const desktop = JSON.stringify({ mcpServers: { mosaic: { command: info?.path ?? "mosaic", args: ["mcp"] } } }, null, 2);
 
   return (
     <div className="connect-ai">
@@ -76,6 +77,12 @@ export function ConnectAiSection() {
 
       <h3>3 · Claude Desktop</h3>
       <CopyBlock label="Add to ~/Library/Application Support/Claude/claude_desktop_config.json" text={desktop} />
+
+      <p className="settings-note">
+        The server always works on the vault open in Mosaic (now “{vault.name}”) and follows when you switch. To tie an agent to one
+        vault instead, add <code>--vault "/path/to/vault"</code> before <code>mcp</code>; it then warns the agent when Mosaic shows
+        another vault. If you set Mosaic up before version 0.5, run <code>claude mcp remove mosaic</code>, then the command above, so your agent follows the app.
+      </p>
     </div>
   );
 }

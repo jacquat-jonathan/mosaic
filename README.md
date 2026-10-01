@@ -67,8 +67,12 @@ shows the exact commands for your vault. Or set it up by hand:
 **Claude Code**
 
 ```sh
-claude mcp add mosaic -- mosaic --vault "/path/to/vault" mcp
+claude mcp add mosaic -- mosaic mcp
 ```
+
+Without `--vault`, the server works on the vault open in the Mosaic app and follows when you switch
+vaults, so agents always write where you're looking. To tie it to one vault, use
+`mosaic --vault "/path/to/vault" mcp`; it then warns the agent when the app shows another vault.
 
 **Claude Desktop**: add this to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 
@@ -77,7 +81,7 @@ claude mcp add mosaic -- mosaic --vault "/path/to/vault" mcp
   "mcpServers": {
     "mosaic": {
       "command": "/Applications/Mosaic.app/Contents/MacOS/mosaic",
-      "args": ["--vault", "/path/to/vault", "mcp"]
+      "args": ["mcp"]
     }
   }
 }

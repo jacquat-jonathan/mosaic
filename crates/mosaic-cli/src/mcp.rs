@@ -1,13 +1,15 @@
 //! MCP server over stdio: one typed tool per core operation. Tool errors are returned as tool results
 //! (`is_error`) with a stable code, so the model can recover (e.g. re-read after a `conflict`).
 
+use mosaic_core::settings::Settings;
 use mosaic_core::{Error, Workspace};
 use rmcp::handler::server::{router::tool::ToolRouter, wrapper::Parameters};
 use rmcp::model::{Implementation, ServerCapabilities, ServerConfig};
 use rmcp::{ServerHandler, ServiceExt, tool, tool_handler, tool_router};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
+use std::path::PathBuf;
+use std::sync::{Arc, RwLock};
 
 type ToolResult = Result<String, String>;
 
@@ -97,45 +99,100 @@ struct CopyArgs {
     to: String,
 }
 
+/// Which vault the server works on: one given on the command line, or whichever is open in the app.
+#[derive(Clone, Copy, PartialEq)]
+pub enum VaultMode {
+    /// `--vault` or `$MOSAIC_VAULT`: always this folder.
+    Pinned,
+    /// No vault given: the vault open in the Mosaic app, switching when the human switches.
+    FollowApp,
+}
+
 #[derive(Clone)]
 pub struct MosaicMcp {
-    ws: Arc<Workspace>,
+    ws: Arc<RwLock<Arc<Workspace>>>,
+    mode: VaultMode,
     tool_router: ToolRouter<Self>,
+}
+
+/// The vault the app has open (the last one it opened), if it still exists.
+fn app_vault() -> Option<PathBuf> {
+    Settings::load().last_vault.filter(|p| p.is_dir())
 }
 
 #[tool_router(router = tool_router)]
 impl MosaicMcp {
-    pub fn new(ws: Workspace) -> Self {
+    pub fn new(ws: Workspace, mode: VaultMode) -> Self {
         Self {
-            ws: Arc::new(ws),
+            ws: Arc::new(RwLock::new(Arc::new(ws))),
+            mode,
             tool_router: Self::tool_router(),
         }
     }
 
+    /// The workspace for this call. In follow mode, switches first if the app opened another vault.
+    fn ws(&self) -> Arc<Workspace> {
+        let current = self.ws.read().unwrap_or_else(|p| p.into_inner()).clone();
+        if self.mode == VaultMode::FollowApp
+            && let Some(root) = app_vault()
+            && root != current.vault.root()
+            && let Ok(next) = Workspace::open(&root)
+        {
+            let next = Arc::new(next.validating());
+            let _ = next.sync(|_, _| {});
+            *self.ws.write().unwrap_or_else(|p| p.into_inner()) = next.clone();
+            return next;
+        }
+        current
+    }
+
+    /// A warning when a pinned vault isn't the one the human is looking at in the app.
+    fn mismatch_note(&self) -> Option<String> {
+        if self.mode != VaultMode::Pinned {
+            return None;
+        }
+        let root = self.ws().vault.root().to_path_buf();
+        let app = app_vault()?;
+        (app != root).then(|| {
+            format!(
+                "Note: this server is pinned to the vault {} (--vault), but the Mosaic app has {} open. Files you write may not be where the human is looking; mention it to them.\n\n",
+                root.display(),
+                app.display()
+            )
+        })
+    }
+
     /// Picks up changes made by the app or other tools before answering index-backed questions.
     fn fresh(&self) {
-        let _ = self.ws.sync(|_, _| {});
+        let _ = self.ws().sync(|_, _| {});
     }
 
     #[tool(
         description = "Explain the vault's conventions: link syntax, frontmatter, canvases, charts, diagrams and editing rules. Read this once before editing."
     )]
     async fn vault_guide(&self) -> String {
-        crate::AGENT_GUIDE.to_string()
+        format!(
+            "{}{}",
+            self.mismatch_note().unwrap_or_default(),
+            crate::AGENT_GUIDE
+        )
     }
 
     #[tool(
         description = "List files and folders (vault-relative paths, kind, size, modified time)."
     )]
     async fn list_files(&self, Parameters(a): Parameters<ListArgs>) -> ToolResult {
-        self.ws.list(&a.dir, a.recursive).map_err(err).and_then(ok)
+        self.ws()
+            .list(&a.dir, a.recursive)
+            .map_err(err)
+            .and_then(ok)
     }
 
     #[tool(
         description = "Read a file. Returns its content (null for binary files) and a hash to pass as expected_hash when editing."
     )]
     async fn read_file(&self, Parameters(a): Parameters<PathArg>) -> ToolResult {
-        self.ws.read(&a.path).map_err(err).and_then(ok)
+        self.ws().read(&a.path).map_err(err).and_then(ok)
     }
 
     #[tool(
@@ -143,7 +200,7 @@ impl MosaicMcp {
     )]
     async fn outline(&self, Parameters(a): Parameters<PathArg>) -> ToolResult {
         self.fresh();
-        self.ws.outline(&a.path).map_err(err).and_then(ok)
+        self.ws().outline(&a.path).map_err(err).and_then(ok)
     }
 
     #[tool(
@@ -151,7 +208,7 @@ impl MosaicMcp {
     )]
     async fn search(&self, Parameters(a): Parameters<SearchArgs>) -> ToolResult {
         self.fresh();
-        self.ws
+        self.ws()
             .search(&a.query, a.limit.unwrap_or(20))
             .map_err(err)
             .and_then(ok)
@@ -161,7 +218,7 @@ impl MosaicMcp {
         description = "Create a new file (fails if it exists). Use .md for notes, .canvas for boards, .vl.json for charts, .dot for graphs."
     )]
     async fn create_file(&self, Parameters(a): Parameters<CreateArgs>) -> ToolResult {
-        self.ws
+        self.ws()
             .create(&a.path, &a.content)
             .map_err(err)
             .and_then(ok)
@@ -171,7 +228,7 @@ impl MosaicMcp {
         description = "Replace the whole content of a file (creates it if missing). Prefer patch_file for small changes."
     )]
     async fn edit_file(&self, Parameters(a): Parameters<EditArgs>) -> ToolResult {
-        self.ws
+        self.ws()
             .write(&a.path, &a.content, a.expected_hash.as_deref())
             .map_err(err)
             .and_then(ok)
@@ -181,7 +238,7 @@ impl MosaicMcp {
         description = "Replace one exact, unique snippet of a text file. The safest way to make a targeted edit."
     )]
     async fn patch_file(&self, Parameters(a): Parameters<PatchArgs>) -> ToolResult {
-        self.ws
+        self.ws()
             .patch(&a.path, &a.find, &a.replace, a.expected_hash.as_deref())
             .map_err(err)
             .and_then(ok)
@@ -191,7 +248,7 @@ impl MosaicMcp {
         description = "Append text to the end of a file (created if missing). Good for logs and journals."
     )]
     async fn append_to_file(&self, Parameters(a): Parameters<AppendArgs>) -> ToolResult {
-        self.ws
+        self.ws()
             .append(&a.path, &a.content)
             .map_err(err)
             .and_then(ok)
@@ -202,7 +259,7 @@ impl MosaicMcp {
     )]
     async fn rename(&self, Parameters(a): Parameters<RenameArgs>) -> ToolResult {
         self.fresh();
-        self.ws
+        self.ws()
             .rename(&a.from, &a.to, a.update_links.unwrap_or(true))
             .map_err(err)
             .and_then(ok)
@@ -212,12 +269,12 @@ impl MosaicMcp {
         description = "Duplicate a file (any kind, including binary). Never overwrites: fails if `to` exists."
     )]
     async fn copy_file(&self, Parameters(a): Parameters<CopyArgs>) -> ToolResult {
-        self.ws.copy(&a.from, &a.to).map_err(err).and_then(ok)
+        self.ws().copy(&a.from, &a.to).map_err(err).and_then(ok)
     }
 
     #[tool(description = "Move a file or folder to the macOS Trash (recoverable).")]
     async fn delete_file(&self, Parameters(a): Parameters<PathArg>) -> ToolResult {
-        self.ws
+        self.ws()
             .delete(&a.path)
             .map_err(err)
             .and_then(|_| ok(serde_json::json!({ "deleted": a.path })))
@@ -225,7 +282,7 @@ impl MosaicMcp {
 
     #[tool(description = "Create a folder (and any missing parents).")]
     async fn create_folder(&self, Parameters(a): Parameters<PathArg>) -> ToolResult {
-        self.ws
+        self.ws()
             .mkdir(&a.path)
             .map_err(err)
             .and_then(|_| ok(serde_json::json!({ "created": a.path })))
@@ -234,49 +291,58 @@ impl MosaicMcp {
     #[tool(description = "Notes and canvases that link to or embed a file, with the linking line.")]
     async fn get_backlinks(&self, Parameters(a): Parameters<PathArg>) -> ToolResult {
         self.fresh();
-        self.ws.backlinks(&a.path).map_err(err).and_then(ok)
+        self.ws().backlinks(&a.path).map_err(err).and_then(ok)
     }
 
     #[tool(description = "All tags used in the vault with how many files carry each.")]
     async fn list_tags(&self) -> ToolResult {
         self.fresh();
-        self.ws.tags().map_err(err).and_then(ok)
+        self.ws().tags().map_err(err).and_then(ok)
     }
 
     #[tool(
         description = "The human's bookmarked files and folders, in their order. `exists` is false for a bookmark whose file is gone."
     )]
     async fn list_bookmarks(&self) -> ToolResult {
-        ok(self.ws.bookmarks())
+        ok(self.ws().bookmarks())
     }
 
     #[tool(
         description = "Bookmark a file or folder so the human finds it in the app's Bookmarks panel (added at the end). Returns the new list."
     )]
     async fn add_bookmark(&self, Parameters(a): Parameters<PathArg>) -> ToolResult {
-        self.ws.add_bookmark(&a.path).map_err(err).and_then(ok)
+        self.ws().add_bookmark(&a.path).map_err(err).and_then(ok)
     }
 
     #[tool(description = "Remove a bookmark (the file itself is untouched). Returns the new list.")]
     async fn remove_bookmark(&self, Parameters(a): Parameters<PathArg>) -> ToolResult {
-        self.ws.remove_bookmark(&a.path).map_err(err).and_then(ok)
+        self.ws().remove_bookmark(&a.path).map_err(err).and_then(ok)
     }
 }
 
 #[tool_handler(router = self.tool_router)]
 impl ServerHandler for MosaicMcp {
     fn get_info(&self) -> ServerConfig {
-        let root = self.ws.vault.root().display().to_string();
+        let root = self.ws().vault.root().display().to_string();
+        let which = match self.mode {
+            VaultMode::FollowApp => format!(
+                "the vault open in the Mosaic app (now {root}; it follows when the human switches vaults)"
+            ),
+            VaultMode::Pinned => format!("the Mosaic vault at {root}"),
+        };
         ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
             .with_server_info(Implementation::new("mosaic", env!("CARGO_PKG_VERSION")))
             .with_instructions(format!(
-                "Tools for the Mosaic vault at {root}: an Obsidian-compatible folder of Markdown notes, canvases, charts and diagrams that a human reads in the Mosaic app. Call vault_guide once for the conventions. Use vault-relative paths; read (or outline) before editing, prefer patch_file, and pass expected_hash to avoid overwriting the human's edits."
+                "{}Tools for {which}: an Obsidian-compatible folder of Markdown notes, canvases, charts and diagrams that a human reads in the Mosaic app. Call vault_guide once for the conventions. Use vault-relative paths; read (or outline) before editing, prefer patch_file, and pass expected_hash to avoid overwriting the human's edits.",
+                self.mismatch_note().unwrap_or_default()
             ))
     }
 }
 
-pub async fn serve(ws: Workspace) -> anyhow::Result<()> {
-    let service = MosaicMcp::new(ws).serve(rmcp::transport::stdio()).await?;
+pub async fn serve(ws: Workspace, mode: VaultMode) -> anyhow::Result<()> {
+    let service = MosaicMcp::new(ws, mode)
+        .serve(rmcp::transport::stdio())
+        .await?;
     service.waiting().await?;
     Ok(())
 }

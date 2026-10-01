@@ -137,7 +137,12 @@ export function FileTree() {
       setDropTarget(null);
       cancelHover();
       if (isFinderDrag(ev.dataTransfer)) {
-        void importDropped(droppedItems(ev.dataTransfer), dir);
+        // Like a new note: the (first) dropped file opens; everything dropped stays selected.
+        void importDropped(droppedItems(ev.dataTransfer), dir).then((paths) => {
+          const dirs = new Set(useVault.getState().entries.filter((e) => e.is_dir).map((e) => e.path));
+          const file = paths.find((p) => !dirs.has(p));
+          if (file) void useWorkspace.getState().open(file, { newTab: true });
+        });
         return;
       }
       const paths = dragging;

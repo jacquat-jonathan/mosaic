@@ -334,7 +334,7 @@ fn install_cli() -> CmdResult<CliInfo> {
 
 /// WebKit's "check spelling while typing" is off unless this default is set, and it's read once,
 /// before the first web view exists. With it on, each editor's `spellcheck` attribute (Settings ›
-/// Spellcheck) decides.
+/// Spellcheck) decides. WebKit only checks words as they're typed, never text already there.
 #[cfg(target_os = "macos")]
 fn enable_webkit_spellcheck() {
     use objc2_foundation::{NSUserDefaults, ns_string};

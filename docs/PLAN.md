@@ -137,6 +137,29 @@ Tracked in the Mosaic vault note `Settings and Updates.md`.
 - [x] Updates by pull and rebuild: `src-tauri/src/update.rs`, `scripts/install.sh --build-only`, build commit and source folder baked in by `build.rs`
 - [x] New build swapped in by a detached helper after the app quits, then reopened
 
+### M11 — Ready to share
+Tracked in the Mosaic vault note `Architecture/Next steps.md` (section 1, "Ready to share").
+- [ ] Movable window: grant `core:window:allow-start-dragging`; tab-bar buttons don't swallow drags
+- [ ] Semantic versions (workspace `Cargo.toml` + `tauri.conf.json`), a git tag per release, `CHANGELOG.md`; About shows "0.2.0 (commit)", "Check for updates" lists versions
+- [ ] Cancel a running update build
+- [ ] Real-app checks from `UI Foundations.md` and `Settings and Updates.md`, including a full Check → Update → Restart cycle
+- [ ] README section for coworkers: install, update from the app, connect an agent, Gatekeeper
+
+### M12 — Trust (search, links, validation)
+Tracked in `Architecture/Next steps.md` (section 1).
+- [ ] Index Excalidraw by the text of its text elements, not raw JSON
+- [ ] Canvas backlinks carry context (card text or "file card")
+- [ ] `.vl.json` `data.url` indexed as an embed
+- [ ] Validate `.canvas`, `.excalidraw`, `.vl.json`, `.json` in `Vault::write`/`create`; return `invalid` with the parse error
+- [ ] Link-resolution cases in one shared JSON fixture read by both Rust and Vitest tests
+
+### M13 — Diagram tool
+One drawing tool built on `.canvas` (Mermaid stays for notes, Excalidraw for sketches). Tracked in `Architecture/Next steps.md` (section 3).
+- [ ] Step 1: diagrams rendered inside canvas cards; `New › Diagram` with templates
+- [ ] Step 2: shapes, edge styles (UML arrowheads), shape palette, connection points, hover flow animation
+- [ ] Step 3: UML stencils, a template for each of the 14 types, special layouts (sequence, timing, composite), 4+1 views template
+- [ ] Step 4: Mermaid block ↔ diagram, diagrams embedded in notes, SVG/PNG export, presentation mode
+
 ## Working rules
 - `scripts/check.sh` green before each milestone commit.
 - Core logic gets Rust tests; UI logic gets Vitest; don't test third-party renderers beyond a smoke test.

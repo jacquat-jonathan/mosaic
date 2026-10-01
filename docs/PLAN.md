@@ -143,7 +143,7 @@ Tracked in the Mosaic vault note `Architecture/Next steps.md` (section 1, "Ready
 - [x] Semantic versions (workspace `Cargo.toml` + `tauri.conf.json`), a git tag per release, `CHANGELOG.md`; About shows "0.2.0 (commit)", "Check for updates" lists versions
 - [x] Cancel a running update build
 - [ ] Real-app checks from `UI Foundations.md` and `Settings and Updates.md`, including a full Check → Update → Restart cycle
-- [ ] Publish 0.2.0 (`scripts/release.sh 0.2.0`, `git push --follow-tags`)
+- [x] Publish 0.2.0 (`scripts/release.sh 0.2.0`, `git push --follow-tags`)
 - [x] README section for coworkers: install, update from the app, connect an agent, Gatekeeper
 
 ### M12 — Trust (search, links, validation)

@@ -1,0 +1,70 @@
+{
+	"nodes": [
+		{
+			"id": "ui",
+			"type": "text",
+			"x": 0,
+			"y": 0,
+			"width": 240,
+			"height": 150,
+			"text": "**ui**",
+			"shape": "package"
+		},
+		{
+			"id": "core",
+			"type": "text",
+			"x": 360,
+			"y": 0,
+			"width": 240,
+			"height": 150,
+			"text": "**core**",
+			"shape": "package"
+		},
+		{
+			"id": "storage",
+			"type": "text",
+			"x": 720,
+			"y": 0,
+			"width": 240,
+			"height": 150,
+			"text": "**storage**",
+			"shape": "package"
+		},
+		{
+			"id": "util",
+			"type": "text",
+			"x": 360,
+			"y": 260,
+			"width": 240,
+			"height": 150,
+			"text": "**util**",
+			"shape": "package"
+		}
+	],
+	"edges": [
+		{
+			"id": "e1",
+			"fromNode": "ui",
+			"toNode": "core",
+			"line": "dashed",
+			"toEnd": "open",
+			"label": "«import»"
+		},
+		{
+			"id": "e2",
+			"fromNode": "core",
+			"toNode": "storage",
+			"line": "dashed",
+			"toEnd": "open",
+			"label": "«import»"
+		},
+		{
+			"id": "e3",
+			"fromNode": "core",
+			"toNode": "util",
+			"line": "dashed",
+			"toEnd": "open",
+			"label": "«access»"
+		}
+	]
+}

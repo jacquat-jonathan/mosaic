@@ -4,6 +4,9 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- UML stencils in the Shape menu (now grouped: Basic, Flowchart, UML structure, UML behaviour): class boxes with compartments (separate them with `---` lines), package, component, node, artifact, port, initial and final states, fork/join bar, lifeline, activation bar and frame.
+- A template for each of the 14 UML diagram types under New diagram…, each noting the 4+1 view it serves.
+- More connection points along each side (and all along a lifeline), thicker or thinner connections, and **Layout** to arrange cards top to bottom or left to right along their connections.
 - AI agents now work on the vault open in Mosaic and follow when you switch vaults, so their files always land where you're looking. **If you connected Claude Code before, run `claude mcp remove mosaic`, then the command in Settings › AI** (it no longer pins a vault). An agent tied to a vault with `--vault` is warned when Mosaic shows another one.
 ## 0.4.0 — 2026-10-02
 

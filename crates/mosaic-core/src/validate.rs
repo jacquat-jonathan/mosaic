@@ -218,14 +218,18 @@ mod tests {
     fn the_app_diagram_templates_are_valid() {
         let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../ui/src/diagrams/templates");
         let mut seen = 0;
-        for e in std::fs::read_dir(&dir).unwrap() {
+        let uml = std::fs::read_dir(dir.join("uml")).unwrap();
+        for e in std::fs::read_dir(&dir).unwrap().chain(uml) {
             let path = e.unwrap().path();
+            if path.is_dir() {
+                continue;
+            }
             let name = path.file_name().unwrap().to_string_lossy().to_string();
             check(&name, &std::fs::read_to_string(&path).unwrap()).unwrap();
             seen += 1;
         }
         assert!(
-            seen >= 4,
+            seen >= 18,
             "expected the diagram templates in {}",
             dir.display()
         );

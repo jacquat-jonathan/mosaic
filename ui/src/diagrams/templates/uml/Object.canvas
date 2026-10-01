@@ -1,0 +1,52 @@
+{
+	"nodes": [
+		{
+			"id": "o1",
+			"type": "text",
+			"x": 0,
+			"y": 0,
+			"width": 240,
+			"height": 120,
+			"text": "<u>alice : Customer</u>\n---\nname = \"Alice\"",
+			"shape": "class"
+		},
+		{
+			"id": "o2",
+			"type": "text",
+			"x": 380,
+			"y": 0,
+			"width": 240,
+			"height": 120,
+			"text": "<u>order42 : Order</u>\n---\nid = 42\ndate = 2026-10-02",
+			"shape": "class"
+		},
+		{
+			"id": "o3",
+			"type": "text",
+			"x": 760,
+			"y": 0,
+			"width": 240,
+			"height": 120,
+			"text": "<u>item1 : LineItem</u>\n---\nquantity = 2\nprice = 19.90",
+			"shape": "class"
+		}
+	],
+	"edges": [
+		{
+			"id": "e1",
+			"fromNode": "o1",
+			"toNode": "o2",
+			"toEnd": "none",
+			"fromSide": "right",
+			"toSide": "left"
+		},
+		{
+			"id": "e2",
+			"fromNode": "o2",
+			"toNode": "o3",
+			"toEnd": "none",
+			"fromSide": "right",
+			"toSide": "left"
+		}
+	]
+}

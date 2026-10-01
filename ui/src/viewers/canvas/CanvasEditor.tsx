@@ -48,7 +48,21 @@ import {
   type Side,
 } from "./jsonCanvas";
 import { useDark } from "../../theme";
-import { BORDERS, ENDS, EdgeMarkers, LINES, SHAPES, ShapeOutline, cssShape, isShape, type EndName, type ShapeName } from "../../diagrams/shapes";
+import {
+  BACKGROUND,
+  BORDERS,
+  ENDS,
+  EdgeMarkers,
+  LABELLESS,
+  LINES,
+  SHAPES,
+  SHAPE_GROUPS,
+  ShapeOutline,
+  cssShape,
+  isShape,
+  type EndName,
+  type ShapeName,
+} from "../../diagrams/shapes";
 import { DiagramEdge, edgeEnds, type DiagramEdgeData } from "./DiagramEdge";
 import { align } from "./align";
 import { autoLayout } from "./layout";
@@ -121,8 +135,9 @@ function withField<T extends object>(item: T, key: string, value: unknown, fallb
 
 function toFlow(doc: CanvasDoc, canvasPath: string, onText: CardData["onText"]): { nodes: FlowNode[]; edges: Edge[] } {
   const byId = new Map(doc.nodes.map((n) => [n.id, n]));
-  // Groups first so they render beneath their contents.
-  const ordered = [...doc.nodes.filter((n) => n.type === "group"), ...doc.nodes.filter((n) => n.type !== "group")];
+  // Groups and frames first so they render beneath their contents.
+  const behind = (n: CanvasNode) => n.type === "group" || (isShape(n.shape) && BACKGROUND.has(n.shape));
+  const ordered = [...doc.nodes.filter(behind), ...doc.nodes.filter((n) => !behind(n))];
   return {
     nodes: ordered.map((n) => ({
       id: n.id,
@@ -130,7 +145,7 @@ function toFlow(doc: CanvasDoc, canvasPath: string, onText: CardData["onText"]):
       position: { x: n.x, y: n.y },
       width: n.width,
       height: n.height,
-      zIndex: n.type === "group" ? -1 : 0,
+      zIndex: behind(n) ? -1 : 0,
       data: { node: n, canvasPath, onText },
     })),
     edges: doc.edges.filter((e) => byId.has(e.fromNode) && byId.has(e.toNode)).map((e) => toFlowEdge(e, byId)),
@@ -335,7 +350,7 @@ function CanvasFlow({ path, doc: initial, toolsHost }: { path: string; doc: Canv
         position: { x: node.x, y: node.y },
         width,
         height,
-        zIndex: node.type === "group" ? -1 : 0,
+        zIndex: node.type === "group" || (isShape(node.shape) && BACKGROUND.has(node.shape)) ? -1 : 0,
         selected: true,
         data: { node, canvasPath: path, onText },
       };
@@ -383,7 +398,10 @@ function CanvasFlow({ path, doc: initial, toolsHost }: { path: string; doc: Canv
         label: "Shape",
         children: [
           { label: "Card (no shape)", checked: !shape, action: () => setNode("shape", undefined) },
-          ...SHAPES.map((sh) => ({ label: sh.label, checked: shape === sh.name, action: () => setNode("shape", sh.name) })),
+          ...SHAPE_GROUPS.map((g) => ({
+            label: g,
+            children: SHAPES.filter((sh) => sh.group === g).map((sh) => ({ label: sh.label, checked: shape === sh.name, action: () => setNode("shape", sh.name) })),
+          })),
         ],
       });
       if (shape)
@@ -490,8 +508,18 @@ function CanvasFlow({ path, doc: initial, toolsHost }: { path: string; doc: Canv
   /** Lays out the selected cards (or all of them) along their connections. Groups stay where they are. */
   const layoutCards = (direction: "TB" | "LR") => {
     const cards = nodesRef.current.filter((n) => n.type !== "group-card");
-    const chosen = cards.filter((n) => n.selected).length >= 2 ? cards.filter((n) => n.selected) : cards;
+    let chosen = cards.filter((n) => n.selected).length >= 2 ? cards.filter((n) => n.selected) : cards;
     if (chosen.length < 2) return;
+    // Fork / join bars lie across the flow: upright when it runs left to right, flat when top to bottom.
+    chosen = chosen.map((n) => {
+      const nd = n.data.node;
+      const w = n.measured?.width ?? nd.width;
+      const h = n.measured?.height ?? nd.height;
+      if (nd.shape !== "bar" || (direction === "LR") === h > w) return n;
+      return { ...n, width: h, height: w, measured: { width: h, height: w }, data: { ...n.data, node: { ...nd, width: h, height: w } } };
+    });
+    const turned = new Map(chosen.map((n) => [n.id, n]));
+    nodesRef.current = nodesRef.current.map((n) => turned.get(n.id) ?? n);
     const boxes = chosen.map((n) => ({ id: n.id, ...n.position, width: n.measured?.width ?? n.data.node.width, height: n.measured?.height ?? n.data.node.height }));
     const pos = autoLayout(boxes, edgesRef.current.map((e) => ({ from: e.source, to: e.target })), direction);
     nodesRef.current = nodesRef.current.map((n) => {
@@ -614,7 +642,11 @@ function CanvasTools({
         title="Add a shape: decision, database, actor…"
         onClick={(e) => {
           const r = e.currentTarget.getBoundingClientRect();
-          useUi.getState().showMenu(r.left, r.bottom + 4, SHAPES.map((sh) => ({ label: sh.label, action: () => onShape(sh.name) })));
+          useUi.getState().showMenu(
+            r.left,
+            r.bottom + 4,
+            SHAPE_GROUPS.map((g) => ({ label: g, children: SHAPES.filter((sh) => sh.group === g).map((sh) => ({ label: sh.label, action: () => onShape(sh.name) })) })),
+          );
         }}
       >
         <Shapes size={14} /> Shape
@@ -651,7 +683,12 @@ function Handles({ node }: { node: CanvasNode }) {
             type="source"
             position={POS[s]}
             className={`canvas-handle ${p === 0.5 ? "" : "minor"}`}
-            style={s === "top" || s === "bottom" ? { left: `${p * 100}%` } : { top: `${p * 100}%` }}
+            style={
+              s === "top" || s === "bottom"
+                ? { left: `${p * 100}%` }
+                : // Sequence messages leave from and arrive at the lifeline itself, not the box's edge.
+                  { top: `${p * 100}%`, ...(node.shape === "lifeline" ? { left: "50%" } : {}) }
+            }
           />
         )),
       )}
@@ -689,9 +726,11 @@ function ShapeCard({ data, selected, shape, color }: { data: CardData; selected:
       <NodeResizer isVisible={selected} minWidth={60} minHeight={40} lineClassName="canvas-resize-line" handleClassName="canvas-resize-handle" />
       <Handles node={n} />
       {!css && <ShapeOutline shape={shape} style={style} />}
-      <div className="shape-text">
-        <TextCard id={n.id} text={n.text ?? ""} onText={data.onText} canvasPath={data.canvasPath} />
-      </div>
+      {!LABELLESS.has(shape) && (
+        <div className="shape-text">
+          <TextCard id={n.id} text={n.text ?? ""} onText={data.onText} canvasPath={data.canvasPath} compartments={shape === "class"} lineBreaks />
+        </div>
+      )}
     </div>
   );
 }
@@ -739,11 +778,34 @@ function useRenderedBlocks(html: string, path: string) {
   return { ref, key: dark ? "dark" : "light" };
 }
 
-function TextCard({ id, text, onText, canvasPath }: { id: string; text: string; onText(id: string, t: string): void; canvasPath: string }) {
+function TextCard({
+  id,
+  text,
+  onText,
+  canvasPath,
+  compartments = false,
+  lineBreaks = false,
+}: {
+  id: string;
+  text: string;
+  onText(id: string, t: string): void;
+  canvasPath: string;
+  /** UML class boxes: lines of `---` split the text into compartments (name, attributes, operations). */
+  compartments?: boolean;
+  /** Shape labels keep every line break, like a label rather than a paragraph. */
+  lineBreaks?: boolean;
+}) {
   const [editing, setEditing] = useState(text === "");
   const ref = useRef<HTMLTextAreaElement>(null);
   const entries = useVault((s) => s.entries);
-  const html = useMemo(() => renderMarkdown(text, (t) => resolveLink(t, entries, canvasPath)), [text, entries, canvasPath]);
+  const html = useMemo(() => {
+    const render = (t: string) => renderMarkdown(t, (target) => resolveLink(target, entries, canvasPath), lineBreaks);
+    if (!compartments) return render(text);
+    return text
+      .split(/^[ \t]*-{3,}[ \t]*$/m)
+      .map((part) => `<div class="compartment">${render(part.trim())}</div>`)
+      .join("");
+  }, [text, entries, canvasPath, compartments, lineBreaks]);
   const onClick = useLinkClicks(canvasPath);
   const body = useRenderedBlocks(html, canvasPath);
   useEffect(() => {

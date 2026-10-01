@@ -15,3 +15,8 @@ test("prices and spaced dollars stay text", () => {
 test("diagram blocks stay as fenced code for renderBlocksIn to replace", () => {
   expect(markdownToHtml("```mermaid\ngraph LR\nA-->B\n```")).toContain('<code class="language-mermaid">');
 });
+
+test("shape labels can keep single line breaks", () => {
+  expect(markdownToHtml("«interface»\nPayable", undefined, true)).toContain("<br>");
+  expect(markdownToHtml("«interface»\nPayable")).not.toContain("<br>");
+});

@@ -1,22 +1,168 @@
 {
-  "about": "Diagram fields Mosaic adds to JSON Canvas. Read by the write validator (validate.rs) and the canvas editor (ui/src/diagrams/shapes.tsx), and documented in docs/AGENTS.md. A node without \"shape\" is an ordinary card.",
+  "about": "Diagram fields Mosaic adds to JSON Canvas. Read by the write validator (validate.rs) and the canvas editor (ui/src/diagrams/shapes.tsx), and documented in docs/AGENTS.md. A node without \"shape\" is an ordinary card. \"group\" sorts shapes in the Shape menu.",
   "shapes": {
-    "rectangle": { "label": "Rectangle", "width": 180, "height": 100 },
-    "rounded": { "label": "Rounded rectangle", "width": 180, "height": 100 },
-    "pill": { "label": "Pill (start / end)", "width": 180, "height": 70 },
-    "ellipse": { "label": "Ellipse", "width": 180, "height": 110 },
-    "diamond": { "label": "Diamond (decision)", "width": 180, "height": 130 },
-    "parallelogram": { "label": "Parallelogram (input / output)", "width": 200, "height": 100 },
-    "hexagon": { "label": "Hexagon (preparation)", "width": 200, "height": 100 },
-    "cylinder": { "label": "Cylinder (database)", "width": 150, "height": 130 },
-    "document": { "label": "Document", "width": 180, "height": 120 },
-    "process": { "label": "Predefined process", "width": 200, "height": 100 },
-    "cloud": { "label": "Cloud", "width": 200, "height": 130 },
-    "note": { "label": "Note", "width": 180, "height": 140 },
-    "actor": { "label": "Actor (person)", "width": 100, "height": 140 }
+    "rectangle": {
+      "label": "Rectangle",
+      "width": 180,
+      "height": 100,
+      "group": "Basic"
+    },
+    "rounded": {
+      "label": "Rounded rectangle",
+      "width": 180,
+      "height": 100,
+      "group": "Basic"
+    },
+    "pill": {
+      "label": "Pill (start / end, state)",
+      "width": 180,
+      "height": 70,
+      "group": "Basic"
+    },
+    "ellipse": {
+      "label": "Ellipse (use case)",
+      "width": 180,
+      "height": 110,
+      "group": "Basic"
+    },
+    "diamond": {
+      "label": "Diamond (decision)",
+      "width": 180,
+      "height": 130,
+      "group": "Basic"
+    },
+    "parallelogram": {
+      "label": "Parallelogram (input / output)",
+      "width": 200,
+      "height": 100,
+      "group": "Flowchart"
+    },
+    "hexagon": {
+      "label": "Hexagon (preparation)",
+      "width": 200,
+      "height": 100,
+      "group": "Flowchart"
+    },
+    "cylinder": {
+      "label": "Cylinder (database)",
+      "width": 150,
+      "height": 130,
+      "group": "Basic"
+    },
+    "document": {
+      "label": "Document",
+      "width": 180,
+      "height": 120,
+      "group": "Flowchart"
+    },
+    "process": {
+      "label": "Predefined process",
+      "width": 200,
+      "height": 100,
+      "group": "Flowchart"
+    },
+    "cloud": {
+      "label": "Cloud",
+      "width": 200,
+      "height": 130,
+      "group": "Basic"
+    },
+    "note": {
+      "label": "Note",
+      "width": 180,
+      "height": 140,
+      "group": "Basic"
+    },
+    "actor": {
+      "label": "Actor (person)",
+      "width": 100,
+      "height": 140,
+      "group": "Basic"
+    },
+    "class": {
+      "label": "Class (name --- attributes --- operations)",
+      "width": 220,
+      "height": 160,
+      "group": "UML structure"
+    },
+    "package": {
+      "label": "Package",
+      "width": 240,
+      "height": 160,
+      "group": "UML structure"
+    },
+    "component": {
+      "label": "Component",
+      "width": 220,
+      "height": 100,
+      "group": "UML structure"
+    },
+    "node": {
+      "label": "Node (deployment)",
+      "width": 220,
+      "height": 130,
+      "group": "UML structure"
+    },
+    "artifact": {
+      "label": "Artifact",
+      "width": 180,
+      "height": 90,
+      "group": "UML structure"
+    },
+    "port": {
+      "label": "Port",
+      "width": 20,
+      "height": 20,
+      "group": "UML structure"
+    },
+    "initial": {
+      "label": "Initial state",
+      "width": 30,
+      "height": 30,
+      "group": "UML behaviour"
+    },
+    "final": {
+      "label": "Final state",
+      "width": 34,
+      "height": 34,
+      "group": "UML behaviour"
+    },
+    "bar": {
+      "label": "Fork / join bar",
+      "width": 160,
+      "height": 10,
+      "group": "UML behaviour"
+    },
+    "lifeline": {
+      "label": "Lifeline (sequence)",
+      "width": 140,
+      "height": 420,
+      "group": "UML behaviour"
+    },
+    "activation": {
+      "label": "Activation bar",
+      "width": 16,
+      "height": 90,
+      "group": "UML behaviour"
+    },
+    "frame": {
+      "label": "Frame (sd, alt, loop…)",
+      "width": 420,
+      "height": 260,
+      "group": "UML behaviour"
+    }
   },
-  "borders": ["solid", "dashed", "dotted", "none"],
-  "lines": ["solid", "dashed", "dotted"],
+  "borders": [
+    "solid",
+    "dashed",
+    "dotted",
+    "none"
+  ],
+  "lines": [
+    "solid",
+    "dashed",
+    "dotted"
+  ],
   "ends": {
     "none": "No arrowhead",
     "arrow": "Arrow",

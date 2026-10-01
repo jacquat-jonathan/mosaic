@@ -10,6 +10,13 @@ export type LineStyle = (typeof format.lines)[number];
 export type EndName = keyof typeof format.ends;
 
 export const SHAPES = Object.entries(format.shapes).map(([name, s]) => ({ name: name as ShapeName, ...s }));
+/** Shape menu sections, in the order they first appear in the format file. */
+export const SHAPE_GROUPS = [...new Set(SHAPES.map((s) => s.group))];
+
+/** Shapes that are symbols without a label (pseudo-states, bars, ports). */
+export const LABELLESS = new Set<ShapeName>(["initial", "final", "bar", "port", "activation"]);
+/** Shapes drawn behind other cards, like groups. */
+export const BACKGROUND = new Set<ShapeName>(["frame"]);
 export const BORDERS = format.borders as Border[];
 export const LINES = format.lines as LineStyle[];
 export const ENDS = Object.entries(format.ends).map(([name, label]) => ({ name: name as EndName, label }));
@@ -18,7 +25,20 @@ export const isShape = (s: unknown): s is ShapeName => typeof s === "string" && 
 export const isEnd = (s: unknown): s is EndName => typeof s === "string" && s in format.ends;
 
 /** Shapes drawn with CSS border-radius on the card itself; the others are SVG outlines. */
-const CSS_SHAPES: Partial<Record<ShapeName, string>> = { rectangle: "0", rounded: "14px", pill: "9999px", ellipse: "50%" };
+const CSS_SHAPES: Partial<Record<ShapeName, string>> = {
+  rectangle: "0",
+  rounded: "14px",
+  pill: "9999px",
+  ellipse: "50%",
+  class: "0",
+  port: "0",
+  activation: "0",
+  bar: "3px",
+  initial: "50%",
+  frame: "0",
+};
+/** CSS shapes filled with the line colour instead of the card colour. */
+const SOLID = new Set<ShapeName>(["bar", "initial"]);
 
 export function dashArray(style: string | undefined, width = 2): string | undefined {
   if (style === "dashed") return `${width * 4} ${width * 3}`;
@@ -41,6 +61,22 @@ const OUTLINES: Partial<Record<ShapeName, { body: string; extra?: string }>> = {
     body: "M26,86 C8,86 2,66 14,56 C4,44 14,24 32,28 C36,10 62,6 70,22 C86,14 100,32 92,46 C102,58 94,84 76,82 C68,96 38,96 26,86 Z",
   },
   note: { body: "M1,1 L80,1 L99,20 L99,99 L1,99 Z", extra: "M80,1 L80,20 L99,20" },
+  package: { body: "M1,1 L42,1 L42,16 L99,16 L99,99 L1,99 Z", extra: "M1,16 L42,16" },
+  node: { body: "M1,16 L14,1 L99,1 L99,85 L86,99 L1,99 Z", extra: "M1,16 L86,16 L86,99 M86,16 L99,1" },
+  component: { body: "M1,1 L99,1 L99,99 L1,99 Z" },
+  artifact: { body: "M1,1 L99,1 L99,99 L1,99 Z" },
+};
+
+/** Small fixed-size UML icons in a card's top-right corner (not stretched with the shape). */
+const ICONS: Partial<Record<ShapeName, ReactElement>> = {
+  component: (
+    <>
+      <rect x="4" y="1" width="12" height="16" />
+      <rect x="1" y="4" width="6" height="3" />
+      <rect x="1" y="10" width="6" height="3" />
+    </>
+  ),
+  artifact: <path d="M3,1 L11,1 L15,5 L15,17 L3,17 Z M11,1 L11,5 L15,5" />,
 };
 
 export interface ShapeStyle {
@@ -57,7 +93,7 @@ export function cssShape(shape: ShapeName, s: ShapeStyle): React.CSSProperties |
     borderRadius: radius,
     borderColor: s.border === "none" ? "transparent" : s.stroke,
     borderStyle: s.border === "dashed" || s.border === "dotted" ? s.border : "solid",
-    background: s.fill,
+    background: SOLID.has(shape) ? s.stroke : shape === "frame" ? "transparent" : s.fill,
   };
 }
 
@@ -76,13 +112,42 @@ export function ShapeOutline({ shape, style }: { shape: ShapeName; style: ShapeS
       </svg>
     );
   }
+  if (shape === "final") {
+    return (
+      <svg className="shape-outline" viewBox="0 0 34 34" aria-hidden>
+        <circle cx="17" cy="17" r="15.5" fill="var(--bg)" stroke={stroke} strokeWidth="2" />
+        <circle cx="17" cy="17" r="9.5" fill={style.stroke} />
+      </svg>
+    );
+  }
+  if (shape === "lifeline") {
+    // A head box with the participant's name, and the dashed line of its life below it.
+    return (
+      <>
+        <div className="lifeline-head" style={{ borderColor: stroke, background: style.fill, borderStyle: dash ? style.border : "solid" }} />
+        <svg className="lifeline-line" aria-hidden>
+          <line x1="50%" y1="0" x2="50%" y2="100%" stroke={stroke} strokeWidth="1.5" strokeDasharray="6 5" />
+        </svg>
+      </>
+    );
+  }
   const o = OUTLINES[shape];
   if (!o) return null;
+  const icon = ICONS[shape];
   return (
-    <svg className="shape-outline" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden>
-      <path d={o.body} fill={style.fill} stroke={stroke} strokeWidth="2" strokeDasharray={dash} vectorEffect="non-scaling-stroke" />
-      {o.extra && <path d={o.extra} fill="none" stroke={stroke} strokeWidth="2" strokeDasharray={dash} vectorEffect="non-scaling-stroke" />}
-    </svg>
+    <>
+      <svg className="shape-outline" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden>
+        <path d={o.body} fill={style.fill} stroke={stroke} strokeWidth="2" strokeDasharray={dash} vectorEffect="non-scaling-stroke" />
+        {o.extra && <path d={o.extra} fill="none" stroke={stroke} strokeWidth="2" strokeDasharray={dash} vectorEffect="non-scaling-stroke" />}
+      </svg>
+      {icon && (
+        <svg className="shape-icon" viewBox="0 0 18 18" aria-hidden>
+          <g fill={style.fill} stroke={stroke} strokeWidth="1.4">
+            {icon}
+          </g>
+        </svg>
+      )}
+    </>
   );
 }
 

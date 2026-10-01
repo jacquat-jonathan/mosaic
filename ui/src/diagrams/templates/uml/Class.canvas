@@ -1,0 +1,78 @@
+{
+	"nodes": [
+		{
+			"id": "customer",
+			"type": "text",
+			"x": 0,
+			"y": 0,
+			"width": 220,
+			"height": 140,
+			"text": "**Customer**\n---\n- name: String\n- email: String\n---\n+ orders(): List",
+			"shape": "class"
+		},
+		{
+			"id": "order",
+			"type": "text",
+			"x": 360,
+			"y": 0,
+			"width": 220,
+			"height": 160,
+			"text": "**Order**\n---\n- id: Int\n- date: Date\n---\n+ total(): Money\n+ pay()",
+			"shape": "class"
+		},
+		{
+			"id": "line",
+			"type": "text",
+			"x": 720,
+			"y": 0,
+			"width": 220,
+			"height": 140,
+			"text": "**LineItem**\n---\n- quantity: Int\n- price: Money",
+			"shape": "class"
+		},
+		{
+			"id": "payable",
+			"type": "text",
+			"x": 360,
+			"y": 280,
+			"width": 220,
+			"height": 110,
+			"text": "«interface»\n**Payable**\n---\n+ pay()",
+			"shape": "class"
+		}
+	],
+	"edges": [
+		{
+			"id": "e1",
+			"fromNode": "customer",
+			"toNode": "order",
+			"fromSide": "right",
+			"toSide": "left",
+			"toEnd": "none",
+			"fromLabel": "1",
+			"toLabel": "*",
+			"label": "places"
+		},
+		{
+			"id": "e2",
+			"fromNode": "order",
+			"toNode": "line",
+			"fromSide": "right",
+			"toSide": "left",
+			"fromEnd": "diamond",
+			"toEnd": "none",
+			"fromLabel": "1",
+			"toLabel": "1..*"
+		},
+		{
+			"id": "e3",
+			"fromNode": "order",
+			"toNode": "payable",
+			"fromSide": "bottom",
+			"toSide": "top",
+			"toEnd": "triangle",
+			"line": "dashed",
+			"label": "realizes"
+		}
+	]
+}

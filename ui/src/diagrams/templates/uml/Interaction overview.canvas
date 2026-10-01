@@ -1,0 +1,110 @@
+{
+	"nodes": [
+		{
+			"id": "start",
+			"type": "text",
+			"x": 185,
+			"y": 0,
+			"width": 30,
+			"height": 30,
+			"text": "",
+			"shape": "initial"
+		},
+		{
+			"id": "login",
+			"type": "text",
+			"x": 80,
+			"y": 80,
+			"width": 240,
+			"height": 120,
+			"text": "**sd** Log in",
+			"shape": "frame"
+		},
+		{
+			"id": "decide",
+			"type": "text",
+			"x": 110,
+			"y": 260,
+			"width": 180,
+			"height": 110,
+			"text": "Has cart?",
+			"shape": "diamond"
+		},
+		{
+			"id": "checkout",
+			"type": "text",
+			"x": -200,
+			"y": 430,
+			"width": 240,
+			"height": 120,
+			"text": "**sd** Check out",
+			"shape": "frame"
+		},
+		{
+			"id": "browse",
+			"type": "text",
+			"x": 360,
+			"y": 430,
+			"width": 240,
+			"height": 120,
+			"text": "**sd** Browse",
+			"shape": "frame"
+		},
+		{
+			"id": "end",
+			"type": "text",
+			"x": 183,
+			"y": 640,
+			"width": 34,
+			"height": 34,
+			"text": "",
+			"shape": "final"
+		}
+	],
+	"edges": [
+		{
+			"id": "e1",
+			"fromNode": "start",
+			"toNode": "login",
+			"fromSide": "bottom",
+			"toSide": "top"
+		},
+		{
+			"id": "e2",
+			"fromNode": "login",
+			"toNode": "decide",
+			"fromSide": "bottom",
+			"toSide": "top"
+		},
+		{
+			"id": "e3",
+			"fromNode": "decide",
+			"toNode": "checkout",
+			"label": "yes",
+			"fromSide": "left",
+			"toSide": "top"
+		},
+		{
+			"id": "e4",
+			"fromNode": "decide",
+			"toNode": "browse",
+			"label": "no",
+			"fromSide": "right",
+			"toSide": "top"
+		},
+		{
+			"id": "e5",
+			"fromNode": "checkout",
+			"toNode": "end",
+			"fromSide": "bottom",
+			"toSide": "left"
+		},
+		{
+			"id": "e6",
+			"fromNode": "browse",
+			"toNode": "end",
+			"fromSide": "bottom",
+			"toSide": "right"
+		}
+	]
+}

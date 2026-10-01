@@ -333,9 +333,9 @@ mark { background: rgba(255, 196, 0, 0.35); color: inherit; border-radius: 2px; 
 .switcher-results { max-height: 50vh; overflow: auto; padding: 6px; display: flex; flex-direction: column; }
 .switcher-results button { width: 100%; justify-content: flex-start; gap: 8px; padding: 7px 10px; color: var(--muted); }
 .switcher-results button.selected { background: var(--bg-active); color: var(--fg); }
-.switcher-name { color: var(--fg); }
+.switcher-name { color: var(--fg); flex: none; white-space: nowrap; }
 .switcher-path { margin-left: auto; font-size: 12px; color: var(--faint); }
-.picker-detail { margin-left: 8px; font-size: 12px; color: var(--faint); }
+.picker-detail { margin-left: 8px; font-size: 12px; color: var(--faint); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .picker-kbd { margin-left: auto; font: inherit; font-size: 12px; color: var(--muted); }
 .picker-empty { color: var(--muted); padding: 10px; margin: 0; }
 .switcher-hint { font-size: 11.5px; color: var(--faint); padding: 7px 14px; border-top: 1px solid var(--border); }
@@ -547,3 +547,25 @@ button.secondary { border: 1px solid var(--border); padding: 5px 12px; }
 .align-guide.horizontal { left: -100000px; width: 200000px; border-top: 1px dashed var(--accent); }
 /* Extra connection points (off the middle of a side) are smaller. */
 .canvas-handle.minor { width: 7px !important; height: 7px !important; }
+
+/* UML stencils. */
+.shape-icon { position: absolute; top: 6px; right: 8px; width: 18px; height: 18px; pointer-events: none; }
+.shape-class .canvas-text { justify-content: flex-start; padding: 0; text-align: left; }
+.shape-class .canvas-text > div { display: flex; flex-direction: column; height: 100%; }
+.shape-class .compartment { padding: 4px 10px; border-top: 2px solid var(--shape-stroke); font-size: 13px; }
+.shape-class .compartment:first-child { border-top: 0; text-align: center; font-weight: 600; padding: 6px 10px; }
+.shape-class .compartment:last-child { flex: 1; }
+.shape-class .compartment ul { padding-left: 0; list-style: none; margin: 0; }
+.shape-class .compartment p { margin: 0; }
+.shape-package .canvas-text { padding-top: 22px; }
+.shape-node .canvas-text { padding: 20% 18% 8px 8px; }
+.shape-component .canvas-text, .shape-artifact .canvas-text { padding-right: 30px; }
+.lifeline-head { position: absolute; left: 0; right: 0; top: 0; height: 44px; border: 2px solid; pointer-events: none; }
+.lifeline-line { position: absolute; left: 0; top: 44px; width: 100%; height: calc(100% - 44px); overflow: visible; pointer-events: none; }
+.canvas-shape.shape-lifeline { align-items: flex-start; }
+.shape-lifeline .shape-text { flex: none; width: 100%; height: 44px; }
+.shape-lifeline .canvas-text { padding: 4px 8px; }
+.canvas-shape.shape-frame { align-items: flex-start; justify-content: flex-start; }
+.shape-frame .shape-text { flex: none; max-width: 80%; height: auto; }
+.shape-frame .canvas-text { padding: 3px 18px 3px 8px; text-align: left; font-weight: 600; font-size: 13px; border-right: 2px solid var(--shape-stroke); border-bottom: 2px solid var(--shape-stroke); clip-path: polygon(0 0, 100% 0, 100% 60%, calc(100% - 10px) 100%, 0 100%); background: var(--bg); }
+.shape-frame .canvas-text p { margin: 0; }

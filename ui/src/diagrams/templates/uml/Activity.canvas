@@ -1,0 +1,161 @@
+{
+	"nodes": [
+		{
+			"id": "start",
+			"type": "text",
+			"x": 125,
+			"y": 0,
+			"width": 30,
+			"height": 30,
+			"text": "",
+			"shape": "initial"
+		},
+		{
+			"id": "browse",
+			"type": "text",
+			"x": 40,
+			"y": 80,
+			"width": 200,
+			"height": 70,
+			"text": "Browse products",
+			"shape": "rounded"
+		},
+		{
+			"id": "decide",
+			"type": "text",
+			"x": 50,
+			"y": 200,
+			"width": 180,
+			"height": 110,
+			"text": "In stock?",
+			"shape": "diamond"
+		},
+		{
+			"id": "fork",
+			"type": "text",
+			"x": 60,
+			"y": 370,
+			"width": 160,
+			"height": 10,
+			"text": "",
+			"shape": "bar"
+		},
+		{
+			"id": "pay",
+			"type": "text",
+			"x": -140,
+			"y": 440,
+			"width": 200,
+			"height": 70,
+			"text": "Take payment",
+			"shape": "rounded"
+		},
+		{
+			"id": "ship",
+			"type": "text",
+			"x": 220,
+			"y": 440,
+			"width": 200,
+			"height": 70,
+			"text": "Prepare shipment",
+			"shape": "rounded"
+		},
+		{
+			"id": "join",
+			"type": "text",
+			"x": 60,
+			"y": 580,
+			"width": 160,
+			"height": 10,
+			"text": "",
+			"shape": "bar"
+		},
+		{
+			"id": "sorry",
+			"type": "text",
+			"x": 360,
+			"y": 220,
+			"width": 200,
+			"height": 70,
+			"text": "Notify customer",
+			"shape": "rounded"
+		},
+		{
+			"id": "end",
+			"type": "text",
+			"x": 123,
+			"y": 650,
+			"width": 34,
+			"height": 34,
+			"text": "",
+			"shape": "final"
+		}
+	],
+	"edges": [
+		{
+			"id": "e1",
+			"fromNode": "start",
+			"toNode": "browse",
+			"fromSide": "bottom",
+			"toSide": "top"
+		},
+		{
+			"id": "e2",
+			"fromNode": "browse",
+			"toNode": "decide",
+			"fromSide": "bottom",
+			"toSide": "top"
+		},
+		{
+			"id": "e3",
+			"fromNode": "decide",
+			"toNode": "fork",
+			"fromSide": "bottom",
+			"toSide": "top",
+			"label": "yes"
+		},
+		{
+			"id": "e4",
+			"fromNode": "decide",
+			"toNode": "sorry",
+			"fromSide": "right",
+			"toSide": "left",
+			"label": "no"
+		},
+		{
+			"id": "e5",
+			"fromNode": "fork",
+			"toNode": "pay",
+			"fromSide": "bottom",
+			"toSide": "top"
+		},
+		{
+			"id": "e6",
+			"fromNode": "fork",
+			"toNode": "ship",
+			"fromSide": "bottom",
+			"toSide": "top"
+		},
+		{
+			"id": "e7",
+			"fromNode": "pay",
+			"toNode": "join",
+			"fromSide": "bottom",
+			"toSide": "top"
+		},
+		{
+			"id": "e8",
+			"fromNode": "ship",
+			"toNode": "join",
+			"fromSide": "bottom",
+			"toSide": "top"
+		},
+		{
+			"id": "e9",
+			"fromNode": "join",
+			"toNode": "end",
+			"fromSide": "bottom",
+			"toSide": "top"
+		}
+	]
+}

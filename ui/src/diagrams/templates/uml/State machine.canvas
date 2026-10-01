@@ -1,0 +1,97 @@
+{
+	"nodes": [
+		{
+			"id": "start",
+			"type": "text",
+			"x": 0,
+			"y": 55,
+			"width": 30,
+			"height": 30,
+			"text": "",
+			"shape": "initial"
+		},
+		{
+			"id": "cart",
+			"type": "text",
+			"x": 100,
+			"y": 30,
+			"width": 180,
+			"height": 80,
+			"text": "**Cart**",
+			"shape": "pill"
+		},
+		{
+			"id": "paying",
+			"type": "text",
+			"x": 380,
+			"y": 30,
+			"width": 180,
+			"height": 80,
+			"text": "**Paying**\nentry / charge card",
+			"shape": "pill"
+		},
+		{
+			"id": "paid",
+			"type": "text",
+			"x": 660,
+			"y": 30,
+			"width": 180,
+			"height": 80,
+			"text": "**Paid**",
+			"shape": "pill"
+		},
+		{
+			"id": "cancelled",
+			"type": "text",
+			"x": 380,
+			"y": 220,
+			"width": 180,
+			"height": 80,
+			"text": "**Cancelled**",
+			"shape": "pill"
+		},
+		{
+			"id": "end",
+			"type": "text",
+			"x": 940,
+			"y": 53,
+			"width": 34,
+			"height": 34,
+			"text": "",
+			"shape": "final"
+		}
+	],
+	"edges": [
+		{
+			"id": "e1",
+			"fromNode": "start",
+			"toNode": "cart"
+		},
+		{
+			"id": "e2",
+			"fromNode": "cart",
+			"toNode": "paying",
+			"label": "checkout"
+		},
+		{
+			"id": "e3",
+			"fromNode": "paying",
+			"toNode": "paid",
+			"label": "payment ok"
+		},
+		{
+			"id": "e4",
+			"fromNode": "paying",
+			"toNode": "cancelled",
+			"label": "payment failed [3 tries]",
+			"fromSide": "bottom",
+			"toSide": "top"
+		},
+		{
+			"id": "e5",
+			"fromNode": "paid",
+			"toNode": "end",
+			"label": "shipped"
+		}
+	]
+}

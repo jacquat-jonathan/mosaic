@@ -1,0 +1,73 @@
+{
+	"nodes": [
+		{
+			"id": "srv",
+			"type": "text",
+			"x": 0,
+			"y": 0,
+			"width": 300,
+			"height": 200,
+			"text": "«device»\n**App server**",
+			"shape": "node"
+		},
+		{
+			"id": "jar",
+			"type": "text",
+			"x": 40,
+			"y": 90,
+			"width": 180,
+			"height": 80,
+			"text": "**orders.jar**",
+			"shape": "artifact"
+		},
+		{
+			"id": "dbsrv",
+			"type": "text",
+			"x": 460,
+			"y": 0,
+			"width": 300,
+			"height": 200,
+			"text": "«device»\n**Database server**",
+			"shape": "node"
+		},
+		{
+			"id": "db",
+			"type": "text",
+			"x": 540,
+			"y": 70,
+			"width": 150,
+			"height": 110,
+			"text": "**PostgreSQL**",
+			"shape": "cylinder",
+			"color": "5"
+		},
+		{
+			"id": "phone",
+			"type": "text",
+			"x": 0,
+			"y": 320,
+			"width": 220,
+			"height": 130,
+			"text": "«device»\n**Phone**",
+			"shape": "node"
+		}
+	],
+	"edges": [
+		{
+			"id": "e1",
+			"fromNode": "srv",
+			"toNode": "dbsrv",
+			"toEnd": "none",
+			"label": "TCP/IP"
+		},
+		{
+			"id": "e2",
+			"fromNode": "phone",
+			"toNode": "srv",
+			"toEnd": "none",
+			"label": "HTTPS",
+			"fromSide": "top",
+			"toSide": "bottom"
+		}
+	]
+}

@@ -1,0 +1,69 @@
+{
+	"nodes": [
+		{
+			"id": "web",
+			"type": "text",
+			"x": 0,
+			"y": 0,
+			"width": 220,
+			"height": 100,
+			"text": "«component»\n**Web shop**",
+			"shape": "component"
+		},
+		{
+			"id": "orders",
+			"type": "text",
+			"x": 380,
+			"y": 0,
+			"width": 220,
+			"height": 100,
+			"text": "«component»\n**Order service**",
+			"shape": "component"
+		},
+		{
+			"id": "pay",
+			"type": "text",
+			"x": 380,
+			"y": 220,
+			"width": 220,
+			"height": 100,
+			"text": "«component»\n**Payment gateway**",
+			"shape": "component"
+		},
+		{
+			"id": "db",
+			"type": "text",
+			"x": 760,
+			"y": 0,
+			"width": 150,
+			"height": 130,
+			"text": "**Orders DB**",
+			"shape": "cylinder",
+			"color": "5"
+		}
+	],
+	"edges": [
+		{
+			"id": "e1",
+			"fromNode": "web",
+			"toNode": "orders",
+			"line": "dashed",
+			"toEnd": "open",
+			"label": "«use» REST"
+		},
+		{
+			"id": "e2",
+			"fromNode": "orders",
+			"toNode": "pay",
+			"line": "dashed",
+			"toEnd": "open",
+			"label": "«use»"
+		},
+		{
+			"id": "e3",
+			"fromNode": "orders",
+			"toNode": "db",
+			"label": "reads / writes"
+		}
+	]
+}

@@ -1,0 +1,94 @@
+{
+	"nodes": [
+		{
+			"id": "customer",
+			"type": "text",
+			"x": 0,
+			"y": 140,
+			"width": 100,
+			"height": 140,
+			"text": "Customer",
+			"shape": "actor"
+		},
+		{
+			"id": "system",
+			"type": "text",
+			"x": 200,
+			"y": 0,
+			"width": 420,
+			"height": 420,
+			"text": "**Web shop**",
+			"shape": "frame"
+		},
+		{
+			"id": "browse",
+			"type": "text",
+			"x": 280,
+			"y": 60,
+			"width": 200,
+			"height": 90,
+			"text": "Browse products",
+			"shape": "ellipse"
+		},
+		{
+			"id": "checkout",
+			"type": "text",
+			"x": 280,
+			"y": 190,
+			"width": 200,
+			"height": 90,
+			"text": "Check out",
+			"shape": "ellipse"
+		},
+		{
+			"id": "pay",
+			"type": "text",
+			"x": 280,
+			"y": 310,
+			"width": 200,
+			"height": 90,
+			"text": "Pay",
+			"shape": "ellipse"
+		},
+		{
+			"id": "bank",
+			"type": "text",
+			"x": 720,
+			"y": 280,
+			"width": 100,
+			"height": 140,
+			"text": "Bank",
+			"shape": "actor"
+		}
+	],
+	"edges": [
+		{
+			"id": "e1",
+			"fromNode": "customer",
+			"toNode": "browse",
+			"toEnd": "none"
+		},
+		{
+			"id": "e2",
+			"fromNode": "customer",
+			"toNode": "checkout",
+			"toEnd": "none"
+		},
+		{
+			"id": "e3",
+			"fromNode": "checkout",
+			"toNode": "pay",
+			"line": "dashed",
+			"toEnd": "open",
+			"label": "«include»",
+			"fromSide": "bottom",
+			"toSide": "top"
+		},
+		{
+			"id": "e4",
+			"fromNode": "pay",
+			"toNode": "bank",
+			"toEnd": "none"
+		}
+	]
+}

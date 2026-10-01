@@ -1,0 +1,81 @@
+{
+	"nodes": [
+		{
+			"id": "car",
+			"type": "text",
+			"x": 0,
+			"y": 0,
+			"width": 560,
+			"height": 300,
+			"text": "**Car**",
+			"shape": "frame"
+		},
+		{
+			"id": "engine",
+			"type": "text",
+			"x": 60,
+			"y": 90,
+			"width": 180,
+			"height": 90,
+			"text": "e : **Engine**",
+			"shape": "rectangle"
+		},
+		{
+			"id": "wheels",
+			"type": "text",
+			"x": 320,
+			"y": 90,
+			"width": 180,
+			"height": 90,
+			"text": "w : **Wheel** [4]",
+			"shape": "rectangle"
+		},
+		{
+			"id": "p1",
+			"type": "text",
+			"x": 550,
+			"y": 125,
+			"width": 20,
+			"height": 20,
+			"text": "",
+			"shape": "port"
+		},
+		{
+			"id": "p2",
+			"type": "text",
+			"x": 230,
+			"y": 125,
+			"width": 20,
+			"height": 20,
+			"text": "",
+			"shape": "port"
+		},
+		{
+			"id": "p3",
+			"type": "text",
+			"x": 310,
+			"y": 125,
+			"width": 20,
+			"height": 20,
+			"text": "",
+			"shape": "port"
+		}
+	],
+	"edges": [
+		{
+			"id": "e1",
+			"fromNode": "p2",
+			"toNode": "p3",
+			"toEnd": "none",
+			"label": "axle"
+		},
+		{
+			"id": "e2",
+			"fromNode": "wheels",
+			"toNode": "p1",
+			"toEnd": "none",
+			"fromSide": "right",
+			"toSide": "left"
+		}
+	]
+}

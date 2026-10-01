@@ -1,0 +1,195 @@
+{
+	"nodes": [
+		{
+			"id": "frame",
+			"type": "text",
+			"x": 0,
+			"y": 0,
+			"width": 860,
+			"height": 360,
+			"text": "**Timing** Door controller",
+			"shape": "frame"
+		},
+		{
+			"id": "l1",
+			"type": "text",
+			"x": 20,
+			"y": 60,
+			"width": 120,
+			"height": 110,
+			"text": "**Door**",
+			"shape": "rectangle",
+			"border": "none"
+		},
+		{
+			"id": "l2",
+			"type": "text",
+			"x": 20,
+			"y": 200,
+			"width": 120,
+			"height": 110,
+			"text": "**Alarm**",
+			"shape": "rectangle",
+			"border": "none"
+		},
+		{
+			"id": "d1",
+			"type": "text",
+			"x": 160,
+			"y": 70,
+			"width": 200,
+			"height": 36,
+			"text": "Closed",
+			"shape": "rectangle"
+		},
+		{
+			"id": "d2",
+			"type": "text",
+			"x": 380,
+			"y": 130,
+			"width": 180,
+			"height": 36,
+			"text": "Open",
+			"shape": "rectangle"
+		},
+		{
+			"id": "d3",
+			"type": "text",
+			"x": 580,
+			"y": 70,
+			"width": 240,
+			"height": 36,
+			"text": "Closed",
+			"shape": "rectangle"
+		},
+		{
+			"id": "a1",
+			"type": "text",
+			"x": 160,
+			"y": 210,
+			"width": 320,
+			"height": 36,
+			"text": "Off",
+			"shape": "rectangle"
+		},
+		{
+			"id": "a2",
+			"type": "text",
+			"x": 500,
+			"y": 270,
+			"width": 140,
+			"height": 36,
+			"text": "On",
+			"shape": "rectangle"
+		},
+		{
+			"id": "a3",
+			"type": "text",
+			"x": 660,
+			"y": 210,
+			"width": 160,
+			"height": 36,
+			"text": "Off",
+			"shape": "rectangle"
+		},
+		{
+			"id": "t0",
+			"type": "text",
+			"x": 150,
+			"y": 320,
+			"width": 60,
+			"height": 30,
+			"text": "0 s",
+			"shape": "rectangle",
+			"border": "none"
+		},
+		{
+			"id": "t1",
+			"type": "text",
+			"x": 320,
+			"y": 320,
+			"width": 60,
+			"height": 30,
+			"text": "5 s",
+			"shape": "rectangle",
+			"border": "none"
+		},
+		{
+			"id": "t2",
+			"type": "text",
+			"x": 490,
+			"y": 320,
+			"width": 60,
+			"height": 30,
+			"text": "10 s",
+			"shape": "rectangle",
+			"border": "none"
+		},
+		{
+			"id": "t3",
+			"type": "text",
+			"x": 660,
+			"y": 320,
+			"width": 60,
+			"height": 30,
+			"text": "15 s",
+			"shape": "rectangle",
+			"border": "none"
+		},
+		{
+			"id": "t4",
+			"type": "text",
+			"x": 830,
+			"y": 320,
+			"width": 60,
+			"height": 30,
+			"text": "20 s",
+			"shape": "rectangle",
+			"border": "none"
+		}
+	],
+	"edges": [
+		{
+			"id": "s1",
+			"fromNode": "d1",
+			"toNode": "d2",
+			"toEnd": "none",
+			"fromSide": "right",
+			"toSide": "left"
+		},
+		{
+			"id": "s2",
+			"fromNode": "d2",
+			"toNode": "d3",
+			"toEnd": "none",
+			"fromSide": "right",
+			"toSide": "left"
+		},
+		{
+			"id": "s3",
+			"fromNode": "a1",
+			"toNode": "a2",
+			"toEnd": "none",
+			"fromSide": "right",
+			"toSide": "left"
+		},
+		{
+			"id": "s4",
+			"fromNode": "a2",
+			"toNode": "a3",
+			"toEnd": "none",
+			"fromSide": "right",
+			"toSide": "left"
+		},
+		{
+			"id": "cause",
+			"fromNode": "d2",
+			"toNode": "a2",
+			"line": "dashed",
+			"toEnd": "open",
+			"label": "open > 10 s",
+			"fromSide": "bottom",
+			"toSide": "top"
+		}
+	]
+}

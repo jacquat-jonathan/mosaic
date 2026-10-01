@@ -1,0 +1,45 @@
+{
+	"nodes": [
+		{
+			"id": "profile",
+			"type": "text",
+			"x": 0,
+			"y": 0,
+			"width": 560,
+			"height": 320,
+			"text": "«profile» **Mobile**",
+			"shape": "frame"
+		},
+		{
+			"id": "screen",
+			"type": "text",
+			"x": 40,
+			"y": 80,
+			"width": 220,
+			"height": 100,
+			"text": "«stereotype»\n**Screen**\n---\ntitle: String",
+			"shape": "class"
+		},
+		{
+			"id": "meta",
+			"type": "text",
+			"x": 320,
+			"y": 80,
+			"width": 200,
+			"height": 80,
+			"text": "«metaclass»\n**Class**",
+			"shape": "class"
+		}
+	],
+	"edges": [
+		{
+			"id": "e1",
+			"fromNode": "screen",
+			"toNode": "meta",
+			"toEnd": "arrow",
+			"label": "extends",
+			"fromSide": "right",
+			"toSide": "left"
+		}
+	]
+}

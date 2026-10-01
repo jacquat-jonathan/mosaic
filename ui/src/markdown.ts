@@ -37,7 +37,7 @@ const marked = new Marked({ gfm: true, breaks: false, extensions: [mathBlock, ma
 const escapeAttr = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
 
 /** Markdown → HTML, not yet sanitised. Use `renderMarkdown`; this is exported for tests. */
-export function markdownToHtml(src: string, resolve?: (target: string) => string | null): string {
+export function markdownToHtml(src: string, resolve?: (target: string) => string | null, breaks = false): string {
   // Wikilinks become spans the host can make clickable; embeds become a labelled chip.
   const withLinks = src.replace(/(!?)\[\[([^[\]\n]+?)\]\]/g, (_m, bang: string, inner: string) => {
     const l = parseWikiLink(inner);
@@ -45,9 +45,10 @@ export function markdownToHtml(src: string, resolve?: (target: string) => string
     const cls = `md-wikilink${resolved ? "" : " unresolved"}${bang ? " embed" : ""}`;
     return `<span class="${cls}" data-target="${escapeAttr(l.target)}">${escapeAttr(linkLabel(l))}</span>`;
   });
-  return marked.parse(withLinks, { async: false });
+  return marked.parse(withLinks, { async: false, breaks });
 }
 
-export function renderMarkdown(src: string, resolve?: (target: string) => string | null): string {
-  return DOMPurify.sanitize(markdownToHtml(src, resolve), { ADD_ATTR: ["data-target"], FORBID_TAGS: ["style", "iframe", "form"] });
+/** `breaks`: every line break is kept (diagram shape labels are written line by line). */
+export function renderMarkdown(src: string, resolve?: (target: string) => string | null, breaks = false): string {
+  return DOMPurify.sanitize(markdownToHtml(src, resolve, breaks), { ADD_ATTR: ["data-target"], FORBID_TAGS: ["style", "iframe", "form"] });
 }

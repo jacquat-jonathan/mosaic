@@ -1,0 +1,66 @@
+{
+	"nodes": [
+		{
+			"id": "ui",
+			"type": "text",
+			"x": 0,
+			"y": 0,
+			"width": 200,
+			"height": 70,
+			"text": "<u>: Checkout page</u>",
+			"shape": "rectangle"
+		},
+		{
+			"id": "svc",
+			"type": "text",
+			"x": 380,
+			"y": 0,
+			"width": 200,
+			"height": 70,
+			"text": "<u>: Order service</u>",
+			"shape": "rectangle"
+		},
+		{
+			"id": "pay",
+			"type": "text",
+			"x": 380,
+			"y": 220,
+			"width": 200,
+			"height": 70,
+			"text": "<u>: Payment</u>",
+			"shape": "rectangle"
+		},
+		{
+			"id": "db",
+			"type": "text",
+			"x": 760,
+			"y": 0,
+			"width": 200,
+			"height": 70,
+			"text": "<u>: Order repository</u>",
+			"shape": "rectangle"
+		}
+	],
+	"edges": [
+		{
+			"id": "e1",
+			"fromNode": "ui",
+			"toNode": "svc",
+			"label": "1: placeOrder()"
+		},
+		{
+			"id": "e2",
+			"fromNode": "svc",
+			"toNode": "pay",
+			"label": "2: charge()",
+			"fromSide": "bottom",
+			"toSide": "top"
+		},
+		{
+			"id": "e3",
+			"fromNode": "svc",
+			"toNode": "db",
+			"label": "3: save()"
+		}
+	]
+}

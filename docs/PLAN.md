@@ -158,7 +158,8 @@ Done 2026-10-01. Details in the vault note `Architecture/Done.md`.
 One drawing tool built on `.canvas` (Mermaid stays for notes, Excalidraw for sketches). Tracked in `Architecture/Next steps.md` (section 3).
 - [x] Step 1a: diagrams rendered inside canvas cards (and file-card previews)
 - [x] Step 1b: `New › Diagram` with templates (Blank, Flowchart, 4+1 views, C4 context)
-- [ ] Step 2: shapes, edge styles (UML arrowheads), shape palette, connection points, hover flow animation
+- [x] Step 2: shapes, edge styles (UML arrowheads, end labels), Shape menu, alignment guides, hover flow animation
+- [ ] Step 2b: ports (more connection points) and auto-layout
 - [ ] Step 3: UML stencils, a template for each of the 14 types, special layouts (sequence, timing, composite), 4+1 views template
 - [ ] Step 4: Mermaid block ↔ diagram, diagrams embedded in notes, SVG/PNG export, presentation mode
 

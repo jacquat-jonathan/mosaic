@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+## 0.5.0 — 2026-10-02
+
 - Network and cloud icons for diagrams (server, database, router, user…) under Shape › Icons, or right-click a card › Icon; they're included in exports. New **C4 containers** template.
 - Editing a Mermaid, Graphviz, chart or math block in a note shows a live preview under it; while the source has an error, the last good drawing stays with the error below.
 - Hovering a node of a Mermaid flowchart (in a note or a card) makes its connections flow and dims the rest.

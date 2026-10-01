@@ -185,6 +185,45 @@ export class NoteEmbedWidget extends WidgetType {
   }
 }
 
+/** `![[Diagram.canvas]]` in a note: the canvas drawn as a picture; click it to open the canvas. */
+export class CanvasEmbedWidget extends WidgetType {
+  constructor(
+    readonly path: string,
+    readonly target: string,
+    readonly ctx: EditorContext,
+    readonly dark = isDark(),
+  ) {
+    super();
+  }
+  eq(o: CanvasEmbedWidget) {
+    return o.path === this.path && o.dark === this.dark;
+  }
+  toDOM() {
+    const el = document.createElement("div");
+    el.className = "cm-embed-canvas";
+    el.title = `Open ${this.target}`;
+    el.dataset.target = this.target;
+    void Promise.all([this.ctx.readText(this.path), import("../viewers/canvas/jsonCanvas"), import("../diagrams/canvasToSvg")]).then(
+      ([text, { parseCanvas }, { canvasToSvg }]) => {
+        // Our own SVG with every label escaped, so it's safe to insert.
+        el.innerHTML = canvasToSvg(parseCanvas(text), this.dark);
+      },
+      (e) => showError(el, e),
+    );
+    el.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      this.ctx.openLink(this.target, e.metaKey);
+    });
+    return el;
+  }
+  get estimatedHeight() {
+    return 240;
+  }
+  ignoreEvent() {
+    return true;
+  }
+}
+
 export function stripFrontmatter(text: string): string {
   const m = /^---\r?\n[\s\S]*?\r?\n---[ \t]*(\r?\n|$)/.exec(text);
   return m ? text.slice(m[0].length) : text;

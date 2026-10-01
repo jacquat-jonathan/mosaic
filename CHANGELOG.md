@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- `![[Diagram.canvas]]` in a note shows the diagram as a picture; click it to open the canvas.
+- Export a canvas as SVG or PNG (canvas toolbar › ⋯); the file is saved next to the canvas.
 - **Open as diagram**: hover a Mermaid flowchart or state diagram in a note to turn it into an editable canvas next to the note, keeping Mermaid's layout.
 - **Copy as Mermaid** (canvas toolbar › ⋯) turns a diagram back into a Mermaid flowchart to paste into a note.
 - UML stencils in the Shape menu (now grouped: Basic, Flowchart, UML structure, UML behaviour): class boxes with compartments (separate them with `---` lines), package, component, node, artifact, port, initial and final states, fork/join bar, lifeline, activation bar and frame.

@@ -13,6 +13,7 @@ import { blockRenderers } from "./blocks";
 import { MATH_INLINE_RE } from "../markdown";
 import {
   BulletWidget,
+  CanvasEmbedWidget,
   CheckboxWidget,
   ImageWidget,
   LinkWidget,
@@ -319,7 +320,9 @@ function buildInline(state: EditorState, blocks: Blocks, rangeFrom: number, rang
           ? new ImageWidget(resolved, link.target, embedWidth(link.alias), ctx)
           : kind === "pdf" && resolved
             ? new ReactWidget(`pdf:${resolved}`, () => createElement(PdfViewer, { path: resolved, maxPages: 3, compact: true }), "cm-embed-pdf")
-            : new NoteEmbedWidget(resolved, link.target, ctx);
+            : kind === "canvas" && resolved
+              ? new CanvasEmbedWidget(resolved, link.target, ctx)
+              : new NoteEmbedWidget(resolved, link.target, ctx);
       out.push(Decoration.replace({ widget }).range(from, to));
     } else {
       const target = m[2].split("|")[0];

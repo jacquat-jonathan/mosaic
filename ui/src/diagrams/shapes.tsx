@@ -25,7 +25,7 @@ export const isShape = (s: unknown): s is ShapeName => typeof s === "string" && 
 export const isEnd = (s: unknown): s is EndName => typeof s === "string" && s in format.ends;
 
 /** Shapes drawn with CSS border-radius on the card itself; the others are SVG outlines. */
-const CSS_SHAPES: Partial<Record<ShapeName, string>> = {
+export const CSS_SHAPES: Partial<Record<ShapeName, string>> = {
   rectangle: "0",
   rounded: "14px",
   pill: "9999px",
@@ -38,7 +38,7 @@ const CSS_SHAPES: Partial<Record<ShapeName, string>> = {
   frame: "0",
 };
 /** CSS shapes filled with the line colour instead of the card colour. */
-const SOLID = new Set<ShapeName>(["bar", "initial"]);
+export const SOLID = new Set<ShapeName>(["bar", "initial"]);
 
 export function dashArray(style: string | undefined, width = 2): string | undefined {
   if (style === "dashed") return `${width * 4} ${width * 3}`;
@@ -50,7 +50,7 @@ export function dashArray(style: string | undefined, width = 2): string | undefi
  * SVG outlines in a 100×100 box, stretched to the card. `non-scaling-stroke` keeps the line width even
  * when the box isn't square. Extra lines (cylinder rim, process bars, note fold) have no fill.
  */
-const OUTLINES: Partial<Record<ShapeName, { body: string; extra?: string }>> = {
+export const OUTLINES: Partial<Record<ShapeName, { body: string; extra?: string }>> = {
   diamond: { body: "M50,1 L99,50 L50,99 L1,50 Z" },
   parallelogram: { body: "M16,1 L99,1 L84,99 L1,99 Z" },
   hexagon: { body: "M14,1 L86,1 L99,50 L86,99 L14,99 L1,50 Z" },

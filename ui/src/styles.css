@@ -574,3 +574,6 @@ button.secondary { border: 1px solid var(--border); padding: 5px 12px; }
 .block-action { position: absolute; top: 6px; right: 6px; font-size: 12px; padding: 3px 8px; border-radius: 6px; background: var(--bg); border: 1px solid var(--border); color: var(--muted); opacity: 0; transition: opacity 0.1s; }
 .cm-rendered-block:hover .block-action { opacity: 1; }
 .block-action:hover { color: var(--fg); }
+/* ![[Diagram.canvas]] in a note. */
+.cm-embed-canvas { margin: 6px 0; border: 1px solid var(--border); border-radius: 10px; overflow: auto; max-height: 520px; cursor: pointer; background: var(--bg); }
+.cm-embed-canvas svg { display: block; max-width: 100%; height: auto; }

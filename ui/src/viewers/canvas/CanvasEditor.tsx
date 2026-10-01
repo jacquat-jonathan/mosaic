@@ -67,6 +67,7 @@ import { DiagramEdge, edgeEnds, type DiagramEdgeData } from "./DiagramEdge";
 import { align } from "./align";
 import { autoLayout } from "./layout";
 import { canvasToMermaid } from "../../diagrams/canvasToMermaid";
+import { exportCanvas } from "../../diagrams/export";
 import { errorMessage } from "../../ipc/types";
 
 const TREE_DRAG = "application/x-mosaic-path";
@@ -573,6 +574,10 @@ function CanvasFlow({ path, doc: initial, toolsHost }: { path: string; doc: Canv
                   void navigator.clipboard.writeText(canvasToMermaid(docRef.current)).catch((e) => useVault.getState().setError(`Couldn't copy: ${errorMessage(e)}`));
                 },
               },
+              ...(["svg", "png"] as const).map((format) => ({
+                label: `Export as ${format.toUpperCase()}`,
+                action: () => void exportCanvas(path, docRef.current, format).catch((e) => useVault.getState().setError(`Couldn't export: ${errorMessage(e)}`)),
+              })),
             ])
           }
           host={tools}

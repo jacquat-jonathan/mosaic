@@ -155,13 +155,12 @@ Done 2026-10-01. Details in the vault note `Architecture/Done.md`.
 - [x] Link-resolution cases in one shared JSON fixture read by both Rust and Vitest tests
 
 ### M13 — Diagram tool
-One drawing tool built on `.canvas` (Mermaid stays for notes, Excalidraw for sketches). Tracked in `Architecture/Next steps.md` (section 3).
-- [x] Step 1a: diagrams rendered inside canvas cards (and file-card previews)
-- [x] Step 1b: `New › Diagram` with templates (Blank, Flowchart, 4+1 views, C4 context)
-- [x] Step 2: shapes, edge styles (UML arrowheads, end labels), Shape menu, alignment guides, hover flow animation
-- [ ] Step 2b: ports (more connection points) and auto-layout
-- [ ] Step 3: UML stencils, a template for each of the 14 types, special layouts (sequence, timing, composite), 4+1 views template
-- [ ] Step 4: Mermaid block ↔ diagram, diagrams embedded in notes, SVG/PNG export, presentation mode
+Done 2026-10-02, released as 0.5.0. Details in the vault note `Architecture/Done.md`; format in `crates/mosaic-core/src/diagram_format.json` and `docs/AGENTS.md`.
+- [x] Step 1: diagrams rendered inside canvas cards; `New › Diagram` with templates
+- [x] Step 2: 25 shapes, connection styles (UML arrowheads, end labels, thickness), connection points, auto-layout, alignment guides, hover flow
+- [x] Step 3: UML stencils, a template for each of the 14 types, lifelines/frames for sequences, 4+1 and C4 templates, network/cloud icons
+- [x] Step 4: Mermaid block ↔ canvas, canvases embedded in notes, SVG/PNG export, presentation mode; live preview of diagram blocks in notes
+- [x] MCP follows the vault open in the app unless `--vault` pins one
 
 ## Working rules
 - `scripts/check.sh` green before each milestone commit.

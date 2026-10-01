@@ -1,4 +1,4 @@
-import { EditorState, type Extension } from "@codemirror/state";
+import { Compartment, EditorState, type Extension } from "@codemirror/state";
 import { EditorView, ViewPlugin, type ViewUpdate, drawSelection, dropCursor, keymap, highlightSpecialChars, rectangularSelection } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { bracketMatching, indentOnInput, syntaxHighlighting, HighlightStyle, type LanguageSupport } from "@codemirror/language";
@@ -12,7 +12,7 @@ import { livePreview } from "./livePreview";
 import { registerBlockRenderer } from "./widgets";
 import { renderMath, renderMermaid } from "./render";
 import { renderChart, renderGraphviz } from "../viewers/visuals";
-import { prefs } from "../state/settings";
+import { prefs, useSettings } from "../state/settings";
 
 registerBlockRenderer(["mermaid"], async (src, el) => {
   el.innerHTML = await renderMermaid(src);
@@ -104,6 +104,38 @@ function wikiCompletion(ctx: CompletionContext): CompletionResult | null {
   };
 }
 
+const spellcheck = new Compartment();
+const spellcheckAttrs = (on: boolean) => EditorView.contentAttributes.of({ spellcheck: on ? "true" : "false", autocorrect: on ? "on" : "off" });
+
+/** Applies the Spellcheck setting to editors that are already open. */
+const spellcheckFollower = ViewPlugin.define((view) => {
+  let on = prefs().spellcheck;
+  const stop = useSettings.subscribe(() => {
+    if (prefs().spellcheck === on) return;
+    on = prefs().spellcheck;
+    view.dispatch({ effects: spellcheck.reconfigure(spellcheckAttrs(on)) });
+  });
+  return { destroy: stop };
+});
+
+/** Files dropped from Finder are copied into the vault and embedded where they were dropped. */
+const finderDrop = EditorView.domEventHandlers({
+  drop(e, view) {
+    if (!e.dataTransfer || view.state.readOnly) return false;
+    const pending = view.state.facet(editorContext).importDrop(e.dataTransfer);
+    if (!pending) return false;
+    e.preventDefault();
+    const at = view.posAtCoords({ x: e.clientX, y: e.clientY }) ?? view.state.selection.main.head;
+    void pending.then((text) => {
+      if (!text) return;
+      const pos = Math.min(at, view.state.doc.length);
+      view.dispatch({ changes: { from: pos, insert: text }, selection: { anchor: pos + text.length } });
+      view.focus();
+    });
+    return true;
+  },
+});
+
 export function markdownExtensions(ctx: EditorContext, onChange: (text: string) => void, readOnly: boolean): Extension {
   return [
     base(onChange),
@@ -112,7 +144,9 @@ export function markdownExtensions(ctx: EditorContext, onChange: (text: string) 
     markdown({ base: markdownLanguage, codeLanguages: languages }),
     autocompletion({ override: [wikiCompletion], icons: false }),
     livePreview(),
-    EditorView.contentAttributes.of({ spellcheck: prefs().spellcheck ? "true" : "false", autocorrect: prefs().spellcheck ? "on" : "off" }),
+    finderDrop,
+    spellcheck.of(spellcheckAttrs(prefs().spellcheck)),
+    spellcheckFollower,
     EditorState.readOnly.of(readOnly),
   ];
 }

@@ -22,7 +22,10 @@ import {
   copyText,
   deletePath,
   deletePaths,
+  droppedItems,
   duplicatePath,
+  importDropped,
+  isFinderDrag,
   moveAllInto,
   NEW_KINDS,
   newNote,
@@ -108,15 +111,16 @@ export function FileTree() {
 
   const drop = (dir: string, openOnHover = false) => ({
     onDragOver: (ev: DragEvent) => {
-      if (!ev.dataTransfer.types.includes(DRAG_TYPE)) return;
+      const finder = isFinderDrag(ev.dataTransfer);
+      if (!finder && !ev.dataTransfer.types.includes(DRAG_TYPE)) return;
       ev.stopPropagation();
-      if (!dragging.some((p) => canMoveInto(p, dir))) {
+      if (!finder && !dragging.some((p) => canMoveInto(p, dir))) {
         ev.dataTransfer.dropEffect = "none";
         setDropTarget(null);
         return;
       }
       ev.preventDefault();
-      ev.dataTransfer.dropEffect = "move";
+      ev.dataTransfer.dropEffect = finder ? "copy" : "move";
       setDropTarget(dir);
       if (openOnHover && hoverTimer.current?.dir !== dir) {
         cancelHover();
@@ -132,6 +136,10 @@ export function FileTree() {
       ev.stopPropagation();
       setDropTarget(null);
       cancelHover();
+      if (isFinderDrag(ev.dataTransfer)) {
+        void importDropped(droppedItems(ev.dataTransfer), dir);
+        return;
+      }
       const paths = dragging;
       dragging = [];
       if (paths.length) void moveAllInto(paths, dir);

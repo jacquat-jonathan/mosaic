@@ -25,6 +25,8 @@ of its own source when you click **Check for updates** or **Update** in Settings
 - **File tree:** drag and drop to move (links follow), ⌘/⇧-click multi-selection, and a right-click
   menu to duplicate, move, copy links or paths and reveal in Finder. Click the vault name to switch
   between recent vaults or create a new one.
+- **Import from Finder:** drop files or folders onto the tree to copy them in; drop images into a
+  note or onto a canvas to copy them next to it and embed them. Nothing is ever overwritten.
 - **Safe editing:** deletes go to the macOS Trash; renames update links everywhere. When a file
   changes on disk while you're editing it, Mosaic asks you what to do instead of overwriting.
 
@@ -75,8 +77,8 @@ claude mcp add mosaic -- mosaic --vault "/path/to/vault" mcp
 ```
 
 The MCP tools are `vault_guide`, `list_files`, `read_file`, `outline`, `search`, `create_file`,
-`edit_file`, `patch_file`, `append_to_file`, `rename`, `delete_file`, `create_folder`,
-`get_backlinks` and `list_tags`. Edits accept an `expected_hash` so an agent never overwrites a
+`edit_file`, `patch_file`, `append_to_file`, `rename`, `copy_file`, `delete_file`, `create_folder`,
+`get_backlinks`, `list_tags`, `list_bookmarks`, `add_bookmark` and `remove_bookmark`. Edits accept an `expected_hash` so an agent never overwrites a
 newer human edit.
 
 **Command line**
@@ -87,6 +89,8 @@ mosaic read Projects/Plan.md
 echo "- follow up with design" | mosaic append Inbox.md
 mosaic patch Projects/Plan.md --find "Q3" --replace "Q4"
 mosaic rename Ideas.md Archive/Ideas.md   # links follow
+mosaic copy Template.md Projects/New.md   # never overwrites
+mosaic bookmarks add Projects/Plan.md     # shows up in the app's Bookmarks panel
 mosaic --json backlinks Projects/Plan.md
 mosaic guide                              # conventions for AI agents (docs/AGENTS.md)
 ```

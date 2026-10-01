@@ -8,7 +8,8 @@ import { useWorkspace, type Buffer } from "../state/workspace";
 import { useVault } from "../state/vault";
 import { api, fileUrl, openExternal } from "../ipc/api";
 import { resolveLink, linkTextFor } from "../links";
-import { newFileOfKind } from "../actions";
+import { droppedItems, embedsFor, importDropped, isFinderDrag, newFileOfKind } from "../actions";
+import { parentOf } from "../state/vault";
 import { useUi } from "../state/ui";
 
 /** Files above this size open read-only so the UI stays responsive. */
@@ -35,6 +36,13 @@ export function editorContextFor(path: string): EditorContext {
     openTag: (tag) => useUi.getState().showSearch(`tag:${tag}`),
     fileUrl,
     readText: async (p) => (await api.read(p)).content ?? "",
+    importDrop(dt) {
+      if (!isFinderDrag(dt)) return null;
+      return importDropped(droppedItems(dt), parentOf(path)).then((paths) => {
+        const dirs = new Set(entries().filter((e) => e.is_dir).map((e) => e.path));
+        return embedsFor(paths.filter((p) => !dirs.has(p)));
+      });
+    },
     linkCandidates: () => {
       const all = entries();
       const files = all

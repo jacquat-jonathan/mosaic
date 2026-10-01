@@ -12,7 +12,7 @@ import { SearchPanel } from "./views/SearchPanel";
 import { TagsPanel } from "./views/TagsPanel";
 import { RightPanel } from "./views/RightPanel";
 import { QuickSwitcher } from "./views/QuickSwitcher";
-import { startVaultSync } from "./sync";
+import { startBookmarkSync, startVaultSync } from "./sync";
 import { Settings, startUpdateListeners } from "./views/Settings";
 import "./state/settings";
 import { Picker } from "./views/Picker";
@@ -48,6 +48,7 @@ export function App() {
       }),
     );
     keep(startVaultSync());
+    keep(startBookmarkSync());
     keep(startUpdateListeners());
     return () => {
       cancelled = true;

@@ -3,6 +3,7 @@ import { createElement, type ReactElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { parse as parseYaml } from "yaml";
 import { renderMath } from "./render";
+import { isDark } from "../theme";
 import type { EditorContext } from "./context";
 
 /** Renderers for fenced code blocks by language (mermaid, math, and later vega-lite, dot…). */
@@ -33,11 +34,13 @@ export class RenderedBlockWidget extends WidgetType {
     readonly lang: string,
     readonly source: string,
     readonly ctx: EditorContext,
+    // Diagrams bake the theme into their SVG, so a theme change must produce an unequal widget.
+    readonly dark = isDark(),
   ) {
     super();
   }
   eq(o: RenderedBlockWidget) {
-    return o.lang === this.lang && o.source === this.source;
+    return o.lang === this.lang && o.source === this.source && o.dark === this.dark;
   }
   toDOM(view: EditorView) {
     const el = document.createElement("div");

@@ -18,7 +18,11 @@ pub struct Settings {
     pub update_source: Option<PathBuf>,
 }
 
+/// Where settings.json lives. `MOSAIC_SETTINGS_DIR` overrides it (used by tests).
 pub fn app_support_dir() -> Option<PathBuf> {
+    if let Some(dir) = std::env::var_os("MOSAIC_SETTINGS_DIR") {
+        return Some(PathBuf::from(dir));
+    }
     let home = std::env::var_os("HOME")?;
     Some(
         PathBuf::from(home)
@@ -28,6 +32,8 @@ pub fn app_support_dir() -> Option<PathBuf> {
 }
 
 /// Where search indexes live. `MOSAIC_CACHE_DIR` overrides it (used by tests).
+pub const SETTINGS_FILE: &str = "settings.json";
+
 pub fn cache_dir() -> Option<PathBuf> {
     if let Some(dir) = std::env::var_os("MOSAIC_CACHE_DIR") {
         return Some(PathBuf::from(dir));
@@ -39,7 +45,7 @@ pub fn cache_dir() -> Option<PathBuf> {
 impl Settings {
     pub fn load() -> Self {
         app_support_dir()
-            .and_then(|d| std::fs::read(d.join("settings.json")).ok())
+            .and_then(|d| std::fs::read(d.join(SETTINGS_FILE)).ok())
             .and_then(|b| serde_json::from_slice(&b).ok())
             .unwrap_or_default()
     }
@@ -48,7 +54,18 @@ impl Settings {
         let dir = app_support_dir().ok_or_else(|| std::io::Error::other("HOME not set"))?;
         std::fs::create_dir_all(&dir)?;
         let json = serde_json::to_vec_pretty(self).map_err(std::io::Error::other)?;
-        std::fs::write(dir.join("settings.json"), json)
+        // Atomic: the app and agents (CLI/MCP) both write this file, and a half-written one would
+        // load as defaults and lose every setting on the next save.
+        let mut tmp = tempfile::NamedTempFile::new_in(&dir)?;
+        std::io::Write::write_all(&mut tmp, &json)?;
+        tmp.persist(dir.join(SETTINGS_FILE)).map_err(|e| e.error)?;
+        Ok(())
+    }
+
+    /// Loads, applies `change`, and saves only if something changed.
+    pub fn update(change: impl FnOnce(&mut Settings) -> bool) -> std::io::Result<()> {
+        let mut s = Settings::load();
+        if change(&mut s) { s.save() } else { Ok(()) }
     }
 
     /// Records a vault as the most recently opened one.
@@ -86,6 +103,30 @@ impl Settings {
     }
 }
 
+impl Settings {
+    /// Makes a vault's bookmarks follow a move of `from` to `to` (also inside a moved folder).
+    /// Returns whether anything changed.
+    pub fn remap_bookmarks(&mut self, root: &Path, from: &str, to: &str) -> bool {
+        let Some(list) = self.bookmarks.get_mut(root) else {
+            return false;
+        };
+        let mut changed = false;
+        for p in list.iter_mut() {
+            let mapped = if p == from {
+                Some(to.to_string())
+            } else {
+                p.strip_prefix(&format!("{from}/"))
+                    .map(|rest| format!("{to}/{rest}"))
+            };
+            if let Some(m) = mapped {
+                *p = m;
+                changed = true;
+            }
+        }
+        changed
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -118,6 +159,17 @@ mod tests {
         s.set_bookmarks(a, vec!["x.md".into(), "y.md".into(), "x.md".into()]);
         assert_eq!(s.bookmarks(a), vec!["x.md", "y.md"]);
         assert!(s.bookmarks(Path::new("/b")).is_empty());
+        s.set_bookmarks(
+            a,
+            vec!["Notes/x.md".into(), "Notes".into(), "Notes2/y.md".into()],
+        );
+        assert!(s.remap_bookmarks(a, "Notes", "Archive/Notes"));
+        assert_eq!(
+            s.bookmarks(a),
+            vec!["Archive/Notes/x.md", "Archive/Notes", "Notes2/y.md"]
+        );
+        assert!(!s.remap_bookmarks(a, "Missing.md", "Other.md"));
+        assert!(!s.remap_bookmarks(Path::new("/b"), "x.md", "z.md"));
         s.set_bookmarks(a, vec![]);
         assert!(!s.bookmarks.contains_key(a));
     }

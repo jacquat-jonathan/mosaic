@@ -14,6 +14,13 @@ async function call<T>(cmd: string, args: Record<string, unknown> = {}): Promise
   return mockInvoke(cmd, args) as Promise<T>;
 }
 
+/** Adds a file from outside the vault (bytes sent raw, not as JSON). A taken name gets " 1", " 2"… */
+async function importFile(path: string, bytes: Uint8Array): Promise<Written> {
+  if (!inTauri) return mockInvoke("import_file", { path, bytes }) as Promise<Written>;
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<Written>("import_file", bytes, { headers: { "x-path": encodeURIComponent(path) } });
+}
+
 export const api = {
   openVault: (path: string) => call<VaultInfo>("open_vault", { path }),
   currentVault: () => call<VaultInfo | null>("current_vault"),
@@ -24,6 +31,7 @@ export const api = {
   bookmarks: () => call<string[]>("get_bookmarks"),
   setBookmarks: (paths: string[]) => call<void>("set_bookmarks", { paths }),
   copy: (from: string, to: string) => call<Written>("copy_path", { from, to }),
+  importFile,
   list: (dir = "", recursive = false) => call<Entry[]>("list_dir", { dir, recursive }),
   read: (path: string) => call<FileContent>("read_file", { path }),
   create: (path: string, content = "") => call<Written>("create_file", { path, content }),
@@ -102,6 +110,16 @@ export async function onVaultChanged(cb: (c: VaultChanges) => void): Promise<() 
   }
   const { listen } = await import("@tauri-apps/api/event");
   return listen<VaultChanges>("vault-changed", (e) => cb(e.payload));
+}
+
+/** Subscribes to changes of the app's settings file (e.g. an agent added a bookmark). */
+export async function onSettingsChanged(cb: () => void): Promise<() => void> {
+  if (!inTauri) {
+    window.addEventListener("mock-settings-changed", cb);
+    return () => window.removeEventListener("mock-settings-changed", cb);
+  }
+  const { listen } = await import("@tauri-apps/api/event");
+  return listen("settings-changed", () => cb());
 }
 
 /** Opens a vault file with its default macOS application (explicit user action only). */

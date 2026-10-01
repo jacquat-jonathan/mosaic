@@ -5,7 +5,8 @@ export type Side = "top" | "right" | "bottom" | "left";
 
 export interface CanvasNode {
   id: string;
-  type: "text" | "file" | "link" | "group";
+  /** "text" | "file" | "link" | "group", or a type from a newer tool, which is kept as is. */
+  type: string;
   x: number;
   y: number;
   width: number;
@@ -53,12 +54,14 @@ export function parseCanvas(text: string): CanvasDoc {
   const nodes = Array.isArray(doc.nodes) ? doc.nodes : [];
   const edges = Array.isArray(doc.edges) ? doc.edges : [];
   for (const n of nodes) {
-    if (typeof n?.id !== "string" || !["text", "file", "link", "group"].includes(n.type)) {
+    if (typeof n?.id !== "string" || typeof n.type !== "string") {
       throw new CanvasParseError(`Invalid node: ${JSON.stringify(n).slice(0, 120)}`);
     }
   }
   return { ...doc, nodes, edges } as CanvasDoc;
 }
+
+export const KNOWN_NODE_TYPES = ["text", "file", "link", "group"];
 
 /** Obsidian writes canvases with tab indentation. */
 export function serializeCanvas(doc: CanvasDoc): string {

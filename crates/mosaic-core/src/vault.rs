@@ -327,6 +327,23 @@ impl Vault {
         })
     }
 
+    /// Creates a file from raw bytes, of any kind (e.g. an image dropped from Finder). Never overwrites.
+    pub fn create_bytes(&self, rel: &str, bytes: &[u8]) -> Result<Written> {
+        let norm = normalize(rel)?;
+        if norm.is_empty() {
+            return Err(Error::InvalidPath("empty path".into()));
+        }
+        let abs = self.resolve(&norm)?;
+        if abs.exists() {
+            return Err(Error::AlreadyExists(norm));
+        }
+        self.atomic_write(&norm, &abs, bytes, true)?;
+        Ok(Written {
+            hash: hash_bytes(bytes),
+            path: norm,
+        })
+    }
+
     /// Replaces a file's content (creating it if missing). With `expected_hash`, refuses to
     /// overwrite a file that changed since it was read.
     pub fn write(&self, rel: &str, content: &str, expected_hash: Option<&str>) -> Result<Written> {

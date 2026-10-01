@@ -68,6 +68,34 @@ pub fn watch(ws: Arc<Workspace>, on_change: impl Fn(Changes) + Send + 'static) -
     })
 }
 
+/// Watches settings.json, which agents also write (bookmarks through the CLI or MCP), so the app
+/// can reload it.
+pub fn watch_settings(on_change: impl Fn() + Send + 'static) -> Result<Watcher> {
+    let dir = crate::settings::app_support_dir()
+        .ok_or_else(|| Error::Invalid("no settings folder (HOME not set)".into()))?;
+    let io = |e: std::io::Error| Error::io(dir.display().to_string(), e);
+    std::fs::create_dir_all(&dir).map_err(io)?;
+    let mut debouncer = new_debouncer(DEBOUNCE, None, move |res: DebounceEventResult| {
+        let Ok(events) = res else { return };
+        let touched = events.iter().any(|ev| {
+            ev.paths.iter().any(|p| {
+                p.file_name()
+                    .is_some_and(|n| n == crate::settings::SETTINGS_FILE)
+            })
+        });
+        if touched {
+            on_change();
+        }
+    })
+    .map_err(|e| io(std::io::Error::other(e.to_string())))?;
+    debouncer
+        .watch(&dir, RecursiveMode::NonRecursive)
+        .map_err(|e| io(std::io::Error::other(e.to_string())))?;
+    Ok(Watcher {
+        _debouncer: debouncer,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

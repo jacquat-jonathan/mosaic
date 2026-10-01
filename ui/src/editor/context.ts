@@ -11,6 +11,11 @@ export interface EditorContext {
   openTag(tag: string): void;
   fileUrl(path: string): Promise<string>;
   readText(path: string): Promise<string>;
+  /**
+   * Copies files dropped from Finder next to the note and resolves to the text embedding them, or
+   * returns null when the drop holds no files (then the editor handles it as usual).
+   */
+  importDrop(dt: DataTransfer): Promise<string> | null;
   /** Candidates for [[ completion. */
   linkCandidates(): { label: string; detail: string; insert?: string }[];
 }

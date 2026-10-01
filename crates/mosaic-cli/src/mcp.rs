@@ -89,6 +89,14 @@ struct RenameArgs {
     update_links: Option<bool>,
 }
 
+#[derive(Deserialize, JsonSchema)]
+struct CopyArgs {
+    /// Vault-relative path of the file to copy.
+    from: String,
+    /// Vault-relative path of the new copy. Must not exist yet.
+    to: String,
+}
+
 #[derive(Clone)]
 pub struct MosaicMcp {
     ws: Arc<Workspace>,
@@ -200,6 +208,13 @@ impl MosaicMcp {
             .and_then(ok)
     }
 
+    #[tool(
+        description = "Duplicate a file (any kind, including binary). Never overwrites: fails if `to` exists."
+    )]
+    async fn copy_file(&self, Parameters(a): Parameters<CopyArgs>) -> ToolResult {
+        self.ws.copy(&a.from, &a.to).map_err(err).and_then(ok)
+    }
+
     #[tool(description = "Move a file or folder to the macOS Trash (recoverable).")]
     async fn delete_file(&self, Parameters(a): Parameters<PathArg>) -> ToolResult {
         self.ws
@@ -226,6 +241,25 @@ impl MosaicMcp {
     async fn list_tags(&self) -> ToolResult {
         self.fresh();
         self.ws.tags().map_err(err).and_then(ok)
+    }
+
+    #[tool(
+        description = "The human's bookmarked files and folders, in their order. `exists` is false for a bookmark whose file is gone."
+    )]
+    async fn list_bookmarks(&self) -> ToolResult {
+        ok(self.ws.bookmarks())
+    }
+
+    #[tool(
+        description = "Bookmark a file or folder so the human finds it in the app's Bookmarks panel (added at the end). Returns the new list."
+    )]
+    async fn add_bookmark(&self, Parameters(a): Parameters<PathArg>) -> ToolResult {
+        self.ws.add_bookmark(&a.path).map_err(err).and_then(ok)
+    }
+
+    #[tool(description = "Remove a bookmark (the file itself is untouched). Returns the new list.")]
+    async fn remove_bookmark(&self, Parameters(a): Parameters<PathArg>) -> ToolResult {
+        self.ws.remove_bookmark(&a.path).map_err(err).and_then(ok)
     }
 }
 

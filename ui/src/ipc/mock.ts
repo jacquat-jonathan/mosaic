@@ -255,6 +255,19 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
       if (exists(to)) throw err("already_exists", `already exists: ${to}`);
       return write(to, from.content);
     }
+    case "import_file": {
+      // Binary files are kept as data: URLs, like the mock's sample images.
+      const p = norm(a.path);
+      const bytes = a.bytes as Uint8Array;
+      const kind = kindOf(p);
+      const content = ["image", "pdf", "other"].includes(kind)
+        ? `data:${kind === "pdf" ? "application/pdf" : `image/${p.split(".").pop()}`};base64,${btoa(Array.from(bytes, (b) => String.fromCharCode(b)).join(""))}`
+        : new TextDecoder().decode(bytes);
+      const dot = p.lastIndexOf(".") > p.lastIndexOf("/") + 1 ? p.lastIndexOf(".") : p.length;
+      let target = p;
+      for (let n = 1; exists(target); n++) target = `${p.slice(0, dot)} ${n}${p.slice(dot)}`;
+      return write(target, content);
+    }
     case "list_dir":
       return list(norm(a.dir), Boolean(a.recursive));
     case "read_file": {

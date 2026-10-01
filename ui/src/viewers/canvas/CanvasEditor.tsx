@@ -24,7 +24,8 @@ import {
 import "@xyflow/react/dist/style.css";
 import { ExternalLink, FileText, Maximize, Plus, SquareDashed } from "lucide-react";
 import { useWorkspace, type Buffer } from "../../state/workspace";
-import { useVault } from "../../state/vault";
+import { parentOf, useVault } from "../../state/vault";
+import { droppedItems, importDropped, isFinderDrag } from "../../actions";
 import { useUi, type MenuItem } from "../../state/ui";
 import { api, fileUrl, openExternal } from "../../ipc/api";
 import { kindOf } from "../../ipc/kinds";
@@ -34,6 +35,7 @@ import { CodeEditor } from "../CodeEditor";
 import { Segmented, Toolbar } from "../Toolbar";
 import {
   CanvasParseError,
+  KNOWN_NODE_TYPES,
   PRESET_COLORS,
   colorOf,
   newId,
@@ -44,7 +46,7 @@ import {
   type CanvasNode,
   type Side,
 } from "./jsonCanvas";
-import { isDark } from "../../theme";
+import { useDark } from "../../theme";
 
 const TREE_DRAG = "application/x-mosaic-path";
 const DEFAULT_EDGE_COLOR = "#8a8f9c";
@@ -146,7 +148,7 @@ function CanvasFlow({ path, doc: initial, toolsHost }: { path: string; doc: Canv
   const edgesRef = useRef(edges);
   nodesRef.current = nodes;
   edgesRef.current = edges;
-  const dark = isDark();
+  const dark = useDark();
 
   /** Writes the current flow back to JSON Canvas, keeping unknown fields of existing items. */
   const commit = useCallback(() => {
@@ -248,7 +250,10 @@ function CanvasFlow({ path, doc: initial, toolsHost }: { path: string; doc: Canv
         selected: true,
         data: { node, canvasPath: path, onText },
       };
-      setNodes((ns) => [...ns.map((n) => ({ ...n, selected: false })), fn]);
+      // Updated by hand too: when called outside a React event (e.g. after an async import), the
+      // commit below would otherwise run before the re-render and save the old nodes.
+      nodesRef.current = [...nodesRef.current.map((n) => ({ ...n, selected: false })), fn];
+      setNodes(nodesRef.current);
       queueMicrotask(() => commitRef.current());
       return node.id;
     },
@@ -312,6 +317,16 @@ function CanvasFlow({ path, doc: initial, toolsHost }: { path: string; doc: Canv
   };
 
   const onDrop = (e: DragEvent) => {
+    if (isFinderDrag(e.dataTransfer)) {
+      // Copied next to the canvas, then one file card each, fanned out from the drop point.
+      e.preventDefault();
+      const pos = flow.screenToFlowPosition({ x: e.clientX, y: e.clientY });
+      void importDropped(droppedItems(e.dataTransfer), parentOf(path)).then((paths) => {
+        const dirs = new Set(useVault.getState().entries.filter((x) => x.is_dir).map((x) => x.path));
+        paths.filter((p) => !dirs.has(p)).forEach((p, i) => addNode({ type: "file", file: p }, { x: pos.x + i * 40, y: pos.y + i * 40 }));
+      });
+      return;
+    }
     const p = e.dataTransfer.getData(TREE_DRAG);
     if (!p) return;
     e.preventDefault();
@@ -331,7 +346,7 @@ function CanvasFlow({ path, doc: initial, toolsHost }: { path: string; doc: Canv
   return (
     <div
       className="canvas-host"
-      onDragOver={(e) => e.dataTransfer.types.includes(TREE_DRAG) && e.preventDefault()}
+      onDragOver={(e) => (e.dataTransfer.types.includes(TREE_DRAG) || isFinderDrag(e.dataTransfer)) && e.preventDefault()}
       onDrop={onDrop}
       onDoubleClick={(e) => {
         if ((e.target as HTMLElement).classList.contains("react-flow__pane")) addNode({ type: "text", text: "" }, flow.screenToFlowPosition({ x: e.clientX, y: e.clientY }));
@@ -422,6 +437,11 @@ const Card = memo(function Card({ data, selected }: NodeProps<FlowNode>) {
       {n.type === "text" && <TextCard id={n.id} text={n.text ?? ""} onText={data.onText} canvasPath={data.canvasPath} />}
       {n.type === "file" && <FileCard file={n.file ?? ""} subpath={n.subpath} />}
       {n.type === "link" && <LinkCard url={n.url ?? ""} />}
+      {!KNOWN_NODE_TYPES.includes(n.type) && (
+        <div className="canvas-unknown" title="Mosaic can't show this card yet. It is kept as is when the canvas is saved.">
+          Unsupported card type “{n.type}”
+        </div>
+      )}
     </div>
   );
 });

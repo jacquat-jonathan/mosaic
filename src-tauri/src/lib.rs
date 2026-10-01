@@ -17,6 +17,7 @@ type CmdResult<T> = Result<T, Error>;
 struct AppState {
     ws: RwLock<Option<Arc<Workspace>>>,
     watcher: Mutex<Option<mosaic_core::watch::Watcher>>,
+    settings_watcher: Mutex<Option<mosaic_core::watch::Watcher>>,
 }
 
 impl AppState {
@@ -160,6 +161,37 @@ fn set_bookmarks(state: State<AppState>, paths: Vec<String>) -> CmdResult<()> {
 #[tauri::command]
 fn copy_path(state: State<AppState>, from: String, to: String) -> CmdResult<Written> {
     state.get()?.copy(&from, &to)
+}
+
+/// Adds a file dropped from Finder. The bytes come as the raw request body (no JSON round trip for
+/// large images); the vault path comes URI-encoded in the `x-path` header.
+#[tauri::command]
+fn import_file(state: State<AppState>, request: tauri::ipc::Request<'_>) -> CmdResult<Written> {
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
+        return Err(Error::Invalid("import_file expects raw bytes".into()));
+    };
+    let path = request
+        .headers()
+        .get("x-path")
+        .and_then(|v| v.to_str().ok())
+        .and_then(percent_decode)
+        .ok_or_else(|| Error::Invalid("import_file needs an x-path header".into()))?;
+    state.get()?.import(&path, bytes)
+}
+
+/// Undoes JavaScript's `encodeURIComponent`.
+fn percent_decode(s: &str) -> Option<String> {
+    let mut out = Vec::with_capacity(s.len());
+    let mut bytes = s.bytes();
+    while let Some(b) = bytes.next() {
+        if b == b'%' {
+            let hex = [bytes.next()?, bytes.next()?];
+            out.push(u8::from_str_radix(std::str::from_utf8(&hex).ok()?, 16).ok()?);
+        } else {
+            out.push(b);
+        }
+    }
+    String::from_utf8(out).ok()
 }
 
 #[tauri::command]
@@ -306,6 +338,19 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .manage(AppState::default())
         .manage(update::UpdateState::default())
+        .setup(|app| {
+            // Agents change bookmarks through the CLI/MCP, which write settings.json directly.
+            let handle = app.handle().clone();
+            let watcher = mosaic_core::watch::watch_settings(move || {
+                let _ = handle.emit("settings-changed", ());
+            })
+            .ok();
+            *app.state::<AppState>()
+                .settings_watcher
+                .lock()
+                .expect("watcher lock poisoned") = watcher;
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             open_vault,
             create_vault,
@@ -314,6 +359,7 @@ pub fn run() {
             get_bookmarks,
             set_bookmarks,
             copy_path,
+            import_file,
             current_vault,
             last_vault,
             list_dir,

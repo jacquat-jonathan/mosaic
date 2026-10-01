@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { Buffer } from "../state/workspace";
+import { useDark } from "../theme";
 import { CodeEditor } from "./CodeEditor";
 import { Segmented, Toolbar } from "./Toolbar";
 
@@ -16,6 +17,7 @@ export function RenderedSourceViewer({
   const [mode, setMode] = useState<"view" | "source">("view");
   const [error, setError] = useState<string | null>(null);
   const host = useRef<HTMLDivElement>(null);
+  const dark = useDark();
 
   useEffect(() => {
     if (mode !== "view" || !host.current) return;
@@ -30,7 +32,8 @@ export function RenderedSourceViewer({
       live = false;
       clearTimeout(t);
     };
-  }, [buffer.content, mode, render]);
+    // `dark`: charts and graphs bake the theme into their SVG, so they redraw when it changes.
+  }, [buffer.content, mode, render, dark]);
 
   return (
     <div className="viewer">

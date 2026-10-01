@@ -87,6 +87,13 @@ enum Cmd {
         #[arg(long)]
         no_update_links: bool,
     },
+    /// List bookmarks, or add/remove one (bookmarks show in the app's Bookmarks panel).
+    Bookmarks {
+        #[command(subcommand)]
+        action: Option<BookmarkCmd>,
+    },
+    /// Duplicate a file; never overwrites an existing one.
+    Copy { from: String, to: String },
     /// Move a file or folder to the macOS Trash.
     Delete { path: String },
     /// Create a folder.
@@ -101,6 +108,14 @@ enum Cmd {
     Guide,
     /// Run as an MCP server over stdio (for Claude Code, Claude Desktop, …).
     Mcp,
+}
+
+#[derive(Subcommand)]
+enum BookmarkCmd {
+    /// Bookmark a file or folder (added at the end).
+    Add { path: String },
+    /// Remove a bookmark; the file itself is untouched.
+    Remove { path: String },
 }
 
 fn vault_path(flag: Option<PathBuf>) -> Result<PathBuf> {
@@ -253,6 +268,29 @@ fn run(cli: Cli) -> Result<()> {
                 }
                 s
             })
+        }
+        Cmd::Bookmarks { action } => {
+            let list = match action {
+                None => ws.bookmarks(),
+                Some(BookmarkCmd::Add { path }) => ws.add_bookmark(&path)?,
+                Some(BookmarkCmd::Remove { path }) => ws.remove_bookmark(&path)?,
+            };
+            print(json, &list, |list| {
+                list.iter()
+                    .map(|b| {
+                        if b.exists {
+                            b.path.clone()
+                        } else {
+                            format!("{}  (missing)", b.path)
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            })
+        }
+        Cmd::Copy { from, to } => {
+            let w = ws.copy(&from, &to)?;
+            print(json, &w, |w| format!("copied to {}", w.path))
         }
         Cmd::Delete { path } => {
             ws.delete(&path)?;

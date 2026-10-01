@@ -17,6 +17,8 @@ impl Client {
             .args(["--vault", vault.to_str().unwrap(), "mcp"])
             // Keep the test's index out of ~/Library/Caches.
             .env("MOSAIC_CACHE_DIR", vault.join(".test-cache"))
+            // …and its bookmarks out of the real settings.json.
+            .env("MOSAIC_SETTINGS_DIR", vault.join(".test-settings"))
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
@@ -130,10 +132,14 @@ fn every_tool_works_end_to_end() {
         "patch_file",
         "append_to_file",
         "rename",
+        "copy_file",
         "delete_file",
         "create_folder",
         "get_backlinks",
         "list_tags",
+        "list_bookmarks",
+        "add_bookmark",
+        "remove_bookmark",
     ] {
         assert!(
             names.contains(&expected),
@@ -213,11 +219,30 @@ fn every_tool_works_end_to_end() {
     );
     assert!(!err);
 
+    let (err, marks) = c.call("add_bookmark", json!({ "path": "AI/Summary.md" }));
+    assert!(!err);
+    assert_eq!(marks, json!([{ "path": "AI/Summary.md", "exists": true }]));
+    let (err, payload) = c.call("add_bookmark", json!({ "path": "Nope.md" }));
+    assert!(err);
+    assert_eq!(payload["code"], "not_found");
+
     let (_, renamed) = c.call(
         "rename",
         json!({ "from": "AI/Summary.md", "to": "AI/Overview.md" }),
     );
     assert_eq!(renamed["path"], "AI/Overview.md");
+    let (_, marks) = c.call("list_bookmarks", json!({}));
+    assert_eq!(
+        marks,
+        json!([{ "path": "AI/Overview.md", "exists": true }]),
+        "bookmarks follow a rename"
+    );
+    let (err, marks) = c.call("remove_bookmark", json!({ "path": "AI/Overview.md" }));
+    assert!(!err);
+    assert_eq!(marks, json!([]));
+    let (err, payload) = c.call("remove_bookmark", json!({ "path": "AI/Overview.md" }));
+    assert!(err);
+    assert_eq!(payload["code"], "invalid");
     let (_, board) = c.call("read_file", json!({ "path": "AI/Board.canvas" }));
     assert!(
         board["content"]
@@ -225,6 +250,19 @@ fn every_tool_works_end_to_end() {
             .unwrap()
             .contains("AI/Overview.md")
     );
+
+    let (err, copied) = c.call(
+        "copy_file",
+        json!({ "from": "AI/Board.canvas", "to": "AI/Board copy.canvas" }),
+    );
+    assert!(!err);
+    assert_eq!(copied["path"], "AI/Board copy.canvas");
+    let (err, payload) = c.call(
+        "copy_file",
+        json!({ "from": "AI/Board.canvas", "to": "AI/Board copy.canvas" }),
+    );
+    assert!(err);
+    assert_eq!(payload["code"], "already_exists");
 
     let (err, payload) = c.call("read_file", json!({ "path": "../outside.md" }));
     assert!(err);

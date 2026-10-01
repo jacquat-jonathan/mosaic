@@ -6,6 +6,7 @@ use crate::index::{Backlink, Index, OutLink, SearchHit, SyncStats, TagCount};
 use crate::kind::FileKind;
 use crate::links::{FileSet, markdown_url_for, wiki_text_for};
 use crate::parse::{self, Heading, LinkKind};
+use crate::settings::{SETTINGS_FILE, Settings};
 use crate::vault::{Entry, FileContent, Vault, Written, normalize};
 use regex::Regex;
 use serde::Serialize;
@@ -22,6 +23,13 @@ pub struct Renamed {
     pub path: String,
     /// Other files whose links were rewritten to follow the move.
     pub updated_links_in: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct Bookmark {
+    pub path: String,
+    /// False when the file or folder was deleted or moved outside Mosaic.
+    pub exists: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -114,6 +122,32 @@ impl Workspace {
         let w = self.vault.copy(from, to)?;
         self.reindex(&w.path);
         Ok(w)
+    }
+
+    /// Adds a file from outside the vault. When `path` is taken, " 1", " 2"… is added before the
+    /// extension (like Finder), so nothing is ever overwritten.
+    pub fn import(&self, path: &str, bytes: &[u8]) -> Result<Written> {
+        let name_start = path.rfind('/').map_or(0, |i| i + 1);
+        let (stem, ext) = match path[name_start..].rfind('.') {
+            Some(i) if i > 0 => path.split_at(name_start + i),
+            _ => (path, ""),
+        };
+        for n in 0.. {
+            let candidate = if n == 0 {
+                path.to_string()
+            } else {
+                format!("{stem} {n}{ext}")
+            };
+            match self.vault.create_bytes(&candidate, bytes) {
+                Err(Error::AlreadyExists(_)) => continue,
+                r => {
+                    let w = r?;
+                    self.reindex(&w.path);
+                    return Ok(w);
+                }
+            }
+        }
+        unreachable!()
     }
 
     pub fn mkdir(&self, path: &str) -> Result<()> {
@@ -260,10 +294,66 @@ impl Workspace {
         for p in &updated {
             self.reindex(p);
         }
+        // Bookmarks follow the move too. They are secondary: a failure here doesn't undo the rename.
+        let root = self.vault.root();
+        let _ = Settings::update(|s| s.remap_bookmarks(root, &from, &out));
         Ok(Renamed {
             path: out,
             updated_links_in: updated,
         })
+    }
+
+    /// The vault's bookmarks, in the user's order. They live in the app's settings, not in the vault.
+    pub fn bookmarks(&self) -> Vec<Bookmark> {
+        Settings::load()
+            .bookmarks(self.vault.root())
+            .into_iter()
+            .map(|path| Bookmark {
+                exists: self.vault.stat(&path).is_ok(),
+                path,
+            })
+            .collect()
+    }
+
+    /// Bookmarks an existing file or folder (at the end of the list; no-op if already there).
+    pub fn add_bookmark(&self, path: &str) -> Result<Vec<Bookmark>> {
+        let path = self.vault.stat(path)?.path;
+        if path.is_empty() {
+            return Err(Error::InvalidPath("cannot bookmark the vault root".into()));
+        }
+        let root = self.vault.root();
+        Settings::update(|s| {
+            let mut list = s.bookmarks(root);
+            if list.contains(&path) {
+                return false;
+            }
+            list.push(path.clone());
+            s.set_bookmarks(root, list);
+            true
+        })
+        .map_err(settings_error)?;
+        Ok(self.bookmarks())
+    }
+
+    /// Removes a bookmark (also one whose file no longer exists).
+    pub fn remove_bookmark(&self, path: &str) -> Result<Vec<Bookmark>> {
+        let path = normalize(path)?;
+        let root = self.vault.root();
+        let mut found = false;
+        Settings::update(|s| {
+            let mut list = s.bookmarks(root);
+            list.retain(|p| p != &path);
+            found = list.len() < s.bookmarks(root).len();
+            if found {
+                s.set_bookmarks(root, list);
+            }
+            found
+        })
+        .map_err(settings_error)?;
+        if !found {
+            return Err(Error::Invalid(format!("{path} isn't bookmarked")));
+        }
+        Ok(self.bookmarks())
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -344,6 +434,10 @@ impl Workspace {
     }
 }
 
+fn settings_error(e: std::io::Error) -> Error {
+    Error::io(SETTINGS_FILE, e)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -374,6 +468,19 @@ mod tests {
         );
         w.patch("New.md", "zebra", "okapi", None).unwrap();
         assert!(w.search("zebra", 5).unwrap().is_empty());
+    }
+
+    #[test]
+    fn import_never_overwrites_and_numbers_like_finder() {
+        let (_d, w) = ws();
+        let png = [0x89, b'P', b'N', b'G', 0];
+        assert_eq!(w.import("img/a.png", &png).unwrap().path, "img/a.png");
+        assert_eq!(w.import("img/a.png", &png).unwrap().path, "img/a 1.png");
+        assert_eq!(w.import("img/a.png", &png).unwrap().path, "img/a 2.png");
+        assert_eq!(w.import("Ideas.md", b"x").unwrap().path, "Ideas 1.md");
+        assert_eq!(w.import("v1.0/README", b"x").unwrap().path, "v1.0/README");
+        assert_eq!(w.import("v1.0/README", b"x").unwrap().path, "v1.0/README 1");
+        assert_eq!(w.import(".env", b"x").unwrap_err().code(), "invalid_path");
     }
 
     #[test]

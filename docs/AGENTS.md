@@ -15,6 +15,10 @@ write shows up in the app within a second.
   edits — on a `conflict` error, read again and redo your change.
 - **Deleting is safe but visible:** files go to the macOS Trash.
 - **Renaming updates links** in every other note automatically (use `rename`, not delete + create).
+- **Duplicate with `copy`** (any file, including images); it never overwrites an existing file.
+- **Bookmarks** are the human's shortlist in the app's sidebar (`list_bookmarks`, `add_bookmark`,
+  `remove_bookmark`). Bookmark something only when asked or when it is clearly the place to look
+  next (e.g. a report you just wrote). They follow renames.
 - Keep files human-readable: short paragraphs, headings, lists. Don't reformat content you didn't change.
 
 ## File types

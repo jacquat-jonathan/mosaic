@@ -1,6 +1,6 @@
 // Keeps the UI in step with changes made on disk by other tools (AI agents, the CLI, other editors).
 
-import { onVaultChanged } from "./ipc/api";
+import { api, onSettingsChanged, onVaultChanged } from "./ipc/api";
 import { useVault } from "./state/vault";
 import { useWorkspace } from "./state/workspace";
 
@@ -16,5 +16,15 @@ export function startVaultSync(): Promise<() => void> {
     for (const open of Object.keys(ws.buffers)) {
       if (paths.some((p) => open === p || open.startsWith(`${p}/`))) void ws.externalChange(open);
     }
+  });
+}
+
+/** Picks up bookmarks that agents added or removed through the CLI or MCP. */
+export function startBookmarkSync(): Promise<() => void> {
+  return onSettingsChanged(async () => {
+    if (!useVault.getState().vault) return;
+    const fresh = await api.bookmarks().catch(() => null);
+    const cur = useVault.getState().bookmarks;
+    if (fresh && (fresh.length !== cur.length || fresh.some((p, i) => p !== cur[i]))) useVault.setState({ bookmarks: fresh });
   });
 }

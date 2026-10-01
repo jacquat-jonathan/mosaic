@@ -100,7 +100,7 @@ function Appearance() {
   const s = useSettings();
   return (
     <>
-      <Row label="Theme" hint="System follows macOS. Diagrams, canvases and drawings redraw in the new colours when you reopen them.">
+      <Row label="Theme" hint="System follows macOS. Open diagrams, canvases and drawings switch colours right away.">
         <Segmented<Theme>
           label="Theme"
           value={s.theme}
@@ -136,7 +136,7 @@ function EditorFiles() {
   const s = useSettings();
   return (
     <>
-      <Row label="Spellcheck" hint="Underline misspelled words in notes. Applies to notes you open next.">
+      <Row label="Spellcheck" hint="Underline misspelled words in notes.">
         <Toggle label="Spellcheck" checked={s.spellcheck} onChange={(v) => s.set("spellcheck", v)} />
       </Row>
       <Row label="New notes go in" hint="Where ⌘N and the “New note” button create notes.">

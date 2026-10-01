@@ -1,7 +1,7 @@
 // User-level actions that touch both the vault tree and open tabs.
 
 import { useUi } from "./state/ui";
-import { baseName, parentOf, topLevel, uniquePath, useVault } from "./state/vault";
+import { baseName, joinPath, parentOf, topLevel, uniquePath, useVault } from "./state/vault";
 import { useWorkspace } from "./state/workspace";
 import { kindOf } from "./ipc/kinds";
 import { api, pickFolder } from "./ipc/api";
@@ -231,4 +231,60 @@ export async function newOfKind(dir: string, kind: (typeof NEW_KINDS)[number]) {
   const { EMPTY_DRAWING } = await import("./viewers/ExcalidrawEditor");
   const path = await newFileOfKind(dir, kind.stem, kind.ext, kind.ext === "excalidraw" ? EMPTY_DRAWING : kind.content);
   if (path) useVault.getState().setRenaming(path);
+}
+
+/** Whether a drag carries files from Finder (as opposed to a drag from the tree or of text). */
+export function isFinderDrag(dt: DataTransfer): boolean {
+  return dt.types.includes("Files");
+}
+
+/** Dropped Finder items. Must be called during the drop event itself: the DataTransfer is emptied once it returns. */
+export function droppedItems(dt: DataTransfer): (FileSystemEntry | File)[] {
+  const entries = [...dt.items].filter((i) => i.kind === "file").map((i) => i.webkitGetAsEntry?.() ?? i.getAsFile());
+  return entries.every(Boolean) && entries.length ? (entries as (FileSystemEntry | File)[]) : [...dt.files];
+}
+
+const entryFile = (e: FileSystemFileEntry) => new Promise<File>((ok, fail) => e.file(ok, fail));
+const readBatch = (r: FileSystemDirectoryReader) => new Promise<FileSystemEntry[]>((ok, fail) => r.readEntries(ok, fail));
+
+/**
+ * Copies files and folders dropped from Finder into `dir`. Taken names get " 1", " 2"… (nothing is
+ * overwritten); hidden files such as .DS_Store are skipped. Returns the vault paths of the top-level items.
+ */
+export async function importDropped(items: (FileSystemEntry | File)[], dir: string): Promise<string[]> {
+  const vault = useVault.getState();
+  const existing = new Set(vault.entries.map((e) => e.path.toLowerCase()));
+  const importOne = async (item: FileSystemEntry | File, into: string, top: boolean): Promise<string | null> => {
+    if (item.name.startsWith(".")) return null;
+    if (item instanceof File || item.isFile) {
+      const file = item instanceof File ? item : await entryFile(item as FileSystemFileEntry);
+      return (await api.importFile(joinPath(into, file.name), new Uint8Array(await file.arrayBuffer()))).path;
+    }
+    // Only top-level folders can clash with what's already there; their contents land in a fresh folder.
+    const folder = top ? uniquePath(existing, into, item.name, "") : joinPath(into, item.name);
+    await api.mkdir(folder);
+    const reader = (item as FileSystemDirectoryEntry).createReader();
+    for (let batch = await readBatch(reader); batch.length; batch = await readBatch(reader)) {
+      for (const child of batch) await importOne(child, folder, false);
+    }
+    return folder;
+  };
+  const out: string[] = [];
+  try {
+    for (const item of items) {
+      const p = await importOne(item, dir, true);
+      if (p) out.push(p);
+    }
+  } catch (e) {
+    vault.setError(errorMessage(e));
+  }
+  await vault.refresh();
+  if (dir) vault.toggle(dir, true);
+  if (out.length) vault.setSelection(out);
+  return out;
+}
+
+/** Text that embeds (images, PDFs) or links (anything else) each imported file in a note. */
+export function embedsFor(paths: string[]): string {
+  return paths.map((p) => (["image", "pdf"].includes(kindOf(p)) ? "!" : "") + wikilinkFor(p)).join("\n");
 }

@@ -4,6 +4,7 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Present** a canvas (toolbar › ⋯): it fills the screen and steps through its groups and frames with the arrow keys, connections flowing; Esc to stop.
 - `![[Diagram.canvas]]` in a note shows the diagram as a picture; click it to open the canvas.
 - Export a canvas as SVG or PNG (canvas toolbar › ⋯); the file is saved next to the canvas.
 - **Open as diagram**: hover a Mermaid flowchart or state diagram in a note to turn it into an editable canvas next to the note, keeping Mermaid's layout.

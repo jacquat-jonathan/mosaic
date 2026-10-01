@@ -577,3 +577,11 @@ button.secondary { border: 1px solid var(--border); padding: 5px 12px; }
 /* ![[Diagram.canvas]] in a note. */
 .cm-embed-canvas { margin: 6px 0; border: 1px solid var(--border); border-radius: 10px; overflow: auto; max-height: 520px; cursor: pointer; background: var(--bg); }
 .cm-embed-canvas svg { display: block; max-width: 100%; height: auto; }
+
+/* Presentation mode: the canvas covers the window; only the diagram and a small step counter show. */
+.canvas-host.presenting { position: fixed; inset: 0; z-index: 9000; background: var(--bg); }
+.canvas-host.presenting .canvas-handle { display: none; }
+.canvas-host.presenting .react-flow__viewport { transition: transform 0.45s ease; }
+@media (prefers-reduced-motion: reduce) { .canvas-host.presenting .react-flow__viewport { transition: none; } }
+.present-hud { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); z-index: 10; font-size: 13px; color: var(--muted); background: var(--bg); border: 1px solid var(--border); border-radius: 999px; padding: 5px 14px; pointer-events: none; }
+.present-hud span { opacity: 0.7; }

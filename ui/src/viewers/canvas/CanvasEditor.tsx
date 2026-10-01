@@ -68,6 +68,7 @@ import { align } from "./align";
 import { autoLayout } from "./layout";
 import { canvasToMermaid } from "../../diagrams/canvasToMermaid";
 import { exportCanvas } from "../../diagrams/export";
+import { plainLines } from "../../diagrams/canvasToSvg";
 import { errorMessage } from "../../ipc/types";
 
 const TREE_DRAG = "application/x-mosaic-path";
@@ -204,9 +205,14 @@ function CanvasFlow({ path, doc: initial, toolsHost }: { path: string; doc: Canv
   edgesRef.current = edges;
   const dark = useDark();
 
+  // Presenting: full window, stepping through groups and frames; connections keep flowing.
+  const [presenting, setPresenting] = useState<{ steps: { x: number; y: number; width: number; height: number; label: string }[]; index: number } | null>(null);
+  const hostRef = useRef<HTMLDivElement>(null);
+
   // Hovering a card animates its connections in their direction of travel and dims the rest.
   const [hovered, setHovered] = useState<string | null>(null);
   const shown = useMemo(() => {
+    if (presenting) return { nodes, edges: edges.map((e) => ({ ...e, data: { ...(e.data as DiagramEdgeData), flow: "on" as const } })) };
     if (!hovered) return { nodes, edges };
     const near = new Set([hovered]);
     const flowEdges = edges.map((e) => {
@@ -217,7 +223,68 @@ function CanvasFlow({ path, doc: initial, toolsHost }: { path: string; doc: Canv
     // Nothing to follow: leave the canvas as it is.
     if (near.size === 1) return { nodes, edges };
     return { nodes: nodes.map((n) => (near.has(n.id) || n.type === "group-card" ? n : { ...n, className: "node-dim" })), edges: flowEdges };
-  }, [hovered, nodes, edges]);
+  }, [hovered, nodes, edges, presenting]);
+
+  const present = () => {
+    const sized = nodesRef.current.map((n) => ({ ...n.position, width: n.measured?.width ?? n.data.node.width, height: n.measured?.height ?? n.data.node.height, node: n.data.node }));
+    const frames = sized.filter((n) => n.node.type === "group" || n.node.shape === "frame");
+    // Reading order: rows top to bottom (cards within 40 px count as one row), then left to right.
+    frames.sort((a, b) => (Math.abs(a.y - b.y) < 40 ? a.x - b.x : a.y - b.y));
+    const all = sized.length
+      ? (() => {
+          const x = Math.min(...sized.map((n) => n.x));
+          const y = Math.min(...sized.map((n) => n.y));
+          return { x, y, width: Math.max(...sized.map((n) => n.x + n.width)) - x, height: Math.max(...sized.map((n) => n.y + n.height)) - y, label: "" };
+        })()
+      : null;
+    const steps = frames.length
+      ? frames.map((f) => ({ x: f.x, y: f.y, width: f.width, height: f.height, label: f.node.type === "group" ? (f.node.label ?? "") : plainLines(f.node.text ?? "")[0] ?? "" }))
+      : all
+        ? [all]
+        : [];
+    if (!steps.length) return;
+    setHovered(null);
+    setPresenting({ steps, index: 0 });
+    void hostRef.current?.requestFullscreen?.().catch(() => {});
+  };
+
+  useEffect(() => {
+    if (!presenting) return;
+    const step = presenting.steps[presenting.index];
+    // Room for the group's label above its box. Fit after the full-window layout has settled, and
+    // again whenever the window changes size (entering full screen, resizing).
+    // An animated fitBounds gets interrupted by React Flow's re-renders; the move is animated in CSS instead.
+    const fit = () => void flow.fitBounds({ ...step, y: step.y - 34, height: step.height + 34 }, { padding: 0.1 });
+    const t = setTimeout(fit, 60);
+    window.addEventListener("resize", fit);
+    return () => {
+      clearTimeout(t);
+      window.removeEventListener("resize", fit);
+    };
+  }, [presenting, flow]);
+
+  useEffect(() => {
+    if (!presenting) return;
+    const onKey = (e: KeyboardEvent) => {
+      const go = (d: number) => setPresenting((p) => (p ? { ...p, index: Math.min(p.steps.length - 1, Math.max(0, p.index + d)) } : p));
+      if (["ArrowRight", "ArrowDown", "PageDown", " "].includes(e.key)) go(1);
+      else if (["ArrowLeft", "ArrowUp", "PageUp"].includes(e.key)) go(-1);
+      else if (e.key === "Home") setPresenting((p) => (p ? { ...p, index: 0 } : p));
+      else if (e.key === "Escape") setPresenting(null);
+      else return;
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    // Leaving full screen with the system's own Esc ends the presentation too.
+    const onFullscreen = () => !document.fullscreenElement && setPresenting(null);
+    window.addEventListener("keydown", onKey, true);
+    document.addEventListener("fullscreenchange", onFullscreen);
+    return () => {
+      window.removeEventListener("keydown", onKey, true);
+      document.removeEventListener("fullscreenchange", onFullscreen);
+      if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
+    };
+  }, [presenting !== null]); // eslint-disable-line react-hooks/exhaustive-deps
   const markers = useMemo(() => {
     const seen = new Map<string, { end: EndName; color: string }>();
     for (const e of edges) {
@@ -548,7 +615,8 @@ function CanvasFlow({ path, doc: initial, toolsHost }: { path: string; doc: Canv
   const tools = toolsHost;
   return (
     <div
-      className="canvas-host"
+      ref={hostRef}
+      className={`canvas-host ${presenting ? "presenting" : ""}`}
       onDragOver={(e) => (e.dataTransfer.types.includes(TREE_DRAG) || isFinderDrag(e.dataTransfer)) && e.preventDefault()}
       onDrop={onDrop}
       onDoubleClick={(e) => {
@@ -574,6 +642,7 @@ function CanvasFlow({ path, doc: initial, toolsHost }: { path: string; doc: Canv
                   void navigator.clipboard.writeText(canvasToMermaid(docRef.current)).catch((e) => useVault.getState().setError(`Couldn't copy: ${errorMessage(e)}`));
                 },
               },
+              { label: "Present", action: present },
               ...(["svg", "png"] as const).map((format) => ({
                 label: `Export as ${format.toUpperCase()}`,
                 action: () => void exportCanvas(path, docRef.current, format).catch((e) => useVault.getState().setError(`Couldn't export: ${errorMessage(e)}`)),
@@ -584,13 +653,23 @@ function CanvasFlow({ path, doc: initial, toolsHost }: { path: string; doc: Canv
         />
       )}
       <EdgeMarkers used={markers} />
+      {presenting && (
+        <div className="present-hud">
+          {presenting.index + 1} / {presenting.steps.length}
+          {presenting.steps[presenting.index].label && ` · ${presenting.steps[presenting.index].label}`}
+          <span> · ← → to move, Esc to stop</span>
+        </div>
+      )}
       <ReactFlow<FlowNode, Edge>
         nodes={shown.nodes}
         edges={shown.edges}
         nodeTypes={NODE_TYPES}
         edgeTypes={EDGE_TYPES}
-        onNodeMouseEnter={(_e, n) => setHovered(n.id)}
+        onNodeMouseEnter={(_e, n) => !presenting && setHovered(n.id)}
         onNodeMouseLeave={() => setHovered(null)}
+        nodesDraggable={!presenting}
+        nodesConnectable={!presenting}
+        elementsSelectable={!presenting}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
@@ -628,8 +707,8 @@ function CanvasFlow({ path, doc: initial, toolsHost }: { path: string; doc: Canv
           {guides.x !== undefined && <div className="align-guide vertical" style={{ transform: `translateX(${guides.x}px)` }} />}
           {guides.y !== undefined && <div className="align-guide horizontal" style={{ transform: `translateY(${guides.y}px)` }} />}
         </ViewportPortal>
-        <Controls showInteractive={false} />
-        <MiniMap pannable zoomable />
+        {!presenting && <Controls showInteractive={false} />}
+        {!presenting && <MiniMap pannable zoomable />}
       </ReactFlow>
     </div>
   );

@@ -1,0 +1,107 @@
+{
+	"nodes": [
+		{
+			"id": "start",
+			"type": "text",
+			"x": 0,
+			"y": 0,
+			"width": 200,
+			"height": 60,
+			"text": "**Start**",
+			"color": "4"
+		},
+		{
+			"id": "step1",
+			"type": "text",
+			"x": 0,
+			"y": 140,
+			"width": 200,
+			"height": 80,
+			"text": "First step\n\nDescribe what happens."
+		},
+		{
+			"id": "decide",
+			"type": "text",
+			"x": 0,
+			"y": 300,
+			"width": 200,
+			"height": 80,
+			"text": "**Decision?**",
+			"color": "3"
+		},
+		{
+			"id": "step2",
+			"type": "text",
+			"x": -300,
+			"y": 460,
+			"width": 200,
+			"height": 80,
+			"text": "If yes: this step"
+		},
+		{
+			"id": "step3",
+			"type": "text",
+			"x": 300,
+			"y": 460,
+			"width": 200,
+			"height": 80,
+			"text": "If no: this step"
+		},
+		{
+			"id": "end",
+			"type": "text",
+			"x": 0,
+			"y": 620,
+			"width": 200,
+			"height": 60,
+			"text": "**End**",
+			"color": "1"
+		}
+	],
+	"edges": [
+		{
+			"id": "e1",
+			"fromNode": "start",
+			"fromSide": "bottom",
+			"toNode": "step1",
+			"toSide": "top"
+		},
+		{
+			"id": "e2",
+			"fromNode": "step1",
+			"fromSide": "bottom",
+			"toNode": "decide",
+			"toSide": "top"
+		},
+		{
+			"id": "e3",
+			"fromNode": "decide",
+			"fromSide": "left",
+			"toNode": "step2",
+			"toSide": "top",
+			"label": "yes"
+		},
+		{
+			"id": "e4",
+			"fromNode": "decide",
+			"fromSide": "right",
+			"toNode": "step3",
+			"toSide": "top",
+			"label": "no"
+		},
+		{
+			"id": "e5",
+			"fromNode": "step2",
+			"fromSide": "bottom",
+			"toNode": "end",
+			"toSide": "left"
+		},
+		{
+			"id": "e6",
+			"fromNode": "step3",
+			"fromSide": "bottom",
+			"toNode": "end",
+			"toSide": "right"
+		}
+	]
+}

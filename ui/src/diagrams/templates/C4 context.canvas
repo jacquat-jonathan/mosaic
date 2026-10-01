@@ -1,0 +1,77 @@
+{
+	"nodes": [
+		{
+			"id": "person",
+			"type": "text",
+			"x": -20,
+			"y": -300,
+			"width": 280,
+			"height": 140,
+			"text": "## Person\n[Person]\n\nWho uses the system, and why.",
+			"color": "5"
+		},
+		{
+			"id": "system",
+			"type": "text",
+			"x": -20,
+			"y": 0,
+			"width": 280,
+			"height": 140,
+			"text": "## Your system\n[Software system]\n\nWhat it does, in one sentence.",
+			"color": "6"
+		},
+		{
+			"id": "ext1",
+			"type": "text",
+			"x": -420,
+			"y": 320,
+			"width": 280,
+			"height": 140,
+			"text": "## Other system\n[External system]\n\nWhat it provides."
+		},
+		{
+			"id": "ext2",
+			"type": "text",
+			"x": 380,
+			"y": 320,
+			"width": 280,
+			"height": 140,
+			"text": "## Other system\n[External system]\n\nWhat it provides."
+		},
+		{
+			"id": "boundary",
+			"type": "group",
+			"x": -60,
+			"y": -40,
+			"width": 360,
+			"height": 220,
+			"label": "Your organisation"
+		}
+	],
+	"edges": [
+		{
+			"id": "uses",
+			"fromNode": "person",
+			"fromSide": "bottom",
+			"toNode": "system",
+			"toSide": "top",
+			"label": "Uses"
+		},
+		{
+			"id": "calls1",
+			"fromNode": "system",
+			"fromSide": "left",
+			"toNode": "ext1",
+			"toSide": "top",
+			"label": "Reads data from"
+		},
+		{
+			"id": "calls2",
+			"fromNode": "system",
+			"fromSide": "right",
+			"toNode": "ext2",
+			"toSide": "top",
+			"label": "Sends events to"
+		}
+	]
+}

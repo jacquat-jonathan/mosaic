@@ -189,7 +189,7 @@ function Main() {
                 </button>
                 <button
                   aria-label="New…"
-                  title="New canvas, drawing, chart or graph"
+                  title="New diagram, drawing, chart or graph"
                   onClick={(e) => {
                     const r = e.currentTarget.getBoundingClientRect();
                     ui().showMenu(r.left, r.bottom + 4, NEW_KINDS.map((k) => ({ label: k.label, action: () => void newOfKind("", k) })));

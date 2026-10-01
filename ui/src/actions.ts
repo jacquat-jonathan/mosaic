@@ -220,7 +220,8 @@ const GRAPH_TEMPLATE = `digraph G {
 /** "New …" commands for every kind of file Mosaic can create. */
 export const NEW_KINDS = [
   { label: "New note", stem: "Untitled", ext: "md", content: "" },
-  { label: "New canvas", stem: "Untitled", ext: "canvas", content: '{\n\t"nodes":[],\n\t"edges":[]\n}' },
+  // Canvases are created from a diagram template (Blank first).
+  { label: "New diagram…", stem: "Diagram", ext: "canvas", content: "" },
   { label: "New drawing", stem: "Drawing", ext: "excalidraw", content: "" },
   { label: "New chart", stem: "Chart", ext: "vl.json", content: CHART_TEMPLATE },
   { label: "New graph (Graphviz)", stem: "Graph", ext: "dot", content: GRAPH_TEMPLATE },
@@ -228,9 +229,24 @@ export const NEW_KINDS = [
 
 export async function newOfKind(dir: string, kind: (typeof NEW_KINDS)[number]) {
   if (kind.ext === "md") return newNote(dir);
+  if (kind.ext === "canvas") return newDiagram(dir);
   const { EMPTY_DRAWING } = await import("./viewers/ExcalidrawEditor");
   const path = await newFileOfKind(dir, kind.stem, kind.ext, kind.ext === "excalidraw" ? EMPTY_DRAWING : kind.content);
   if (path) useVault.getState().setRenaming(path);
+}
+
+/** "New diagram…": pick a template, then create it in `dir` and start renaming it. */
+export async function newDiagram(dir: string) {
+  const { DIAGRAM_TEMPLATES } = await import("./diagrams/templates");
+  useUi.getState().openPicker({
+    placeholder: "New diagram from…",
+    items: DIAGRAM_TEMPLATES.map((t) => ({ id: t.id, label: t.label, detail: t.detail })),
+    hint: "↵ create · esc cancel",
+    onPick: (item) => {
+      const t = DIAGRAM_TEMPLATES.find((x) => x.id === item.id)!;
+      void newFileOfKind(dir, t.stem, "canvas", t.content).then((path) => path && useVault.getState().setRenaming(path));
+    },
+  });
 }
 
 /** Whether a drag carries files from Finder (as opposed to a drag from the tree or of text). */

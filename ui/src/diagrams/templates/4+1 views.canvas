@@ -1,0 +1,129 @@
+{
+	"nodes": [
+		{
+			"id": "logical",
+			"type": "group",
+			"x": -460,
+			"y": -360,
+			"width": 400,
+			"height": 320,
+			"label": "Logical view",
+			"color": "5"
+		},
+		{
+			"id": "logical-what",
+			"type": "text",
+			"x": -440,
+			"y": -320,
+			"width": 360,
+			"height": 260,
+			"text": "## What the system does\nKey abstractions and their relations for the people who use it.\n\nTypical diagrams: class, object, state machine.\n\n*Audience: end users, analysts*"
+		},
+		{
+			"id": "development",
+			"type": "group",
+			"x": 500,
+			"y": -360,
+			"width": 400,
+			"height": 320,
+			"label": "Development view",
+			"color": "6"
+		},
+		{
+			"id": "development-what",
+			"type": "text",
+			"x": 520,
+			"y": -320,
+			"width": 360,
+			"height": 260,
+			"text": "## How the code is organised\nModules, packages, layers and their dependencies.\n\nTypical diagrams: component, package.\n\n*Audience: developers, managers*"
+		},
+		{
+			"id": "process",
+			"type": "group",
+			"x": -460,
+			"y": 460,
+			"width": 400,
+			"height": 320,
+			"label": "Process view",
+			"color": "2"
+		},
+		{
+			"id": "process-what",
+			"type": "text",
+			"x": -440,
+			"y": 500,
+			"width": 360,
+			"height": 260,
+			"text": "## How it runs\nProcesses, threads, concurrency and the messages between them.\n\nTypical diagrams: sequence, activity, communication.\n\n*Audience: integrators, performance*"
+		},
+		{
+			"id": "physical",
+			"type": "group",
+			"x": 500,
+			"y": 460,
+			"width": 400,
+			"height": 320,
+			"label": "Physical view",
+			"color": "4"
+		},
+		{
+			"id": "physical-what",
+			"type": "text",
+			"x": 520,
+			"y": 500,
+			"width": 360,
+			"height": 260,
+			"text": "## Where it runs\nMachines, networks and what is deployed on each.\n\nTypical diagrams: deployment.\n\n*Audience: operations, system engineers*"
+		},
+		{
+			"id": "scenarios",
+			"type": "group",
+			"x": 40,
+			"y": 60,
+			"width": 400,
+			"height": 320,
+			"label": "Scenarios (+1)",
+			"color": "3"
+		},
+		{
+			"id": "scenarios-what",
+			"type": "text",
+			"x": 60,
+			"y": 100,
+			"width": 360,
+			"height": 260,
+			"text": "## Use cases that tie the views together\nA few key scenarios, each walked through every view to check the architecture.\n\nTypical diagrams: use case, sequence."
+		}
+	],
+	"edges": [
+		{
+			"id": "s-logical",
+			"fromNode": "scenarios-what",
+			"fromSide": "top",
+			"toNode": "logical-what",
+			"toSide": "right"
+		},
+		{
+			"id": "s-development",
+			"fromNode": "scenarios-what",
+			"fromSide": "top",
+			"toNode": "development-what",
+			"toSide": "left"
+		},
+		{
+			"id": "s-process",
+			"fromNode": "scenarios-what",
+			"fromSide": "bottom",
+			"toNode": "process-what",
+			"toSide": "right"
+		},
+		{
+			"id": "s-physical",
+			"fromNode": "scenarios-what",
+			"fromSide": "bottom",
+			"toNode": "physical-what",
+			"toSide": "left"
+		}
+	]
+}

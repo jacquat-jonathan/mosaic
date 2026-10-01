@@ -569,3 +569,8 @@ button.secondary { border: 1px solid var(--border); padding: 5px 12px; }
 .shape-frame .shape-text { flex: none; max-width: 80%; height: auto; }
 .shape-frame .canvas-text { padding: 3px 18px 3px 8px; text-align: left; font-weight: 600; font-size: 13px; border-right: 2px solid var(--shape-stroke); border-bottom: 2px solid var(--shape-stroke); clip-path: polygon(0 0, 100% 0, 100% 60%, calc(100% - 10px) 100%, 0 100%); background: var(--bg); }
 .shape-frame .canvas-text p { margin: 0; }
+/* "Open as diagram" on a rendered Mermaid block in a note. */
+.cm-rendered-block { position: relative; }
+.block-action { position: absolute; top: 6px; right: 6px; font-size: 12px; padding: 3px 8px; border-radius: 6px; background: var(--bg); border: 1px solid var(--border); color: var(--muted); opacity: 0; transition: opacity 0.1s; }
+.cm-rendered-block:hover .block-action { opacity: 1; }
+.block-action:hover { color: var(--fg); }

@@ -22,7 +22,7 @@ import {
   type NodeProps,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { ExternalLink, FileText, Maximize, Network, Plus, Shapes, SquareDashed } from "lucide-react";
+import { Ellipsis, ExternalLink, FileText, Maximize, Network, Plus, Shapes, SquareDashed } from "lucide-react";
 import { useWorkspace, type Buffer } from "../../state/workspace";
 import { parentOf, useVault } from "../../state/vault";
 import { droppedItems, importDropped, isFinderDrag } from "../../actions";
@@ -66,6 +66,8 @@ import {
 import { DiagramEdge, edgeEnds, type DiagramEdgeData } from "./DiagramEdge";
 import { align } from "./align";
 import { autoLayout } from "./layout";
+import { canvasToMermaid } from "../../diagrams/canvasToMermaid";
+import { errorMessage } from "../../ipc/types";
 
 const TREE_DRAG = "application/x-mosaic-path";
 const DEFAULT_EDGE_COLOR = "#8a8f9c";
@@ -563,6 +565,16 @@ function CanvasFlow({ path, doc: initial, toolsHost }: { path: string; doc: Canv
           onFile={() => void addFile()}
           onFit={() => void flow.fitView({ padding: 0.2, duration: 200 })}
           onLayout={layoutCards}
+          onMore={(r) =>
+            useUi.getState().showMenu(r.left, r.bottom + 4, [
+              {
+                label: "Copy as Mermaid",
+                action: () => {
+                  void navigator.clipboard.writeText(canvasToMermaid(docRef.current)).catch((e) => useVault.getState().setError(`Couldn't copy: ${errorMessage(e)}`));
+                },
+              },
+            ])
+          }
           host={tools}
         />
       )}
@@ -625,6 +637,7 @@ function CanvasTools({
   onFile,
   onFit,
   onLayout,
+  onMore,
   host,
 }: {
   onCard(): void;
@@ -633,6 +646,7 @@ function CanvasTools({
   onFile(): void;
   onFit(): void;
   onLayout(direction: "TB" | "LR"): void;
+  onMore(anchor: DOMRect): void;
   host: HTMLElement;
 }) {
   return createPortal(
@@ -666,6 +680,9 @@ function CanvasTools({
         <Network size={14} /> Layout
       </button>
       <button onClick={onFit} title="Fit to view"><Maximize size={14} /></button>
+      <button onClick={(e) => onMore(e.currentTarget.getBoundingClientRect())} title="More: copy as Mermaid, export, present" aria-label="More">
+        <Ellipsis size={14} />
+      </button>
     </span>,
     host,
   );

@@ -18,6 +18,8 @@ export interface EditorContext {
   importDrop(dt: DataTransfer): Promise<string> | null;
   /** Candidates for [[ completion. */
   linkCandidates(): { label: string; detail: string; insert?: string }[];
+  /** Turns a ```mermaid block into an editable canvas next to the note (flowcharts, state diagrams). */
+  openAsDiagram?(source: string): void;
 }
 
 export const editorContext = Facet.define<EditorContext, EditorContext>({

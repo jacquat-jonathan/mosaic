@@ -7,6 +7,7 @@ import { isDark } from "../theme";
 import type { EditorContext } from "./context";
 
 import { blockRenderers, showRenderError as showError } from "./blocks";
+import { diagramKind } from "../diagrams/mermaidToCanvas";
 
 /** Moves the cursor to `pos` so the source is revealed for editing. */
 function revealOnClick(dom: HTMLElement, view: EditorView, pos: () => number) {
@@ -40,6 +41,17 @@ export class RenderedBlockWidget extends WidgetType {
       if (out instanceof Promise) out.catch((e) => showError(el, e));
     } catch (e) {
       showError(el, e);
+    }
+    if (this.lang === "mermaid" && this.ctx.openAsDiagram && diagramKind(this.source)) {
+      const open = document.createElement("button");
+      open.className = "block-action";
+      open.textContent = "Open as diagram";
+      open.title = "Make an editable canvas from this diagram, next to the note";
+      open.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.ctx.openAsDiagram!(this.source);
+      });
+      el.appendChild(open);
     }
     revealOnClick(el, view, () => view.posAtDOM(el));
     return el;

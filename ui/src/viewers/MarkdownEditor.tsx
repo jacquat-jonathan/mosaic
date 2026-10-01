@@ -43,6 +43,17 @@ export function editorContextFor(path: string): EditorContext {
         return embedsFor(paths.filter((p) => !dirs.has(p)));
       });
     },
+    async openAsDiagram(source) {
+      try {
+        const { mermaidToCanvas } = await import("../diagrams/mermaidToCanvas");
+        const { serializeCanvas } = await import("./canvas/jsonCanvas");
+        const doc = await mermaidToCanvas(source);
+        const stem = `${path.split("/").pop()!.replace(/\.md$/i, "")} diagram`;
+        await newFileOfKind(parentOf(path), stem, "canvas", serializeCanvas(doc));
+      } catch (e) {
+        useVault.getState().setError(`Couldn't open the diagram: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    },
     linkCandidates: () => {
       const all = entries();
       const files = all

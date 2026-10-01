@@ -29,6 +29,7 @@ function updateStatus() {
     app_path: "/Applications/Mosaic.app",
     running: updateRunning,
     ready_to_install: updateBuilt,
+    last_install_error: null,
   };
 }
 

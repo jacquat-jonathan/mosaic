@@ -341,6 +341,9 @@ function About() {
       <Row label={`Mosaic ${status.version}`} hint={status.commit ? `Built from commit ${status.commit}` : "Build commit unknown"}>
         {dev ? <span className="badge">Development build</span> : <span className="badge">{status.app_path}</span>}
       </Row>
+      {status.last_install_error && (
+        <p className="warn-text">The last update was built but not installed: {status.last_install_error}</p>
+      )}
       <Row
         label="Source folder"
         hint={

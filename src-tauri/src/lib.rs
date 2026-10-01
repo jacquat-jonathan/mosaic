@@ -332,7 +332,19 @@ fn install_cli() -> CmdResult<CliInfo> {
     Ok(cli_info())
 }
 
+/// WebKit's "check spelling while typing" is off unless this default is set, and it's read once,
+/// before the first web view exists. With it on, each editor's `spellcheck` attribute (Settings ›
+/// Spellcheck) decides.
+#[cfg(target_os = "macos")]
+fn enable_webkit_spellcheck() {
+    use objc2_foundation::{NSUserDefaults, ns_string};
+    NSUserDefaults::standardUserDefaults()
+        .setBool_forKey(true, ns_string!("WebContinuousSpellCheckingEnabled"));
+}
+
 pub fn run() {
+    #[cfg(target_os = "macos")]
+    enable_webkit_spellcheck();
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())

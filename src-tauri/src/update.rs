@@ -44,6 +44,8 @@ pub struct UpdateStatus {
     app_path: Option<String>,
     running: bool,
     ready_to_install: bool,
+    /// Why the last "Restart to finish" couldn't install the new build (cleared by the next success).
+    last_install_error: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -154,7 +156,22 @@ pub fn update_status(state: State<UpdateState>) -> UpdateStatus {
         app_path: running_bundle().map(|p| p.display().to_string()),
         running: state.running.load(Ordering::SeqCst),
         ready_to_install: state.built.lock().expect("update lock").is_some(),
+        last_install_error: install_error_file()
+            .and_then(|f| std::fs::read_to_string(f).ok())
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty()),
     }
+}
+
+/// Written by the install helper when swapping in a new build fails; removed when one succeeds.
+fn install_error_file() -> Option<PathBuf> {
+    mosaic_core::settings::app_support_dir().map(|d| d.join("update-error.txt"))
+}
+
+/// Everything the install helper does is appended here, so a failed swap can be diagnosed.
+fn install_log_file() -> PathBuf {
+    let home = std::env::var("HOME").unwrap_or_default();
+    PathBuf::from(home).join("Library/Logs/Mosaic/update.log")
 }
 
 /// Sets the source checkout to update from; `None` goes back to where the app was built.
@@ -336,11 +353,28 @@ pub fn finish_update(app: AppHandle, state: State<UpdateState>) -> CmdResult<()>
         .clone()
         .ok_or_else(|| invalid("There's no finished build to install."))?;
     let dest = running_bundle().ok_or_else(|| invalid("This is a development build."))?;
-    // Copy first, then swap, so a failed copy never leaves the user without an app.
-    let script = r#"while kill -0 "$1" 2>/dev/null; do sleep 0.2; done
-rm -rf "$3.new" && ditto "$2" "$3.new" && rm -rf "$3" && mv "$3.new" "$3"
-xattr -dr com.apple.quarantine "$3" 2>/dev/null
-open "$3""#;
+    let error_file = install_error_file().ok_or_else(|| invalid("HOME isn't set."))?;
+    // Copy first, then swap, so a failed step never leaves the user without an app: the old bundle
+    // is moved aside and put back if the new one can't take its place. Every step is logged.
+    let script = r#"pid=$1 src=$2 dest=$3 log=$4 err=$5
+mkdir -p "$(dirname "$log")" "$(dirname "$err")"
+exec >>"$log" 2>&1
+echo "== $(date): installing $src into $dest"
+while kill -0 "$pid" 2>/dev/null; do sleep 0.2; done
+fail() { echo "FAILED: $1"; printf '%s\n' "Couldn't install the new build ($1). Details in $log" >"$err"; }
+rm -rf "$dest.new" "$dest.old"
+if ! ditto "$src" "$dest.new"; then
+  fail "copying it next to the app"; rm -rf "$dest.new"
+elif ! mv "$dest" "$dest.old"; then
+  fail "moving the old app aside"; rm -rf "$dest.new"
+elif ! mv "$dest.new" "$dest"; then
+  fail "moving the new app in place"; mv "$dest.old" "$dest"
+else
+  rm -rf "$dest.old" "$err"
+  xattr -dr com.apple.quarantine "$dest" 2>/dev/null
+  echo "installed"
+fi
+open "$dest""#;
     Command::new("/bin/sh")
         .arg("-c")
         .arg(script)
@@ -348,6 +382,8 @@ open "$3""#;
         .arg(std::process::id().to_string())
         .arg(&built)
         .arg(&dest)
+        .arg(install_log_file())
+        .arg(&error_file)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())

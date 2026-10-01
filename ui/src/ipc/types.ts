@@ -119,6 +119,8 @@ export interface UpdateStatus {
   app_path: string | null;
   running: boolean;
   ready_to_install: boolean;
+  /** Why the last "Restart to finish" couldn't install the new build. */
+  last_install_error: string | null;
 }
 
 export interface UpdateCheck {

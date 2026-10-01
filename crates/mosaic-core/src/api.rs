@@ -577,4 +577,19 @@ mod tests {
         );
         assert!(o.backlinks.iter().any(|b| b.source == "Ideas.md"));
     }
+
+    #[test]
+    fn renaming_a_folder_updates_file_cards_of_a_canvas_inside_it() {
+        let (_d, w) = ws();
+        w.create("Test/Plan.md", "# Plan").unwrap();
+        let canvas = r#"{"nodes":[{"id":"a","type":"file","file":"Test/Plan.md","x":0,"y":0,"width":10,"height":10}],"edges":[]}"#;
+        w.create("Test/Map.canvas", canvas).unwrap();
+        let r = w.rename("Test", "Documentation", true).unwrap();
+        assert!(
+            r.updated_links_in
+                .contains(&"Documentation/Map.canvas".to_string()),
+            "{r:?}"
+        );
+        assert!(text(&w, "Documentation/Map.canvas").contains(r#""file":"Documentation/Plan.md""#));
+    }
 }

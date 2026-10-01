@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+## 0.2.0 — 2026-10-01
+
 - The window can be moved again by dragging the sidebar header, the tab bar or the welcome screen.
 - Mosaic now has real version numbers: About shows the version and its commit, and "Check for updates" lists the new versions with what changed in each.
 - A running update can be cancelled; the installed app stays as it was.

@@ -2326,7 +2326,7 @@ dependencies = [
 
 [[package]]
 name = "mosaic-app"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "mosaic-core",
  "objc2-foundation",
@@ -2340,7 +2340,7 @@ dependencies = [
 
 [[package]]
 name = "mosaic-cli"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -2355,7 +2355,7 @@ dependencies = [
 
 [[package]]
 name = "mosaic-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "notify",
  "notify-debouncer-full",

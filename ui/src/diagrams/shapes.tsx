@@ -1,0 +1,120 @@
+// Diagram shapes, borders, line styles and arrowheads for canvases. The names and default sizes live
+// in crates/mosaic-core/src/diagram_format.json, shared with the write validator and docs/AGENTS.md.
+
+import type { ReactElement } from "react";
+import format from "../../../crates/mosaic-core/src/diagram_format.json";
+
+export type ShapeName = keyof typeof format.shapes;
+export type Border = (typeof format.borders)[number];
+export type LineStyle = (typeof format.lines)[number];
+export type EndName = keyof typeof format.ends;
+
+export const SHAPES = Object.entries(format.shapes).map(([name, s]) => ({ name: name as ShapeName, ...s }));
+export const BORDERS = format.borders as Border[];
+export const LINES = format.lines as LineStyle[];
+export const ENDS = Object.entries(format.ends).map(([name, label]) => ({ name: name as EndName, label }));
+
+export const isShape = (s: unknown): s is ShapeName => typeof s === "string" && s in format.shapes;
+export const isEnd = (s: unknown): s is EndName => typeof s === "string" && s in format.ends;
+
+/** Shapes drawn with CSS border-radius on the card itself; the others are SVG outlines. */
+const CSS_SHAPES: Partial<Record<ShapeName, string>> = { rectangle: "0", rounded: "14px", pill: "9999px", ellipse: "50%" };
+
+export function dashArray(style: string | undefined, width = 2): string | undefined {
+  if (style === "dashed") return `${width * 4} ${width * 3}`;
+  if (style === "dotted") return `${width} ${width * 2}`;
+  return undefined;
+}
+
+/**
+ * SVG outlines in a 100×100 box, stretched to the card. `non-scaling-stroke` keeps the line width even
+ * when the box isn't square. Extra lines (cylinder rim, process bars, note fold) have no fill.
+ */
+const OUTLINES: Partial<Record<ShapeName, { body: string; extra?: string }>> = {
+  diamond: { body: "M50,1 L99,50 L50,99 L1,50 Z" },
+  parallelogram: { body: "M16,1 L99,1 L84,99 L1,99 Z" },
+  hexagon: { body: "M14,1 L86,1 L99,50 L86,99 L14,99 L1,50 Z" },
+  cylinder: { body: "M1,12 A49,11 0 0 1 99,12 L99,88 A49,11 0 0 1 1,88 Z", extra: "M1,12 A49,11 0 0 0 99,12" },
+  document: { body: "M1,1 L99,1 L99,86 C75,72 50,100 1,86 Z" },
+  process: { body: "M1,1 L99,1 L99,99 L1,99 Z", extra: "M10,1 L10,99 M90,1 L90,99" },
+  cloud: {
+    body: "M26,86 C8,86 2,66 14,56 C4,44 14,24 32,28 C36,10 62,6 70,22 C86,14 100,32 92,46 C102,58 94,84 76,82 C68,96 38,96 26,86 Z",
+  },
+  note: { body: "M1,1 L80,1 L99,20 L99,99 L1,99 Z", extra: "M80,1 L80,20 L99,20" },
+};
+
+export interface ShapeStyle {
+  stroke: string;
+  fill: string;
+  border?: string;
+}
+
+/** CSS for a card drawn as a CSS shape, or null when the shape is an SVG outline. */
+export function cssShape(shape: ShapeName, s: ShapeStyle): React.CSSProperties | null {
+  const radius = CSS_SHAPES[shape];
+  if (radius === undefined) return null;
+  return {
+    borderRadius: radius,
+    borderColor: s.border === "none" ? "transparent" : s.stroke,
+    borderStyle: s.border === "dashed" || s.border === "dotted" ? s.border : "solid",
+    background: s.fill,
+  };
+}
+
+/** The SVG drawn behind a card's text, for shapes that aren't plain CSS boxes. */
+export function ShapeOutline({ shape, style }: { shape: ShapeName; style: ShapeStyle }): ReactElement | null {
+  const stroke = style.border === "none" ? "transparent" : style.stroke;
+  const dash = dashArray(style.border);
+  if (shape === "actor") {
+    // A person: kept in proportion at the top of the card; the label goes underneath.
+    return (
+      <svg className="shape-outline shape-actor" viewBox="0 0 40 64" preserveAspectRatio="xMidYMin meet" aria-hidden>
+        <g fill="none" stroke={stroke} strokeWidth="2.5" strokeLinecap="round" strokeDasharray={dash}>
+          <circle cx="20" cy="10" r="8" fill={style.fill} />
+          <path d="M20,18 L20,42 M6,28 L34,28 M20,42 L8,62 M20,42 L32,62" />
+        </g>
+      </svg>
+    );
+  }
+  const o = OUTLINES[shape];
+  if (!o) return null;
+  return (
+    <svg className="shape-outline" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden>
+      <path d={o.body} fill={style.fill} stroke={stroke} strokeWidth="2" strokeDasharray={dash} vectorEffect="non-scaling-stroke" />
+      {o.extra && <path d={o.extra} fill="none" stroke={stroke} strokeWidth="2" strokeDasharray={dash} vectorEffect="non-scaling-stroke" />}
+    </svg>
+  );
+}
+
+/** Markers for every arrowhead and colour in use, referenced by edges as `url(#…)`. */
+export const markerId = (end: EndName, color: string) => `mosaic-end-${end}-${color.replace(/[^a-z0-9]/gi, "")}`;
+
+export function EdgeMarkers({ used }: { used: { end: EndName; color: string }[] }) {
+  const bg = "var(--bg)";
+  return (
+    <svg className="edge-markers" aria-hidden>
+      <defs>
+        {used.map(({ end, color }) => (
+          <marker
+            key={markerId(end, color)}
+            id={markerId(end, color)}
+            viewBox="0 0 20 20"
+            refX={end === "diamond" || end === "diamond-open" ? 19 : end === "circle" ? 17 : 18}
+            refY="10"
+            markerWidth="16"
+            markerHeight="16"
+            markerUnits="userSpaceOnUse"
+            orient="auto-start-reverse"
+          >
+            {end === "arrow" && <path d="M2,3 L18,10 L2,17 Z" fill={color} />}
+            {end === "triangle" && <path d="M2,3 L18,10 L2,17 Z" fill={bg} stroke={color} strokeWidth="1.6" strokeLinejoin="round" />}
+            {end === "open" && <path d="M3,3 L18,10 L3,17" fill="none" stroke={color} strokeWidth="1.8" strokeLinejoin="round" />}
+            {end === "diamond" && <path d="M1,10 L10,4 L19,10 L10,16 Z" fill={color} />}
+            {end === "diamond-open" && <path d="M1,10 L10,4 L19,10 L10,16 Z" fill={bg} stroke={color} strokeWidth="1.6" strokeLinejoin="round" />}
+            {end === "circle" && <circle cx="11" cy="10" r="6" fill={bg} stroke={color} strokeWidth="1.6" />}
+          </marker>
+        ))}
+      </defs>
+    </svg>
+  );
+}

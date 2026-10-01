@@ -9,7 +9,6 @@ import {
   Handle,
   Position,
   NodeResizer,
-  MarkerType,
   ConnectionMode,
   useReactFlow,
   applyNodeChanges,
@@ -22,7 +21,7 @@ import {
   type NodeProps,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { ExternalLink, FileText, Maximize, Plus, SquareDashed } from "lucide-react";
+import { ExternalLink, FileText, Maximize, Plus, Shapes, SquareDashed } from "lucide-react";
 import { useWorkspace, type Buffer } from "../../state/workspace";
 import { parentOf, useVault } from "../../state/vault";
 import { droppedItems, importDropped, isFinderDrag } from "../../actions";
@@ -48,6 +47,8 @@ import {
   type Side,
 } from "./jsonCanvas";
 import { useDark } from "../../theme";
+import { BORDERS, ENDS, EdgeMarkers, LINES, SHAPES, ShapeOutline, cssShape, isShape, type EndName, type ShapeName } from "../../diagrams/shapes";
+import { DiagramEdge, edgeEnds, type DiagramEdgeData } from "./DiagramEdge";
 
 const TREE_DRAG = "application/x-mosaic-path";
 const DEFAULT_EDGE_COLOR = "#8a8f9c";
@@ -68,20 +69,27 @@ function toFlowEdge(e: CanvasEdge, byId: Map<string, CanvasNode>): Edge {
   const from = byId.get(e.fromNode);
   const to = byId.get(e.toNode);
   const [fs, ts] = from && to ? bestSides(from, to) : (["right", "left"] as [Side, Side]);
-  const color = colorOf(e.color) ?? DEFAULT_EDGE_COLOR;
-  const arrow = (c: string) => ({ type: MarkerType.ArrowClosed, width: 18, height: 18, color: c });
+  const data: DiagramEdgeData = { edge: e, color: colorOf(e.color) ?? DEFAULT_EDGE_COLOR };
   return {
     id: e.id,
+    type: "diagram",
     source: e.fromNode,
     target: e.toNode,
     sourceHandle: e.fromSide ?? fs,
     targetHandle: e.toSide ?? ts,
     label: e.label,
-    markerEnd: (e.toEnd ?? "arrow") === "arrow" ? arrow(color) : undefined,
-    markerStart: e.fromEnd === "arrow" ? arrow(color) : undefined,
-    style: { stroke: color, strokeWidth: 2 },
-    data: { edge: e },
+    data,
   };
+}
+
+const EDGE_TYPES = { diagram: DiagramEdge };
+
+/** Sets an optional field, removing it when the value is the default, so files stay minimal. */
+function withField<T extends object>(item: T, key: string, value: unknown, fallback?: unknown): T {
+  const out = { ...item } as Record<string, unknown>;
+  if (value === undefined || value === fallback) delete out[key];
+  else out[key] = value;
+  return out as T;
 }
 
 function toFlow(doc: CanvasDoc, canvasPath: string, onText: CardData["onText"]): { nodes: FlowNode[]; edges: Edge[] } {
@@ -150,6 +158,31 @@ function CanvasFlow({ path, doc: initial, toolsHost }: { path: string; doc: Canv
   nodesRef.current = nodes;
   edgesRef.current = edges;
   const dark = useDark();
+
+  // Hovering a card animates its connections in their direction of travel and dims the rest.
+  const [hovered, setHovered] = useState<string | null>(null);
+  const shown = useMemo(() => {
+    if (!hovered) return { nodes, edges };
+    const near = new Set([hovered]);
+    const flowEdges = edges.map((e) => {
+      const on = e.source === hovered || e.target === hovered;
+      if (on) near.add(e.source).add(e.target);
+      return { ...e, data: { ...(e.data as DiagramEdgeData), flow: on ? "on" : "dim" } };
+    });
+    // Nothing to follow: leave the canvas as it is.
+    if (near.size === 1) return { nodes, edges };
+    return { nodes: nodes.map((n) => (near.has(n.id) || n.type === "group-card" ? n : { ...n, className: "node-dim" })), edges: flowEdges };
+  }, [hovered, nodes, edges]);
+  const markers = useMemo(() => {
+    const seen = new Map<string, { end: EndName; color: string }>();
+    for (const e of edges) {
+      const d = e.data as DiagramEdgeData | undefined;
+      if (!d) continue;
+      const ends = edgeEnds(d.edge);
+      for (const end of [ends.from, ends.to]) if (end !== "none") seen.set(`${end}${d.color}`, { end, color: d.color });
+    }
+    return [...seen.values()];
+  }, [edges]);
 
   /** Writes the current flow back to JSON Canvas, keeping unknown fields of existing items. */
   const commit = useCallback(() => {
@@ -285,18 +318,40 @@ function CanvasFlow({ path, doc: initial, toolsHost }: { path: string; doc: Canv
           if (label !== null) setNodeField(node.id, { label });
         },
       });
-    items.push(...colorItems((c) => setNodeField(node.id, { color: c })), { label: "", separator: true });
+    if (node.type === "text") {
+      const shape = isShape(node.shape) ? node.shape : undefined;
+      const setNode = (key: string, value: unknown, fallback?: unknown) => {
+        setNodes((ns) => ns.map((x) => (x.id === node.id ? { ...x, data: { ...x.data, node: withField(x.data.node, key, value, fallback) } } : x)));
+        queueMicrotask(() => commitRef.current());
+      };
+      items.push({
+        label: "Shape",
+        children: [
+          { label: "Card (no shape)", checked: !shape, action: () => setNode("shape", undefined) },
+          ...SHAPES.map((sh) => ({ label: sh.label, checked: shape === sh.name, action: () => setNode("shape", sh.name) })),
+        ],
+      });
+      if (shape)
+        items.push({
+          label: "Border",
+          children: BORDERS.map((b) => ({ label: b[0].toUpperCase() + b.slice(1), checked: (node.border ?? "solid") === b, action: () => setNode("border", b, "solid") })),
+        });
+    }
+    items.push({ label: "Colour", children: colorItems((c) => setNodeField(node.id, { color: c })) }, { label: "", separator: true });
     items.push({ label: "Delete", danger: true, action: () => onNodesChange([{ type: "remove", id: node.id }]) });
     useUi.getState().showMenu(e.clientX, e.clientY, items);
   };
 
   const onEdgeContextMenu = (e: ReactMouseEvent, edge: Edge) => {
     e.preventDefault();
-    const setEdgeField = (patch: Partial<CanvasEdge>) => {
+    const current = (edge.data?.edge as CanvasEdge | undefined) ?? ({} as CanvasEdge);
+    const ends = edgeEnds(current);
+    const setEdgeField = (patch: Partial<CanvasEdge>, fallback?: Record<string, unknown>) => {
       setEdges((es) =>
         es.map((x) => {
           if (x.id !== edge.id) return x;
-          const orig = { ...((x.data?.edge as CanvasEdge) ?? {}), ...patch } as CanvasEdge;
+          let orig = { ...((x.data?.edge as CanvasEdge) ?? {}) } as CanvasEdge;
+          for (const [k, v] of Object.entries(patch)) orig = withField(orig, k, v, fallback?.[k]);
           const byId = new Map(nodesRef.current.map((n) => [n.id, n.data.node]));
           return { ...toFlowEdge(orig, byId), sourceHandle: x.sourceHandle, targetHandle: x.targetHandle };
         }),
@@ -311,7 +366,33 @@ function CanvasFlow({ path, doc: initial, toolsHost }: { path: string; doc: Canv
           if (label !== null) setEdgeField({ label: label || undefined });
         },
       },
-      ...colorItems((c) => setEdgeField({ color: c })),
+      {
+        label: "Labels at the ends…",
+        action: async () => {
+          const fromLabel = await useUi.getState().askText({ title: "Label at the start (e.g. 1)", value: current.fromLabel ?? "" });
+          if (fromLabel === null) return;
+          const toLabel = await useUi.getState().askText({ title: "Label at the end (e.g. 1..*)", value: current.toLabel ?? "" });
+          if (toLabel === null) return;
+          setEdgeField({ fromLabel: fromLabel || undefined, toLabel: toLabel || undefined });
+        },
+      },
+      {
+        label: "Line",
+        children: LINES.map((l) => ({ label: l[0].toUpperCase() + l.slice(1), checked: (current.line ?? "solid") === l, action: () => setEdgeField({ line: l }, { line: "solid" }) })),
+      },
+      {
+        label: "Start",
+        children: ENDS.map((x) => ({ label: x.label, checked: ends.from === x.name, action: () => setEdgeField({ fromEnd: x.name }, { fromEnd: "none" }) })),
+      },
+      {
+        label: "End",
+        children: ENDS.map((x) => ({ label: x.label, checked: ends.to === x.name, action: () => setEdgeField({ toEnd: x.name }, { toEnd: "arrow" }) })),
+      },
+      {
+        label: "Reverse direction",
+        action: () => setEdgeField({ fromEnd: ends.to, toEnd: ends.from, fromLabel: current.toLabel, toLabel: current.fromLabel }, { fromEnd: "none", toEnd: "arrow" }),
+      },
+      { label: "Colour", children: colorItems((c) => setEdgeField({ color: c })) },
       { label: "", separator: true },
       { label: "Delete connection", danger: true, action: () => onEdgesChange([{ type: "remove", id: edge.id }]) },
     ]);
@@ -356,16 +437,24 @@ function CanvasFlow({ path, doc: initial, toolsHost }: { path: string; doc: Canv
       {tools && (
         <CanvasTools
           onCard={() => addNode({ type: "text", text: "" })}
+          onShape={(shape) => {
+            const sh = SHAPES.find((x) => x.name === shape)!;
+            addNode({ type: "text", text: "", shape, width: sh.width, height: sh.height });
+          }}
           onGroup={() => addNode({ type: "group", label: "Group" })}
           onFile={() => void addFile()}
           onFit={() => void flow.fitView({ padding: 0.2, duration: 200 })}
           host={tools}
         />
       )}
+      <EdgeMarkers used={markers} />
       <ReactFlow<FlowNode, Edge>
-        nodes={nodes}
-        edges={edges}
+        nodes={shown.nodes}
+        edges={shown.edges}
         nodeTypes={NODE_TYPES}
+        edgeTypes={EDGE_TYPES}
+        onNodeMouseEnter={(_e, n) => setHovered(n.id)}
+        onNodeMouseLeave={() => setHovered(null)}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
@@ -406,10 +495,33 @@ function CanvasFlow({ path, doc: initial, toolsHost }: { path: string; doc: Canv
   );
 }
 
-function CanvasTools({ onCard, onGroup, onFile, onFit, host }: { onCard(): void; onGroup(): void; onFile(): void; onFit(): void; host: HTMLElement }) {
+function CanvasTools({
+  onCard,
+  onShape,
+  onGroup,
+  onFile,
+  onFit,
+  host,
+}: {
+  onCard(): void;
+  onShape(shape: ShapeName): void;
+  onGroup(): void;
+  onFile(): void;
+  onFit(): void;
+  host: HTMLElement;
+}) {
   return createPortal(
     <span className="canvas-tools">
       <button onClick={onCard} title="Add a text card (or double-click the canvas)"><Plus size={14} /> Card</button>
+      <button
+        title="Add a shape: decision, database, actor…"
+        onClick={(e) => {
+          const r = e.currentTarget.getBoundingClientRect();
+          useUi.getState().showMenu(r.left, r.bottom + 4, SHAPES.map((sh) => ({ label: sh.label, action: () => onShape(sh.name) })));
+        }}
+      >
+        <Shapes size={14} /> Shape
+      </button>
       <button onClick={onFile} title="Add a note or file (or drag one from the sidebar)"><FileText size={14} /> File</button>
       <button onClick={onGroup}><SquareDashed size={14} /> Group</button>
       <button onClick={onFit} title="Fit to view"><Maximize size={14} /></button>
@@ -431,6 +543,7 @@ function Handles() {
 const Card = memo(function Card({ data, selected }: NodeProps<FlowNode>) {
   const n = data.node;
   const color = colorOf(n.color);
+  if (n.type === "text" && isShape(n.shape)) return <ShapeCard data={data} selected={selected} shape={n.shape} color={color} />;
   return (
     <div className={`canvas-card ${selected ? "selected" : ""}`} style={color ? { borderColor: color, ["--card-tint" as string]: color } : undefined}>
       <NodeResizer isVisible={selected} minWidth={120} minHeight={60} lineClassName="canvas-resize-line" handleClassName="canvas-resize-handle" />
@@ -446,6 +559,23 @@ const Card = memo(function Card({ data, selected }: NodeProps<FlowNode>) {
     </div>
   );
 });
+
+/** A text card drawn as a diagram shape: the outline behind, the Markdown text centred on top. */
+function ShapeCard({ data, selected, shape, color }: { data: CardData; selected: boolean; shape: ShapeName; color: string | undefined }) {
+  const n = data.node;
+  const style = { stroke: color ?? "var(--shape-stroke)", fill: color ? `color-mix(in srgb, ${color} 14%, var(--bg))` : "var(--bg)", border: n.border as string | undefined };
+  const css = cssShape(shape, style);
+  return (
+    <div className={`canvas-shape shape-${shape} ${selected ? "selected" : ""} ${css ? "css-shape" : ""}`} style={css ?? undefined}>
+      <NodeResizer isVisible={selected} minWidth={60} minHeight={40} lineClassName="canvas-resize-line" handleClassName="canvas-resize-handle" />
+      <Handles />
+      {!css && <ShapeOutline shape={shape} style={style} />}
+      <div className="shape-text">
+        <TextCard id={n.id} text={n.text ?? ""} onText={data.onText} canvasPath={data.canvasPath} />
+      </div>
+    </div>
+  );
+}
 
 const GroupCard = memo(function GroupCard({ data, selected }: NodeProps<FlowNode>) {
   const n = data.node;

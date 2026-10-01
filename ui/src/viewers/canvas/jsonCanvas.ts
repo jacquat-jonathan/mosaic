@@ -17,6 +17,9 @@ export interface CanvasNode {
   subpath?: string;
   url?: string;
   label?: string;
+  /** Mosaic diagrams: a shape for a text card, and its border (see ui/src/diagrams/shapes.tsx). */
+  shape?: string;
+  border?: string;
   [extra: string]: unknown;
 }
 
@@ -26,10 +29,15 @@ export interface CanvasEdge {
   toNode: string;
   fromSide?: Side;
   toSide?: Side;
-  fromEnd?: "none" | "arrow";
-  toEnd?: "none" | "arrow";
+  /** "none" | "arrow" in JSON Canvas; Mosaic adds UML arrowheads (triangle, open, diamond…). */
+  fromEnd?: string;
+  toEnd?: string;
   color?: string;
   label?: string;
+  /** Mosaic diagrams: "dashed" | "dotted" (solid when absent), and labels near each end. */
+  line?: string;
+  fromLabel?: string;
+  toLabel?: string;
   [extra: string]: unknown;
 }
 

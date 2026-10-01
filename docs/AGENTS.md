@@ -85,6 +85,28 @@ write shows up in the app within a second.
 - A group contains the cards whose boxes lie inside it; there is no parent field.
 - Lay cards out on a grid (e.g. 300 px apart) so humans can read the board without rearranging it.
 
+### Diagrams (shapes and connection styles)
+
+A canvas is also Mosaic's diagram tool. Any `text` card can be drawn as a shape; its `text` is the
+label (Markdown, links work). Optional fields, all checked on write:
+
+| Field | On | Values |
+|---|---|---|
+| `shape` | text card | `rectangle`, `rounded`, `pill` (start/end), `ellipse`, `diamond` (decision), `parallelogram` (input/output), `hexagon`, `cylinder` (database), `document`, `process` (predefined process), `cloud`, `note`, `actor` (person; label under the figure) |
+| `border` | shaped card | `solid` (default), `dashed`, `dotted`, `none` |
+| `line` | edge | `solid` (default), `dashed`, `dotted` |
+| `toEnd`, `fromEnd` | edge | `none`, `arrow`, `triangle` (hollow: inheritance), `open` (dependency), `diamond` (composition), `diamond-open` (aggregation), `circle`. Defaults: `toEnd` `arrow`, `fromEnd` `none` |
+| `fromLabel`, `toLabel` | edge | Short text near each end, e.g. multiplicities `1` and `1..*` |
+
+```json
+{ "id": "db", "type": "text", "text": "Orders", "shape": "cylinder", "color": "5", "x": 400, "y": 0, "width": 150, "height": 130 },
+{ "id": "e2", "fromNode": "svc", "toNode": "db", "label": "writes", "line": "dashed" },
+{ "id": "e3", "fromNode": "order", "toNode": "line", "fromEnd": "diamond", "toEnd": "none", "fromLabel": "1", "toLabel": "1..*" }
+```
+
+Good sizes: about 180×100 for boxes, 180×130 for a diamond, 150×130 for a cylinder, 100×140 for an
+actor. Leave 80–120 px between shapes so arrowheads and labels have room.
+
 ## Charts (`.vl.json`)
 
 A Vega-Lite spec, e.g.

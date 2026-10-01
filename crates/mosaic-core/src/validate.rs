@@ -7,6 +7,31 @@ use crate::{Error, Result};
 use serde_json::Value;
 use std::collections::HashSet;
 use std::path::Path;
+use std::sync::LazyLock;
+
+/// The diagram fields Mosaic adds to canvases (shapes, borders, line styles, arrowheads).
+static FORMAT: LazyLock<Value> = LazyLock::new(|| {
+    serde_json::from_str(include_str!("diagram_format.json")).expect("valid diagram_format.json")
+});
+
+/// Checks that an optional string field holds one of `allowed` (the keys of an object, or an array).
+fn one_of(item: &Value, key: &str, allowed: &str, at: &str) -> std::result::Result<(), String> {
+    let Some(v) = item.get(key) else {
+        return Ok(());
+    };
+    let names: Vec<&str> = match &FORMAT[allowed] {
+        Value::Object(m) => m.keys().map(String::as_str).collect(),
+        Value::Array(a) => a.iter().filter_map(Value::as_str).collect(),
+        _ => Vec::new(),
+    };
+    match v.as_str() {
+        Some(s) if names.contains(&s) => Ok(()),
+        _ => Err(format!(
+            "{at}: \"{key}\" must be one of {}, not {v}",
+            names.join(", ")
+        )),
+    }
+}
 
 /// `Ok` for files that aren't structured, or are well-formed; otherwise `Error::Invalid` saying what's wrong.
 pub fn check(path: &str, content: &str) -> Result<()> {
@@ -70,6 +95,8 @@ fn canvas(v: &Value) -> std::result::Result<(), String> {
         {
             return Err(format!("{at} is a {ty} card but has no string \"{key}\""));
         }
+        one_of(node, "shape", "shapes", &at)?;
+        one_of(node, "border", "borders", &at)?;
     }
     for (i, edge) in list("edges")?.iter().enumerate() {
         let at = match edge.get("id").and_then(Value::as_str) {
@@ -87,6 +114,9 @@ fn canvas(v: &Value) -> std::result::Result<(), String> {
                 ));
             }
         }
+        one_of(edge, "line", "lines", &at)?;
+        one_of(edge, "fromEnd", "ends", &at)?;
+        one_of(edge, "toEnd", "ends", &at)?;
     }
     Ok(())
 }
@@ -115,8 +145,8 @@ mod tests {
     #[test]
     fn accepts_good_files_and_ignores_others() {
         let canvas = format!(
-            r#"{{"nodes":[{{"id":"a","type":"text","text":"hi",{NODE}}},{{"id":"b","type":"shape","shape":"cloud",{NODE}}}],
-                "edges":[{{"id":"e","fromNode":"a","toNode":"b"}}]}}"#
+            r#"{{"nodes":[{{"id":"a","type":"text","text":"hi",{NODE}}},{{"id":"b","type":"text","text":"DB","shape":"cylinder","border":"dashed",{NODE}}}],
+                "edges":[{{"id":"e","fromNode":"a","toNode":"b","line":"dotted","toEnd":"triangle","fromEnd":"diamond-open","toLabel":"1..*"}}]}}"#
         );
         check("Board.canvas", &canvas).unwrap();
         check("Empty.canvas", "{}").unwrap();
@@ -146,6 +176,13 @@ mod tests {
             r#"{{"nodes":[{{"id":"a","type":"group",{NODE}}}],"edges":[{{"id":"e","fromNode":"a","toNode":"zz"}}]}}"#
         );
         assert!(problem("B.canvas", &dangling).contains("\"toNode\" points to \"zz\""));
+        let bad_shape =
+            format!(r#"{{"nodes":[{{"id":"a","type":"text","text":"","shape":"blob",{NODE}}}]}}"#);
+        assert!(problem("B.canvas", &bad_shape).contains("\"shape\" must be one of"));
+        let bad_end = format!(
+            r#"{{"nodes":[{{"id":"a","type":"group",{NODE}}}],"edges":[{{"id":"e","fromNode":"a","toNode":"a","toEnd":"spear"}}]}}"#
+        );
+        assert!(problem("B.canvas", &bad_end).contains("\"toEnd\" must be one of"));
         assert!(
             problem("D.excalidraw", r#"{"elements": 3}"#).contains("\"elements\" must be an array")
         );

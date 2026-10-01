@@ -4,6 +4,9 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- Diagram shapes on canvases: rectangle, rounded, pill, ellipse, diamond, parallelogram, hexagon, cylinder, document, predefined process, cloud, note and actor, from the new **Shape** button. Right-click a card to change its shape, border or colour.
+- Connection styles: dashed or dotted lines, UML arrowheads at either end (hollow triangle, open arrow, filled and hollow diamond, circle), labels near each end (like `1..*`) and Reverse direction, from a connection's right-click menu.
+- Hovering a card makes its connections flow in their direction and dims the rest (still, without motion, when macOS "Reduce motion" is on).
 - **New diagram…** replaces New canvas: start blank or from a template (flowchart, 4+1 architecture views, C4 system context). Find it in the New menu, the file tree's right-click menu and the command palette.
 ## 0.3.0 — 2026-10-01
 

@@ -1,0 +1,29 @@
+{
+  "about": "Diagram fields Mosaic adds to JSON Canvas. Read by the write validator (validate.rs) and the canvas editor (ui/src/diagrams/shapes.tsx), and documented in docs/AGENTS.md. A node without \"shape\" is an ordinary card.",
+  "shapes": {
+    "rectangle": { "label": "Rectangle", "width": 180, "height": 100 },
+    "rounded": { "label": "Rounded rectangle", "width": 180, "height": 100 },
+    "pill": { "label": "Pill (start / end)", "width": 180, "height": 70 },
+    "ellipse": { "label": "Ellipse", "width": 180, "height": 110 },
+    "diamond": { "label": "Diamond (decision)", "width": 180, "height": 130 },
+    "parallelogram": { "label": "Parallelogram (input / output)", "width": 200, "height": 100 },
+    "hexagon": { "label": "Hexagon (preparation)", "width": 200, "height": 100 },
+    "cylinder": { "label": "Cylinder (database)", "width": 150, "height": 130 },
+    "document": { "label": "Document", "width": 180, "height": 120 },
+    "process": { "label": "Predefined process", "width": 200, "height": 100 },
+    "cloud": { "label": "Cloud", "width": 200, "height": 130 },
+    "note": { "label": "Note", "width": 180, "height": 140 },
+    "actor": { "label": "Actor (person)", "width": 100, "height": 140 }
+  },
+  "borders": ["solid", "dashed", "dotted", "none"],
+  "lines": ["solid", "dashed", "dotted"],
+  "ends": {
+    "none": "No arrowhead",
+    "arrow": "Arrow",
+    "triangle": "Hollow triangle (inheritance)",
+    "open": "Open arrow (dependency)",
+    "diamond": "Filled diamond (composition)",
+    "diamond-open": "Hollow diamond (aggregation)",
+    "circle": "Circle"
+  }
+}

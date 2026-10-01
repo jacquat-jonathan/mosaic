@@ -122,6 +122,39 @@ function seed() {
   add("Projects/Mosaic/Plan.md", "# Plan\n\n1. Build it\n");
   add("Projects/Data.csv", 'name,value,note\nalpha,1,"quoted, with comma"\nbeta,2,"multi\nline"\ngamma,3,\n');
   add(
+    "Diagram.canvas",
+    JSON.stringify(
+      {
+        // Every diagram shape and arrowhead, for trying the diagram tool in the browser.
+        nodes: [
+          { id: "s0", type: "text", x: 0, y: 0, width: 180, height: 100, text: "Rectangle", shape: "rectangle" },
+          { id: "s1", type: "text", x: 260, y: 0, width: 180, height: 100, text: "Rounded rectangle", shape: "rounded" },
+          { id: "s2", type: "text", x: 520, y: 0, width: 180, height: 70, text: "Pill", shape: "pill" },
+          { id: "s3", type: "text", x: 780, y: 0, width: 180, height: 110, text: "Ellipse", shape: "ellipse" },
+          { id: "s4", type: "text", x: 1040, y: 0, width: 180, height: 130, text: "Diamond", shape: "diamond", color: "3" },
+          { id: "s5", type: "text", x: 0, y: 220, width: 200, height: 100, text: "Parallelogram", shape: "parallelogram" },
+          { id: "s6", type: "text", x: 260, y: 220, width: 200, height: 100, text: "Hexagon", shape: "hexagon" },
+          { id: "s7", type: "text", x: 520, y: 220, width: 150, height: 130, text: "Cylinder", shape: "cylinder", color: "5" },
+          { id: "s8", type: "text", x: 780, y: 220, width: 180, height: 120, text: "Document", shape: "document" },
+          { id: "s9", type: "text", x: 1040, y: 220, width: 200, height: 100, text: "Predefined process", shape: "process" },
+          { id: "s10", type: "text", x: 0, y: 440, width: 200, height: 130, text: "Cloud", shape: "cloud" },
+          { id: "s11", type: "text", x: 260, y: 440, width: 180, height: 140, text: "Note", shape: "note", border: "dashed" },
+          { id: "s12", type: "text", x: 520, y: 440, width: 100, height: 140, text: "Actor", shape: "actor" },
+        ],
+        edges: [
+          { id: "e1", fromNode: "s0", toNode: "s1", label: "arrow" },
+          { id: "e2", fromNode: "s1", toNode: "s2", toEnd: "triangle", label: "inherits" },
+          { id: "e3", fromNode: "s2", toNode: "s3", toEnd: "open", line: "dashed", label: "depends" },
+          { id: "e4", fromNode: "s5", toNode: "s6", fromEnd: "diamond", toEnd: "none", fromLabel: "1", toLabel: "1..*" },
+          { id: "e5", fromNode: "s6", toNode: "s7", fromEnd: "diamond-open", toEnd: "none", line: "dotted" },
+          { id: "e6", fromNode: "s12", toNode: "s4", toEnd: "circle", color: "6" },
+        ],
+       },
+      null,
+      "\t",
+    ),
+  );
+  add(
     "Board.canvas",
     JSON.stringify(
       {

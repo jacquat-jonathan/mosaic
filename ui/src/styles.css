@@ -503,3 +503,40 @@ button.secondary { border: 1px solid var(--border); padding: 5px 12px; }
 .spin { animation: spin 0.9s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .connect-ai h3 { font-size: 13px; margin: 20px 0 8px; }
+
+/* Diagram shapes on canvases (ui/src/diagrams/shapes.tsx). */
+:root { --shape-stroke: #8a8f9c; }
+.canvas-shape { width: 100%; height: 100%; position: relative; display: flex; }
+.canvas-shape.css-shape { border: 2px solid; }
+.canvas-shape.selected .shape-outline path, .canvas-shape.selected .shape-outline circle { stroke: var(--accent); }
+.canvas-shape.selected.css-shape { border-color: var(--accent) !important; box-shadow: 0 0 0 3px rgba(64, 120, 242, 0.25); }
+.shape-outline { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.shape-text { position: relative; flex: 1; display: flex; min-width: 0; }
+.shape-text .canvas-text { display: flex; flex-direction: column; justify-content: center; text-align: center; overflow: hidden; padding: 8px 12px; }
+.shape-text .canvas-text-edit { background: transparent; text-align: center; }
+/* Keep the label inside the narrower part of the shape. */
+.shape-diamond .canvas-text { padding: 18% 22%; }
+.shape-hexagon .canvas-text, .shape-parallelogram .canvas-text { padding: 8px 16%; }
+.shape-cylinder .canvas-text { padding-top: 22%; }
+.shape-document .canvas-text { padding-bottom: 16%; }
+.shape-process .canvas-text { padding: 8px 12%; }
+.shape-cloud .canvas-text { padding: 16% 18%; }
+.shape-note .canvas-text { padding-right: 20%; }
+.shape-actor .shape-outline { height: 72%; }
+.canvas-shape.shape-actor .shape-text { align-items: flex-end; }
+.shape-actor .canvas-text { justify-content: flex-end; padding: 0 4px 2px; flex: 1; }
+
+/* Connection labels and arrowheads (DiagramEdge.tsx). */
+.edge-markers { position: absolute; width: 0; height: 0; overflow: hidden; }
+.edge-label, .edge-end-label { position: absolute; pointer-events: all; font-size: 13px; color: var(--fg); background: var(--bg); padding: 1px 5px; border-radius: 4px; white-space: nowrap; }
+.edge-end-label { font-size: 12px; color: var(--muted); padding: 0 3px; }
+
+/* Hovering a card: its connections flow in their direction, everything else steps back. */
+.edge-flow .react-flow__edge-path { stroke-dasharray: 9 6 !important; animation: edge-flow 0.7s linear infinite; }
+@keyframes edge-flow { to { stroke-dashoffset: -15; } }
+.edge-dim, .edge-label.edge-dim, .edge-end-label.edge-dim { opacity: 0.2; }
+.react-flow__node.node-dim { opacity: 0.35; }
+.edge-dim, .react-flow__node { transition: opacity 0.15s; }
+@media (prefers-reduced-motion: reduce) {
+  .edge-flow .react-flow__edge-path { animation: none; stroke-dasharray: none !important; }
+}

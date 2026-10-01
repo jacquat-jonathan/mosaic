@@ -32,7 +32,8 @@ export function RightPanel() {
     const m = new Map<string, Backlink[]>();
     for (const b of backlinks) {
       const list = m.get(b.source) ?? [];
-      if (!list.some((x) => x.line === b.line)) list.push(b);
+      // Canvases and drawings have no lines (all 0): tell their links apart by context.
+      if (!list.some((x) => x.line === b.line && x.context === b.context)) list.push(b);
       m.set(b.source, list);
     }
     return [...m];
@@ -51,7 +52,7 @@ export function RightPanel() {
             </button>
             {links.map((l, i) =>
               l.context ? (
-                <div key={i} className="backlink-context" title={`Line ${l.line}`}>
+                <div key={i} className="backlink-context" title={l.line ? `Line ${l.line}` : undefined}>
                   {l.context}
                 </div>
               ) : null,

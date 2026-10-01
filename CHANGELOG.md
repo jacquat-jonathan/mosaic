@@ -4,6 +4,12 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- Search finds the text in Excalidraw drawings without the JSON around it.
+- Backlinks from a canvas show the card's text (or "File card"), and every link from a canvas is listed, not just the first.
+- A chart's data file (e.g. `code-size.csv`) lists the chart as a backlink.
+- Images in Markdown syntax (`![](image.png)`) look next to the note first, like the rest of Mosaic.
+- AI agents get a clear error when they write a broken canvas, drawing, chart or JSON file, and nothing is written.
+
 ## 0.2.0 — 2026-10-01
 
 - The window can be moved again by dragging the sidebar header, the tab bar or the welcome screen.

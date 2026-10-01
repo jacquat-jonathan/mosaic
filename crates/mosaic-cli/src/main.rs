@@ -310,7 +310,8 @@ fn run(cli: Cli) -> Result<()> {
             bs.iter()
                 .map(|b| {
                     if b.line == 0 {
-                        format!("{}  (canvas)", b.source)
+                        // Canvases and drawings have no line numbers.
+                        format!("{}  {}", b.source, b.context)
                     } else {
                         format!("{}:{}  {}", b.source, b.line, b.context)
                     }

@@ -1,5 +1,5 @@
 // Obsidian-style link parsing and resolution against the vault file list.
-// The core index (M3) applies the same rules for backlinks; keep them in sync.
+// Mirrors crates/mosaic-core/src/links.rs; both are tested against fixtures/links.json.
 
 import type { Entry } from "./ipc/types";
 import { parentOf } from "./state/vault";
@@ -43,52 +43,83 @@ export function linkLabel(l: WikiLink): string {
   return (base || "") + sub || l.heading || "";
 }
 
+const fileName = (path: string) => path.slice(path.lastIndexOf("/") + 1);
+
+/** Joins `rel` (which may contain `..` and `.`) onto `dir`; null if it climbs above the vault root. */
+function joinRelative(dir: string, rel: string): string | null {
+  const parts = dir.split("/").filter(Boolean);
+  for (const seg of rel.split("/")) {
+    if (seg === "" || seg === ".") continue;
+    if (seg === "..") {
+      if (!parts.length) return null;
+      parts.pop();
+    } else parts.push(seg);
+  }
+  return parts.join("/");
+}
+
+/** Notes are linked without ".md"; other files (and notes written with it) by full name. */
+const candidates = (lower: string) => (lower.endsWith(".md") ? [lower] : [`${lower}.md`, lower]);
+
+/** Byte order, like Rust's string comparison (upper case before lower case). */
+const byteOrder = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+
+/** An exact vault path, else a file whose path ends with `/name`: in `fromDir` first, then the shortest. */
+function lookup(name: string, files: Entry[], fromDir: string): string | null {
+  const exact = files.find((e) => e.path.toLowerCase() === name);
+  if (exact) return exact.path;
+  const matches = files
+    .filter((e) => e.path.toLowerCase().endsWith(`/${name}`))
+    .map((e) => e.path)
+    .sort((a, b) => a.length - b.length || byteOrder(a, b));
+  return matches.find((p) => parentOf(p).toLowerCase() === fromDir.toLowerCase()) ?? matches[0] ?? null;
+}
+
 /**
  * Resolves a link target to a vault path, or null if unresolved. Rules (Obsidian-compatible):
- * case-insensitive; `.md` optional for notes; an exact vault path wins, then a file in the same
- * folder as the source, then the shortest path.
+ * case-insensitive; `.md` optional for notes; an exact vault path wins, then a file in the source's
+ * folder, then the shortest path (ties in byte order). Markdown links (and `../`) try the path
+ * relative to the source first. Aliases from frontmatter resolve as a last resort.
  */
 export function resolveLink(
   target: string,
   entries: Entry[],
   fromPath: string | null,
   aliases: [string, string][] = [],
+  markdown = false,
 ): string | null {
-  if (!target) return fromPath;
-  let t = target.replace(/\\/g, "/").replace(/^\.?\//, "").toLowerCase();
-  if (t.startsWith("../") && fromPath) {
-    // Relative markdown links: resolve against the source folder.
-    const parts = parentOf(fromPath).split("/").filter(Boolean);
-    for (const seg of t.split("/")) {
-      if (seg === "..") parts.pop();
-      else if (seg !== ".") parts.push(seg);
-    }
-    t = parts.join("/").toLowerCase();
-  }
+  const fromDir = fromPath ? parentOf(fromPath) : "";
+  let t = target.trim().replace(/\\/g, "/");
+  if (!t) return fromPath;
+  if (t.startsWith("./")) t = t.slice(2);
   const files = entries.filter((e) => !e.is_dir);
-  const dir = fromPath ? parentOf(fromPath).toLowerCase() : "";
-  // Notes are linked without ".md"; other files (and notes written with it) by full name.
-  for (const name of /\.md$/.test(t) ? [t] : [`${t}.md`, t]) {
-    const exact = files.find((e) => e.path.toLowerCase() === name);
-    if (exact) return exact.path;
-    const matches = files.filter((e) => e.path.toLowerCase().endsWith(`/${name}`));
-    if (matches.length === 0) continue;
-    const same = matches.find((e) => parentOf(e.path).toLowerCase() === dir);
-    if (same) return same.path;
-    return matches.sort((a, b) => a.path.length - b.path.length || a.path.localeCompare(b.path))[0].path;
+  if (t.startsWith("/")) {
+    t = t.replace(/^\/+/, "");
+  } else if (markdown || t.startsWith("../")) {
+    const rel = joinRelative(fromDir, t);
+    if (rel !== null) {
+      for (const name of candidates(rel.toLowerCase())) {
+        const exact = files.find((e) => e.path.toLowerCase() === name);
+        if (exact) return exact.path;
+      }
+    }
+    if (t.startsWith("../")) return null;
   }
-  if (!t.includes("/")) {
-    const alias = aliases.find(([a]) => a.toLowerCase() === t);
+  const lower = t.toLowerCase();
+  for (const name of candidates(lower)) {
+    const found = lookup(name, files, fromDir);
+    if (found) return found;
+  }
+  if (!lower.includes("/")) {
+    const alias = aliases.find(([a]) => a.toLowerCase() === lower);
     if (alias) return alias[1];
   }
   return null;
 }
 
-/** Link text to write for a path, shortest form that still resolves uniquely (Obsidian default). */
-export function linkTextFor(path: string, entries: Entry[]): string {
-  const noExt = path.replace(/\.md$/i, "");
-  const base = noExt.split("/").pop()!;
-  const baseName = /\.md$/i.test(path) ? base : path.split("/").pop()!;
-  const clash = entries.filter((e) => !e.is_dir && e.path !== path && e.name.toLowerCase() === path.split("/").pop()!.toLowerCase());
-  return clash.length ? noExt : baseName;
+/** Link text to write for `path` from `fromPath`: the shortest form that resolves back to it. */
+export function linkTextFor(path: string, entries: Entry[], fromPath: string | null = null): string {
+  const strip = (s: string) => (/\.md$/i.test(path) ? s.slice(0, -3) : s);
+  const short = strip(fileName(path));
+  return resolveLink(short, entries, fromPath) === path ? short : strip(path);
 }

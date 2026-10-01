@@ -373,7 +373,7 @@ function decorateImage(state: EditorState, ctx: EditorContext, node: SyntaxNode,
   const src = url ? decodeURI(doc.sliceString(url.from, url.to).replace(/^<|>$/g, "")) : "";
   const widget = isExternal(src)
     ? new ImageWidget(null, alt, null, ctx, src)
-    : new ImageWidget(ctx.resolve(src), alt || src, embedWidth(alt.split("|")[1] ?? null), ctx);
+    : new ImageWidget(ctx.resolve(src, true), alt || src, embedWidth(alt.split("|")[1] ?? null), ctx);
   out.push(Decoration.replace({ widget }).range(node.from, node.to));
 }
 

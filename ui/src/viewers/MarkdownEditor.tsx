@@ -17,7 +17,7 @@ export const LARGE_FILE_BYTES = 5 * 1024 * 1024;
 
 export function editorContextFor(path: string): EditorContext {
   const entries = () => useVault.getState().entries;
-  const resolve = (target: string) => resolveLink(target, entries(), path, useVault.getState().aliases);
+  const resolve = (target: string, markdown = false) => resolveLink(target, entries(), path, useVault.getState().aliases, markdown);
   return {
     path,
     resolve,
@@ -47,11 +47,11 @@ export function editorContextFor(path: string): EditorContext {
       const all = entries();
       const files = all
         .filter((e) => !e.is_dir && e.path !== path)
-        .map((e) => ({ label: linkTextFor(e.path, all), detail: e.path.includes("/") ? e.path : "" }));
+        .map((e) => ({ label: linkTextFor(e.path, all, path), detail: e.path.includes("/") ? e.path : "" }));
       const aliases = useVault.getState().aliases.map(([alias, p]) => ({
         label: alias,
         detail: `alias of ${p}`,
-        insert: `${linkTextFor(p, all)}|${alias}`,
+        insert: `${linkTextFor(p, all, path)}|${alias}`,
       }));
       return [...files, ...aliases];
     },

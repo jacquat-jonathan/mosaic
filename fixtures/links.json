@@ -1,0 +1,51 @@
+{
+  "about": "Link resolution cases shared by crates/mosaic-core/src/links.rs and ui/src/links.ts. Both test suites read this file, so the two implementations can't drift apart. Add a case here, not in one suite.",
+  "files": [
+    "Home.md",
+    "Ideas.md",
+    "Projects/Mosaic/Plan.md",
+    "Projects/Mosaic/Notes/Meeting.md",
+    "Archive/Plan.md",
+    "Attachments/diagram.png",
+    "Daily/2026-09-30.md",
+    "B/Same.md",
+    "a/Same.md",
+    "Charts/code-size.csv",
+    "Other/code-size.csv"
+  ],
+  "aliases": [["Start", "Home.md"]],
+  "resolve": [
+    { "why": "case-insensitive, .md optional", "target": "home", "from": null, "expected": "Home.md" },
+    { "why": "written with .md", "target": "Ideas.md", "from": null, "expected": "Ideas.md" },
+    { "why": "upper case with extension", "target": "HOME.MD", "from": null, "expected": "Home.md" },
+    { "why": "other files by full name, anywhere", "target": "diagram.png", "from": null, "expected": "Attachments/diagram.png" },
+    { "why": "note in a subfolder by name", "target": "2026-09-30", "from": null, "expected": "Daily/2026-09-30.md" },
+    { "why": "unresolved", "target": "Nope", "from": null, "expected": null },
+    { "why": "exact vault path wins", "target": "Archive/Plan", "from": null, "expected": "Archive/Plan.md" },
+    { "why": "partial path suffix", "target": "Mosaic/Plan", "from": "Home.md", "expected": "Projects/Mosaic/Plan.md" },
+    { "why": "same folder as the source wins", "target": "Plan", "from": "Projects/Mosaic/Other.md", "expected": "Projects/Mosaic/Plan.md" },
+    { "why": "otherwise the shortest path", "target": "Plan", "from": "Home.md", "expected": "Archive/Plan.md" },
+    { "why": "equal lengths: byte order (upper case first)", "target": "Same", "from": null, "expected": "B/Same.md" },
+    { "why": "leading slash is the vault root", "target": "/Archive/Plan", "from": "Projects/Mosaic/Other.md", "expected": "Archive/Plan.md" },
+    { "why": "leading ./ is ignored", "target": "./Ideas", "from": null, "expected": "Ideas.md" },
+    { "why": "backslashes are slashes", "target": "Archive\\Plan", "from": null, "expected": "Archive/Plan.md" },
+    { "why": "surrounding spaces are ignored", "target": "  Ideas ", "from": null, "expected": "Ideas.md" },
+    { "why": "empty target is the source itself", "target": "", "from": "Ideas.md", "expected": "Ideas.md" },
+    { "why": "alias from frontmatter, as a last resort", "target": "start", "from": null, "expected": "Home.md" },
+    { "why": "aliases never match a path", "target": "Folder/Start", "from": null, "expected": null },
+    { "why": "../ is relative to the source", "target": "../../Ideas.md", "from": "Projects/Mosaic/Plan.md", "expected": "Ideas.md" },
+    { "why": "../ without a file there doesn't fall back to a name lookup", "target": "../Ideas.md", "from": "Projects/Mosaic/Plan.md", "expected": null },
+    { "why": "../ above the vault root", "target": "../../../Ideas.md", "from": "Projects/Mosaic/Plan.md", "expected": null },
+    { "why": "markdown links try the path relative to the source first", "target": "Plan.md", "from": "Archive/Index.md", "markdown": true, "expected": "Archive/Plan.md" },
+    { "why": "markdown link into a subfolder", "target": "Notes/Meeting.md", "from": "Projects/Mosaic/Plan.md", "markdown": true, "expected": "Projects/Mosaic/Notes/Meeting.md" },
+    { "why": "markdown links fall back to a name lookup", "target": "Ideas.md", "from": "Projects/Mosaic/Plan.md", "markdown": true, "expected": "Ideas.md" },
+    { "why": "a chart's data file, relative to the chart", "target": "code-size.csv", "from": "Other/Chart.vl.json", "markdown": true, "expected": "Other/code-size.csv" }
+  ],
+  "linkText": [
+    { "why": "unique name: just the name", "path": "Ideas.md", "from": null, "expected": "Ideas" },
+    { "why": "ambiguous name: the full path", "path": "Projects/Mosaic/Plan.md", "from": "Home.md", "expected": "Projects/Mosaic/Plan" },
+    { "why": "ambiguous, but the source's folder makes the name resolve", "path": "Projects/Mosaic/Plan.md", "from": "Projects/Mosaic/X.md", "expected": "Plan" },
+    { "why": "the name already resolves to the shortest path", "path": "Archive/Plan.md", "from": null, "expected": "Plan" },
+    { "why": "other files keep their extension", "path": "Attachments/diagram.png", "from": null, "expected": "diagram.png" }
+  ]
+}

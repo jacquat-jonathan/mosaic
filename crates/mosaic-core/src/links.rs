@@ -170,71 +170,51 @@ pub fn markdown_url_for(path: &str, from: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::Value;
 
-    fn set() -> FileSet {
-        FileSet::new(
-            [
-                "Home.md",
-                "Ideas.md",
-                "Projects/Mosaic/Plan.md",
-                "Archive/Plan.md",
-                "Attachments/diagram.png",
-                "Daily/2026-09-30.md",
-            ],
-            [("Start", "Home.md")],
-        )
+    /// Cases shared with `ui/src/links.test.ts`.
+    fn shared() -> (FileSet, Value) {
+        let cases: Value =
+            serde_json::from_str(include_str!("../../../fixtures/links.json")).unwrap();
+        let files: Vec<&str> = cases["files"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|f| f.as_str().unwrap())
+            .collect();
+        let aliases: Vec<(&str, &str)> = cases["aliases"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|a| (a[0].as_str().unwrap(), a[1].as_str().unwrap()))
+            .collect();
+        (FileSet::new(files, aliases), cases)
     }
 
     #[test]
-    fn same_rules_as_the_ui() {
-        let f = set();
-        assert_eq!(f.resolve("home", None, false).as_deref(), Some("Home.md"));
-        assert_eq!(
-            f.resolve("Ideas.md", None, false).as_deref(),
-            Some("Ideas.md")
-        );
-        assert_eq!(
-            f.resolve("diagram.png", None, false).as_deref(),
-            Some("Attachments/diagram.png")
-        );
-        assert_eq!(f.resolve("Nope", None, false), None);
-        assert_eq!(
-            f.resolve("Archive/Plan", None, false).as_deref(),
-            Some("Archive/Plan.md")
-        );
-        assert_eq!(
-            f.resolve("Plan", Some("Projects/Mosaic/Other.md"), false)
-                .as_deref(),
-            Some("Projects/Mosaic/Plan.md")
-        );
-        assert_eq!(
-            f.resolve("Plan", Some("Home.md"), false).as_deref(),
-            Some("Archive/Plan.md")
-        );
-        assert_eq!(
-            f.resolve("../../Ideas.md", Some("Projects/Mosaic/Plan.md"), true)
-                .as_deref(),
-            Some("Ideas.md")
-        );
-        assert_eq!(f.resolve("start", None, false).as_deref(), Some("Home.md"));
+    fn resolves_the_shared_cases() {
+        let (f, cases) = shared();
+        for c in cases["resolve"].as_array().unwrap() {
+            let got = f.resolve(
+                c["target"].as_str().unwrap(),
+                c["from"].as_str(),
+                c["markdown"].as_bool().unwrap_or(false),
+            );
+            assert_eq!(got.as_deref(), c["expected"].as_str(), "{}: {c}", c["why"]);
+        }
     }
 
     #[test]
-    fn writes_shortest_unique_link_text() {
-        let f = set();
-        assert_eq!(wiki_text_for(&f, "Ideas.md", None), "Ideas");
-        assert_eq!(
-            wiki_text_for(&f, "Projects/Mosaic/Plan.md", Some("Home.md")),
-            "Projects/Mosaic/Plan"
-        );
-        assert_eq!(
-            wiki_text_for(&f, "Projects/Mosaic/Plan.md", Some("Projects/Mosaic/X.md")),
-            "Plan"
-        );
-        assert_eq!(
-            wiki_text_for(&f, "Attachments/diagram.png", None),
-            "diagram.png"
-        );
+    fn writes_the_shared_link_texts() {
+        let (f, cases) = shared();
+        for c in cases["linkText"].as_array().unwrap() {
+            let got = wiki_text_for(&f, c["path"].as_str().unwrap(), c["from"].as_str());
+            assert_eq!(got, c["expected"].as_str().unwrap(), "{}: {c}", c["why"]);
+        }
+    }
+
+    #[test]
+    fn writes_relative_markdown_urls() {
         assert_eq!(
             markdown_url_for("Ideas.md", "Projects/Mosaic/Plan.md"),
             "../../Ideas.md"

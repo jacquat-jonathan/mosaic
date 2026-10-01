@@ -6,18 +6,7 @@ import { renderMath } from "./render";
 import { isDark } from "../theme";
 import type { EditorContext } from "./context";
 
-/** Renderers for fenced code blocks by language (mermaid, math, and later vega-lite, dot…). */
-export type BlockRenderer = (source: string, el: HTMLElement, ctx: EditorContext) => void | Promise<void>;
-export const blockRenderers = new Map<string, BlockRenderer>();
-
-export function registerBlockRenderer(langs: string[], r: BlockRenderer) {
-  for (const l of langs) blockRenderers.set(l, r);
-}
-
-function showError(el: HTMLElement, err: unknown) {
-  el.classList.add("cm-render-error");
-  el.textContent = err instanceof Error ? err.message : String(err);
-}
+import { blockRenderers, showRenderError as showError } from "./blocks";
 
 /** Moves the cursor to `pos` so the source is revealed for editing. */
 function revealOnClick(dom: HTMLElement, view: EditorView, pos: () => number) {

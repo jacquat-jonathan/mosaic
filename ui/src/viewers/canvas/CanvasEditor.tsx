@@ -31,6 +31,7 @@ import { api, fileUrl, openExternal } from "../../ipc/api";
 import { kindOf } from "../../ipc/kinds";
 import { resolveLink } from "../../links";
 import { renderMarkdown } from "../../markdown";
+import { renderBlocksIn } from "../../editor/blocks";
 import { CodeEditor } from "../CodeEditor";
 import { Segmented, Toolbar } from "../Toolbar";
 import {
@@ -476,12 +477,26 @@ function useLinkClicks(canvasPath: string) {
   };
 }
 
+/**
+ * Renders the diagram blocks (Mermaid, Graphviz, Vega-Lite, math) inside static Markdown HTML. The
+ * returned `key` changes with the theme, which remounts the element so diagrams redraw in its colours.
+ */
+function useRenderedBlocks(html: string, path: string) {
+  const ref = useRef<HTMLDivElement>(null);
+  const dark = useDark();
+  useEffect(() => {
+    if (ref.current) renderBlocksIn(ref.current, path);
+  }, [html, path, dark]);
+  return { ref, key: dark ? "dark" : "light" };
+}
+
 function TextCard({ id, text, onText, canvasPath }: { id: string; text: string; onText(id: string, t: string): void; canvasPath: string }) {
   const [editing, setEditing] = useState(text === "");
   const ref = useRef<HTMLTextAreaElement>(null);
   const entries = useVault((s) => s.entries);
   const html = useMemo(() => renderMarkdown(text, (t) => resolveLink(t, entries, canvasPath)), [text, entries, canvasPath]);
   const onClick = useLinkClicks(canvasPath);
+  const body = useRenderedBlocks(html, canvasPath);
   useEffect(() => {
     if (editing) ref.current?.focus();
   }, [editing]);
@@ -505,7 +520,7 @@ function TextCard({ id, text, onText, canvasPath }: { id: string; text: string; 
   }
   return (
     <div className="canvas-text md-render nowheel" onDoubleClick={() => setEditing(true)} onClick={onClick}>
-      {text ? <div dangerouslySetInnerHTML={{ __html: html }} /> : <span className="canvas-placeholder">Double-click to write</span>}
+      {text ? <div key={body.key} ref={body.ref} dangerouslySetInnerHTML={{ __html: html }} /> : <span className="canvas-placeholder">Double-click to write</span>}
     </div>
   );
 }
@@ -525,6 +540,7 @@ function FileCard({ file, subpath }: { file: string; subpath?: string }) {
     };
   }, [file, kind, exists, revision]);
   const name = file.split("/").pop()!.replace(/\.md$/, "");
+  const body = useRenderedBlocks(preview?.html ?? "", file);
   return (
     <div className="canvas-file">
       <button className="canvas-file-title nodrag" onClick={(e) => void useWorkspace.getState().open(file, { newTab: e.metaKey })} title={file}>
@@ -534,7 +550,7 @@ function FileCard({ file, subpath }: { file: string; subpath?: string }) {
       <div className="canvas-file-body nowheel">
         {!exists && <span className="canvas-placeholder">File not found: {file}</span>}
         {preview?.img && <img src={preview.img} alt={file} />}
-        {preview?.html && <div className="md-render" dangerouslySetInnerHTML={{ __html: preview.html }} />}
+        {preview?.html && <div key={body.key} ref={body.ref} className="md-render" dangerouslySetInnerHTML={{ __html: preview.html }} />}
         {exists && !preview && kind !== "image" && kind !== "markdown" && <span className="canvas-placeholder">{kind} file</span>}
       </div>
     </div>

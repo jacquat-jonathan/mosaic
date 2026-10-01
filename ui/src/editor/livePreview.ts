@@ -9,8 +9,9 @@ import { editorContext, type EditorContext } from "./context";
 import { onDarkChange } from "../theme";
 import { parseWikiLink, linkLabel } from "../links";
 import { kindOf } from "../ipc/kinds";
+import { blockRenderers } from "./blocks";
+import { MATH_INLINE_RE } from "../markdown";
 import {
-  blockRenderers,
   BulletWidget,
   CheckboxWidget,
   ImageWidget,
@@ -33,7 +34,6 @@ const line = (cls: string) => Decoration.line({ class: cls });
 export const FRONTMATTER_RE = /^---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?=\r?\n|$)/;
 const WIKI_RE = /(!?)\[\[([^[\]\n]+?)\]\]/g;
 const TAG_RE = /(^|[\s(,])#([\p{L}\p{N}_\-/]*[\p{L}_\-/][\p{L}\p{N}_\-/]*)/gu;
-const MATH_INLINE_RE = /(?<![\\$])\$(?![\s$])([^$\n]+?)(?<![\s\\])\$(?!\d)/g;
 const HIGHLIGHT_RE = /==(?!\s)([^=\n]+?)(?<!\s)==/g;
 
 function touches(state: EditorState, from: number, to: number): boolean {

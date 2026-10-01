@@ -8,6 +8,7 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 - Backlinks from a canvas show the card's text (or "File card"), and every link from a canvas is listed, not just the first.
 - A chart's data file (e.g. `code-size.csv`) lists the chart as a backlink.
 - Images in Markdown syntax (`![](image.png)`) look next to the note first, like the rest of Mosaic.
+- Canvas cards render Mermaid, Graphviz and Vega-Lite blocks and math (`$…$`, `$$…$$`), like notes do. So do note previews in file cards.
 - AI agents get a clear error when they write a broken canvas, drawing, chart or JSON file, and nothing is written.
 
 ## 0.2.0 — 2026-10-01

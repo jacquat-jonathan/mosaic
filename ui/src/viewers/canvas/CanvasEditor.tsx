@@ -10,6 +10,7 @@ import {
   Position,
   NodeResizer,
   ConnectionMode,
+  ViewportPortal,
   useReactFlow,
   applyNodeChanges,
   applyEdgeChanges,
@@ -49,6 +50,7 @@ import {
 import { useDark } from "../../theme";
 import { BORDERS, ENDS, EdgeMarkers, LINES, SHAPES, ShapeOutline, cssShape, isShape, type EndName, type ShapeName } from "../../diagrams/shapes";
 import { DiagramEdge, edgeEnds, type DiagramEdgeData } from "./DiagramEdge";
+import { align } from "./align";
 
 const TREE_DRAG = "application/x-mosaic-path";
 const DEFAULT_EDGE_COLOR = "#8a8f9c";
@@ -223,8 +225,24 @@ function CanvasFlow({ path, doc: initial, toolsHost }: { path: string; doc: Canv
   // Dragging a group carries the cards inside it, like Obsidian.
   const groupDrag = useRef<{ id: string; start: { x: number; y: number }; members: Map<string, { x: number; y: number }> } | null>(null);
 
+  // Alignment guides while one card is dragged (not a group carrying its cards, not a multi-selection).
+  const [guides, setGuides] = useState<{ x?: number; y?: number }>({});
+
   const onNodesChange = useCallback(
     (changes: NodeChange<FlowNode>[]) => {
+      const moves = changes.filter((c) => c.type === "position");
+      // The drag's last change (dragging: false) carries a position too: snap it as well, or it undoes the snap.
+      const drag = moves.length === 1 && moves[0].type === "position" && moves[0].position ? moves[0] : null;
+      if (drag && drag.position && !groupDrag.current) {
+        const size = (n: FlowNode) => ({ width: n.measured?.width ?? n.data.node.width, height: n.measured?.height ?? n.data.node.height });
+        const me = nodesRef.current.find((n) => n.id === drag.id);
+        if (me) {
+          const others = nodesRef.current.filter((n) => n.id !== drag.id && n.type !== "group-card").map((n) => ({ ...n.position, ...size(n) }));
+          const a = align({ ...drag.position, ...size(me) }, others);
+          drag.position = { x: a.x, y: a.y };
+          setGuides(drag.dragging ? { x: a.guideX, y: a.guideY } : {});
+        }
+      } else if (moves.length) setGuides({});
       setNodes((ns) => {
         let next = applyNodeChanges(changes, ns);
         const g = groupDrag.current;
@@ -488,6 +506,10 @@ function CanvasFlow({ path, doc: initial, toolsHost }: { path: string; doc: Canv
         proOptions={{ hideAttribution: true }}
       >
         <Background gap={24} />
+        <ViewportPortal>
+          {guides.x !== undefined && <div className="align-guide vertical" style={{ transform: `translateX(${guides.x}px)` }} />}
+          {guides.y !== undefined && <div className="align-guide horizontal" style={{ transform: `translateY(${guides.y}px)` }} />}
+        </ViewportPortal>
         <Controls showInteractive={false} />
         <MiniMap pannable zoomable />
       </ReactFlow>

@@ -540,3 +540,8 @@ button.secondary { border: 1px solid var(--border); padding: 5px 12px; }
 @media (prefers-reduced-motion: reduce) {
   .edge-flow .react-flow__edge-path { animation: none; stroke-dasharray: none !important; }
 }
+
+/* Alignment guides while dragging a card (align.ts). */
+.align-guide { position: absolute; left: 0; top: 0; pointer-events: none; z-index: 1000; }
+.align-guide.vertical { top: -100000px; height: 200000px; border-left: 1px dashed var(--accent); }
+.align-guide.horizontal { left: -100000px; width: 200000px; border-top: 1px dashed var(--accent); }

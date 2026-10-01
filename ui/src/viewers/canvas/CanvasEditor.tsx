@@ -22,7 +22,7 @@ import {
   type NodeProps,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { ExternalLink, FileText, Maximize, Plus, Shapes, SquareDashed } from "lucide-react";
+import { ExternalLink, FileText, Maximize, Network, Plus, Shapes, SquareDashed } from "lucide-react";
 import { useWorkspace, type Buffer } from "../../state/workspace";
 import { parentOf, useVault } from "../../state/vault";
 import { droppedItems, importDropped, isFinderDrag } from "../../actions";
@@ -51,6 +51,7 @@ import { useDark } from "../../theme";
 import { BORDERS, ENDS, EdgeMarkers, LINES, SHAPES, ShapeOutline, cssShape, isShape, type EndName, type ShapeName } from "../../diagrams/shapes";
 import { DiagramEdge, edgeEnds, type DiagramEdgeData } from "./DiagramEdge";
 import { align } from "./align";
+import { autoLayout } from "./layout";
 
 const TREE_DRAG = "application/x-mosaic-path";
 const DEFAULT_EDGE_COLOR = "#8a8f9c";
@@ -67,6 +68,30 @@ function bestSides(a: CanvasNode, b: CanvasNode): [Side, Side] {
   return dy > 0 ? ["bottom", "top"] : ["top", "bottom"];
 }
 
+/**
+ * Connection points along each side, as fractions of its length. Lifelines and frames get many, so
+ * sequence messages can leave and arrive at any height. Stored as `fromOffset` / `toOffset` when the
+ * point isn't the middle of the side.
+ */
+function portsOf(n: CanvasNode | undefined): number[] {
+  return n?.shape === "lifeline" || n?.shape === "frame" ? [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9] : [0.25, 0.5, 0.75];
+}
+
+const handleId = (side: Side, offset: number) => (offset === 0.5 ? side : `${side}:${offset}`);
+
+function parseHandle(id: string | null | undefined): { side: Side; offset: number } | null {
+  if (!id) return null;
+  const [side, offset] = id.split(":");
+  return SIDES.includes(side as Side) ? { side: side as Side, offset: offset ? Number(offset) : 0.5 } : null;
+}
+
+/** The handle for a stored side and offset, snapped to the nearest point the card has. */
+function handleFor(n: CanvasNode | undefined, side: Side, offset: unknown): string {
+  const want = typeof offset === "number" ? offset : 0.5;
+  const nearest = portsOf(n).reduce((a, b) => (Math.abs(b - want) < Math.abs(a - want) ? b : a));
+  return handleId(side, nearest);
+}
+
 function toFlowEdge(e: CanvasEdge, byId: Map<string, CanvasNode>): Edge {
   const from = byId.get(e.fromNode);
   const to = byId.get(e.toNode);
@@ -77,8 +102,8 @@ function toFlowEdge(e: CanvasEdge, byId: Map<string, CanvasNode>): Edge {
     type: "diagram",
     source: e.fromNode,
     target: e.toNode,
-    sourceHandle: e.fromSide ?? fs,
-    targetHandle: e.toSide ?? ts,
+    sourceHandle: handleFor(from, e.fromSide ?? fs, e.fromOffset),
+    targetHandle: handleFor(to, e.toSide ?? ts, e.toOffset),
     label: e.label,
     data,
   };
@@ -209,8 +234,16 @@ function CanvasFlow({ path, doc: initial, toolsHost }: { path: string; doc: Canv
     const outEdges: CanvasEdge[] = edgesRef.current.map((e) => {
       const orig = (e.data?.edge as CanvasEdge | undefined) ?? prevEdges.get(e.id);
       const out: CanvasEdge = { ...(orig ?? {}), id: e.id, fromNode: e.source, toNode: e.target };
-      if (orig?.fromSide || e.sourceHandle !== orig?.fromSide) out.fromSide = (e.sourceHandle as Side) ?? undefined;
-      if (orig?.toSide || e.targetHandle !== orig?.toSide) out.toSide = (e.targetHandle as Side) ?? undefined;
+      for (const [handle, sideKey, offsetKey] of [
+        [e.sourceHandle, "fromSide", "fromOffset"],
+        [e.targetHandle, "toSide", "toOffset"],
+      ] as const) {
+        const h = parseHandle(handle);
+        if (!h) continue;
+        out[sideKey] = h.side;
+        if (h.offset === 0.5) delete out[offsetKey];
+        else out[offsetKey] = h.offset;
+      }
       if (typeof e.label === "string" && e.label) out.label = e.label;
       else delete out.label;
       return out;
@@ -280,7 +313,11 @@ function CanvasFlow({ path, doc: initial, toolsHost }: { path: string; doc: Canv
 
   const onConnect = useCallback((c: Connection) => {
     if (!c.source || !c.target || c.source === c.target) return;
-    const edge: CanvasEdge = { id: newId(), fromNode: c.source, toNode: c.target, fromSide: (c.sourceHandle as Side) ?? undefined, toSide: (c.targetHandle as Side) ?? undefined };
+    const src = parseHandle(c.sourceHandle);
+    const tgt = parseHandle(c.targetHandle);
+    const edge: CanvasEdge = { id: newId(), fromNode: c.source, toNode: c.target, fromSide: src?.side, toSide: tgt?.side };
+    if (src && src.offset !== 0.5) edge.fromOffset = src.offset;
+    if (tgt && tgt.offset !== 0.5) edge.toOffset = tgt.offset;
     const byId = new Map(nodesRef.current.map((n) => [n.id, n.data.node]));
     setEdges((es) => [...es, toFlowEdge(edge, byId)]);
     queueMicrotask(() => commitRef.current());
@@ -410,6 +447,14 @@ function CanvasFlow({ path, doc: initial, toolsHost }: { path: string; doc: Canv
         label: "Reverse direction",
         action: () => setEdgeField({ fromEnd: ends.to, toEnd: ends.from, fromLabel: current.toLabel, toLabel: current.fromLabel }, { fromEnd: "none", toEnd: "arrow" }),
       },
+      {
+        label: "Thickness",
+        children: [
+          ["Thin", 1],
+          ["Normal", 2],
+          ["Thick", 4],
+        ].map(([label, w]) => ({ label: label as string, checked: (current.thickness ?? 2) === w, action: () => setEdgeField({ thickness: w as number }, { thickness: 2 }) })),
+      },
       { label: "Colour", children: colorItems((c) => setEdgeField({ color: c })) },
       { label: "", separator: true },
       { label: "Delete connection", danger: true, action: () => onEdgesChange([{ type: "remove", id: edge.id }]) },
@@ -442,6 +487,33 @@ function CanvasFlow({ path, doc: initial, toolsHost }: { path: string; doc: Canv
     addNode({ type: "file", file: resolved });
   };
 
+  /** Lays out the selected cards (or all of them) along their connections. Groups stay where they are. */
+  const layoutCards = (direction: "TB" | "LR") => {
+    const cards = nodesRef.current.filter((n) => n.type !== "group-card");
+    const chosen = cards.filter((n) => n.selected).length >= 2 ? cards.filter((n) => n.selected) : cards;
+    if (chosen.length < 2) return;
+    const boxes = chosen.map((n) => ({ id: n.id, ...n.position, width: n.measured?.width ?? n.data.node.width, height: n.measured?.height ?? n.data.node.height }));
+    const pos = autoLayout(boxes, edgesRef.current.map((e) => ({ from: e.source, to: e.target })), direction);
+    nodesRef.current = nodesRef.current.map((n) => {
+      const p = pos.get(n.id);
+      return p ? { ...n, position: p, data: { ...n.data, node: { ...n.data.node, ...p } } } : n;
+    });
+    setNodes(nodesRef.current);
+    // Connections between laid-out cards pick their sides again from the new positions.
+    const byId = new Map(nodesRef.current.map((n) => [n.id, n.data.node]));
+    edgesRef.current = edgesRef.current.map((e) => {
+      if (!pos.has(e.source) || !pos.has(e.target)) return e;
+      const orig = { ...(e.data?.edge as CanvasEdge) };
+      for (const k of ["fromSide", "toSide", "fromOffset", "toOffset"]) delete (orig as Record<string, unknown>)[k];
+      return toFlowEdge(orig, byId);
+    });
+    setEdges(edgesRef.current);
+    queueMicrotask(() => {
+      commitRef.current();
+      void flow.fitView({ padding: 0.2, duration: 200 });
+    });
+  };
+
   const tools = toolsHost;
   return (
     <div
@@ -462,6 +534,7 @@ function CanvasFlow({ path, doc: initial, toolsHost }: { path: string; doc: Canv
           onGroup={() => addNode({ type: "group", label: "Group" })}
           onFile={() => void addFile()}
           onFit={() => void flow.fitView({ padding: 0.2, duration: 200 })}
+          onLayout={layoutCards}
           host={tools}
         />
       )}
@@ -523,6 +596,7 @@ function CanvasTools({
   onGroup,
   onFile,
   onFit,
+  onLayout,
   host,
 }: {
   onCard(): void;
@@ -530,6 +604,7 @@ function CanvasTools({
   onGroup(): void;
   onFile(): void;
   onFit(): void;
+  onLayout(direction: "TB" | "LR"): void;
   host: HTMLElement;
 }) {
   return createPortal(
@@ -546,18 +621,40 @@ function CanvasTools({
       </button>
       <button onClick={onFile} title="Add a note or file (or drag one from the sidebar)"><FileText size={14} /> File</button>
       <button onClick={onGroup}><SquareDashed size={14} /> Group</button>
+      <button
+        title="Arrange the selected cards (or all) along their connections"
+        onClick={(e) => {
+          const r = e.currentTarget.getBoundingClientRect();
+          useUi.getState().showMenu(r.left, r.bottom + 4, [
+            { label: "Top to bottom", action: () => onLayout("TB") },
+            { label: "Left to right", action: () => onLayout("LR") },
+          ]);
+        }}
+      >
+        <Network size={14} /> Layout
+      </button>
       <button onClick={onFit} title="Fit to view"><Maximize size={14} /></button>
     </span>,
     host,
   );
 }
 
-function Handles() {
+function Handles({ node }: { node: CanvasNode }) {
+  const ports = portsOf(node);
   return (
     <>
-      {SIDES.map((s) => (
-        <Handle key={s} id={s} type="source" position={POS[s]} className="canvas-handle" />
-      ))}
+      {SIDES.flatMap((s) =>
+        ports.map((p) => (
+          <Handle
+            key={handleId(s, p)}
+            id={handleId(s, p)}
+            type="source"
+            position={POS[s]}
+            className={`canvas-handle ${p === 0.5 ? "" : "minor"}`}
+            style={s === "top" || s === "bottom" ? { left: `${p * 100}%` } : { top: `${p * 100}%` }}
+          />
+        )),
+      )}
     </>
   );
 }
@@ -569,7 +666,7 @@ const Card = memo(function Card({ data, selected }: NodeProps<FlowNode>) {
   return (
     <div className={`canvas-card ${selected ? "selected" : ""}`} style={color ? { borderColor: color, ["--card-tint" as string]: color } : undefined}>
       <NodeResizer isVisible={selected} minWidth={120} minHeight={60} lineClassName="canvas-resize-line" handleClassName="canvas-resize-handle" />
-      <Handles />
+      <Handles node={n} />
       {n.type === "text" && <TextCard id={n.id} text={n.text ?? ""} onText={data.onText} canvasPath={data.canvasPath} />}
       {n.type === "file" && <FileCard file={n.file ?? ""} subpath={n.subpath} />}
       {n.type === "link" && <LinkCard url={n.url ?? ""} />}
@@ -590,7 +687,7 @@ function ShapeCard({ data, selected, shape, color }: { data: CardData; selected:
   return (
     <div className={`canvas-shape shape-${shape} ${selected ? "selected" : ""} ${css ? "css-shape" : ""}`} style={css ?? undefined}>
       <NodeResizer isVisible={selected} minWidth={60} minHeight={40} lineClassName="canvas-resize-line" handleClassName="canvas-resize-handle" />
-      <Handles />
+      <Handles node={n} />
       {!css && <ShapeOutline shape={shape} style={style} />}
       <div className="shape-text">
         <TextCard id={n.id} text={n.text ?? ""} onText={data.onText} canvasPath={data.canvasPath} />
@@ -605,7 +702,7 @@ const GroupCard = memo(function GroupCard({ data, selected }: NodeProps<FlowNode
   return (
     <div className={`canvas-group ${selected ? "selected" : ""}`} style={color ? { borderColor: color, background: `${color}14` } : undefined}>
       <NodeResizer isVisible={selected} minWidth={160} minHeight={100} lineClassName="canvas-resize-line" handleClassName="canvas-resize-handle" />
-      <Handles />
+      <Handles node={n} />
       {n.label && <div className="canvas-group-label" style={color ? { color } : undefined}>{n.label}</div>}
     </div>
   );

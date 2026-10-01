@@ -38,7 +38,8 @@ export function DiagramEdge(props: EdgeProps<DiagramFlowEdge>) {
   if (!data) return null;
   const { edge, color, flow } = data;
   const ends = edgeEnds(edge);
-  const width = selected ? 3 : 2;
+  const base = typeof edge.thickness === "number" && edge.thickness > 0 ? edge.thickness : 2;
+  const width = selected ? base + 1 : base;
   const from = endLabelAt(sourceX, sourceY, sourcePosition, "from");
   const to = endLabelAt(targetX, targetY, targetPosition, "to");
   const cls = flow === "on" ? "edge-flow" : flow === "dim" ? "edge-dim" : undefined;

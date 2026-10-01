@@ -38,6 +38,11 @@ export interface CanvasEdge {
   line?: string;
   fromLabel?: string;
   toLabel?: string;
+  /** Mosaic diagrams: where along `fromSide` / `toSide` the connection attaches (0–1, middle when absent). */
+  fromOffset?: number;
+  toOffset?: number;
+  /** Mosaic diagrams: line width in pixels (2 when absent). */
+  thickness?: number;
   [extra: string]: unknown;
 }
 

@@ -50,6 +50,23 @@ pub fn check(path: &str, content: &str) -> Result<()> {
     problem.map_err(|p| Error::Invalid(format!("{path} wasn't written: {p}")))
 }
 
+/// Checks that an optional field is a number within `min..=max`.
+fn number_in(
+    item: &Value,
+    key: &str,
+    min: f64,
+    max: f64,
+    at: &str,
+) -> std::result::Result<(), String> {
+    match item.get(key) {
+        None => Ok(()),
+        Some(v) if v.as_f64().is_some_and(|n| (min..=max).contains(&n)) => Ok(()),
+        Some(v) => Err(format!(
+            "{at}: \"{key}\" must be a number from {min} to {max}, not {v}"
+        )),
+    }
+}
+
 fn json(content: &str) -> std::result::Result<Value, String> {
     serde_json::from_str(content).map_err(|e| format!("invalid JSON ({e})"))
 }
@@ -117,6 +134,9 @@ fn canvas(v: &Value) -> std::result::Result<(), String> {
         one_of(edge, "line", "lines", &at)?;
         one_of(edge, "fromEnd", "ends", &at)?;
         one_of(edge, "toEnd", "ends", &at)?;
+        number_in(edge, "fromOffset", 0.0, 1.0, &at)?;
+        number_in(edge, "toOffset", 0.0, 1.0, &at)?;
+        number_in(edge, "thickness", 0.5, 20.0, &at)?;
     }
     Ok(())
 }
@@ -183,6 +203,10 @@ mod tests {
             r#"{{"nodes":[{{"id":"a","type":"group",{NODE}}}],"edges":[{{"id":"e","fromNode":"a","toNode":"a","toEnd":"spear"}}]}}"#
         );
         assert!(problem("B.canvas", &bad_end).contains("\"toEnd\" must be one of"));
+        let bad_offset = bad_end.replace(r#""toEnd":"spear""#, r#""toOffset":1.5"#);
+        assert!(
+            problem("B.canvas", &bad_offset).contains("\"toOffset\" must be a number from 0 to 1")
+        );
         assert!(
             problem("D.excalidraw", r#"{"elements": 3}"#).contains("\"elements\" must be an array")
         );

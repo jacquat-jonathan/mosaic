@@ -13,6 +13,10 @@ write shows up in the app within a second.
 - **Edit surgically.** Prefer `patch` (replace one exact, unique snippet) or `append` over rewriting
   a whole file. Pass the `hash` you read as `expected_hash` so you never overwrite a human's newer
   edits — on a `conflict` error, read again and redo your change.
+- **Structured files are checked on write.** A `.canvas`, `.excalidraw`, `.vl.json` or `.json` that
+  doesn't parse (or a canvas card missing `id`, `type`, `x`/`y`/`width`/`height` or its `text`/`file`/
+  `url`, or an edge pointing to a missing node) is refused with an `invalid` error saying what's wrong;
+  nothing is written. Fix the content and try again.
 - **Deleting is safe but visible:** files go to the macOS Trash.
 - **Renaming updates links** in every other note automatically (use `rename`, not delete + create).
 - **Duplicate with `copy`** (any file, including images); it never overwrites an existing file.

@@ -14,6 +14,8 @@ use std::time::UNIX_EPOCH;
 #[derive(Debug, Clone)]
 pub struct Vault {
     root: PathBuf,
+    /// Refuse malformed canvases, drawings, charts and JSON (see `validate`). Off for the app.
+    validate: bool,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -109,7 +111,10 @@ impl Vault {
         if !root.is_dir() {
             return Err(Error::InvalidPath(format!("{shown} is not a folder")));
         }
-        Ok(Vault { root })
+        Ok(Vault {
+            root,
+            validate: false,
+        })
     }
 
     pub fn root(&self) -> &Path {
@@ -277,6 +282,19 @@ impl Vault {
         }
     }
 
+    /// Turns on checking of structured files on write (for the CLI and MCP server).
+    pub fn set_validate(&mut self, on: bool) {
+        self.validate = on;
+    }
+
+    fn check_content(&self, norm: &str, content: &str) -> Result<()> {
+        if self.validate {
+            crate::validate::check(norm, content)
+        } else {
+            Ok(())
+        }
+    }
+
     fn require_text_kind(norm: &str) -> Result<()> {
         if FileKind::of(Path::new(norm)).is_text() {
             Ok(())
@@ -320,6 +338,7 @@ impl Vault {
         if abs.exists() {
             return Err(Error::AlreadyExists(norm));
         }
+        self.check_content(&norm, content)?;
         self.atomic_write(&norm, &abs, content.as_bytes(), true)?;
         Ok(Written {
             hash: hash_bytes(content.as_bytes()),
@@ -367,6 +386,7 @@ impl Vault {
                 });
             }
         }
+        self.check_content(&norm, content)?;
         self.atomic_write(&norm, &abs, content.as_bytes(), false)?;
         Ok(Written {
             hash: hash_bytes(content.as_bytes()),

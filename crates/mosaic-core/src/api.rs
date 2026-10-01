@@ -62,6 +62,13 @@ impl Workspace {
         Ok(Self::new(vault, index))
     }
 
+    /// Refuse malformed canvases, drawings, charts and JSON on write, with an error saying what's
+    /// wrong. For agent front ends (CLI, MCP); the app saves half-typed files while someone edits.
+    pub fn validating(mut self) -> Self {
+        self.vault.set_validate(true);
+        self
+    }
+
     pub fn index(&self) -> MutexGuard<'_, Index> {
         self.index.lock().unwrap_or_else(|p| p.into_inner())
     }

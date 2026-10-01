@@ -15,7 +15,9 @@ use std::sync::{Arc, RwLock};
 
 /// Text files above this size are listed but their content isn't indexed.
 const MAX_INDEXED_BYTES: u64 = 2 * 1024 * 1024;
-const SCHEMA_VERSION: i64 = 1;
+/// Bump when the tables or what's extracted from files change: the index is then rebuilt from scratch.
+/// 2: Excalidraw text only, canvas backlink context, chart data files as embeds.
+const SCHEMA_VERSION: i64 = 2;
 
 pub struct Index {
     conn: Connection,
@@ -83,6 +85,9 @@ struct Extracted {
     title: String,
     body: String,
     parsed: Parsed,
+    /// Backlink context for each of `parsed.links`, for files without meaningful lines (canvases,
+    /// drawings). Empty: the context is the source line the link is on.
+    contexts: Vec<String>,
 }
 
 fn extract(path: &str, kind: FileKind, text: &str) -> Extracted {
@@ -93,14 +98,132 @@ fn extract(path: &str, kind: FileKind, text: &str) -> Extracted {
                 title: parse::title(&parsed, path),
                 body: parsed.body.clone(),
                 parsed,
+                contexts: Vec::new(),
             }
         }
         FileKind::Canvas => extract_canvas(path, text),
+        FileKind::Excalidraw => extract_excalidraw(path, text),
+        FileKind::Json if path.to_lowercase().ends_with(".vl.json") => {
+            extract_vega_lite(path, text)
+        }
         _ => Extracted {
             title: crate::links::file_name(path).to_string(),
             body: text.to_string(),
             parsed: Parsed::default(),
+            contexts: Vec::new(),
         },
+    }
+}
+
+/// An embed found outside Markdown (a canvas file card, a chart's data file).
+fn embed_link(kind: LinkKind, target: &str, heading: Option<String>, line: usize) -> parse::Link {
+    parse::Link {
+        kind,
+        target: target.to_string(),
+        heading,
+        block: None,
+        alias: None,
+        embed: true,
+        line,
+        target_range: (0, 0),
+    }
+}
+
+/// Excalidraw: only the text of text elements is searchable (not the JSON around it). An element's
+/// `link` (e.g. `[[Note]]`, as Obsidian's Excalidraw plugin writes) counts as a link from the drawing.
+fn extract_excalidraw(path: &str, text: &str) -> Extracted {
+    let mut body = String::new();
+    let mut parsed = Parsed::default();
+    let mut contexts = Vec::new();
+    if let Ok(v) = serde_json::from_str::<serde_json::Value>(text) {
+        let elements = v.get("elements").and_then(|e| e.as_array());
+        for el in elements.into_iter().flatten() {
+            if el.get("isDeleted").and_then(|d| d.as_bool()) == Some(true) {
+                continue;
+            }
+            let label = el
+                .get("originalText")
+                .or_else(|| el.get("text"))
+                .and_then(|t| t.as_str())
+                .unwrap_or("");
+            if el.get("type").and_then(|t| t.as_str()) == Some("text") && !label.is_empty() {
+                body.push_str(label);
+                body.push('\n');
+            }
+            if let Some(link) = el.get("link").and_then(|l| l.as_str()) {
+                let context = if label.is_empty() {
+                    "Linked element"
+                } else {
+                    label
+                };
+                for mut l in parse::parse(link).links {
+                    l.line = 0;
+                    parsed.links.push(l);
+                    contexts.push(one_line(context));
+                }
+            }
+        }
+    }
+    let name = crate::links::file_name(path);
+    Extracted {
+        title: name.strip_suffix(".excalidraw").unwrap_or(name).to_string(),
+        body,
+        parsed,
+        contexts,
+    }
+}
+
+/// Vega-Lite chart: every local `data.url` (top level or in layers, concats…) embeds that file,
+/// resolved like a Markdown link (relative to the chart first). Remote URLs are ignored.
+fn extract_vega_lite(path: &str, text: &str) -> Extracted {
+    fn walk(v: &serde_json::Value, urls: &mut Vec<String>) {
+        match v {
+            serde_json::Value::Object(map) => {
+                if let Some(url) = map
+                    .get("data")
+                    .and_then(|d| d.get("url"))
+                    .and_then(|u| u.as_str())
+                    && !url.contains("://")
+                    && !url.starts_with("data:")
+                    && !urls.iter().any(|u| u == url)
+                {
+                    urls.push(url.to_string());
+                }
+                map.values().for_each(|c| walk(c, urls));
+            }
+            serde_json::Value::Array(items) => items.iter().for_each(|c| walk(c, urls)),
+            _ => {}
+        }
+    }
+    let mut parsed = Parsed::default();
+    if let Ok(v) = serde_json::from_str::<serde_json::Value>(text) {
+        let mut urls = Vec::new();
+        walk(&v, &mut urls);
+        for url in urls {
+            let quoted = serde_json::to_string(&url).unwrap_or_default();
+            let line = text
+                .lines()
+                .position(|l| l.contains(&quoted))
+                .map_or(0, |i| i + 1);
+            parsed
+                .links
+                .push(embed_link(LinkKind::Markdown, &url, None, line));
+        }
+    }
+    Extracted {
+        title: crate::links::file_name(path).to_string(),
+        body: text.to_string(),
+        parsed,
+        contexts: Vec::new(),
+    }
+}
+
+/// Collapses a card's text to one trimmed line, short enough for the Backlinks panel.
+fn one_line(text: &str) -> String {
+    let joined = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    match joined.char_indices().nth(200) {
+        Some((i, _)) => format!("{}…", &joined[..i]),
+        None => joined,
     }
 }
 
@@ -108,6 +231,7 @@ fn extract(path: &str, kind: FileKind, text: &str) -> Extracted {
 fn extract_canvas(path: &str, text: &str) -> Extracted {
     let mut body = String::new();
     let mut parsed = Parsed::default();
+    let mut contexts = Vec::new();
     if let Ok(v) = serde_json::from_str::<serde_json::Value>(text) {
         for node in v
             .get("nodes")
@@ -119,10 +243,19 @@ fn extract_canvas(path: &str, text: &str) -> Extracted {
                 Some("text") => {
                     if let Some(t) = node.get("text").and_then(|t| t.as_str()) {
                         let inner = parse::parse(t);
-                        parsed.links.extend(inner.links.into_iter().map(|mut l| {
+                        let card_lines: Vec<&str> = t.lines().collect();
+                        for mut l in inner.links {
+                            // The card line holding the link; the card's first line if it's unknown.
+                            let at = l.line.max(1) - 1;
+                            let line = card_lines
+                                .get(at)
+                                .or(card_lines.first())
+                                .copied()
+                                .unwrap_or("");
+                            contexts.push(one_line(line));
                             l.line = 0;
-                            l
-                        }));
+                            parsed.links.push(l);
+                        }
                         parsed.tags.extend(inner.tags);
                         body.push_str(t);
                         body.push('\n');
@@ -130,19 +263,12 @@ fn extract_canvas(path: &str, text: &str) -> Extracted {
                 }
                 Some("file") => {
                     if let Some(f) = node.get("file").and_then(|t| t.as_str()) {
-                        parsed.links.push(parse::Link {
-                            kind: LinkKind::Wiki,
-                            target: f.to_string(),
-                            heading: node
-                                .get("subpath")
-                                .and_then(|s| s.as_str())
-                                .map(|s| s.trim_start_matches('#').to_string()),
-                            block: None,
-                            alias: None,
-                            embed: true,
-                            line: 0,
-                            target_range: (0, 0),
-                        });
+                        let heading = node
+                            .get("subpath")
+                            .and_then(|s| s.as_str())
+                            .map(|s| s.trim_start_matches('#').to_string());
+                        parsed.links.push(embed_link(LinkKind::Wiki, f, heading, 0));
+                        contexts.push("File card".to_string());
                     }
                 }
                 Some("group") => {
@@ -166,6 +292,7 @@ fn extract_canvas(path: &str, text: &str) -> Extracted {
         title: name.strip_suffix(".canvas").unwrap_or(name).to_string(),
         body,
         parsed,
+        contexts,
     }
 }
 
@@ -405,6 +532,7 @@ impl Index {
                 title: name.clone(),
                 body: String::new(),
                 parsed: Parsed::default(),
+                contexts: Vec::new(),
             },
         };
         let hash = text.as_ref().map(|t| hash_bytes(t.as_bytes()));
@@ -425,11 +553,11 @@ impl Index {
             .as_deref()
             .map(|t| t.lines().collect())
             .unwrap_or_default();
-        for l in &ex.parsed.links {
-            let context = if l.line > 0 {
-                lines.get(l.line - 1).copied().unwrap_or("")
-            } else {
-                ""
+        for (i, l) in ex.parsed.links.iter().enumerate() {
+            let context = match ex.contexts.get(i) {
+                Some(c) => c.as_str(),
+                None if l.line > 0 => lines.get(l.line - 1).copied().unwrap_or(""),
+                None => "",
             };
             tx.execute(
                 "INSERT INTO links (src, target, key, heading, alias, embed, markdown, line, context) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
@@ -885,5 +1013,96 @@ pub(crate) mod tests {
         let b = idx.backlinks("f0/Note 0.md").unwrap();
         eprintln!("backlinks: {:?} ({} hits)", t.elapsed(), b.len());
         let _ = fs::remove_file(dir.path().join("../idx-bench.db"));
+    }
+
+    /// A temporary vault holding exactly `files`, indexed.
+    fn vault_with(files: &[(&str, &str)]) -> (tempfile::TempDir, Index) {
+        let dir = tempfile::tempdir().unwrap();
+        for (p, c) in files {
+            let path = dir.path().join(p);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, c).unwrap();
+        }
+        let v = Vault::open(dir.path()).unwrap();
+        let mut idx = Index::in_memory().unwrap();
+        idx.sync(&v, |_, _| {}).unwrap();
+        (dir, idx)
+    }
+
+    #[test]
+    fn excalidraw_indexes_only_its_text() {
+        let drawing = r#"{"type":"excalidraw","elements":[
+            {"type":"rectangle","id":"r1","link":"[[Plan]]"},
+            {"type":"text","id":"t1","text":"Merge\nconflict","originalText":"Merge conflict"},
+            {"type":"text","id":"t2","text":"gone","isDeleted":true}
+        ]}"#;
+        let (_d, idx) = vault_with(&[("Layers.excalidraw", drawing), ("Plan.md", "# Plan")]);
+        let hits = idx.search("conflict", 5).unwrap();
+        assert_eq!(hits[0].path, "Layers.excalidraw");
+        assert_eq!(hits[0].title, "Layers");
+        assert!(
+            !hits[0].snippet.contains("originalText"),
+            "{}",
+            hits[0].snippet
+        );
+        assert!(
+            idx.search("gone", 5).unwrap().is_empty(),
+            "deleted elements are skipped"
+        );
+        assert!(
+            idx.search("rectangle", 5).unwrap().is_empty(),
+            "JSON keys aren't indexed"
+        );
+        let b = idx.backlinks("Plan.md").unwrap();
+        assert_eq!(b.len(), 1);
+        assert_eq!(
+            (b[0].source.as_str(), b[0].context.as_str()),
+            ("Layers.excalidraw", "Linked element")
+        );
+    }
+
+    #[test]
+    fn canvas_backlinks_carry_the_card_text() {
+        let canvas = r##"{"nodes":[
+            {"id":"a","type":"text","text":"# Roadmap\nNext: see [[Plan]] for   details","x":0,"y":0,"width":10,"height":10},
+            {"id":"b","type":"file","file":"Plan.md","x":0,"y":0,"width":10,"height":10}
+        ],"edges":[]}"##;
+        let (_d, idx) = vault_with(&[("Board.canvas", canvas), ("Plan.md", "# Plan")]);
+        let mut contexts: Vec<String> = idx
+            .backlinks("Plan.md")
+            .unwrap()
+            .into_iter()
+            .map(|b| b.context)
+            .collect();
+        contexts.sort();
+        assert_eq!(contexts, ["File card", "Next: see [[Plan]] for details"]);
+    }
+
+    #[test]
+    fn chart_data_files_are_embeds() {
+        let chart = "{\n  \"layer\": [\n    {\"data\": {\"url\": \"code-size.csv\"}, \"mark\": \"bar\"},\n    {\"data\": {\"url\": \"https://example.com/remote.csv\"}}\n  ]\n}\n";
+        let (_d, idx) = vault_with(&[
+            ("Charts/Code size.vl.json", chart),
+            ("Charts/code-size.csv", "a,b\n1,2\n"),
+            ("Other/code-size.csv", "a,b\n"),
+        ]);
+        let b = idx.backlinks("Charts/code-size.csv").unwrap();
+        assert_eq!(b.len(), 1);
+        assert_eq!(
+            (b[0].source.as_str(), b[0].line, b[0].embed),
+            ("Charts/Code size.vl.json", 3, true)
+        );
+        assert!(b[0].context.contains("code-size.csv"));
+        assert!(
+            idx.backlinks("Other/code-size.csv").unwrap().is_empty(),
+            "resolved relative to the chart"
+        );
+    }
+
+    #[test]
+    fn one_line_collapses_and_shortens() {
+        assert_eq!(one_line("  a\n\n b  "), "a b");
+        let long = "x".repeat(300);
+        assert_eq!(one_line(&long).chars().count(), 201);
     }
 }

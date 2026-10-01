@@ -182,7 +182,9 @@ fn run(cli: Cli) -> Result<()> {
         return Ok(());
     }
     let root = vault_path(cli.vault)?;
-    let ws = Workspace::open(&root).with_context(|| format!("opening vault {}", root.display()))?;
+    let ws = Workspace::open(&root)
+        .with_context(|| format!("opening vault {}", root.display()))?
+        .validating();
     let json = cli.json;
     // The index is shared with the app (WAL); an incremental sync is fast and keeps results current.
     let needs_index = matches!(

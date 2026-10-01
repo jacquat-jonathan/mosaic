@@ -219,6 +219,35 @@ fn every_tool_works_end_to_end() {
     );
     assert!(!err);
 
+    // Malformed structured files are refused with a reason, and nothing is written.
+    let broken = json!({ "nodes": [{ "id": "b", "type": "text", "x": 0, "y": 0, "width": 1, "height": 1 }] });
+    let (err, payload) = c.call(
+        "create_file",
+        json!({ "path": "AI/Broken.canvas", "content": broken.to_string() }),
+    );
+    assert!(err);
+    assert_eq!(payload["code"], "invalid");
+    assert!(
+        payload["message"]
+            .as_str()
+            .unwrap()
+            .contains("has no string \"text\""),
+        "{payload}"
+    );
+    assert!(!dir.path().join("AI/Broken.canvas").exists());
+    let (err, payload) = c.call(
+        "patch_file",
+        json!({ "path": "AI/Board.canvas", "find": "\"edges\":[]", "replace": "\"edges\":[" }),
+    );
+    assert!(err, "a patch that breaks the JSON is refused");
+    assert!(
+        payload["message"]
+            .as_str()
+            .unwrap()
+            .contains("invalid JSON"),
+        "{payload}"
+    );
+
     let (err, marks) = c.call("add_bookmark", json!({ "path": "AI/Summary.md" }));
     assert!(!err);
     assert_eq!(marks, json!([{ "path": "AI/Summary.md", "exists": true }]));

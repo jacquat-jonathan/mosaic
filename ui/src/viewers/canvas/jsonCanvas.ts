@@ -20,6 +20,8 @@ export interface CanvasNode {
   /** Mosaic diagrams: a shape for a text card, and its border (see ui/src/diagrams/shapes.tsx). */
   shape?: string;
   border?: string;
+  /** Mosaic diagrams: a network / cloud icon drawn above the label (see ui/src/diagrams/icons.tsx). */
+  icon?: string;
   [extra: string]: unknown;
 }
 

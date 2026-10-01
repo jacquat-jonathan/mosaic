@@ -1,0 +1,135 @@
+{
+	"nodes": [
+		{
+			"id": "customer",
+			"type": "text",
+			"x": 450,
+			"y": -340,
+			"width": 120,
+			"height": 150,
+			"text": "**Customer**\n[Person]",
+			"shape": "actor",
+			"color": "5"
+		},
+		{
+			"id": "boundary",
+			"type": "group",
+			"x": 40,
+			"y": -80,
+			"width": 1000,
+			"height": 440,
+			"label": "Web shop [Software system]"
+		},
+		{
+			"id": "spa",
+			"type": "text",
+			"x": 80,
+			"y": -20,
+			"width": 220,
+			"height": 130,
+			"text": "**Single-page app**\n[Container: React]\nShop in the browser",
+			"shape": "rounded",
+			"icon": "globe",
+			"color": "5"
+		},
+		{
+			"id": "api",
+			"type": "text",
+			"x": 440,
+			"y": -20,
+			"width": 220,
+			"height": 130,
+			"text": "**API**\n[Container: Java]\nOrders, payments",
+			"shape": "rounded",
+			"icon": "server",
+			"color": "5"
+		},
+		{
+			"id": "db",
+			"type": "text",
+			"x": 820,
+			"y": -25,
+			"width": 180,
+			"height": 140,
+			"text": "**Database**\n[Container: PostgreSQL]",
+			"shape": "cylinder",
+			"color": "5"
+		},
+		{
+			"id": "worker",
+			"type": "text",
+			"x": 440,
+			"y": 200,
+			"width": 220,
+			"height": 130,
+			"text": "**Worker**\n[Container: Java]\nSends e-mails",
+			"shape": "rounded",
+			"icon": "workflow",
+			"color": "5"
+		},
+		{
+			"id": "mail",
+			"type": "text",
+			"x": 1160,
+			"y": 200,
+			"width": 180,
+			"height": 130,
+			"text": "**E-mail service**\n[External system]",
+			"shape": "rounded",
+			"icon": "mail"
+		},
+		{
+			"id": "pay",
+			"type": "text",
+			"x": 1160,
+			"y": -340,
+			"width": 180,
+			"height": 130,
+			"text": "**Payment provider**\n[External system]",
+			"shape": "rounded",
+			"icon": "credit-card"
+		}
+	],
+	"edges": [
+		{
+			"id": "e1",
+			"fromNode": "customer",
+			"toNode": "spa",
+			"label": "Uses [HTTPS]"
+		},
+		{
+			"id": "e2",
+			"fromNode": "spa",
+			"toNode": "api",
+			"label": "Calls [JSON/HTTPS]"
+		},
+		{
+			"id": "e3",
+			"fromNode": "api",
+			"toNode": "db",
+			"label": "Reads / writes [SQL]"
+		},
+		{
+			"id": "e4",
+			"fromNode": "api",
+			"toNode": "worker",
+			"label": "Queues jobs",
+			"fromSide": "bottom",
+			"toSide": "top"
+		},
+		{
+			"id": "e5",
+			"fromNode": "worker",
+			"toNode": "mail",
+			"label": "Sends [SMTP]"
+		},
+		{
+			"id": "e6",
+			"fromNode": "api",
+			"toNode": "pay",
+			"label": "Charges [HTTPS]",
+			"fromSide": "top",
+			"toSide": "left"
+		}
+	]
+}

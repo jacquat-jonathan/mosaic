@@ -593,3 +593,7 @@ svg path.flow-on { stroke-dasharray: 9 6 !important; animation: edge-flow 0.7s l
 /* The live preview under a diagram block being edited. */
 .cm-block-preview { border-top: 1px dashed var(--border); padding-top: 6px; flex-wrap: wrap; }
 .cm-block-preview > .cm-render-error { flex-basis: 100%; margin-top: 6px; }
+/* A card's icon (diagrams/icons.tsx), above its label. */
+.card-icon { display: flex; justify-content: center; padding-top: 10px; color: var(--fg); flex: none; position: relative; }
+.canvas-shape:has(> .card-icon) { flex-direction: column; }
+.canvas-shape:has(> .card-icon) .shape-text { flex: 1; }

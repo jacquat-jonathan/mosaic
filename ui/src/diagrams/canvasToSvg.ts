@@ -4,6 +4,14 @@
 
 import { colorOf, type CanvasDoc, type CanvasEdge, type CanvasNode, type Side } from "../viewers/canvas/jsonCanvas";
 import { CSS_SHAPES, OUTLINES, SOLID, dashArray, isEnd, isShape, LABELLESS, type EndName, type ShapeName } from "./shapes";
+import { iconMarkup } from "./icons";
+
+/** A card's icon, centred near the top; returns the markup and how much height it takes. */
+function iconSvg(n: CanvasNode, color: string): { svg: string; height: number } {
+  const markup = n.icon ? iconMarkup(n.icon, color, 34) : null;
+  if (!markup) return { svg: "", height: 0 };
+  return { svg: markup.replace("<svg ", `<svg x="${n.x + n.width / 2 - 17}" y="${n.y + 10}" `), height: 48 };
+}
 
 interface Theme {
   bg: string;
@@ -107,6 +115,8 @@ function shapeSvg(n: CanvasNode, shape: ShapeName, t: Theme): string {
   }
   if (LABELLESS.has(shape)) return body;
   const lines = plainLines(n.text ?? "");
+  const icon = iconSvg(n, color ?? t.fg);
+  if (icon.svg) return body + icon.svg + textBlock(lines, x, y + icon.height, w, h - icon.height, t, true);
   if (shape === "class") {
     // Compartments: name (centred, bold), then members, divided by lines.
     const parts = (n.text ?? "").split(/^[ \t]*-{3,}[ \t]*$/m).map((p) => plainLines(p.trim()));
@@ -143,7 +153,8 @@ function cardSvg(n: CanvasNode, t: Theme): string {
   if (n.type === "link") return frame + textBlock([n.url ?? ""], x, y, w, h, { ...t, fg: t.muted }, true);
   const text = n.text ?? "";
   const heading = /^#{1,6}\s/.test(text.trim());
-  return frame + textBlock(plainLines(text), x, y, w, h, t, false, heading);
+  const icon = iconSvg(n, color ?? t.fg);
+  return frame + icon.svg + textBlock(plainLines(text), x, y + icon.height, w, h - icon.height, t, false, heading);
 }
 
 function groupSvg(n: CanvasNode, t: Theme): string {

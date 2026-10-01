@@ -92,17 +92,34 @@ label (Markdown, links work). Optional fields, all checked on write:
 
 | Field | On | Values |
 |---|---|---|
-| `shape` | text card | `rectangle`, `rounded`, `pill` (start/end), `ellipse`, `diamond` (decision), `parallelogram` (input/output), `hexagon`, `cylinder` (database), `document`, `process` (predefined process), `cloud`, `note`, `actor` (person; label under the figure) |
+| `shape` | text card | Basic: `rectangle`, `rounded`, `pill` (start/end, state), `ellipse` (use case), `diamond` (decision), `cylinder` (database), `cloud`, `note`, `actor` (person; label under the figure). Flowchart: `parallelogram` (input/output), `hexagon`, `document`, `process`. UML structure: `class`, `package`, `component`, `node` (deployment), `artifact`, `port`. UML behaviour: `initial`, `final`, `bar` (fork/join), `lifeline`, `activation`, `frame` (sd, alt, loop…; drawn behind other cards) |
 | `border` | shaped card | `solid` (default), `dashed`, `dotted`, `none` |
 | `line` | edge | `solid` (default), `dashed`, `dotted` |
 | `toEnd`, `fromEnd` | edge | `none`, `arrow`, `triangle` (hollow: inheritance), `open` (dependency), `diamond` (composition), `diamond-open` (aggregation), `circle`. Defaults: `toEnd` `arrow`, `fromEnd` `none` |
 | `fromLabel`, `toLabel` | edge | Short text near each end, e.g. multiplicities `1` and `1..*` |
+| `icon` | text card | A network / cloud icon above the label: `server`, `database`, `cloud`, `laptop`, `smartphone`, `monitor`, `router`, `network`, `wifi`, `globe`, `shield`, `lock`, `key`, `user`, `users`, `building`, `mail`, `message`, `bell`, `credit-card`, `cpu`, `hard-drive`, `container`, `box`, `file`, `workflow` |
+| `fromOffset`, `toOffset` | edge | Where along `fromSide` / `toSide` it attaches, 0–1 (middle when absent). Sequence messages use them to leave a lifeline at a given height |
+| `thickness` | edge | Line width in pixels (2 when absent) |
 
 ```json
 { "id": "db", "type": "text", "text": "Orders", "shape": "cylinder", "color": "5", "x": 400, "y": 0, "width": 150, "height": 130 },
 { "id": "e2", "fromNode": "svc", "toNode": "db", "label": "writes", "line": "dashed" },
 { "id": "e3", "fromNode": "order", "toNode": "line", "fromEnd": "diamond", "toEnd": "none", "fromLabel": "1", "toLabel": "1..*" }
 ```
+
+Special shapes:
+
+- **`class`**: separate the compartments with lines of `---`: name (and «stereotype») first, then
+  attributes, then operations. Example text: `"«interface»\n**Payable**\n---\n+ pay()"`.
+- **`lifeline`**: the text is the participant's name (shown in its head box). Messages are edges
+  between lifelines with `fromSide`/`toSide` `right`/`left` and the same `fromOffset`/`toOffset`
+  (0.1 near the top, 0.9 near the bottom), so they run level. Returns: `"line": "dashed", "toEnd": "open"`.
+- **`frame`**: the first line is its tag, e.g. `"**alt** [card declined]"`; place it around the cards it
+  frames.
+- `initial`, `final`, `bar`, `port` and `activation` are symbols without a label.
+
+Shape labels keep every line break. Mosaic ships a template for each of the 14 UML diagram types (New
+diagram… in the app); they're plain canvases you can read for examples.
 
 Good sizes: about 180×100 for boxes, 180×130 for a diamond, 150×130 for a cylinder, 100×140 for an
 actor. Leave 80–120 px between shapes so arrowheads and labels have room.

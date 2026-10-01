@@ -114,6 +114,7 @@ fn canvas(v: &Value) -> std::result::Result<(), String> {
         }
         one_of(node, "shape", "shapes", &at)?;
         one_of(node, "border", "borders", &at)?;
+        one_of(node, "icon", "icons", &at)?;
     }
     for (i, edge) in list("edges")?.iter().enumerate() {
         let at = match edge.get("id").and_then(Value::as_str) {
@@ -229,7 +230,7 @@ mod tests {
             seen += 1;
         }
         assert!(
-            seen >= 18,
+            seen >= 19,
             "expected the diagram templates in {}",
             dir.display()
         );

@@ -4,7 +4,7 @@ import { parseCanvas } from "../viewers/canvas/jsonCanvas";
 import { isShape } from "./shapes";
 
 test("every template parses, uses known shapes and has unique ids", () => {
-  expect(DIAGRAM_TEMPLATES.length).toBe(18);
+  expect(DIAGRAM_TEMPLATES.length).toBe(19);
   for (const t of DIAGRAM_TEMPLATES) {
     expect(t.content, t.label).toBeTruthy();
     const doc = parseCanvas(t.content);

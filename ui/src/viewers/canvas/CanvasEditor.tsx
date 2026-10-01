@@ -66,6 +66,7 @@ import {
 import { DiagramEdge, edgeEnds, type DiagramEdgeData } from "./DiagramEdge";
 import { align } from "./align";
 import { autoLayout } from "./layout";
+import { ICONS, ICON_NAMES, iconLabel } from "../../diagrams/icons";
 import { canvasToMermaid } from "../../diagrams/canvasToMermaid";
 import { exportCanvas } from "../../diagrams/export";
 import { plainLines } from "../../diagrams/canvasToSvg";
@@ -474,6 +475,13 @@ function CanvasFlow({ path, doc: initial, toolsHost }: { path: string; doc: Canv
           })),
         ],
       });
+      items.push({
+        label: "Icon",
+        children: [
+          { label: "No icon", checked: !node.icon, action: () => setNode("icon", undefined) },
+          ...ICON_NAMES.map((name) => ({ label: iconLabel(name), checked: node.icon === name, action: () => setNode("icon", name) })),
+        ],
+      });
       if (shape)
         items.push({
           label: "Border",
@@ -630,6 +638,7 @@ function CanvasFlow({ path, doc: initial, toolsHost }: { path: string; doc: Canv
             const sh = SHAPES.find((x) => x.name === shape)!;
             addNode({ type: "text", text: "", shape, width: sh.width, height: sh.height });
           }}
+          onIcon={(icon) => addNode({ type: "text", text: iconLabel(icon), shape: "rectangle", border: "none", icon, width: 120, height: 110 })}
           onGroup={() => addNode({ type: "group", label: "Group" })}
           onFile={() => void addFile()}
           onFit={() => void flow.fitView({ padding: 0.2, duration: 200 })}
@@ -717,6 +726,7 @@ function CanvasFlow({ path, doc: initial, toolsHost }: { path: string; doc: Canv
 function CanvasTools({
   onCard,
   onShape,
+  onIcon,
   onGroup,
   onFile,
   onFit,
@@ -726,6 +736,7 @@ function CanvasTools({
 }: {
   onCard(): void;
   onShape(shape: ShapeName): void;
+  onIcon(icon: string): void;
   onGroup(): void;
   onFile(): void;
   onFit(): void;
@@ -743,7 +754,10 @@ function CanvasTools({
           useUi.getState().showMenu(
             r.left,
             r.bottom + 4,
-            SHAPE_GROUPS.map((g) => ({ label: g, children: SHAPES.filter((sh) => sh.group === g).map((sh) => ({ label: sh.label, action: () => onShape(sh.name) })) })),
+            [
+              ...SHAPE_GROUPS.map((g) => ({ label: g, children: SHAPES.filter((sh) => sh.group === g).map((sh) => ({ label: sh.label, action: () => onShape(sh.name) })) })),
+              { label: "Icons (network, cloud)", children: ICON_NAMES.map((name) => ({ label: iconLabel(name), action: () => onIcon(name) })) },
+            ],
           );
         }}
       >
@@ -805,6 +819,7 @@ const Card = memo(function Card({ data, selected }: NodeProps<FlowNode>) {
     <div className={`canvas-card ${selected ? "selected" : ""}`} style={color ? { borderColor: color, ["--card-tint" as string]: color } : undefined}>
       <NodeResizer isVisible={selected} minWidth={120} minHeight={60} lineClassName="canvas-resize-line" handleClassName="canvas-resize-handle" />
       <Handles node={n} />
+      {n.type === "text" && n.icon && ICONS[n.icon] && <CardIcon name={n.icon} color={color} />}
       {n.type === "text" && <TextCard id={n.id} text={n.text ?? ""} onText={data.onText} canvasPath={data.canvasPath} />}
       {n.type === "file" && <FileCard file={n.file ?? ""} subpath={n.subpath} />}
       {n.type === "link" && <LinkCard url={n.url ?? ""} />}
@@ -817,6 +832,15 @@ const Card = memo(function Card({ data, selected }: NodeProps<FlowNode>) {
   );
 });
 
+function CardIcon({ name, color }: { name: string; color: string | undefined }) {
+  const Icon = ICONS[name];
+  return (
+    <div className="card-icon" aria-hidden>
+      <Icon size={34} strokeWidth={1.75} color={color ?? "currentColor"} />
+    </div>
+  );
+}
+
 /** A text card drawn as a diagram shape: the outline behind, the Markdown text centred on top. */
 function ShapeCard({ data, selected, shape, color }: { data: CardData; selected: boolean; shape: ShapeName; color: string | undefined }) {
   const n = data.node;
@@ -827,6 +851,7 @@ function ShapeCard({ data, selected, shape, color }: { data: CardData; selected:
       <NodeResizer isVisible={selected} minWidth={60} minHeight={40} lineClassName="canvas-resize-line" handleClassName="canvas-resize-handle" />
       <Handles node={n} />
       {!css && <ShapeOutline shape={shape} style={style} />}
+      {n.icon && ICONS[n.icon] && <CardIcon name={n.icon} color={color} />}
       {!LABELLESS.has(shape) && (
         <div className="shape-text">
           <TextCard id={n.id} text={n.text ?? ""} onText={data.onText} canvasPath={data.canvasPath} compartments={shape === "class"} lineBreaks />

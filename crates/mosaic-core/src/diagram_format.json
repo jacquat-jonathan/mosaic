@@ -1,5 +1,5 @@
 {
-  "about": "Diagram fields Mosaic adds to JSON Canvas. Read by the write validator (validate.rs) and the canvas editor (ui/src/diagrams/shapes.tsx), and documented in docs/AGENTS.md. A node without \"shape\" is an ordinary card. \"group\" sorts shapes in the Shape menu.",
+  "about": "Diagram fields Mosaic adds to JSON Canvas. Read by the write validator (validate.rs) and the canvas editor (ui/src/diagrams/shapes.tsx), and documented in docs/AGENTS.md. A node without \"shape\" is an ordinary card. \"group\" sorts shapes in the Shape menu. \"icons\" are names for a card's \"icon\" (drawn above its label).",
   "shapes": {
     "rectangle": {
       "label": "Rectangle",
@@ -171,5 +171,33 @@
     "diamond": "Filled diamond (composition)",
     "diamond-open": "Hollow diamond (aggregation)",
     "circle": "Circle"
-  }
+  },
+  "icons": [
+    "server",
+    "database",
+    "cloud",
+    "laptop",
+    "smartphone",
+    "monitor",
+    "router",
+    "network",
+    "wifi",
+    "globe",
+    "shield",
+    "lock",
+    "key",
+    "user",
+    "users",
+    "building",
+    "mail",
+    "message",
+    "bell",
+    "credit-card",
+    "cpu",
+    "hard-drive",
+    "container",
+    "box",
+    "file",
+    "workflow"
+  ]
 }

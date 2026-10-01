@@ -18,6 +18,7 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 - A template for each of the 14 UML diagram types under New diagram…, each noting the 4+1 view it serves.
 - More connection points along each side (and all along a lifeline), thicker or thinner connections, and **Layout** to arrange cards top to bottom or left to right along their connections.
 - AI agents now work on the vault open in Mosaic and follow when you switch vaults, so their files always land where you're looking. **If you connected Claude Code before, run `claude mcp remove mosaic`, then the command in Settings › AI** (it no longer pins a vault). An agent tied to a vault with `--vault` is warned when Mosaic shows another one.
+
 ## 0.4.0 — 2026-10-02
 
 - Diagram shapes on canvases: rectangle, rounded, pill, ellipse, diamond, parallelogram, hexagon, cylinder, document, predefined process, cloud, note and actor, from the new **Shape** button. Right-click a card to change its shape, border or colour.
@@ -25,6 +26,7 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 - Dragging a card snaps its edges and centre to other cards nearby, with a guide line.
 - Hovering a card makes its connections flow in their direction and dims the rest (still, without motion, when macOS "Reduce motion" is on).
 - **New diagram…** replaces New canvas: start blank or from a template (flowchart, 4+1 architecture views, C4 system context). Find it in the New menu, the file tree's right-click menu and the command palette.
+
 ## 0.3.0 — 2026-10-01
 
 - Search finds the text in Excalidraw drawings without the JSON around it.

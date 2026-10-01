@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+## 0.3.0 — 2026-10-01
+
 - Search finds the text in Excalidraw drawings without the JSON around it.
 - Backlinks from a canvas show the card's text (or "File card"), and every link from a canvas is listed, not just the first.
 - A chart's data file (e.g. `code-size.csv`) lists the chart as a backlink.

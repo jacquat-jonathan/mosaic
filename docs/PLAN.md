@@ -138,11 +138,11 @@ Tracked in the Mosaic vault note `Settings and Updates.md`.
 - [x] New build swapped in by a detached helper after the app quits, then reopened
 
 ### M11 — Ready to share
-Tracked in the Mosaic vault note `Architecture/Next steps.md` (section 1, "Ready to share").
+Done 2026-10-01, released as 0.2.0. Details in the Mosaic vault note `Architecture/Done.md`.
 - [x] Movable window: grant `core:window:allow-start-dragging`; tab-bar buttons don't swallow drags
 - [x] Semantic versions (workspace `Cargo.toml` + `tauri.conf.json`), a git tag per release, `CHANGELOG.md`; About shows "0.2.0 (commit)", "Check for updates" lists versions
 - [x] Cancel a running update build
-- [ ] Real-app checks from `UI Foundations.md` and `Settings and Updates.md`, including a full Check → Update → Restart cycle
+- [x] Real-app checks from `UI Foundations.md` and `Settings and Updates.md`, including a full Check → Update → Restart cycle
 - [x] Publish 0.2.0 (`scripts/release.sh 0.2.0`, `git push --follow-tags`)
 - [x] README section for coworkers: install, update from the app, connect an agent, Gatekeeper
 

@@ -147,12 +147,12 @@ Done 2026-10-01, released as 0.2.0. Details in the Mosaic vault note `Architectu
 - [x] README section for coworkers: install, update from the app, connect an agent, Gatekeeper
 
 ### M12 — Trust (search, links, validation)
-Tracked in `Architecture/Next steps.md` (section 1).
-- [ ] Index Excalidraw by the text of its text elements, not raw JSON
-- [ ] Canvas backlinks carry context (card text or "file card")
-- [ ] `.vl.json` `data.url` indexed as an embed
-- [ ] Validate `.canvas`, `.excalidraw`, `.vl.json`, `.json` in `Vault::write`/`create`; return `invalid` with the parse error
-- [ ] Link-resolution cases in one shared JSON fixture read by both Rust and Vitest tests
+Done 2026-10-01. Details in the vault note `Architecture/Done.md`.
+- [x] Index Excalidraw by the text of its text elements, not raw JSON
+- [x] Canvas backlinks carry context (card text or "file card")
+- [x] `.vl.json` `data.url` indexed as an embed
+- [x] Validate `.canvas`, `.excalidraw`, `.vl.json`, `.json` in `Vault::write`/`create`; return `invalid` with the parse error
+- [x] Link-resolution cases in one shared JSON fixture read by both Rust and Vitest tests
 
 ### M13 — Diagram tool
 One drawing tool built on `.canvas` (Mermaid stays for notes, Excalidraw for sketches). Tracked in `Architecture/Next steps.md` (section 3).

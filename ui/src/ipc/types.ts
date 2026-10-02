@@ -144,6 +144,12 @@ export interface UpdateCheck {
   dirty: boolean;
 }
 
+/** What agents may do in a folder (Settings › AI). */
+export interface AgentRule {
+  path: string;
+  access: "read-only" | "hidden";
+}
+
 /** One version of a file kept by Mosaic (see crates/mosaic-core/src/history.rs). */
 export interface Version {
   id: number;

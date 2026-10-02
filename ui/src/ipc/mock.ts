@@ -18,6 +18,7 @@ let updateSource: string | null = null;
 let updateBuilt = false;
 let updateRunning = false;
 let updateTimers: ReturnType<typeof setTimeout>[] = [];
+let agentRules: { path: string; access: string }[] = [];
 
 const emit = (name: string, detail: unknown) => window.dispatchEvent(new CustomEvent(`mock-${name}`, { detail }));
 
@@ -369,6 +370,11 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
       };
       return out;
     }
+    case "get_agent_rules":
+      return agentRules;
+    case "set_agent_rules":
+      agentRules = a.rules as typeof agentRules;
+      return null;
     case "file_history":
       return versions.filter((v) => v.path === norm(a.path)).reverse().map(({ content: _c, ...v }) => v);
     case "version_content":

@@ -7,7 +7,7 @@ use crate::index::{Backlink, Index, OutLink, SearchHit, SyncStats, TagCount};
 use crate::kind::FileKind;
 use crate::links::{FileSet, markdown_url_for, wiki_text_for};
 use crate::parse::{self, Heading, LinkKind};
-use crate::settings::{SETTINGS_FILE, Settings};
+use crate::settings::{Access, AgentRule, SETTINGS_FILE, Settings, access_for};
 use crate::vault::{Entry, FileContent, Vault, Written, normalize};
 use regex::Regex;
 use serde::Serialize;
@@ -98,6 +98,51 @@ impl Workspace {
         self.actor.lock().unwrap_or_else(|p| p.into_inner()).clone()
     }
 
+    /// The vault's folder rules for agents (Settings › AI). They never apply to the app.
+    fn rules(&self) -> Vec<AgentRule> {
+        if self.source == Source::App {
+            Vec::new()
+        } else {
+            Settings::load().agent_rules(self.vault.root())
+        }
+    }
+
+    fn visible(rules: &[AgentRule], path: &str) -> bool {
+        access_for(rules, path) != Some(Access::Hidden)
+    }
+
+    /// A hidden path reads as "not found", so agents can't tell it exists.
+    fn check_read(&self, path: &str) -> Result<()> {
+        let norm = normalize(path)?;
+        if Self::visible(&self.rules(), &norm) {
+            Ok(())
+        } else {
+            Err(Error::NotFound(norm))
+        }
+    }
+
+    /// Refuses changes to read-only or hidden paths — for a folder, to anything inside it too.
+    fn check_write(&self, path: &str) -> Result<()> {
+        let norm = normalize(path)?;
+        let rules = self.rules();
+        match access_for(&rules, &norm) {
+            Some(Access::Hidden) => return Err(Error::NotFound(norm)),
+            Some(Access::ReadOnly) => return Err(read_only(&norm)),
+            None => {}
+        }
+        if let Some(r) = rules.iter().find(|r| {
+            r.path.starts_with(&format!("{norm}/")) || (norm.is_empty() && !r.path.is_empty())
+        }) {
+            return Err(match r.access {
+                Access::ReadOnly => read_only(&r.path),
+                Access::Hidden => {
+                    Error::Denied(format!("{norm} contains folders agents can't change"))
+                }
+            });
+        }
+        Ok(())
+    }
+
     /// Current text and hash of a file, if it exists and is text.
     fn text_of(&self, path: &str) -> Option<(String, String)> {
         let f = self.vault.read(path).ok()?;
@@ -166,14 +211,20 @@ impl Workspace {
     }
 
     pub fn list(&self, dir: &str, recursive: bool) -> Result<Vec<Entry>> {
-        self.vault.list(dir, recursive)
+        self.check_read(dir)?;
+        let rules = self.rules();
+        let mut entries = self.vault.list(dir, recursive)?;
+        entries.retain(|e| Self::visible(&rules, &e.path));
+        Ok(entries)
     }
 
     pub fn read(&self, path: &str) -> Result<FileContent> {
+        self.check_read(path)?;
         self.vault.read(path)
     }
 
     pub fn create(&self, path: &str, content: &str) -> Result<Written> {
+        self.check_write(path)?;
         let w = self.vault.create(path, content)?;
         self.record(&w.path, Action::Created);
         self.reindex(&w.path);
@@ -181,6 +232,7 @@ impl Workspace {
     }
 
     pub fn write(&self, path: &str, content: &str, expected_hash: Option<&str>) -> Result<Written> {
+        self.check_write(path)?;
         let existed = self.keep_before(path);
         let w = self.vault.write(path, content, expected_hash)?;
         self.record(
@@ -196,6 +248,7 @@ impl Workspace {
     }
 
     pub fn append(&self, path: &str, content: &str) -> Result<Written> {
+        self.check_write(path)?;
         let existed = self.keep_before(path);
         let w = self.vault.append(path, content)?;
         self.record(
@@ -217,6 +270,7 @@ impl Workspace {
         replace: &str,
         expected_hash: Option<&str>,
     ) -> Result<Written> {
+        self.check_write(path)?;
         self.keep_before(path);
         let w = self.vault.patch(path, find, replace, expected_hash)?;
         self.record(&w.path, Action::Edited);
@@ -225,6 +279,8 @@ impl Workspace {
     }
 
     pub fn copy(&self, from: &str, to: &str) -> Result<Written> {
+        self.check_read(from)?;
+        self.check_write(to)?;
         let w = self.vault.copy(from, to)?;
         self.record(&w.path, Action::Created);
         self.reindex(&w.path);
@@ -234,6 +290,7 @@ impl Workspace {
     /// Adds a file from outside the vault. When `path` is taken, " 1", " 2"… is added before the
     /// extension (like Finder), so nothing is ever overwritten.
     pub fn import(&self, path: &str, bytes: &[u8]) -> Result<Written> {
+        self.check_write(path)?;
         let name_start = path.rfind('/').map_or(0, |i| i + 1);
         let (stem, ext) = match path[name_start..].rfind('.') {
             Some(i) if i > 0 => path.split_at(name_start + i),
@@ -259,10 +316,12 @@ impl Workspace {
     }
 
     pub fn mkdir(&self, path: &str) -> Result<()> {
+        self.check_write(path)?;
         self.vault.mkdir(path)
     }
 
     pub fn delete(&self, path: &str) -> Result<()> {
+        self.check_write(path)?;
         let norm = normalize(path)?;
         // Keep what's deleted (every text file, for a folder), so the deletion can be undone.
         let files: Vec<String> = match self.vault.stat(&norm) {
@@ -296,13 +355,53 @@ impl Workspace {
         Ok(())
     }
 
+    /// Moves several files and folders into `folder` (created if missing), keeping their names;
+    /// links follow each move. Every destination is checked first, so nothing moves if one is taken.
+    pub fn move_into(&self, paths: &[String], folder: &str) -> Result<Vec<Renamed>> {
+        let folder = normalize(folder)?;
+        let mut moves = Vec::new();
+        for p in paths {
+            let from = normalize(p)?;
+            self.check_write(&from)?;
+            self.vault.stat(&from)?;
+            if folder == from || folder.starts_with(&format!("{from}/")) {
+                return Err(Error::InvalidPath(format!("can't move {from} into itself")));
+            }
+            let name = crate::links::file_name(&from);
+            let to = if folder.is_empty() {
+                name.to_string()
+            } else {
+                format!("{folder}/{name}")
+            };
+            if to == from {
+                continue;
+            }
+            self.check_write(&to)?;
+            if self.vault.stat(&to).is_ok() {
+                return Err(Error::AlreadyExists(to));
+            }
+            moves.push((from, to));
+        }
+        if !folder.is_empty() && self.vault.stat(&folder).is_err() {
+            self.mkdir(&folder)?;
+        }
+        moves
+            .into_iter()
+            .map(|(from, to)| self.rename(&from, &to, true))
+            .collect()
+    }
+
     /// Versions of a file, newest first (see `crate::history`).
     pub fn history(&self, path: &str, limit: usize) -> Result<Vec<Version>> {
+        self.check_read(path)?;
         self.hist().list(&normalize(path)?, limit)
     }
 
     /// The content of one version.
     pub fn version_content(&self, id: i64) -> Result<String> {
+        if let Some(v) = self.hist().get(id)? {
+            self.check_read(&v.path)?;
+        }
         self.hist()
             .content(id)?
             .ok_or_else(|| Error::NotFound(format!("version {id}")))
@@ -310,12 +409,16 @@ impl Workspace {
 
     /// Changes made by agents and the command line, newest first.
     pub fn activity(&self, limit: usize) -> Result<Vec<Version>> {
-        self.hist().activity(limit)
+        let rules = self.rules();
+        let mut list = self.hist().activity(limit)?;
+        list.retain(|v| Self::visible(&rules, &v.path));
+        Ok(list)
     }
 
     /// Puts a file back to one of its versions (recreating it if it was deleted). With
     /// `expected_hash`, refuses if the file changed since it was read.
     pub fn restore(&self, path: &str, id: i64, expected_hash: Option<&str>) -> Result<Written> {
+        self.check_write(path)?;
         let norm = normalize(path)?;
         let content = self.version_content(id)?;
         let existed = self.keep_before(&norm);
@@ -381,19 +484,47 @@ impl Workspace {
     }
 
     pub fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchHit>> {
-        self.index().search(query, limit)
+        let rules = self.rules();
+        if rules.is_empty() {
+            return self.index().search(query, limit);
+        }
+        // Ask for more, so hidden hits don't leave the agent with a short list.
+        let mut hits = self.index().search(query, limit + 100)?;
+        hits.retain(|h| Self::visible(&rules, &h.path));
+        hits.truncate(limit);
+        Ok(hits)
     }
 
     pub fn backlinks(&self, path: &str) -> Result<Vec<Backlink>> {
-        self.index().backlinks(&normalize(path)?)
+        self.check_read(path)?;
+        let rules = self.rules();
+        let mut list = self.index().backlinks(&normalize(path)?)?;
+        list.retain(|b| Self::visible(&rules, &b.source));
+        Ok(list)
     }
 
+    /// Tags with counts. With hidden folders, only notes agents can see are counted.
     pub fn tags(&self) -> Result<Vec<TagCount>> {
-        self.index().tags()
+        let rules = self.rules();
+        let all = self.index().tags()?;
+        if !rules.iter().any(|r| r.access == Access::Hidden) {
+            return Ok(all);
+        }
+        let mut out = Vec::new();
+        for t in all {
+            let count = self.paths_with_tag(&t.tag)?.len();
+            if count > 0 {
+                out.push(TagCount { tag: t.tag, count });
+            }
+        }
+        Ok(out)
     }
 
     pub fn paths_with_tag(&self, tag: &str) -> Result<Vec<String>> {
-        self.index().paths_with_tag(tag)
+        let rules = self.rules();
+        let mut paths = self.index().paths_with_tag(tag)?;
+        paths.retain(|p| Self::visible(&rules, p));
+        Ok(paths)
     }
 
     pub fn aliases(&self) -> Result<Vec<(String, String)>> {
@@ -402,6 +533,7 @@ impl Workspace {
 
     /// Cheap structural overview of a file — what an AI should read before deciding to load it all.
     pub fn outline(&self, path: &str) -> Result<Outline> {
+        self.check_read(path)?;
         let file = self.vault.read(path)?;
         let (title, fm, aliases, tags, headings) = match (&file.content, file.kind) {
             (Some(text), FileKind::Markdown) => {
@@ -422,10 +554,13 @@ impl Workspace {
                 vec![],
             ),
         };
+        let rules = self.rules();
         let index = self.index();
+        let mut backlinks = index.backlinks(&file.path)?;
+        backlinks.retain(|b| Self::visible(&rules, &b.source));
         Ok(Outline {
             links: index.outlinks(&file.path)?,
-            backlinks: index.backlinks(&file.path)?,
+            backlinks,
             path: file.path,
             kind: file.kind,
             size: file.size,
@@ -441,6 +576,8 @@ impl Workspace {
     /// Moves or renames a file or folder. With `update_links`, every link pointing at a moved file
     /// (and relative Markdown links inside moved notes) is rewritten, as Obsidian does.
     pub fn rename(&self, from: &str, to: &str, update_links: bool) -> Result<Renamed> {
+        self.check_write(from)?;
+        self.check_write(to)?;
         let from = normalize(from)?;
         let to_n = normalize(to)?;
         let src_entry = self.vault.stat(&from)?;
@@ -484,6 +621,27 @@ impl Workspace {
                 .filter(|e| !e.is_dir)
                 .map(|e| e.path)
                 .collect();
+            // Links are rewritten in other notes; an agent may not change read-only ones that way.
+            let rules = self.rules();
+            let blocked: Vec<&String> = sources
+                .iter()
+                .filter(|p| access_for(&rules, p).is_some())
+                .collect();
+            if !blocked.is_empty() {
+                let shown: Vec<&str> = blocked
+                    .iter()
+                    .filter(|p| Self::visible(&rules, p))
+                    .map(|p| p.as_str())
+                    .collect();
+                return Err(Error::Denied(format!(
+                    "moving {from} would change links in notes agents can't change{}",
+                    if shown.is_empty() {
+                        String::new()
+                    } else {
+                        format!(": {}", shown.join(", "))
+                    }
+                )));
+            }
             (Some(old_set), sources, all_paths)
         } else {
             (None, BTreeSet::new(), vec![])
@@ -658,6 +816,12 @@ impl Workspace {
         self.record(new_src, Action::Edited);
         Ok(true)
     }
+}
+
+fn read_only(path: &str) -> Error {
+    Error::Denied(format!(
+        "{path} is read-only for agents (set by the person using Mosaic, in Settings › AI)"
+    ))
 }
 
 fn settings_error(e: std::io::Error) -> Error {

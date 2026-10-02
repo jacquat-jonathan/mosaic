@@ -5,7 +5,7 @@ mod update;
 use mosaic_core::api::{Outline, Renamed};
 use mosaic_core::history::Version;
 use mosaic_core::index::{Backlink, SearchHit, TagCount};
-use mosaic_core::settings::Settings;
+use mosaic_core::settings::{AgentRule, Settings};
 use mosaic_core::{Entry, Error, FileContent, Workspace, Written};
 use serde::Serialize;
 use std::path::PathBuf;
@@ -146,6 +146,22 @@ fn forget_vault(path: String) -> CmdResult<()> {
 #[tauri::command]
 fn get_bookmarks(state: State<AppState>) -> CmdResult<Vec<String>> {
     Ok(Settings::load().bookmarks(state.get()?.vault.root()))
+}
+
+#[tauri::command]
+fn get_agent_rules(state: State<AppState>) -> CmdResult<Vec<AgentRule>> {
+    Ok(Settings::load().agent_rules(state.get()?.vault.root()))
+}
+
+#[tauri::command]
+fn set_agent_rules(state: State<AppState>, rules: Vec<AgentRule>) -> CmdResult<()> {
+    let ws = state.get()?;
+    let mut settings = Settings::load();
+    settings.set_agent_rules(ws.vault.root(), rules);
+    settings.save().map_err(|e| Error::Io {
+        path: "settings.json".into(),
+        source: e,
+    })
 }
 
 #[tauri::command]
@@ -413,6 +429,8 @@ pub fn run() {
             rename_path,
             delete_path,
             file_history,
+            get_agent_rules,
+            set_agent_rules,
             version_content,
             restore_version,
             ai_activity,

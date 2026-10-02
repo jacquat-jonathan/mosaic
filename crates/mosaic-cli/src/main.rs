@@ -95,6 +95,13 @@ enum Cmd {
         #[command(subcommand)]
         action: Option<BookmarkCmd>,
     },
+    /// Move files and folders into a folder (created if missing); links follow.
+    Move {
+        paths: Vec<String>,
+        /// Destination folder ("" for the vault root).
+        #[arg(long)]
+        to: String,
+    },
     /// Duplicate a file; never overwrites an existing one.
     Copy { from: String, to: String },
     /// Move a file or folder to the macOS Trash.
@@ -297,6 +304,7 @@ fn run(cli: Cli) -> Result<()> {
             | Cmd::Tags
             | Cmd::Outline { .. }
             | Cmd::Rename { .. }
+            | Cmd::Move { .. }
             | Cmd::Mcp
     );
     if needs_index {
@@ -430,6 +438,13 @@ fn run(cli: Cli) -> Result<()> {
         }),
         Cmd::Outline { path } => print(json, &ws.outline(&path)?, |o| {
             serde_json::to_string_pretty(o).unwrap_or_default()
+        }),
+        Cmd::Move { paths, to } => print(json, &ws.move_into(&paths, &to)?, |moved| {
+            moved
+                .iter()
+                .map(|r| format!("moved to {}", r.path))
+                .collect::<Vec<_>>()
+                .join("\n")
         }),
         Cmd::History { path, limit } => print(json, &ws.history(&path, limit)?, |vs| {
             vs.iter().map(version_line).collect::<Vec<_>>().join("\n")

@@ -626,3 +626,8 @@ svg path.flow-on { stroke-dasharray: 9 6 !important; animation: edge-flow 0.7s l
 .activity-meta button { display: inline-flex; align-items: center; gap: 3px; padding: 2px 6px; font-size: 12px; color: var(--muted); }
 .activity-meta button:hover:not(:disabled) { color: var(--fg); }
 .modal-actions button:disabled, .activity-meta button:disabled { opacity: 0.5; pointer-events: none; }
+/* Settings › AI › folders agents can't change. */
+.agent-rules { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.agent-rule { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; color: var(--muted); }
+.agent-rule code { color: var(--fg); }
+.agent-rule .icon { padding: 2px; color: var(--muted); }

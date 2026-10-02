@@ -16,6 +16,38 @@ pub struct Settings {
     pub bookmarks: BTreeMap<PathBuf, Vec<String>>,
     /// The Mosaic source checkout that Settings › Update pulls and rebuilds. `None` = where the app was built.
     pub update_source: Option<PathBuf>,
+    /// Folders agents (MCP, CLI) may only read, or can't see at all, per vault root.
+    pub agent_rules: BTreeMap<PathBuf, Vec<AgentRule>>,
+}
+
+/// What agents may do in a folder (and everything inside it).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Access {
+    /// Agents can read and search it, but not change anything.
+    ReadOnly,
+    /// Agents can't see it: it's left out of listings and search, and reading it says "not found".
+    Hidden,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AgentRule {
+    /// Vault-relative folder (or file) path.
+    pub path: String,
+    pub access: Access,
+}
+
+/// The strictest rule covering `path` (a rule on a folder covers everything inside it).
+pub fn access_for(rules: &[AgentRule], path: &str) -> Option<Access> {
+    let covered = |r: &&AgentRule| {
+        r.path.is_empty() || path == r.path || path.starts_with(&format!("{}/", r.path))
+    };
+    let found: Vec<Access> = rules.iter().filter(covered).map(|r| r.access).collect();
+    if found.contains(&Access::Hidden) {
+        Some(Access::Hidden)
+    } else {
+        found.first().copied()
+    }
 }
 
 /// Where settings.json lives. `MOSAIC_SETTINGS_DIR` overrides it (used by tests).
@@ -81,6 +113,18 @@ impl Settings {
         self.recent_vaults.retain(|p| p != root);
         if self.last_vault.as_deref() == Some(root) {
             self.last_vault = None;
+        }
+    }
+
+    pub fn agent_rules(&self, root: &Path) -> Vec<AgentRule> {
+        self.agent_rules.get(root).cloned().unwrap_or_default()
+    }
+
+    pub fn set_agent_rules(&mut self, root: &Path, rules: Vec<AgentRule>) {
+        if rules.is_empty() {
+            self.agent_rules.remove(root);
+        } else {
+            self.agent_rules.insert(root.to_path_buf(), rules);
         }
     }
 

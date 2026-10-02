@@ -20,6 +20,11 @@ write shows up in the app within a second.
 - **Every change is kept.** Mosaic stores a version of each file you change (and shows the human what
   you did, under your client's name, with an Undo). If you overwrite something by mistake, find the
   earlier version with `file_history` and put it back with `restore_version`.
+- **Some folders may be off limits.** The person can make folders read-only for you (changes fail with
+  `denied`) or hide them (they don't appear anywhere and read as `not_found`). Don't try to work around it;
+  tell them if you need access.
+- **Several files at once:** `move_files` moves a list into one folder in a single call; `import_file`
+  adds an image or other binary file from base64 (never overwrites).
 - **Deleting is safe but visible:** files go to the macOS Trash.
 - **Renaming updates links** in every other note automatically (use `rename`, not delete + create).
 - **Duplicate with `copy`** (any file, including images); it never overwrites an existing file.

@@ -17,6 +17,9 @@ pub enum Error {
     NotText(String),
     #[error("{0}")]
     Invalid(String),
+    /// Refused by the vault's agent permissions (a read-only or hidden folder).
+    #[error("not allowed: {0}")]
+    Denied(String),
     #[error("io error on {path}: {source}")]
     Io {
         path: String,
@@ -34,6 +37,7 @@ impl Error {
             Error::InvalidPath(_) => "invalid_path",
             Error::NotText(_) => "not_text",
             Error::Invalid(_) => "invalid",
+            Error::Denied(_) => "denied",
             Error::Io { .. } => "io",
         }
     }

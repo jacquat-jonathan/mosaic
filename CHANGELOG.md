@@ -4,6 +4,9 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Folders agents can't change** (Settings › AI): make a folder read-only for agents, or hide it from them entirely. Enforced by Mosaic for the MCP server and the `mosaic` command, never for you.
+- Agents can move several files at once (`move_files`, or `mosaic move … --to Folder`) and add images and other files (`import_file`, base64, up to 20 MB).
+- Notes are available as MCP resources (`mosaic:///Folder/Note.md`), so AI clients can attach them as context directly.
 ## 0.6.0 — 2026-10-02
 
 - Agents can **see what they drew**: the new `render` tool returns a picture of a canvas (or SVG file), so they can check and fix a diagram. Also `mosaic render <file> -o out.png`.

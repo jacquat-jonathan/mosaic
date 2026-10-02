@@ -443,3 +443,124 @@ fn render_returns_a_picture_of_a_canvas() {
         "{payload}"
     );
 }
+
+#[test]
+fn folder_permissions_hide_and_protect_folders_from_agents() {
+    let dir = fixture();
+    let root = std::fs::canonicalize(dir.path()).unwrap();
+    std::fs::create_dir_all(root.join("Private")).unwrap();
+    std::fs::write(root.join("Private/Secret.md"), "zebra password").unwrap();
+    std::fs::create_dir_all(root.join("Archive")).unwrap();
+    std::fs::write(root.join("Archive/Old.md"), "See [[Ideas]]").unwrap();
+    let settings = root.join(".test-settings");
+    std::fs::create_dir_all(&settings).unwrap();
+    let rules = json!({ "agent_rules": { root.to_str().unwrap(): [
+        { "path": "Private", "access": "hidden" },
+        { "path": "Archive", "access": "read-only" }
+    ] } });
+    std::fs::write(settings.join("settings.json"), rules.to_string()).unwrap();
+    let mut c = Client::start(&root);
+
+    // Hidden: invisible everywhere, and reading it says "not found".
+    let (_, files) = c.call("list_files", json!({}));
+    assert!(!files.to_string().contains("Private"), "{files}");
+    let (_, hits) = c.call("search", json!({ "query": "zebra" }));
+    assert_eq!(hits, json!([]));
+    let (err, payload) = c.call("read_file", json!({ "path": "Private/Secret.md" }));
+    assert!(err);
+    assert_eq!(payload["code"], "not_found");
+
+    // Read-only: readable, but not changeable.
+    let (err, _) = c.call("read_file", json!({ "path": "Archive/Old.md" }));
+    assert!(!err);
+    let (err, payload) = c.call(
+        "append_to_file",
+        json!({ "path": "Archive/Old.md", "content": "x" }),
+    );
+    assert!(err);
+    assert_eq!(payload["code"], "denied");
+    let (err, payload) = c.call("delete_file", json!({ "path": "Archive" }));
+    assert!(err);
+    assert_eq!(payload["code"], "denied");
+
+    // Moving a file would rewrite the link in the read-only note: refused, nothing moves.
+    let (err, payload) = c.call(
+        "rename",
+        json!({ "from": "Ideas.md", "to": "Notes/Ideas.md" }),
+    );
+    assert!(err);
+    assert_eq!(payload["code"], "denied");
+    assert!(
+        payload["message"]
+            .as_str()
+            .unwrap()
+            .contains("Archive/Old.md")
+    );
+    assert!(root.join("Ideas.md").exists());
+}
+
+#[test]
+fn agents_move_several_files_and_add_images() {
+    let dir = fixture();
+    let mut c = Client::start(dir.path());
+    let (err, moved) = c.call(
+        "move_files",
+        json!({ "paths": ["Ideas.md", "Home.md"], "folder": "Notes" }),
+    );
+    assert!(!err, "{moved}");
+    assert_eq!(moved.as_array().unwrap().len(), 2);
+    assert!(
+        dir.path().join("Notes/Ideas.md").exists() && dir.path().join("Notes/Home.md").exists()
+    );
+    // A taken destination: nothing moves.
+    std::fs::write(dir.path().join("Taken.md"), "x").unwrap();
+    std::fs::create_dir_all(dir.path().join("Box")).unwrap();
+    std::fs::write(dir.path().join("Box/Taken.md"), "y").unwrap();
+    let (err, payload) = c.call(
+        "move_files",
+        json!({ "paths": ["Notes/Ideas.md", "Taken.md"], "folder": "Box" }),
+    );
+    assert!(err);
+    assert_eq!(payload["code"], "already_exists");
+    assert!(dir.path().join("Notes/Ideas.md").exists());
+
+    use base64::Engine;
+    let png = base64::engine::general_purpose::STANDARD.encode(b"\x89PNG\r\n\x1a\nfake");
+    let (err, w) = c.call(
+        "import_file",
+        json!({ "path": "Attachments/pic.png", "data": png }),
+    );
+    assert!(!err, "{w}");
+    let (_, w2) = c.call(
+        "import_file",
+        json!({ "path": "Attachments/pic.png", "data": png }),
+    );
+    assert_eq!(w2["path"], "Attachments/pic 1.png", "never overwrites");
+    let (err, payload) = c.call(
+        "import_file",
+        json!({ "path": "x.png", "data": "not base64!!" }),
+    );
+    assert!(err);
+    assert_eq!(payload["code"], "invalid");
+}
+
+#[test]
+fn notes_are_resources() {
+    let dir = fixture();
+    let mut c = Client::start(dir.path());
+    let list = c.request("resources/list", json!({}));
+    let resources = list["result"]["resources"].as_array().unwrap();
+    let home = resources
+        .iter()
+        .find(|r| r["name"] == "Home.md")
+        .expect("Home.md is listed");
+    assert_eq!(home["uri"], "mosaic:///Home.md");
+    assert_eq!(home["mimeType"], "text/markdown");
+    let read = c.request("resources/read", json!({ "uri": "mosaic:///Home.md" }));
+    assert!(
+        read["result"]["contents"][0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("Home")
+    );
+}

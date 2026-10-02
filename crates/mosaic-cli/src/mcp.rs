@@ -7,7 +7,8 @@ use mosaic_core::{Error, Workspace};
 use rmcp::handler::server::{router::tool::ToolRouter, wrapper::Parameters};
 use rmcp::model::{
     CallToolResult, ContentBlock, Implementation, InitializeRequestParams, InitializeResult,
-    ServerCapabilities, ServerConfig,
+    ListResourcesResult, PaginatedRequestParams, ReadResourceRequestParams, ReadResourceResponse,
+    ReadResourceResult, Resource, ResourceContents, ServerCapabilities, ServerConfig,
 };
 use rmcp::service::RequestContext;
 use rmcp::{ErrorData, RoleServer, ServerHandler, ServiceExt, tool, tool_handler, tool_router};
@@ -111,6 +112,87 @@ struct RestoreArgs {
     /// Hash from `read_file`; the restore is refused if the file changed since.
     expected_hash: Option<String>,
 }
+
+#[derive(Deserialize, JsonSchema)]
+struct MoveArgs {
+    /// Vault-relative paths of the files and folders to move.
+    paths: Vec<String>,
+    /// Destination folder (created if missing; "" for the vault root).
+    folder: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct ImportArgs {
+    /// Vault-relative path for the new file, e.g. `Attachments/chart.png`.
+    path: String,
+    /// The file's bytes, base64-encoded (at most 20 MB).
+    data: String,
+}
+
+/// Notes listed as MCP resources at most (clients show them in a picker).
+const MAX_RESOURCES: usize = 5000;
+
+/// `Folder/My note.md` → `mosaic:///Folder/My%20note.md`.
+fn resource_uri(path: &str) -> String {
+    let mut out = String::from("mosaic:///");
+    for c in path.chars() {
+        match c {
+            ' ' => out.push_str("%20"),
+            '%' => out.push_str("%25"),
+            '#' => out.push_str("%23"),
+            '?' => out.push_str("%3F"),
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+/// The vault path in a `mosaic:///…` URI (percent-decoded).
+fn resource_path(uri: &str) -> Option<String> {
+    let rest = uri
+        .strip_prefix("mosaic:///")
+        .or_else(|| uri.strip_prefix("mosaic://"))?;
+    let hex = |b: u8| (b as char).to_digit(16).map(|d| d as u8);
+    let bytes = rest.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%'
+            && let (Some(hi), Some(lo)) = (
+                bytes.get(i + 1).and_then(|&b| hex(b)),
+                bytes.get(i + 2).and_then(|&b| hex(b)),
+            )
+        {
+            out.push(hi * 16 + lo);
+            i += 3;
+            continue;
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8(out).ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resource_uris_round_trip() {
+        for p in ["Home.md", "Folder/My note #1?.md", "Ünïcode/100% done.md"] {
+            assert_eq!(resource_path(&resource_uri(p)).as_deref(), Some(p));
+        }
+        assert_eq!(
+            resource_path("mosaic:///a%2"),
+            Some("a%2".into()),
+            "a broken escape stays as text"
+        );
+        assert_eq!(resource_path("file:///x"), None);
+    }
+}
+
+/// Largest file an agent can add in one `import_file` call.
+const MAX_IMPORT_BYTES: usize = 20 * 1024 * 1024;
 
 #[derive(Deserialize, JsonSchema)]
 struct RenderArgs {
@@ -309,6 +391,34 @@ impl MosaicMcp {
     }
 
     #[tool(
+        description = "Move several files and folders into one folder in one call (created if missing). Links in other notes follow. Nothing moves if a destination is taken."
+    )]
+    async fn move_files(&self, Parameters(a): Parameters<MoveArgs>) -> ToolResult {
+        self.fresh();
+        self.ws()
+            .move_into(&a.paths, &a.folder)
+            .map_err(err)
+            .and_then(ok)
+    }
+
+    #[tool(
+        description = "Add a binary file (image, PDF…) from base64 data. Never overwrites: a taken name gets \" 1\", \" 2\"… Returns the path used. Embed images in notes with ![[name.png]]."
+    )]
+    async fn import_file(&self, Parameters(a): Parameters<ImportArgs>) -> ToolResult {
+        use base64::Engine;
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(a.data.trim())
+            .map_err(|e| err(Error::Invalid(format!("data isn't valid base64: {e}"))))?;
+        if bytes.len() > MAX_IMPORT_BYTES {
+            return Err(err(Error::Invalid(format!(
+                "the file is {} MB; the limit is 20 MB",
+                bytes.len() / 1_048_576
+            ))));
+        }
+        self.ws().import(&a.path, &bytes).map_err(err).and_then(ok)
+    }
+
+    #[tool(
         description = "Duplicate a file (any kind, including binary). Never overwrites: fails if `to` exists."
     )]
     async fn copy_file(&self, Parameters(a): Parameters<CopyArgs>) -> ToolResult {
@@ -413,6 +523,53 @@ impl MosaicMcp {
 
 #[tool_handler(router = self.tool_router)]
 impl ServerHandler for MosaicMcp {
+    /// Every note as an MCP resource (`mosaic:///Folder/Note.md`), so clients can attach notes as
+    /// context without a tool call. Hidden folders (Settings › AI) are left out.
+    async fn list_resources(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ListResourcesResult, ErrorData> {
+        let entries = self
+            .ws()
+            .list("", true)
+            .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
+        let resources = entries
+            .into_iter()
+            .filter(|e| !e.is_dir && e.path.to_lowercase().ends_with(".md"))
+            .take(MAX_RESOURCES)
+            .map(|e| {
+                let title = e.name.strip_suffix(".md").unwrap_or(&e.name).to_string();
+                Resource::new(resource_uri(&e.path), e.path.clone())
+                    .with_title(title)
+                    .with_mime_type("text/markdown")
+                    .with_size(e.size)
+            })
+            .collect();
+        Ok(ListResourcesResult::with_all_items(resources))
+    }
+
+    async fn read_resource(
+        &self,
+        request: ReadResourceRequestParams,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ReadResourceResponse, ErrorData> {
+        let path = resource_path(&request.uri).ok_or_else(|| {
+            ErrorData::invalid_params(format!("not a Mosaic note URI: {}", request.uri), None)
+        })?;
+        let file = self
+            .ws()
+            .read(&path)
+            .map_err(|e| ErrorData::resource_not_found(e.to_string(), None))?;
+        let text = file
+            .content
+            .ok_or_else(|| ErrorData::invalid_params(format!("{path} isn't a text file"), None))?;
+        Ok(ReadResourceResult::new(vec![
+            ResourceContents::text(text, request.uri).with_mime_type("text/markdown"),
+        ])
+        .into())
+    }
+
     /// Remembers the client's name (e.g. "claude-code") for the file history and activity log.
     async fn initialize(
         &self,
@@ -434,7 +591,7 @@ impl ServerHandler for MosaicMcp {
             ),
             VaultMode::Pinned => format!("the Mosaic vault at {root}"),
         };
-        ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
+        ServerConfig::new(ServerCapabilities::builder().enable_tools().enable_resources().build())
             .with_server_info(Implementation::new("mosaic", env!("CARGO_PKG_VERSION")))
             .with_instructions(format!(
                 "{}Tools for {which}: an Obsidian-compatible folder of Markdown notes, canvases, charts and diagrams that a human reads in the Mosaic app. Call vault_guide once for the conventions. Use vault-relative paths; read (or outline) before editing, prefer patch_file, and pass expected_hash to avoid overwriting the human's edits.",

@@ -4,6 +4,10 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **File history**: Mosaic keeps versions of every file changed by you, the command line or an AI agent (and notices changes made by other apps). Right-click a file › File history… (or ⌘P › Show file history) to compare any version with the file now and restore it.
+- **AI activity** (new sidebar tab): every change agents made, newest first, with the agent's name and one-click **Undo** (an edit goes back, a created file goes to the Trash, a deleted file comes back, a move is reversed).
+- Agents get `file_history` and `restore_version` tools to undo their own mistakes; the CLI gets `mosaic history`, `restore`, `activity` and `undo`.
+- Fixed: a tab restored from the last session could stay on "Loading…".
 - Fixed: the **Open as diagram** button on Mermaid blocks in notes didn't appear.
 ## 0.5.0 — 2026-10-02
 

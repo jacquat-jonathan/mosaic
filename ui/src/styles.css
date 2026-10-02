@@ -597,3 +597,32 @@ svg path.flow-on { stroke-dasharray: 9 6 !important; animation: edge-flow 0.7s l
 .card-icon { display: flex; justify-content: center; padding-top: 10px; color: var(--fg); flex: none; position: relative; }
 .canvas-shape:has(> .card-icon) { flex-direction: column; }
 .canvas-shape:has(> .card-icon) .shape-text { flex: 1; }
+
+/* File history (HistoryModal.tsx) and AI activity (ActivityPanel.tsx). */
+.modal.history { width: min(980px, 92vw); max-height: 86vh; display: flex; flex-direction: column; }
+.history-head { display: flex; align-items: center; justify-content: space-between; }
+.history-head h2 { margin: 0 0 12px; }
+.history-head .icon { padding: 4px; color: var(--muted); }
+.history-body { display: flex; gap: 16px; min-height: 0; flex: 1; }
+.history-list { list-style: none; margin: 0; padding: 0; width: 260px; flex: none; overflow: auto; max-height: 62vh; border-right: 1px solid var(--border); padding-right: 8px; }
+.history-list button { display: grid; grid-template-columns: 1fr; gap: 1px; width: 100%; text-align: left; padding: 6px 8px; border-radius: 6px; }
+.history-list button.selected { background: var(--bg-active, rgba(64, 120, 242, 0.14)); }
+.history-list button:disabled { opacity: 0.6; }
+.history-when { font-size: 12px; color: var(--muted); }
+.history-who { font-weight: 600; }
+.history-who.source-agent, .history-who.source-cli { color: var(--accent); }
+.history-what { font-size: 13px; color: var(--muted); }
+.history-diff { flex: 1; min-width: 0; overflow: auto; max-height: 62vh; }
+.history-diff .diff { max-height: none; }
+.activity { padding: 4px 8px 12px; overflow: auto; }
+.activity-empty { padding: 12px; line-height: 1.5; }
+.activity-day { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; margin: 12px 4px 4px; }
+.activity-item { padding: 6px 8px; border-radius: 8px; }
+.activity-item:hover { background: var(--bg-hover, rgba(127, 127, 127, 0.08)); }
+.activity-line { font-size: 13px; }
+.activity-path { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--link, var(--accent)); padding: 0; text-align: left; }
+.activity-path:disabled { color: var(--muted); text-decoration: line-through; }
+.activity-meta { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); margin-top: 2px; }
+.activity-meta button { display: inline-flex; align-items: center; gap: 3px; padding: 2px 6px; font-size: 12px; color: var(--muted); }
+.activity-meta button:hover:not(:disabled) { color: var(--fg); }
+.modal-actions button:disabled, .activity-meta button:disabled { opacity: 0.5; pointer-events: none; }

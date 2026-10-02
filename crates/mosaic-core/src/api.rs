@@ -2,6 +2,7 @@
 //! vault and its index consistent: every write re-indexes the touched files.
 
 use crate::error::{Error, Result};
+use crate::history::{Action, History, Source, Version};
 use crate::index::{Backlink, Index, OutLink, SearchHit, SyncStats, TagCount};
 use crate::kind::FileKind;
 use crate::links::{FileSet, markdown_url_for, wiki_text_for};
@@ -16,6 +17,12 @@ use std::sync::{Mutex, MutexGuard};
 pub struct Workspace {
     pub vault: Vault,
     index: Mutex<Index>,
+    /// Versions of every file changed through this workspace (see `history`).
+    history: Mutex<History>,
+    /// Who changes files through this workspace: the app, the CLI or an agent.
+    source: Source,
+    /// The agent's name (MCP client), once known.
+    actor: Mutex<Option<String>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -48,18 +55,83 @@ pub struct Outline {
 }
 
 impl Workspace {
+    /// A workspace with in-memory history (tests and previews); `open` keeps history on disk.
     pub fn new(vault: Vault, index: Index) -> Self {
+        let history = History::in_memory().expect("in-memory history");
+        Self::with_history(vault, index, history)
+    }
+
+    fn with_history(vault: Vault, index: Index, history: History) -> Self {
         Workspace {
             vault,
             index: Mutex::new(index),
+            history: Mutex::new(history),
+            source: Source::App,
+            actor: Mutex::new(None),
         }
     }
 
-    /// Opens a vault with its index in the default cache location (in memory if that fails).
+    /// Opens a vault with its index and history in the default cache location (in memory if that fails).
     pub fn open(root: impl AsRef<std::path::Path>) -> Result<Self> {
         let vault = Vault::open(root)?;
         let index = Index::open_for(&vault).or_else(|_| Index::in_memory())?;
-        Ok(Self::new(vault, index))
+        let history = History::open_for(vault.root()).or_else(|_| History::in_memory())?;
+        Ok(Self::with_history(vault, index, history))
+    }
+
+    /// Who changes files through this workspace (recorded in the history). The app is the default.
+    pub fn with_source(mut self, source: Source) -> Self {
+        self.source = source;
+        self
+    }
+
+    /// The agent's name, shown in the AI activity log (e.g. the MCP client "claude-code").
+    pub fn set_actor(&self, name: &str) {
+        *self.actor.lock().unwrap_or_else(|p| p.into_inner()) = Some(name.to_string());
+    }
+
+    fn hist(&self) -> MutexGuard<'_, History> {
+        self.history.lock().unwrap_or_else(|p| p.into_inner())
+    }
+
+    fn actor(&self) -> Option<String> {
+        self.actor.lock().unwrap_or_else(|p| p.into_inner()).clone()
+    }
+
+    /// Current text and hash of a file, if it exists and is text.
+    fn text_of(&self, path: &str) -> Option<(String, String)> {
+        let f = self.vault.read(path).ok()?;
+        Some((f.content?, f.hash))
+    }
+
+    /// Before a change: keeps the file's current content in the history if it isn't there yet.
+    /// Returns whether the file existed. History problems never fail the change itself.
+    fn keep_before(&self, path: &str) -> bool {
+        let Ok(norm) = normalize(path) else {
+            return false;
+        };
+        match self.text_of(&norm) {
+            Some((text, hash)) => {
+                let _ = self.hist().keep_before(&norm, &text, &hash, &self.source);
+                true
+            }
+            None => self.vault.stat(&norm).is_ok(),
+        }
+    }
+
+    /// After a change: records the file's new content.
+    fn record(&self, path: &str, action: Action) {
+        if let Some((text, hash)) = self.text_of(path) {
+            let _ = self.hist().record(
+                path,
+                Some(&text),
+                &hash,
+                &self.source,
+                self.actor().as_deref(),
+                action,
+                None,
+            );
+        }
     }
 
     /// Refuse malformed canvases, drawings, charts and JSON on write, with an error saying what's
@@ -77,8 +149,14 @@ impl Workspace {
         self.index().sync(&self.vault, progress)
     }
 
-    /// Re-indexes a path after a change made outside this API (file watcher).
+    /// Re-indexes a path after a change made outside this API (file watcher). A change by another
+    /// program is kept in the history, so it can be compared with or restored later.
     pub fn refresh(&self, path: &str) -> Result<()> {
+        if let Some((text, hash)) = self.text_of(path) {
+            let _ = self
+                .hist()
+                .keep_before(path, &text, &hash, &Source::External);
+        }
         self.index().update_path(&self.vault, path)
     }
 
@@ -97,18 +175,37 @@ impl Workspace {
 
     pub fn create(&self, path: &str, content: &str) -> Result<Written> {
         let w = self.vault.create(path, content)?;
+        self.record(&w.path, Action::Created);
         self.reindex(&w.path);
         Ok(w)
     }
 
     pub fn write(&self, path: &str, content: &str, expected_hash: Option<&str>) -> Result<Written> {
+        let existed = self.keep_before(path);
         let w = self.vault.write(path, content, expected_hash)?;
+        self.record(
+            &w.path,
+            if existed {
+                Action::Edited
+            } else {
+                Action::Created
+            },
+        );
         self.reindex(&w.path);
         Ok(w)
     }
 
     pub fn append(&self, path: &str, content: &str) -> Result<Written> {
+        let existed = self.keep_before(path);
         let w = self.vault.append(path, content)?;
+        self.record(
+            &w.path,
+            if existed {
+                Action::Edited
+            } else {
+                Action::Created
+            },
+        );
         self.reindex(&w.path);
         Ok(w)
     }
@@ -120,13 +217,16 @@ impl Workspace {
         replace: &str,
         expected_hash: Option<&str>,
     ) -> Result<Written> {
+        self.keep_before(path);
         let w = self.vault.patch(path, find, replace, expected_hash)?;
+        self.record(&w.path, Action::Edited);
         self.reindex(&w.path);
         Ok(w)
     }
 
     pub fn copy(&self, from: &str, to: &str) -> Result<Written> {
         let w = self.vault.copy(from, to)?;
+        self.record(&w.path, Action::Created);
         self.reindex(&w.path);
         Ok(w)
     }
@@ -149,6 +249,7 @@ impl Workspace {
                 Err(Error::AlreadyExists(_)) => continue,
                 r => {
                     let w = r?;
+                    self.record(&w.path, Action::Created);
                     self.reindex(&w.path);
                     return Ok(w);
                 }
@@ -163,9 +264,120 @@ impl Workspace {
 
     pub fn delete(&self, path: &str) -> Result<()> {
         let norm = normalize(path)?;
+        // Keep what's deleted (every text file, for a folder), so the deletion can be undone.
+        let files: Vec<String> = match self.vault.stat(&norm) {
+            Ok(e) if e.is_dir => self
+                .vault
+                .list(&norm, true)?
+                .into_iter()
+                .filter(|e| !e.is_dir)
+                .map(|e| e.path)
+                .collect(),
+            _ => vec![norm.clone()],
+        };
+        let kept: Vec<(String, String, String)> = files
+            .into_iter()
+            .filter_map(|p| self.text_of(&p).map(|(t, h)| (p, t, h)))
+            .collect();
         self.vault.delete(&norm)?;
+        let actor = self.actor();
+        for (p, text, hash) in kept {
+            let _ = self.hist().record(
+                &p,
+                Some(&text),
+                &hash,
+                &self.source,
+                actor.as_deref(),
+                Action::Deleted,
+                None,
+            );
+        }
         self.reindex(&norm);
         Ok(())
+    }
+
+    /// Versions of a file, newest first (see `crate::history`).
+    pub fn history(&self, path: &str, limit: usize) -> Result<Vec<Version>> {
+        self.hist().list(&normalize(path)?, limit)
+    }
+
+    /// The content of one version.
+    pub fn version_content(&self, id: i64) -> Result<String> {
+        self.hist()
+            .content(id)?
+            .ok_or_else(|| Error::NotFound(format!("version {id}")))
+    }
+
+    /// Changes made by agents and the command line, newest first.
+    pub fn activity(&self, limit: usize) -> Result<Vec<Version>> {
+        self.hist().activity(limit)
+    }
+
+    /// Puts a file back to one of its versions (recreating it if it was deleted). With
+    /// `expected_hash`, refuses if the file changed since it was read.
+    pub fn restore(&self, path: &str, id: i64, expected_hash: Option<&str>) -> Result<Written> {
+        let norm = normalize(path)?;
+        let content = self.version_content(id)?;
+        let existed = self.keep_before(&norm);
+        let w = if existed {
+            self.vault.write(&norm, &content, expected_hash)?
+        } else {
+            self.vault.create(&norm, &content)?
+        };
+        self.record(&w.path, Action::Restored);
+        self.reindex(&w.path);
+        Ok(w)
+    }
+
+    /// Undoes one change from the activity log: an edit goes back to the version before it, a
+    /// created file goes to the Trash, a deleted file comes back, a rename is reversed. Refuses
+    /// (`conflict`) when the file changed again since. Returns the file's path afterwards.
+    pub fn undo(&self, id: i64) -> Result<String> {
+        let v = self
+            .hist()
+            .get(id)?
+            .ok_or_else(|| Error::NotFound(format!("change {id}")))?;
+        let current = self.text_of(&v.path).map(|(_, h)| h);
+        let unchanged = || match &current {
+            Some(h) if *h == v.hash => Ok(()),
+            Some(h) => Err(Error::Conflict {
+                path: v.path.clone(),
+                current_hash: h.clone(),
+            }),
+            None => Err(Error::NotFound(v.path.clone())),
+        };
+        match v.action.as_str() {
+            "edited" | "restored" => {
+                unchanged()?;
+                let prev = self.hist().previous(id)?.ok_or_else(|| {
+                    Error::Invalid(format!("{} has no earlier version to go back to", v.path))
+                })?;
+                self.restore(&v.path, prev.id, current.as_deref())?;
+                Ok(v.path)
+            }
+            "created" => {
+                unchanged()?;
+                self.delete(&v.path)?;
+                Ok(v.path)
+            }
+            "deleted" => {
+                if self.vault.stat(&v.path).is_ok() {
+                    return Err(Error::AlreadyExists(v.path));
+                }
+                self.restore(&v.path, id, None)?;
+                Ok(v.path)
+            }
+            "renamed" => {
+                let from = v
+                    .from_path
+                    .clone()
+                    .ok_or_else(|| Error::Invalid("this rename has no origin".into()))?;
+                Ok(self.rename(&v.path, &from, true)?.path)
+            }
+            other => Err(Error::Invalid(format!(
+                "a change of type “{other}” can't be undone"
+            ))),
+        }
     }
 
     pub fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchHit>> {
@@ -278,6 +490,9 @@ impl Workspace {
         };
 
         let out = self.vault.rename(&from, &to_n)?;
+        let _ = self
+            .hist()
+            .renamed(&from, &out, &self.source, self.actor().as_deref());
         let mut updated = Vec::new();
 
         if let Some(old_set) = old_set {
@@ -436,7 +651,11 @@ impl Workspace {
             }
             _ => return Ok(false),
         };
+        let _ = self
+            .hist()
+            .keep_before(new_src, &text, &file.hash, &self.source);
         self.vault.write(new_src, &new_text, Some(&file.hash))?;
+        self.record(new_src, Action::Edited);
         Ok(true)
     }
 }
@@ -591,5 +810,89 @@ mod tests {
             "{r:?}"
         );
         assert!(text(&w, "Documentation/Map.canvas").contains(r#""file":"Documentation/Plan.md""#));
+    }
+
+    fn agent_ws() -> (tempfile::TempDir, Workspace) {
+        let (d, v) = fixture();
+        let w = Workspace::new(v, Index::in_memory().unwrap()).with_source(Source::Agent);
+        w.set_actor("claude-code");
+        w.sync(|_, _| {}).unwrap();
+        (d, w)
+    }
+
+    #[test]
+    fn agent_edits_are_logged_and_undone() {
+        let (_d, w) = agent_ws();
+        let before = text(&w, "Ideas.md");
+        w.patch("Ideas.md", "Ideas", "Thoughts", None).unwrap();
+        let act = w.activity(10).unwrap();
+        assert_eq!(
+            (
+                act[0].path.as_str(),
+                act[0].action.as_str(),
+                act[0].actor.as_deref()
+            ),
+            ("Ideas.md", "edited", Some("claude-code"))
+        );
+        // The version before the agent's edit is kept.
+        let hist = w.history("Ideas.md", 10).unwrap();
+        assert_eq!(
+            hist.iter().map(|v| v.action.as_str()).collect::<Vec<_>>(),
+            ["edited", "before"]
+        );
+        w.undo(act[0].id).unwrap();
+        assert_eq!(text(&w, "Ideas.md"), before);
+    }
+
+    #[test]
+    fn undo_refuses_when_the_file_changed_since() {
+        let (_d, w) = agent_ws();
+        w.append("Ideas.md", "agent line").unwrap();
+        let id = w.activity(1).unwrap()[0].id;
+        w.append("Ideas.md", "human line").unwrap();
+        assert!(matches!(w.undo(id), Err(Error::Conflict { .. })));
+    }
+
+    #[test]
+    fn undo_reverses_create_delete_and_rename() {
+        let (_d, w) = agent_ws();
+        w.create("New.md", "hello").unwrap();
+        let created = w.activity(1).unwrap()[0].id;
+        w.undo(created).unwrap();
+        assert!(w.read("New.md").is_err());
+
+        let home = text(&w, "Home.md");
+        w.delete("Home.md").unwrap();
+        let deleted = w.activity(1).unwrap()[0].id;
+        w.undo(deleted).unwrap();
+        assert_eq!(text(&w, "Home.md"), home);
+
+        w.rename("Ideas.md", "Archive/Ideas.md", true).unwrap();
+        let moved = w
+            .activity(10)
+            .unwrap()
+            .into_iter()
+            .find(|v| v.action == "renamed")
+            .unwrap()
+            .id;
+        w.undo(moved).unwrap();
+        assert!(w.read("Ideas.md").is_ok());
+        assert!(w.read("Archive/Ideas.md").is_err());
+    }
+
+    #[test]
+    fn external_changes_are_kept_and_restorable() {
+        let (d, w) = ws();
+        std::fs::write(d.path().join("Ideas.md"), "changed in another editor").unwrap();
+        w.refresh("Ideas.md").unwrap();
+        let hist = w.history("Ideas.md", 10).unwrap();
+        assert_eq!(
+            (hist[0].source.as_str(), hist[0].action.as_str()),
+            ("external", "before")
+        );
+        w.write("Ideas.md", "mine", None).unwrap();
+        w.restore("Ideas.md", hist[0].id, None).unwrap();
+        assert_eq!(text(&w, "Ideas.md"), "changed in another editor");
+        assert_eq!(w.history("Ideas.md", 1).unwrap()[0].action, "restored");
     }
 }

@@ -49,6 +49,8 @@ interface WorkspaceState {
   edit(path: string, content: string): void;
   save(path: string): Promise<void>;
   reload(path: string): Promise<void>;
+  /** Loads a file's buffer if it isn't loaded yet (a restored tab shown for the first time). */
+  ensure(path: string): Promise<void>;
   keepMine(path: string): Promise<void>;
   /** Reconciles an open buffer with a change on disk made outside the app. */
   externalChange(path: string): Promise<void>;
@@ -107,6 +109,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
       }));
     }
   };
+
+  /** Paths being loaded by `ensure`, so a re-render doesn't start a second read. */
+  const loading = new Set<string>();
 
   const dropUnusedBuffers = () =>
     set((s) => {
@@ -259,6 +264,17 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
         }));
       } else {
         updateBuffer(path, { conflict: { diskHash: disk.hash } });
+      }
+    },
+
+    async ensure(path) {
+      if (!get().buffers[path] && !loading.has(path)) {
+        loading.add(path);
+        try {
+          await load(path);
+        } finally {
+          loading.delete(path);
+        }
       }
     },
 

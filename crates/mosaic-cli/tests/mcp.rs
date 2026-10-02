@@ -375,3 +375,34 @@ fn a_pinned_vault_warns_when_the_app_shows_another() {
     );
     assert!(guide.contains("Other"));
 }
+
+#[test]
+fn agent_changes_are_kept_and_can_be_restored() {
+    let dir = fixture();
+    let mut c = Client::start(dir.path());
+    let (_, read) = c.call("read_file", json!({ "path": "Ideas.md" }));
+    let original = read["content"].as_str().unwrap().to_string();
+    let (err, _) = c.call(
+        "edit_file",
+        json!({ "path": "Ideas.md", "content": "replaced by mistake" }),
+    );
+    assert!(!err);
+    let (_, hist) = c.call("file_history", json!({ "path": "Ideas.md" }));
+    let hist = hist.as_array().unwrap();
+    assert_eq!(hist[0]["action"], "edited");
+    assert_eq!(hist[0]["source"], "agent");
+    assert_eq!(
+        hist[0]["actor"], "test",
+        "the MCP client's name is recorded"
+    );
+    assert_eq!(hist[1]["action"], "before");
+    let (err, _) = c.call(
+        "restore_version",
+        json!({ "path": "Ideas.md", "id": hist[1]["id"] }),
+    );
+    assert!(!err);
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("Ideas.md")).unwrap(),
+        original
+    );
+}

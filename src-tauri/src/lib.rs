@@ -3,6 +3,7 @@
 mod update;
 
 use mosaic_core::api::{Outline, Renamed};
+use mosaic_core::history::Version;
 use mosaic_core::index::{Backlink, SearchHit, TagCount};
 use mosaic_core::settings::Settings;
 use mosaic_core::{Entry, Error, FileContent, Workspace, Written};
@@ -247,6 +248,36 @@ fn delete_path(state: State<AppState>, path: String) -> CmdResult<()> {
 }
 
 #[tauri::command]
+fn file_history(state: State<AppState>, path: String) -> CmdResult<Vec<Version>> {
+    state.get()?.history(&path, 50)
+}
+
+#[tauri::command]
+fn version_content(state: State<AppState>, id: i64) -> CmdResult<String> {
+    state.get()?.version_content(id)
+}
+
+#[tauri::command]
+fn restore_version(
+    state: State<AppState>,
+    path: String,
+    id: i64,
+    expected_hash: Option<String>,
+) -> CmdResult<Written> {
+    state.get()?.restore(&path, id, expected_hash.as_deref())
+}
+
+#[tauri::command]
+fn ai_activity(state: State<AppState>, limit: Option<usize>) -> CmdResult<Vec<Version>> {
+    state.get()?.activity(limit.unwrap_or(200))
+}
+
+#[tauri::command]
+fn undo_change(state: State<AppState>, id: i64) -> CmdResult<String> {
+    state.get()?.undo(id)
+}
+
+#[tauri::command]
 fn absolute_path(state: State<AppState>, path: String) -> CmdResult<String> {
     Ok(state.get()?.vault.resolve(&path)?.display().to_string())
 }
@@ -381,6 +412,11 @@ pub fn run() {
             make_dir,
             rename_path,
             delete_path,
+            file_history,
+            version_content,
+            restore_version,
+            ai_activity,
+            undo_change,
             absolute_path,
             search,
             backlinks,

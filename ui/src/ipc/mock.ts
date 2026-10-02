@@ -2,7 +2,7 @@
 // It mirrors the core's semantics closely enough for UI work; it is not a second implementation to keep in sync
 // feature-for-feature.
 
-import type { Backlink, CoreError, Entry, FileContent, SearchHit } from "./types";
+import type { Backlink, CoreError, Entry, FileContent, SearchHit, Version } from "./types";
 import { kindOf } from "./kinds";
 
 interface MockFile {
@@ -67,6 +67,14 @@ function cancelFakeUpdate() {
   emit("update-done", { ok: false, cancelled: true, error: "Update cancelled." });
 }
 
+// File history, like the core's (crates/mosaic-core/src/history.rs), much simplified.
+type MockVersion = Version & { content: string | null };
+const versions: MockVersion[] = [];
+let nextVersion = 1;
+function track(path: string, action: Version["action"], content: string | null, extra: Partial<MockVersion> = {}) {
+  versions.push({ id: nextVersion++, path, time: Date.now(), source: "app", actor: null, action, hash: content === null ? "" : hash(content), size: content?.length ?? 0, from_path: null, content, ...extra });
+}
+
 function seed() {
   const now = Date.now();
   const add = (p: string, c: string) => files.set(p, { content: c, mtime: now });
@@ -122,7 +130,14 @@ function seed() {
       "",
     ].join("\n"),
   );
-  add("Ideas.md", "# Ideas\n\nBack to [[Welcome]].\n\n## Later\n\n- Graph view\n");
+  const ideas = "# Ideas\n\nBack to [[Welcome]].\n\n## Later\n\n- Graph view\n";
+  const edited = ideas.replace("- Graph view", "- Graph view\n- File history (added by an agent)");
+  add("Ideas.md", edited);
+  // An agent's changes, to try File history and AI activity in the browser.
+  track("Ideas.md", "before", ideas, { source: "agent", time: now - 3_600_000 });
+  track("Ideas.md", "edited", edited, { source: "agent", actor: "claude-code", time: now - 3_500_000 });
+  add("Agent notes.md", "# Agent notes\n\nWritten by an agent.\n");
+  track("Agent notes.md", "created", "# Agent notes\n\nWritten by an agent.\n", { source: "agent", actor: "claude-code", time: now - 600_000 });
   add("Projects/Mosaic/Plan.md", "# Plan\n\n1. Build it\n");
   add("Projects/Data.csv", 'name,value,note\nalpha,1,"quoted, with comma"\nbeta,2,"multi\nline"\ngamma,3,\n');
   add(
@@ -354,6 +369,35 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
       };
       return out;
     }
+    case "file_history":
+      return versions.filter((v) => v.path === norm(a.path)).reverse().map(({ content: _c, ...v }) => v);
+    case "version_content":
+      return versions.find((v) => v.id === a.id)?.content ?? "";
+    case "ai_activity":
+      return versions.filter((v) => (v.source === "agent" || v.source === "cli") && v.action !== "before").reverse().map(({ content: _c, ...v }) => v);
+    case "restore_version": {
+      const p = norm(a.path);
+      const content = versions.find((v) => v.id === a.id)?.content ?? "";
+      const out = write(p, content);
+      track(p, "restored", content);
+      return out;
+    }
+    case "undo_change": {
+      const v = versions.find((x) => x.id === a.id);
+      if (!v) throw err("not_found", "change not found");
+      const cur = files.get(v.path);
+      if (v.action === "created") files.delete(v.path);
+      else if (v.action === "deleted") write(v.path, v.content ?? "");
+      else {
+        if (cur && hash(cur.content) !== v.hash) throw { code: "conflict", message: `${v.path} changed since`, current_hash: hash(cur.content) };
+        const prev = versions.filter((x) => x.path === v.path && x.id < v.id && x.content !== null).pop();
+        if (!prev) throw err("invalid", "no earlier version");
+        write(v.path, prev.content ?? "");
+        track(v.path, "restored", prev.content);
+      }
+      window.dispatchEvent(new CustomEvent("mock-vault-changed", { detail: { paths: [v.path] } }));
+      return v.path;
+    }
     case "create_file": {
       const p = norm(a.path);
       if (exists(p)) throw err("already_exists", `already exists: ${p}`);
@@ -365,7 +409,9 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
       if (a.expectedHash && cur && hash(cur.content) !== a.expectedHash) {
         throw { code: "conflict", message: `file changed: ${p}`, current_hash: hash(cur.content) };
       }
-      return write(p, String(a.content ?? ""));
+      const out = write(p, String(a.content ?? ""));
+      track(p, cur ? "edited" : "created", String(a.content ?? ""));
+      return out;
     }
     case "make_dir": {
       const p = norm(a.path);
@@ -384,13 +430,14 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
       for (const [p, f] of [...files]) if (under(p)) { files.delete(p); files.set(move(p), f); }
       for (const d of [...dirs]) if (under(d)) { dirs.delete(d); dirs.add(move(d)); }
       addParents(to);
+      track(to, "renamed", null, { from_path: from });
       return { path: to, updated_links_in: [] };
     }
     case "delete_path": {
       const p = norm(a.path);
       if (!exists(p)) throw err("not_found", `not found: ${p}`);
       const under = (x: string) => x === p || x.startsWith(`${p}/`);
-      for (const k of [...files.keys()]) if (under(k)) files.delete(k);
+      for (const k of [...files.keys()]) if (under(k)) { track(k, "deleted", files.get(k)!.content); files.delete(k); }
       for (const d of [...dirs]) if (under(d)) dirs.delete(d);
       return null;
     }

@@ -61,6 +61,12 @@ const buildCommands = (): Command[] => [
   })),
   { id: "new-folder", label: "New folder", keys: { code: "KeyN", meta: true, shift: true }, run: () => void useVault.getState().newFolder(activeDir()) },
   {
+    id: "file-history",
+    label: "Show file history",
+    when: hasActive,
+    run: () => useUi.getState().openHistory(active()!),
+  },
+  {
     id: "save",
     label: "Save current file",
     keys: { code: "KeyS", meta: true },

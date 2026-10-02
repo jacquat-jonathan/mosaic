@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { ExternalLink } from "lucide-react";
 import { useWorkspace, type Buffer } from "../state/workspace";
 import { MarkdownEditor } from "./MarkdownEditor";
@@ -16,6 +17,10 @@ import { renderChart, renderGraphviz } from "./visuals";
 /** Picks the viewer or editor for a file by its kind. */
 export function FileView({ path }: { path: string }) {
   const buffer = useWorkspace((s) => s.buffers[path]);
+  // Restored tabs (only the active one per pane is read at startup) load when first shown.
+  useEffect(() => {
+    if (!buffer) void useWorkspace.getState().ensure(path);
+  }, [buffer, path]);
   if (!buffer) return <div className="empty"><p>Loading…</p></div>;
   return (
     <div className="file-view">

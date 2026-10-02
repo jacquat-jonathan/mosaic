@@ -243,6 +243,7 @@ function singleMenu(entry: Entry): MenuItem[] {
           { label: "Open in new tab", shortcut: "⌥-click", action: () => void ws.open(entry.path, { newTab: true }) },
           { label: "Open to the right", action: () => void openToTheRight(entry.path) },
           { label: "Open in default app", action: () => void openInDefaultApp(entry.path) },
+          { label: "File history…", action: () => useUi.getState().openHistory(entry.path) },
           { label: "", separator: true },
           ...newItems(dir),
         ]),

@@ -17,6 +17,9 @@ write shows up in the app within a second.
   doesn't parse (or a canvas card missing `id`, `type`, `x`/`y`/`width`/`height` or its `text`/`file`/
   `url`, or an edge pointing to a missing node) is refused with an `invalid` error saying what's wrong;
   nothing is written. Fix the content and try again.
+- **Every change is kept.** Mosaic stores a version of each file you change (and shows the human what
+  you did, under your client's name, with an Undo). If you overwrite something by mistake, find the
+  earlier version with `file_history` and put it back with `restore_version`.
 - **Deleting is safe but visible:** files go to the macOS Trash.
 - **Renaming updates links** in every other note automatically (use `rename`, not delete + create).
 - **Duplicate with `copy`** (any file, including images); it never overwrites an existing file.

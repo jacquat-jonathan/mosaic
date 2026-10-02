@@ -50,7 +50,7 @@ interface Confirm {
 
 export type SettingsSection = "appearance" | "editor" | "vault" | "ai" | "shortcuts" | "about";
 
-export type SidebarTab = "files" | "search" | "tags" | "bookmarks";
+export type SidebarTab = "files" | "search" | "tags" | "bookmarks" | "activity";
 
 export const SIDEBAR_DEFAULT = 260;
 export const RIGHT_DEFAULT = 280;
@@ -93,6 +93,10 @@ interface UiState {
   settings: SettingsSection | null;
   openSettings(section?: SettingsSection): void;
   closeSettings(): void;
+  /** The file whose history is shown (and the version to select), or null. */
+  history: { path: string; focus?: number } | null;
+  openHistory(path: string, focus?: number): void;
+  closeHistory(): void;
   rightPanel: boolean;
   leftSidebar: boolean;
   sidebarWidth: number;
@@ -129,6 +133,9 @@ export const useUi = create<UiState>((set, get) => ({
   settings: null,
   openSettings: (section = "appearance") => set({ settings: section, menu: null, picker: null }),
   closeSettings: () => set({ settings: null }),
+  history: null,
+  openHistory: (path, focus) => set({ history: { path, focus }, menu: null, picker: null }),
+  closeHistory: () => set({ history: null }),
   rightPanel: prefs.rightPanel,
   leftSidebar: prefs.leftSidebar,
   sidebarWidth: prefs.sidebarWidth,

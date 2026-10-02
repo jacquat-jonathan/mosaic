@@ -144,6 +144,21 @@ export interface UpdateCheck {
   dirty: boolean;
 }
 
+/** One version of a file kept by Mosaic (see crates/mosaic-core/src/history.rs). */
+export interface Version {
+  id: number;
+  path: string;
+  /** Milliseconds since the Unix epoch. */
+  time: number;
+  source: "app" | "cli" | "agent" | "external";
+  /** The agent or client name, e.g. "claude-code". */
+  actor: string | null;
+  action: "before" | "created" | "edited" | "deleted" | "renamed" | "restored";
+  hash: string;
+  size: number;
+  from_path: string | null;
+}
+
 export interface UpdateDone {
   ok: boolean;
   cancelled: boolean;

@@ -64,3 +64,14 @@ test("uniquePath picks the first free name", () => {
   expect(uniquePath(existing, "", "Untitled", "md")).toBe("Untitled 2.md");
   expect(uniquePath(new Set(), "a/b", "New folder", "")).toBe("a/b/New folder");
 });
+
+test("a restored tab that wasn't active loads when it's shown", async () => {
+  const saved = JSON.stringify({ panes: [{ id: "x", tabs: ["Welcome.md", "Ideas.md"], active: "Welcome.md" }], focused: "x", direction: "row" });
+  vi.stubGlobal("localStorage", { getItem: () => saved, setItem: () => {} });
+  await ws().restoreLayout("/v");
+  expect(ws().buffers["Ideas.md"]).toBeUndefined();
+  ws().activate(ws().panes[0].id, "Ideas.md");
+  await ws().ensure("Ideas.md");
+  expect(ws().buffers["Ideas.md"]?.content).toBeTypeOf("string");
+  vi.unstubAllGlobals();
+});

@@ -5,6 +5,7 @@ mod mcp;
 
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
+use mosaic_core::history::Source;
 use mosaic_core::settings::Settings;
 use mosaic_core::{Error, Workspace};
 use serde::Serialize;
@@ -105,6 +106,26 @@ enum Cmd {
     Tags,
     /// Title, headings, frontmatter, links and backlinks of a file.
     Outline { path: String },
+    /// Versions of a file kept by Mosaic, newest first.
+    History {
+        path: String,
+        #[arg(short, long, default_value_t = 20)]
+        limit: usize,
+    },
+    /// Put a file back to one of its versions (an id from `history`).
+    Restore {
+        path: String,
+        id: i64,
+        #[arg(long)]
+        expected_hash: Option<String>,
+    },
+    /// Changes made by AI agents and the command line, newest first.
+    Activity {
+        #[arg(short, long, default_value_t = 30)]
+        limit: usize,
+    },
+    /// Undo one change from `activity` (refused if the file changed again since).
+    Undo { id: i64 },
     /// Print the guide for AI agents working with this vault.
     Guide,
     /// Run as an MCP server over stdio (for Claude Code, Claude Desktop, …).
@@ -128,6 +149,49 @@ fn vault_path(flag: Option<PathBuf>) -> Result<PathBuf> {
         _ => bail!(
             "no vault given: pass --vault <folder>, set MOSAIC_VAULT, or open a vault in the Mosaic app once"
         ),
+    }
+}
+
+/// `12  2026-10-02 14:03  edited  agent (claude-code)  Notes/Plan.md`
+fn version_line(v: &mosaic_core::history::Version) -> String {
+    let time = chrono_like(v.time);
+    let who = match &v.actor {
+        Some(a) => format!("{} ({a})", v.source),
+        None => v.source.clone(),
+    };
+    let what = match &v.from_path {
+        Some(from) => format!("{from} → {}", v.path),
+        None => v.path.clone(),
+    };
+    format!("{:>6}  {time}  {:<8}  {who:<22}  {what}", v.id, v.action)
+}
+
+/// "just now", "5 min ago", "3 h ago", then "2026-10-02 14:03 UTC" (no date crate needed).
+fn chrono_like(ms: i64) -> String {
+    let ago = (mosaic_core::history::now_ms() - ms) / 1000;
+    match ago {
+        i64::MIN..60 => "just now".into(),
+        60..3600 => format!("{} min ago", ago / 60),
+        3600..86400 => format!("{} h ago", ago / 3600),
+        _ => {
+            // Civil date from days since 1970-01-01 (Howard Hinnant's algorithm).
+            let secs = ms / 1000;
+            let (days, rem) = (secs.div_euclid(86400), secs.rem_euclid(86400));
+            let z = days + 719_468;
+            let era = z.div_euclid(146_097);
+            let doe = z - era * 146_097;
+            let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+            let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+            let mp = (5 * doy + 2) / 153;
+            let d = doy - (153 * mp + 2) / 5 + 1;
+            let m = if mp < 10 { mp + 3 } else { mp - 9 };
+            let y = yoe + era * 400 + i64::from(m <= 2);
+            format!(
+                "{y}-{m:02}-{d:02} {:02}:{:02} UTC",
+                rem / 3600,
+                rem % 3600 / 60
+            )
+        }
     }
 }
 
@@ -188,9 +252,15 @@ fn run(cli: Cli) -> Result<()> {
         mcp::VaultMode::FollowApp
     };
     let root = vault_path(cli.vault)?;
+    let source = if matches!(cli.cmd, Cmd::Mcp) {
+        Source::Agent
+    } else {
+        Source::Cli
+    };
     let ws = Workspace::open(&root)
         .with_context(|| format!("opening vault {}", root.display()))?
-        .validating();
+        .validating()
+        .with_source(source);
     let json = cli.json;
     // The index is shared with the app (WAL); an incremental sync is fast and keeps results current.
     let needs_index = matches!(
@@ -334,6 +404,26 @@ fn run(cli: Cli) -> Result<()> {
         Cmd::Outline { path } => print(json, &ws.outline(&path)?, |o| {
             serde_json::to_string_pretty(o).unwrap_or_default()
         }),
+        Cmd::History { path, limit } => print(json, &ws.history(&path, limit)?, |vs| {
+            vs.iter().map(version_line).collect::<Vec<_>>().join("\n")
+        }),
+        Cmd::Restore {
+            path,
+            id,
+            expected_hash,
+        } => {
+            let w = ws.restore(&path, id, expected_hash.as_deref())?;
+            print(json, &w, |w| {
+                format!("restored {} ({})", w.path, &w.hash[..12])
+            })
+        }
+        Cmd::Activity { limit } => print(json, &ws.activity(limit)?, |vs| {
+            vs.iter().map(version_line).collect::<Vec<_>>().join("\n")
+        }),
+        Cmd::Undo { id } => {
+            let path = ws.undo(id)?;
+            print(json, &path, |p| format!("undone: {p}"))
+        }
         Cmd::Guide => unreachable!(),
         Cmd::Mcp => {
             let rt = tokio::runtime::Builder::new_multi_thread()

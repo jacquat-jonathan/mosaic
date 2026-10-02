@@ -2,6 +2,7 @@
 
 pub mod api;
 pub mod error;
+pub mod history;
 pub mod index;
 pub mod kind;
 pub mod links;

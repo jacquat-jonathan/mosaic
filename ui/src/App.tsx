@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { FilePlus, FolderPlus, FolderOpen, Files, Search, Hash, Shapes, Bot, Bookmark, ChevronDown, ChevronsDownUp, PanelLeftClose, Settings as Gear } from "lucide-react";
+import { FilePlus, FolderPlus, FolderOpen, Files, Search, Hash, Shapes, Bot, Bookmark, ChevronDown, ChevronsDownUp, PanelLeftClose, Settings as Gear, Activity } from "lucide-react";
 import { api, onIndexProgress, pickFolder, revealInFinder } from "./ipc/api";
 import { useVault } from "./state/vault";
 import { FileTree } from "./views/FileTree";
@@ -18,6 +18,8 @@ import "./state/settings";
 import { Picker } from "./views/Picker";
 import { BookmarksPanel } from "./views/BookmarksPanel";
 import { Resizer } from "./views/Resizer";
+import { HistoryModal } from "./views/HistoryModal";
+import { ActivityPanel } from "./views/ActivityPanel";
 import { shortcutOf } from "./commands";
 
 export function App() {
@@ -66,6 +68,7 @@ export function App() {
       <QuickSwitcher />
       <Picker />
       <Settings />
+      <HistoryModal />
       <ErrorToast />
     </>
   );
@@ -100,6 +103,7 @@ const TABS: { id: SidebarTab; label: string; icon: typeof Files }[] = [
   { id: "search", label: "Search (⇧⌘F)", icon: Search },
   { id: "bookmarks", label: "Bookmarks", icon: Bookmark },
   { id: "tags", label: "Tags", icon: Hash },
+  { id: "activity", label: "AI activity: changes by agents, with undo", icon: Activity },
 ];
 
 /** Dropdown under the vault name: recent vaults, open or create another, reveal in Finder. */
@@ -211,6 +215,7 @@ function Main() {
           {tab === "search" && <SearchPanel />}
           {tab === "bookmarks" && <BookmarksPanel />}
           {tab === "tags" && <TagsPanel />}
+          {tab === "activity" && <ActivityPanel />}
           {indexing && (
             <div className="status">
               Indexing {indexing.done.toLocaleString()} / {indexing.total.toLocaleString()}

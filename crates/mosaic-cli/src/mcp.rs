@@ -4,8 +4,11 @@
 use mosaic_core::settings::Settings;
 use mosaic_core::{Error, Workspace};
 use rmcp::handler::server::{router::tool::ToolRouter, wrapper::Parameters};
-use rmcp::model::{Implementation, ServerCapabilities, ServerConfig};
-use rmcp::{ServerHandler, ServiceExt, tool, tool_handler, tool_router};
+use rmcp::model::{
+    Implementation, InitializeRequestParams, InitializeResult, ServerCapabilities, ServerConfig,
+};
+use rmcp::service::RequestContext;
+use rmcp::{ErrorData, RoleServer, ServerHandler, ServiceExt, tool, tool_handler, tool_router};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -92,6 +95,22 @@ struct RenameArgs {
 }
 
 #[derive(Deserialize, JsonSchema)]
+struct HistoryArgs {
+    path: String,
+    /// Maximum versions (default 20), newest first.
+    limit: Option<usize>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct RestoreArgs {
+    path: String,
+    /// Version id from `file_history`.
+    id: i64,
+    /// Hash from `read_file`; the restore is refused if the file changed since.
+    expected_hash: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
 struct CopyArgs {
     /// Vault-relative path of the file to copy.
     from: String,
@@ -112,6 +131,8 @@ pub enum VaultMode {
 pub struct MosaicMcp {
     ws: Arc<RwLock<Arc<Workspace>>>,
     mode: VaultMode,
+    /// The MCP client's name, recorded with every change in the file history.
+    actor: Arc<RwLock<Option<String>>>,
     tool_router: ToolRouter<Self>,
 }
 
@@ -126,6 +147,7 @@ impl MosaicMcp {
         Self {
             ws: Arc::new(RwLock::new(Arc::new(ws))),
             mode,
+            actor: Arc::new(RwLock::new(None)),
             tool_router: Self::tool_router(),
         }
     }
@@ -138,7 +160,18 @@ impl MosaicMcp {
             && root != current.vault.root()
             && let Ok(next) = Workspace::open(&root)
         {
-            let next = Arc::new(next.validating());
+            let next = Arc::new(
+                next.validating()
+                    .with_source(mosaic_core::history::Source::Agent),
+            );
+            if let Some(name) = self
+                .actor
+                .read()
+                .unwrap_or_else(|p| p.into_inner())
+                .as_deref()
+            {
+                next.set_actor(name);
+            }
             let _ = next.sync(|_, _| {});
             *self.ws.write().unwrap_or_else(|p| p.into_inner()) = next.clone();
             return next;
@@ -314,6 +347,26 @@ impl MosaicMcp {
         self.ws().add_bookmark(&a.path).map_err(err).and_then(ok)
     }
 
+    #[tool(
+        description = "Versions of a file that Mosaic kept (newest first): who changed it (app, cli, agent, external), when and how. Use restore_version to go back to one."
+    )]
+    async fn file_history(&self, Parameters(a): Parameters<HistoryArgs>) -> ToolResult {
+        self.ws()
+            .history(&a.path, a.limit.unwrap_or(20))
+            .map_err(err)
+            .and_then(ok)
+    }
+
+    #[tool(
+        description = "Put a file back to one of its versions from file_history (also brings back a deleted file). Use it to undo your own mistake."
+    )]
+    async fn restore_version(&self, Parameters(a): Parameters<RestoreArgs>) -> ToolResult {
+        self.ws()
+            .restore(&a.path, a.id, a.expected_hash.as_deref())
+            .map_err(err)
+            .and_then(ok)
+    }
+
     #[tool(description = "Remove a bookmark (the file itself is untouched). Returns the new list.")]
     async fn remove_bookmark(&self, Parameters(a): Parameters<PathArg>) -> ToolResult {
         self.ws().remove_bookmark(&a.path).map_err(err).and_then(ok)
@@ -322,6 +375,19 @@ impl MosaicMcp {
 
 #[tool_handler(router = self.tool_router)]
 impl ServerHandler for MosaicMcp {
+    /// Remembers the client's name (e.g. "claude-code") for the file history and activity log.
+    async fn initialize(
+        &self,
+        request: InitializeRequestParams,
+        context: RequestContext<RoleServer>,
+    ) -> Result<InitializeResult, ErrorData> {
+        let name = request.client_info.name.clone();
+        self.ws().set_actor(&name);
+        *self.actor.write().unwrap_or_else(|p| p.into_inner()) = Some(name);
+        context.peer.set_peer_info(request.clone());
+        self.negotiate_initialize(&request)
+    }
+
     fn get_info(&self) -> ServerConfig {
         let root = self.ws().vault.root().display().to_string();
         let which = match self.mode {

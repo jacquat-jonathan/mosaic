@@ -160,10 +160,9 @@ export function FileTree() {
     else if (ev.key === "Enter" && sel.length === 1) vault.setRenaming(sel[0]);
     else if (ev.key === "a" && ev.metaKey) vault.setSelection(order);
     else if (ev.key === "ArrowDown" || ev.key === "ArrowUp") {
-      const i = vault.anchor ? order.indexOf(vault.anchor) : -1;
-      const next = order[Math.max(0, Math.min(order.length - 1, i + (ev.key === "ArrowDown" ? 1 : -1)))];
+      // ⇧ extends the selection from the anchor; plain arrows move a single selection.
+      const next = vault.step(ev.key === "ArrowDown" ? 1 : -1, ev.shiftKey, order);
       if (!next) return;
-      vault.select(next, "single");
       document.querySelector(`[data-path="${CSS.escape(next)}"]`)?.scrollIntoView({ block: "nearest" });
     } else return;
     ev.preventDefault();

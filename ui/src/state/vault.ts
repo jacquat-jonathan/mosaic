@@ -63,8 +63,10 @@ interface VaultState {
   offline: boolean;
   /** Tree selection (multi-select with ⌘ / ⇧ click). */
   selected: Set<string>;
-  /** Where a ⇧-click range starts. */
+  /** Where a ⇧-click (or ⇧-arrow) range starts. */
   anchor: string | null;
+  /** The keyboard cursor: where arrow keys move from, the moving end of a ⇧ range. */
+  cursor: string | null;
   /** Bookmarked vault-relative paths, in the user's order. */
   bookmarks: string[];
 
@@ -81,6 +83,8 @@ interface VaultState {
   touched(): void;
   /** `order` is the visible tree order, needed for ⇧-click ranges. */
   select(path: string, mode: "single" | "toggle" | "range", order?: string[]): void;
+  /** Arrow keys: moves the cursor one row; with `extend` (⇧), selects from the anchor to it. */
+  step(delta: 1 | -1, extend: boolean, order: string[]): string | null;
   setSelection(paths: string[]): void;
   clearSelection(): void;
   setBookmarks(paths: string[]): Promise<void>;
@@ -107,6 +111,7 @@ export const useVault = create<VaultState>((set, get) => {
     offline: false,
     selected: new Set(),
     anchor: null,
+    cursor: null,
     bookmarks: [],
 
     async openVault(path) {
@@ -214,16 +219,26 @@ export const useVault = create<VaultState>((set, get) => {
 
     select(path, mode, order = []) {
       const s = get();
-      if (mode === "single") set({ selected: new Set([path]), anchor: path });
+      if (mode === "single") set({ selected: new Set([path]), anchor: path, cursor: path });
       else if (mode === "toggle") {
         const selected = new Set(s.selected);
         if (selected.has(path)) selected.delete(path);
         else selected.add(path);
-        set({ selected, anchor: path });
-      } else set({ selected: new Set(rangeBetween(order, s.anchor, path)) });
+        set({ selected, anchor: path, cursor: path });
+      } else set({ selected: new Set(rangeBetween(order, s.anchor, path)), cursor: path });
     },
-    setSelection: (paths) => set({ selected: new Set(paths), anchor: paths[paths.length - 1] ?? null }),
-    clearSelection: () => set({ selected: new Set(), anchor: null }),
+    step(delta, extend, order) {
+      const s = get();
+      const from = s.cursor ?? s.anchor;
+      const i = from ? order.indexOf(from) : -1;
+      const next = order[Math.max(0, Math.min(order.length - 1, i < 0 ? 0 : i + delta))];
+      if (!next) return null;
+      if (extend && s.anchor && order.includes(s.anchor)) set({ selected: new Set(rangeBetween(order, s.anchor, next)), cursor: next });
+      else get().select(next, "single");
+      return next;
+    },
+    setSelection: (paths) => set({ selected: new Set(paths), anchor: paths[paths.length - 1] ?? null, cursor: paths[paths.length - 1] ?? null }),
+    clearSelection: () => set({ selected: new Set(), anchor: null, cursor: null }),
 
     async setBookmarks(paths) {
       const prev = get().bookmarks;

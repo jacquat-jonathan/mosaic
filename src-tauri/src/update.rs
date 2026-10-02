@@ -52,7 +52,7 @@ pub struct UpdateStatus {
     last_install_error: Option<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Debug)]
 pub struct CommitInfo {
     hash: String,
     subject: String,
@@ -66,7 +66,7 @@ pub struct Release {
     notes: Vec<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Debug)]
 pub struct UpdateCheck {
     branch: String,
     upstream: String,
@@ -277,7 +277,12 @@ pub async fn check_updates() -> CmdResult<UpdateCheck> {
 }
 
 fn check() -> CmdResult<UpdateCheck> {
-    let dir = usable_source()?;
+    check_in(&usable_source()?, COMMIT, env!("CARGO_PKG_VERSION"))
+}
+
+/// What's new upstream for the checkout in `dir`, for an app built from `installed_commit` as `installed_version`.
+fn check_in(dir: &Path, installed_commit: &str, installed_version: &str) -> CmdResult<UpdateCheck> {
+    let dir = dir.to_path_buf();
     let branch = git(&dir, &["rev-parse", "--abbrev-ref", "HEAD"]).map_err(invalid)?;
     if branch == "HEAD" {
         return Err(invalid(
@@ -316,13 +321,12 @@ fn check() -> CmdResult<UpdateCheck> {
             "rev-parse",
             "--verify",
             "--quiet",
-            &format!("{COMMIT}^{{commit}}"),
+            &format!("{installed_commit}^{{commit}}"),
         ],
     );
     let dirty = !git(&dir, &["status", "--porcelain", "--untracked-files=no"])
         .map_err(invalid)?
         .is_empty();
-    let installed_version = env!("CARGO_PKG_VERSION");
     let latest_version = git(&dir, &["show", &format!("{upstream}:Cargo.toml")])
         .ok()
         .and_then(|t| workspace_version(&t));
@@ -332,7 +336,7 @@ fn check() -> CmdResult<UpdateCheck> {
     Ok(UpdateCheck {
         latest_version,
         releases,
-        installed_outdated: COMMIT.is_empty() || installed.map_or(true, |c| c != head),
+        installed_outdated: installed_commit.is_empty() || installed.map_or(true, |c| c != head),
         source_head: head.chars().take(7).collect(),
         branch,
         upstream,
@@ -565,6 +569,128 @@ mod tests {
         );
         assert!(releases_since(log, "0.10.0").is_empty());
         assert!(releases_since(log, "").is_empty());
+    }
+
+    /// A git command in `dir` with a fixed identity (tests don't depend on the user's git config).
+    fn g(dir: &Path, args: &[&str]) -> String {
+        let out = Command::new("git")
+            .args([
+                "-c",
+                "user.name=Test",
+                "-c",
+                "user.email=test@example.com",
+                "-c",
+                "init.defaultBranch=main",
+            ])
+            .args(args)
+            .current_dir(dir)
+            .output()
+            .expect("git");
+        assert!(
+            out.status.success(),
+            "git {args:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    }
+
+    fn release(dir: &Path, version: &str, notes: &str) {
+        std::fs::write(
+            dir.join("Cargo.toml"),
+            format!("[workspace.package]\nversion = \"{version}\"\n"),
+        )
+        .unwrap();
+        let old = std::fs::read_to_string(dir.join("CHANGELOG.md"))
+            .unwrap_or_else(|_| "# Changelog\n".into());
+        let new = old.replacen(
+            "# Changelog\n",
+            &format!("# Changelog\n\n## {version} — 2026-10-02\n\n- {notes}\n"),
+            1,
+        );
+        std::fs::write(dir.join("CHANGELOG.md"), new).unwrap();
+        g(dir, &["add", "-A"]);
+        g(dir, &["commit", "-qm", &format!("Release {version}")]);
+    }
+
+    #[test]
+    fn check_lists_new_releases_commits_and_local_state() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (origin, dev, source) = (
+            tmp.path().join("origin.git"),
+            tmp.path().join("dev"),
+            tmp.path().join("source"),
+        );
+        g(
+            tmp.path(),
+            &["init", "-q", "--bare", origin.to_str().unwrap()],
+        );
+        g(
+            tmp.path(),
+            &[
+                "clone",
+                "-q",
+                origin.to_str().unwrap(),
+                dev.to_str().unwrap(),
+            ],
+        );
+        release(&dev, "0.1.0", "First");
+        g(&dev, &["push", "-q", "origin", "HEAD:main"]);
+        g(
+            tmp.path(),
+            &[
+                "clone",
+                "-q",
+                origin.to_str().unwrap(),
+                source.to_str().unwrap(),
+            ],
+        );
+        let installed = g(&source, &["rev-parse", "--short", "HEAD"]);
+
+        let up_to_date = check_in(&source, &installed, "0.1.0").unwrap();
+        assert!(up_to_date.behind.is_empty() && up_to_date.releases.is_empty());
+        assert!(!up_to_date.installed_outdated && !up_to_date.dirty && up_to_date.ahead == 0);
+
+        // A new release upstream.
+        release(&dev, "0.2.0", "Versions");
+        g(&dev, &["push", "-q", "origin", "HEAD:main"]);
+        let news = check_in(&source, &installed, "0.1.0").unwrap();
+        assert_eq!(news.upstream, "origin/main");
+        assert_eq!(news.behind.len(), 1);
+        assert_eq!(news.behind[0].subject, "Release 0.2.0");
+        assert_eq!(news.latest_version.as_deref(), Some("0.2.0"));
+        assert_eq!(
+            news.releases
+                .iter()
+                .map(|r| r.version.as_str())
+                .collect::<Vec<_>>(),
+            ["0.2.0"]
+        );
+
+        // Local state: uncommitted changes, then a local commit, and an app built from an older commit.
+        std::fs::write(source.join("CHANGELOG.md"), "edited").unwrap();
+        assert!(check_in(&source, &installed, "0.1.0").unwrap().dirty);
+        g(&source, &["commit", "-qam", "local"]);
+        let local = check_in(&source, &installed, "0.1.0").unwrap();
+        assert_eq!(local.ahead, 1);
+        assert!(
+            local.installed_outdated,
+            "the checkout moved past the installed commit"
+        );
+    }
+
+    #[test]
+    fn check_explains_a_detached_head_and_a_missing_upstream() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path().join("repo");
+        std::fs::create_dir(&repo).unwrap();
+        g(&repo, &["init", "-q"]);
+        release(&repo, "0.1.0", "First");
+        let e = check_in(&repo, "", "0.1.0").unwrap_err().to_string();
+        assert!(e.contains("nothing to update from"), "{e}");
+        let head = g(&repo, &["rev-parse", "HEAD"]);
+        g(&repo, &["checkout", "-q", &head]);
+        let e = check_in(&repo, "", "0.1.0").unwrap_err().to_string();
+        assert!(e.contains("detached HEAD"), "{e}");
     }
 
     #[test]

@@ -17,6 +17,9 @@ use std::sync::{Mutex, MutexGuard};
 pub struct Workspace {
     pub vault: Vault,
     index: Mutex<Index>,
+    /// A read-only connection to the same index for queries, so a long sync doesn't block search.
+    /// `None` for an in-memory index (tests), where queries use `index`.
+    reader: Option<Mutex<Index>>,
     /// Versions of every file changed through this workspace (see `history`).
     history: Mutex<History>,
     /// Who changes files through this workspace: the app, the CLI or an agent.
@@ -62,13 +65,24 @@ impl Workspace {
     }
 
     fn with_history(vault: Vault, index: Index, history: History) -> Self {
+        let reader = index.open_reader().map(Mutex::new);
         Workspace {
             vault,
+            reader,
             index: Mutex::new(index),
             history: Mutex::new(history),
             source: Source::App,
             actor: Mutex::new(None),
         }
+    }
+
+    /// A workspace whose index lives in `db` (tests that need a file-backed index).
+    pub fn with_index_file(vault: Vault, db: &std::path::Path) -> Result<Self> {
+        Ok(Self::with_history(
+            vault,
+            Index::open_at(db)?,
+            History::in_memory()?,
+        ))
     }
 
     /// Opens a vault with its index and history in the default cache location (in memory if that fails).
@@ -88,6 +102,14 @@ impl Workspace {
     /// The agent's name, shown in the AI activity log (e.g. the MCP client "claude-code").
     pub fn set_actor(&self, name: &str) {
         *self.actor.lock().unwrap_or_else(|p| p.into_inner()) = Some(name.to_string());
+    }
+
+    /// The index for queries: the read-only connection when there is one.
+    fn query(&self) -> MutexGuard<'_, Index> {
+        match &self.reader {
+            Some(r) => r.lock().unwrap_or_else(|p| p.into_inner()),
+            None => self.index(),
+        }
     }
 
     fn hist(&self) -> MutexGuard<'_, History> {
@@ -486,10 +508,10 @@ impl Workspace {
     pub fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchHit>> {
         let rules = self.rules();
         if rules.is_empty() {
-            return self.index().search(query, limit);
+            return self.query().search(query, limit);
         }
         // Ask for more, so hidden hits don't leave the agent with a short list.
-        let mut hits = self.index().search(query, limit + 100)?;
+        let mut hits = self.query().search(query, limit + 100)?;
         hits.retain(|h| Self::visible(&rules, &h.path));
         hits.truncate(limit);
         Ok(hits)
@@ -498,7 +520,7 @@ impl Workspace {
     pub fn backlinks(&self, path: &str) -> Result<Vec<Backlink>> {
         self.check_read(path)?;
         let rules = self.rules();
-        let mut list = self.index().backlinks(&normalize(path)?)?;
+        let mut list = self.query().backlinks(&normalize(path)?)?;
         list.retain(|b| Self::visible(&rules, &b.source));
         Ok(list)
     }
@@ -506,7 +528,7 @@ impl Workspace {
     /// Tags with counts. With hidden folders, only notes agents can see are counted.
     pub fn tags(&self) -> Result<Vec<TagCount>> {
         let rules = self.rules();
-        let all = self.index().tags()?;
+        let all = self.query().tags()?;
         if !rules.iter().any(|r| r.access == Access::Hidden) {
             return Ok(all);
         }
@@ -522,13 +544,13 @@ impl Workspace {
 
     pub fn paths_with_tag(&self, tag: &str) -> Result<Vec<String>> {
         let rules = self.rules();
-        let mut paths = self.index().paths_with_tag(tag)?;
+        let mut paths = self.query().paths_with_tag(tag)?;
         paths.retain(|p| Self::visible(&rules, p));
         Ok(paths)
     }
 
     pub fn aliases(&self) -> Result<Vec<(String, String)>> {
-        self.index().aliases()
+        self.query().aliases()
     }
 
     /// Cheap structural overview of a file — what an AI should read before deciding to load it all.
@@ -555,7 +577,7 @@ impl Workspace {
             ),
         };
         let rules = self.rules();
-        let index = self.index();
+        let index = self.query();
         let mut backlinks = index.backlinks(&file.path)?;
         backlinks.retain(|b| Self::visible(&rules, &b.source));
         Ok(Outline {
@@ -602,7 +624,7 @@ impl Workspace {
         };
 
         // Gather what needs rewriting before anything moves.
-        let (old_set, sources, all_paths) = if update_links {
+        let (old_set, sources, all_paths, aliases) = if update_links {
             let index = self.index();
             let old_set = index.file_set()?;
             let mut sources: BTreeSet<String> = BTreeSet::new();
@@ -642,9 +664,10 @@ impl Workspace {
                     }
                 )));
             }
-            (Some(old_set), sources, all_paths)
+            let aliases = index.aliases()?;
+            (Some(old_set), sources, all_paths, aliases)
         } else {
-            (None, BTreeSet::new(), vec![])
+            (None, BTreeSet::new(), vec![], vec![])
         };
 
         let out = self.vault.rename(&from, &to_n)?;
@@ -657,7 +680,15 @@ impl Workspace {
             let moved_map: HashMap<String, String> =
                 moved.iter().map(|p| (p.clone(), map_path(p))).collect();
             let new_paths: Vec<String> = all_paths.iter().map(|p| map_path(p)).collect();
-            let new_set = FileSet::new(new_paths.iter().map(String::as_str), std::iter::empty());
+            // Aliases follow their notes, so alias links ([[Start]] for Home.md) still resolve and stay.
+            let new_aliases: Vec<(String, String)> = aliases
+                .iter()
+                .map(|(a, p)| (a.clone(), map_path(p)))
+                .collect();
+            let new_set = FileSet::new(
+                new_paths.iter().map(String::as_str),
+                new_aliases.iter().map(|(a, p)| (a.as_str(), p.as_str())),
+            );
             for old_src in &sources {
                 let new_src = map_path(old_src);
                 let src_moved = moved_map.contains_key(old_src);
@@ -1058,5 +1089,43 @@ mod tests {
         w.restore("Ideas.md", hist[0].id, None).unwrap();
         assert_eq!(text(&w, "Ideas.md"), "changed in another editor");
         assert_eq!(w.history("Ideas.md", 1).unwrap()[0].action, "restored");
+    }
+
+    #[test]
+    fn search_does_not_wait_for_a_long_sync() {
+        let (d, v) = fixture();
+        let w =
+            std::sync::Arc::new(Workspace::with_index_file(v, &d.path().join(".idx.db")).unwrap());
+        w.sync(|_, _| {}).unwrap();
+        // Hold the writer, as a long sync does, and search from another thread.
+        let writer = w.index();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let w2 = w.clone();
+        std::thread::spawn(move || tx.send(w2.search("ideas", 5).map(|h| h.len())).unwrap());
+        let found = rx
+            .recv_timeout(std::time::Duration::from_secs(3))
+            .expect("search waited for the writer");
+        assert!(found.unwrap() > 0);
+        drop(writer);
+        // The reader sees the writer's later changes.
+        w.create("Zebra.md", "zebra stripes").unwrap();
+        assert_eq!(w.search("zebra", 5).unwrap()[0].path, "Zebra.md");
+        assert!(
+            w.backlinks("Ideas.md")
+                .unwrap()
+                .iter()
+                .all(|b| !b.source.is_empty())
+        );
+    }
+
+    #[test]
+    fn alias_links_stay_when_their_note_moves() {
+        let (_d, w) = ws();
+        w.create("Note.md", "---\naliases: [Start]\n---\n# Note")
+            .unwrap();
+        w.create("Other.md", "See [[Start]] and [[Note]]").unwrap();
+        w.rename("Note.md", "Archive/Note.md", true).unwrap();
+        let other = text(&w, "Other.md");
+        assert!(other.contains("[[Start]]"), "alias link kept: {other}");
     }
 }

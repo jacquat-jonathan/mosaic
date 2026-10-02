@@ -124,7 +124,7 @@ impl History {
     fn init(conn: Connection) -> Result<Self> {
         conn.busy_timeout(std::time::Duration::from_secs(5))
             .map_err(sql_err)?;
-        conn.pragma_update(None, "journal_mode", "WAL")
+        crate::index::retry_busy(|| conn.pragma_update(None, "journal_mode", "WAL"))
             .map_err(sql_err)?;
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS versions (

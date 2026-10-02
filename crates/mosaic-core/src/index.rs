@@ -21,7 +21,11 @@ const SCHEMA_VERSION: i64 = 2;
 
 pub struct Index {
     conn: Connection,
-    files: RwLock<Option<Arc<FileSet>>>,
+    /// Cached file set, with the database's `data_version` it was read at (another connection's
+    /// commit changes it, so a reader notices the writer's changes).
+    files: RwLock<Option<(i64, Arc<FileSet>)>>,
+    /// The database file, when not in memory (lets the workspace open a read-only twin).
+    path: Option<PathBuf>,
 }
 
 #[derive(Debug, Default, Clone, Serialize, PartialEq)]
@@ -62,6 +66,26 @@ pub struct OutLink {
 pub struct TagCount {
     pub tag: String,
     pub count: usize,
+}
+
+/// Retries an operation that SQLite refused because another process holds the database (up to ~5 s).
+pub(crate) fn retry_busy<T>(mut f: impl FnMut() -> rusqlite::Result<T>) -> rusqlite::Result<T> {
+    let mut tries = 0;
+    loop {
+        match f() {
+            Err(rusqlite::Error::SqliteFailure(e, _))
+                if tries < 50
+                    && matches!(
+                        e.code,
+                        rusqlite::ErrorCode::DatabaseBusy | rusqlite::ErrorCode::DatabaseLocked
+                    ) =>
+            {
+                tries += 1;
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+            r => return r,
+        }
+    }
 }
 
 fn sql_err(e: rusqlite::Error) -> Error {
@@ -336,30 +360,56 @@ impl Index {
             std::fs::create_dir_all(dir).map_err(|e| Error::io(dir.display().to_string(), e))?;
         }
         let conn = Connection::open(db).map_err(sql_err)?;
-        Self::init(conn)
+        let mut index = Self::init(conn)?;
+        index.path = Some(db.to_path_buf());
+        Ok(index)
+    }
+
+    /// A second, read-only connection to the same database. With WAL it reads the last committed
+    /// state while a sync is writing, so search and backlinks don't wait for a long sync.
+    /// `None` for an in-memory index.
+    pub fn open_reader(&self) -> Option<Self> {
+        let path = self.path.as_ref()?;
+        let conn = Connection::open_with_flags(
+            path,
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        )
+        .ok()?;
+        conn.busy_timeout(std::time::Duration::from_secs(5)).ok()?;
+        Some(Index {
+            conn,
+            files: RwLock::new(None),
+            path: Some(path.clone()),
+        })
     }
 
     pub fn in_memory() -> Result<Self> {
         Self::init(Connection::open_in_memory().map_err(sql_err)?)
     }
 
-    fn init(conn: Connection) -> Result<Self> {
+    fn init(mut conn: Connection) -> Result<Self> {
         conn.busy_timeout(std::time::Duration::from_secs(5))
             .map_err(sql_err)?;
-        conn.pragma_update(None, "journal_mode", "WAL")
-            .map_err(sql_err)?;
+        // Switching to WAL needs the file to itself for a moment: wait while another process has it.
+        retry_busy(|| conn.pragma_update(None, "journal_mode", "WAL")).map_err(sql_err)?;
         conn.pragma_update(None, "synchronous", "NORMAL")
             .map_err(sql_err)?;
-        let version: i64 = conn
+        // Check and create the schema in one IMMEDIATE transaction, so the app and the CLI opening
+        // a new (or outdated) index at the same moment can't drop each other's tables.
+        // (The busy timeout covers BEGIN IMMEDIATE: it waits for the other process.)
+        let tx = conn
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .map_err(sql_err)?;
+        let version: i64 = tx
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .map_err(sql_err)?;
         if version != SCHEMA_VERSION {
-            conn.execute_batch(
+            tx.execute_batch(
                 "DROP TABLE IF EXISTS files; DROP TABLE IF EXISTS links; DROP TABLE IF EXISTS tags; DROP TABLE IF EXISTS fts; DROP TABLE IF EXISTS fts_paths;",
             )
             .map_err(sql_err)?;
         }
-        conn.execute_batch(
+        tx.execute_batch(
             "CREATE TABLE IF NOT EXISTS files (
                 path TEXT PRIMARY KEY, kind TEXT NOT NULL, size INTEGER NOT NULL, mtime INTEGER NOT NULL,
                 hash TEXT, title TEXT NOT NULL, aliases TEXT NOT NULL DEFAULT '[]');
@@ -375,11 +425,13 @@ impl Index {
              CREATE TABLE IF NOT EXISTS fts_paths (rowid INTEGER PRIMARY KEY, path TEXT NOT NULL UNIQUE);",
         )
         .map_err(sql_err)?;
-        conn.pragma_update(None, "user_version", SCHEMA_VERSION)
+        tx.pragma_update(None, "user_version", SCHEMA_VERSION)
             .map_err(sql_err)?;
+        tx.commit().map_err(sql_err)?;
         Ok(Index {
             conn,
             files: RwLock::new(None),
+            path: None,
         })
     }
 
@@ -389,7 +441,13 @@ impl Index {
 
     /// Every indexed path plus aliases, for link resolution.
     pub fn file_set(&self) -> Result<Arc<FileSet>> {
-        if let Some(fs) = self.files.read().expect("fileset lock").as_ref() {
+        let version: i64 = self
+            .conn
+            .pragma_query_value(None, "data_version", |r| r.get(0))
+            .map_err(sql_err)?;
+        if let Some((v, fs)) = self.files.read().expect("fileset lock").as_ref()
+            && *v == version
+        {
             return Ok(fs.clone());
         }
         let mut stmt = self
@@ -411,7 +469,7 @@ impl Index {
             rows.iter().map(|(p, _)| p.as_str()),
             aliases.iter().map(|(a, p)| (a.as_str(), p.as_str())),
         ));
-        *self.files.write().expect("fileset lock") = Some(fs.clone());
+        *self.files.write().expect("fileset lock") = Some((version, fs.clone()));
         Ok(fs)
     }
 
@@ -445,7 +503,12 @@ impl Index {
         let mut stats = SyncStats::default();
         let present: HashSet<&str> = entries.iter().map(|e| e.path.as_str()).collect();
         let total = entries.len();
-        let tx = self.conn.transaction().map_err(sql_err)?;
+        // IMMEDIATE: take the write lock up front. A deferred transaction that later upgrades gets
+        // "database is locked" at once (no busy wait) when another process wrote in between.
+        let tx = self
+            .conn
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .map_err(sql_err)?;
         for (i, e) in entries.iter().enumerate() {
             if known.get(&e.path) == Some(&(e.mtime, e.size)) {
                 stats.unchanged += 1;
@@ -469,7 +532,12 @@ impl Index {
 
     /// Re-indexes one path after a change (or forgets it if it no longer exists).
     pub fn update_path(&mut self, vault: &Vault, path: &str) -> Result<()> {
-        let tx = self.conn.transaction().map_err(sql_err)?;
+        // IMMEDIATE: take the write lock up front. A deferred transaction that later upgrades gets
+        // "database is locked" at once (no busy wait) when another process wrote in between.
+        let tx = self
+            .conn
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .map_err(sql_err)?;
         match vault.stat(path) {
             Ok(e) if e.is_dir => {
                 for child in vault.list(path, true)?.into_iter().filter(|c| !c.is_dir) {
@@ -1104,5 +1172,63 @@ pub(crate) mod tests {
         assert_eq!(one_line("  a\n\n b  "), "a b");
         let long = "x".repeat(300);
         assert_eq!(one_line(&long).chars().count(), 201);
+    }
+
+    /// The app and the CLI index the same vault at once (two connections to one database, as two
+    /// processes have): neither may fail with "database is locked", and both see the same result.
+    /// Run with `scripts/bench.sh`.
+    #[test]
+    #[ignore]
+    fn bench_two_indexers_share_one_vault() {
+        let dir = tempfile::tempdir().unwrap();
+        for i in 0..5000 {
+            let folder = dir.path().join(format!("f{}", i % 50));
+            fs::create_dir_all(&folder).unwrap();
+            fs::write(
+                folder.join(format!("Note {i}.md")),
+                format!(
+                    "# Note {i}\n\nLinks to [[Note {}]] #t{}\n",
+                    (i * 7) % 5000,
+                    i % 20
+                ),
+            )
+            .unwrap();
+        }
+        let db = dir.path().join("../shared-index.db");
+        let t = std::time::Instant::now();
+        let handles: Vec<_> = (0..2)
+            .map(|n| {
+                let root = dir.path().to_path_buf();
+                let db = db.clone();
+                std::thread::spawn(move || {
+                    let v = Vault::open(&root).unwrap();
+                    let mut idx = Index::open_at(&db).unwrap();
+                    idx.sync(&v, |_, _| {}).unwrap();
+                    // Then both keep changing notes and re-syncing, like an agent and the app.
+                    for round in 0..20 {
+                        let p = root.join(format!("f{n}/Note {n}.md"));
+                        fs::write(&p, format!("# Note {n}\n\nround {round} by indexer {n}"))
+                            .unwrap();
+                        idx.sync(&v, |_, _| {}).unwrap();
+                        assert!(!idx.search("round", 10).unwrap().is_empty());
+                    }
+                    idx.file_set().unwrap().contains("f0/Note 0.md")
+                })
+            })
+            .collect();
+        for h in handles {
+            assert!(h.join().expect("an indexer failed (database locked?)"));
+        }
+        eprintln!(
+            "two indexers, 5000 notes, 20 concurrent edit+sync rounds each: {:?}",
+            t.elapsed()
+        );
+        let check = Index::open_at(&db).unwrap();
+        assert_eq!(
+            check.search("round", 10).unwrap().len(),
+            2,
+            "both indexers' last edits are in the shared index"
+        );
+        let _ = fs::remove_file(&db);
     }
 }

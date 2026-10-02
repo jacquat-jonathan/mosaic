@@ -21,6 +21,8 @@ notes="$(awk '/^## Unreleased/{on=1; next} /^## /{on=0} on && /^- /' CHANGELOG.m
 
 today="$(date +%Y-%m-%d)"
 perl -0pi -e "s/^## Unreleased\n/## Unreleased\n\n## $version — $today\n/m" CHANGELOG.md
+# Keep a blank line before every release heading, however the notes were added.
+perl -0pi -e 's/([^\n])\n(## )/$1\n\n$2/g' CHANGELOG.md
 perl -0pi -e "s/(\[workspace\.package\]\n(?:[^\[].*\n)*?)version = \"[^\"]*\"/\${1}version = \"$version\"/" Cargo.toml
 perl -pi -e "s/^  \"version\": \"[^\"]*\",/  \"version\": \"$version\",/" src-tauri/tauri.conf.json
 cargo update --workspace --offline --quiet # refreshes Cargo.lock with the new version

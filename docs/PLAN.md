@@ -174,6 +174,13 @@ Done 2026-10-02, released as 0.7.0. Details in the vault note `Architecture/Done
 - [x] Read-only index connection for queries; safe concurrent indexing (bench scenario); CLI-process and updater tests; ⇧-arrow tree selection
 - [x] Paste images, daily notes, unlinked mentions, canvas from selection, saved searches
 
+### M16 — Editing comfort, diagram follow-ups
+Done 2026-10-02, released as 0.8.0. Details in the vault note `Architecture/Done.md`.
+- [x] Properties editor, custom shortcuts, note export (HTML, PDF via print)
+- [x] Connections routed around cards (`route.ts` / `route.rs`), crowded labels on hover
+- [x] Timing shape with state lanes (`timing.ts` / `timing.rs`), shape palette with drag and drop
+- [x] Copy as Mermaid for sequence and class diagrams; Open as diagram for class diagrams
+
 ## Working rules
 - `scripts/check.sh` green before each milestone commit.
 - Core logic gets Rust tests; UI logic gets Vitest; don't test third-party renderers beyond a smoke test.

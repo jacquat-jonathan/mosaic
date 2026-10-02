@@ -168,6 +168,12 @@ Done 2026-10-02. Details in the vault note `Architecture/Done.md`.
 - [x] AI activity log with undo (sidebar tab; CLI `activity` / `undo`)
 - [x] Render tool for agents (`render.rs`, MCP `render`, `mosaic render`), drawing data shared with the editor
 
+### M15 — Agent gaps, robustness, quick wins
+Done 2026-10-02, released as 0.7.0. Details in the vault note `Architecture/Done.md`.
+- [x] Folder permissions for agents (read-only / hidden), `move_files`, `import_file`, MCP resources
+- [x] Read-only index connection for queries; safe concurrent indexing (bench scenario); CLI-process and updater tests; ⇧-arrow tree selection
+- [x] Paste images, daily notes, unlinked mentions, canvas from selection, saved searches
+
 ## Working rules
 - `scripts/check.sh` green before each milestone commit.
 - Core logic gets Rust tests; UI logic gets Vitest; don't test third-party renderers beyond a smoke test.

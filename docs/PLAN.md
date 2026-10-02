@@ -162,6 +162,12 @@ Done 2026-10-02, released as 0.5.0. Details in the vault note `Architecture/Done
 - [x] Step 4: Mermaid block ↔ canvas, canvases embedded in notes, SVG/PNG export, presentation mode; live preview of diagram blocks in notes
 - [x] MCP follows the vault open in the app unless `--vault` pins one
 
+### M14 — Safety for agent writes
+Done 2026-10-02. Details in the vault note `Architecture/Done.md`.
+- [x] File history (`history.rs`): versions with who and what, restore; app, CLI and MCP
+- [x] AI activity log with undo (sidebar tab; CLI `activity` / `undo`)
+- [x] Render tool for agents (`render.rs`, MCP `render`, `mosaic render`), drawing data shared with the editor
+
 ## Working rules
 - `scripts/check.sh` green before each milestone commit.
 - Core logic gets Rust tests; UI logic gets Vitest; don't test third-party renderers beyond a smoke test.

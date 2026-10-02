@@ -45,6 +45,8 @@ export interface CanvasEdge {
   toOffset?: number;
   /** Mosaic diagrams: line width in pixels (2 when absent). */
   thickness?: number;
+  /** Mosaic diagrams: "curved" (default), "straight", or "orthogonal" (around other cards). */
+  route?: string;
   [extra: string]: unknown;
 }
 

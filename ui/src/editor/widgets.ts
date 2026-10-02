@@ -68,7 +68,7 @@ export class RenderedBlockWidget extends WidgetType {
     revealOnClick(el, view, () => view.posAtDOM(el));
     return el;
   }
-  /** "Open as diagram" on a rendered Mermaid flowchart or state diagram. */
+  /** "Open as diagram" on a rendered Mermaid flowchart, state or class diagram. */
   private addOpenAsDiagram(el: HTMLElement) {
     if (this.lang !== "mermaid" || !this.ctx.openAsDiagram || !diagramKind(this.source)) return;
     const open = document.createElement("button");

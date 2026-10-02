@@ -100,7 +100,7 @@ label (Markdown, links work). Optional fields, all checked on write:
 
 | Field | On | Values |
 |---|---|---|
-| `shape` | text card | Basic: `rectangle`, `rounded`, `pill` (start/end, state), `ellipse` (use case), `diamond` (decision), `cylinder` (database), `cloud`, `note`, `actor` (person; label under the figure). Flowchart: `parallelogram` (input/output), `hexagon`, `document`, `process`. UML structure: `class`, `package`, `component`, `node` (deployment), `artifact`, `port`. UML behaviour: `initial`, `final`, `bar` (fork/join), `lifeline`, `activation`, `frame` (sd, alt, loop…; drawn behind other cards) |
+| `shape` | text card | Basic: `rectangle`, `rounded`, `pill` (start/end, state), `ellipse` (use case), `diamond` (decision), `cylinder` (database), `cloud`, `note`, `actor` (person; label under the figure). Flowchart: `parallelogram` (input/output), `hexagon`, `document`, `process`. UML structure: `class`, `package`, `component`, `node` (deployment), `artifact`, `port`. UML behaviour: `initial`, `final`, `bar` (fork/join), `lifeline`, `activation`, `timing`, `frame` (sd, alt, loop…; drawn behind other cards) |
 | `border` | shaped card | `solid` (default), `dashed`, `dotted`, `none` |
 | `line` | edge | `solid` (default), `dashed`, `dotted` |
 | `toEnd`, `fromEnd` | edge | `none`, `arrow`, `triangle` (hollow: inheritance), `open` (dependency), `diamond` (composition), `diamond-open` (aggregation), `circle`. Defaults: `toEnd` `arrow`, `fromEnd` `none` |
@@ -108,6 +108,7 @@ label (Markdown, links work). Optional fields, all checked on write:
 | `icon` | text card | A network / cloud icon above the label: `server`, `database`, `cloud`, `laptop`, `smartphone`, `monitor`, `router`, `network`, `wifi`, `globe`, `shield`, `lock`, `key`, `user`, `users`, `building`, `mail`, `message`, `bell`, `credit-card`, `cpu`, `hard-drive`, `container`, `box`, `file`, `workflow` |
 | `fromOffset`, `toOffset` | edge | Where along `fromSide` / `toSide` it attaches, 0–1 (middle when absent). Sequence messages use them to leave a lifeline at a given height |
 | `thickness` | edge | Line width in pixels (2 when absent) |
+| `route` | edge | `curved` (default), `straight`, `orthogonal` (right angles, around the other cards) |
 
 ```json
 { "id": "db", "type": "text", "text": "Orders", "shape": "cylinder", "color": "5", "x": 400, "y": 0, "width": 150, "height": 130 },
@@ -124,6 +125,10 @@ Special shapes:
   (0.1 near the top, 0.9 near the bottom), so they run level. Returns: `"line": "dashed", "toEnd": "open"`.
 - **`frame`**: the first line is its tag, e.g. `"**alt** [card declined]"`; place it around the cards it
   frames.
+- **`timing`**: one card holds the whole timing diagram. Each line `Lane: State@time State@time…`
+  is a lane drawn as a step line (one level per state); `time: 0..20 s` sets the axis range and unit;
+  any other line is the title. Example text: `"**Door**\nDoor: Closed@0 Open@5 Closed@12\ntime: 0..20 s"`.
+  Use `_` for spaces in a state name (`Not_ready@3`).
 - `initial`, `final`, `bar`, `port` and `activation` are symbols without a label.
 
 Shape labels keep every line break. Mosaic ships a template for each of the 14 UML diagram types (New

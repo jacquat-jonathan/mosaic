@@ -338,6 +338,12 @@ fn shape_svg(n: &Node, name: &str, draw: &Value, t: &Theme) -> String {
                 2.5 / s
             );
         }
+        Some("timing") => {
+            let _ = write!(
+                body,
+                r#"<rect x="{x}" y="{y}" width="{w}" height="{h}" fill="{fill}" {sw}/>"#
+            );
+        }
         Some("lifeline") => {
             let _ = write!(
                 body,
@@ -404,6 +410,15 @@ fn shape_svg(n: &Node, name: &str, draw: &Value, t: &Theme) -> String {
         return body;
     }
     let text = str_of(n.v, "text").unwrap_or("");
+    if draw.get("special").and_then(Value::as_str) == Some("timing") {
+        let c = crate::timing::Colors {
+            stroke: color.as_deref().unwrap_or(t.fg),
+            fg: t.fg,
+            muted: t.muted,
+            grid: t.card,
+        };
+        return body + &crate::timing::svg(text, x, y, w, h, &c);
+    }
     let lines = plain_lines(text);
     let fg = t.fg;
     let (icon, icon_h) = icon_svg(n, color.as_deref().unwrap_or(t.fg));
@@ -652,6 +667,7 @@ fn edge_svg(
     nodes: &BTreeMap<&str, Node>,
     t: &Theme,
     markers: &mut BTreeMap<String, String>,
+    obstacles: &[crate::route::Rect],
 ) -> String {
     let (Some(a), Some(b)) = (
         str_of(e, "fromNode").and_then(|id| nodes.get(id)),
@@ -695,9 +711,30 @@ fn edge_svg(
     };
     let ms = marker(from_end);
     let me = marker(to_end);
-    let mut out = format!(
-        r#"<path d="M{px},{py} C{c1x},{c1y} {c2x},{c2y} {qx},{qy}" fill="none" stroke="{color}" stroke-width="{width}""#
-    );
+    // Curved (default), straight, or around the other cards.
+    let (path_d, (mx, my)) = match str_of(e, "route") {
+        Some("straight") => (
+            format!("M{px},{py} L{qx},{qy}"),
+            ((px + qx) / 2.0, (py + qy) / 2.0),
+        ),
+        Some("orthogonal") => {
+            let pts =
+                crate::route::route_around((px, py), (pdx, pdy), (qx, qy), (qdx, qdy), obstacles);
+            (
+                crate::route::rounded_path(&pts, 8.0),
+                crate::route::midpoint(&pts),
+            )
+        }
+        _ => (
+            format!("M{px},{py} C{c1x},{c1y} {c2x},{c2y} {qx},{qy}"),
+            (
+                (px + 3.0 * c1x + 3.0 * c2x + qx) / 8.0,
+                (py + 3.0 * c1y + 3.0 * c2y + qy) / 8.0,
+            ),
+        ),
+    };
+    let mut out =
+        format!(r#"<path d="{path_d}" fill="none" stroke="{color}" stroke-width="{width}""#);
     if let Some(da) = dash(str_of(e, "line"), width) {
         let _ = write!(out, r#" stroke-dasharray="{da}""#);
     }
@@ -721,13 +758,7 @@ fn edge_svg(
         )
     };
     if let Some(l) = str_of(e, "label").filter(|l| !l.is_empty()) {
-        out += &label(
-            l,
-            (px + 3.0 * c1x + 3.0 * c2x + qx) / 8.0,
-            (py + 3.0 * c1y + 3.0 * c2y + qy) / 8.0,
-            13.0,
-            t.fg,
-        );
+        out += &label(l, mx, my, 13.0, t.fg);
     }
     let near = |x: f64, y: f64, dx: f64, dy: f64, beside: f64| {
         if dx != 0.0 {
@@ -788,8 +819,14 @@ pub fn canvas_to_svg(canvas_json: &str, dark: bool) -> Result<String> {
             parts += &shape_svg(n, name, draw, t);
         }
     }
+    // Cards a routed connection steps around (not groups and frames, which connections cross).
+    let obstacles: Vec<crate::route::Rect> = list
+        .iter()
+        .filter(|n| !n.behind())
+        .map(|n| (n.x, n.y, n.w, n.h))
+        .collect();
     for e in raw_edges {
-        parts += &edge_svg(e, &by_id, t, &mut markers);
+        parts += &edge_svg(e, &by_id, t, &mut markers, &obstacles);
     }
     for n in list.iter().filter(|n| !n.behind()) {
         match (str_of(n.v, "type"), n.shape()) {

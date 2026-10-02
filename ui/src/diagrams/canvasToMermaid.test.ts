@@ -43,3 +43,38 @@ test("shapes, groups and connection styles", () => {
 test("a wide diagram goes left to right", () => {
   expect(canvasToMermaid({ nodes: [n("A", 0, 0), n("B", 900, 0)], edges: [] }).startsWith("flowchart LR")).toBe(true);
 });
+
+test("lifelines become a sequence diagram, frames wrap their messages", async () => {
+  const { parseCanvas } = await import("../viewers/canvas/jsonCanvas");
+  const fs = await import("node:fs");
+  const doc = parseCanvas(fs.readFileSync(new URL("./templates/uml/Sequence.canvas", import.meta.url), "utf8"));
+  expect(canvasToMermaid(doc)).toBe(
+    [
+      "sequenceDiagram",
+      "  participant p1 as User",
+      "  participant p2 as Web shop",
+      "  participant p3 as Payment",
+      "  p1->>p2: 1: checkout()",
+      "  p2->>p3: 2: charge(card)",
+      "  p3-->>p2: ok",
+      "  alt card declined",
+      "    p2->>p3: 3: retry()",
+      "  end",
+      "  p2-->>p1: receipt",
+      "",
+    ].join("\n"),
+  );
+});
+
+test("class boxes become a class diagram with relations", async () => {
+  const { parseCanvas } = await import("../viewers/canvas/jsonCanvas");
+  const fs = await import("node:fs");
+  const doc = parseCanvas(fs.readFileSync(new URL("./templates/uml/Class.canvas", import.meta.url), "utf8"));
+  const out = canvasToMermaid(doc);
+  expect(out).toContain("classDiagram\n  class Customer {\n    -name: String\n");
+  expect(out).toContain("    +total() Money\n");
+  expect(out).toContain("  class Payable {\n    <<interface>>\n    +pay()\n  }");
+  expect(out).toContain('  Customer "1" -- "*" Order : places');
+  expect(out).toContain('  Order "1" *-- "1..*" LineItem');
+  expect(out).toContain("  Order ..|> Payable : realizes");
+});

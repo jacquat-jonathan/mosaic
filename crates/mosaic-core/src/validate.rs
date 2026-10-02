@@ -133,6 +133,7 @@ fn canvas(v: &Value) -> std::result::Result<(), String> {
             }
         }
         one_of(edge, "line", "lines", &at)?;
+        one_of(edge, "route", "routes", &at)?;
         one_of(edge, "fromEnd", "ends", &at)?;
         one_of(edge, "toEnd", "ends", &at)?;
         number_in(edge, "fromOffset", 0.0, 1.0, &at)?;

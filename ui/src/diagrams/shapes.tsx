@@ -17,7 +17,7 @@ interface Draw {
   path?: string;
   extra?: string;
   inset?: number;
-  special?: "actor" | "final" | "lifeline";
+  special?: "actor" | "final" | "lifeline" | "timing";
   solid?: boolean;
   hollow?: boolean;
   label?: boolean;
@@ -116,6 +116,13 @@ export function ShapeOutline({ shape, style }: { shape: ShapeName; style: ShapeS
       </>
     );
   }
+  if (shape === "timing") {
+    return (
+      <svg className="shape-outline" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden>
+        <rect x="0" y="0" width="100" height="100" fill={style.fill} stroke={stroke} strokeWidth="2" strokeDasharray={dash} vectorEffect="non-scaling-stroke" />
+      </svg>
+    );
+  }
   const o = OUTLINES[shape];
   if (!o) return null;
   const decor = DRAW[shape].decor;
@@ -164,6 +171,44 @@ export function EdgeMarkers({ used }: { used: { end: EndName; color: string }[] 
           </marker>
         ))}
       </defs>
+    </svg>
+  );
+}
+
+/** A small picture of a shape for the shape palette (drawn from the format file, like the shapes). */
+export function ShapePreview({ shape }: { shape: ShapeName }) {
+  const d = DRAW[shape];
+  const common = { fill: d.solid ? "currentColor" : "none", stroke: "currentColor", strokeWidth: 1.5, vectorEffect: "non-scaling-stroke" as const };
+  let body: ReactElement;
+  if (d.special === "actor") {
+    body = <path d="M18,3 a3,3 0 1,0 0.01,0 M18,9 L18,17 M12,12 L24,12 M18,17 L13,23 M18,17 L23,23" fill="none" stroke="currentColor" strokeWidth={1.5} />;
+  } else if (d.special === "final") {
+    body = (
+      <>
+        <circle cx="18" cy="13" r="8" fill="none" stroke="currentColor" strokeWidth={1.5} />
+        <circle cx="18" cy="13" r="4.5" fill="currentColor" />
+      </>
+    );
+  } else if (d.special === "timing") {
+    body = <path d="M4,8 H14 V18 H24 V8 H32 M4,24 H32" fill="none" stroke="currentColor" strokeWidth={1.5} />;
+  } else if (d.special === "lifeline") {
+    body = <path d="M10,2 H26 V8 H10 Z M18,8 V24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeDasharray="0" />;
+  } else if (d.ellipse) {
+    body = shape === "initial" ? <circle cx="18" cy="13" r="6" {...common} /> : <ellipse cx="18" cy="13" rx="14" ry="9" {...common} />;
+  } else if (d.rect !== undefined) {
+    const thin = shape === "bar" ? { y: 10, height: 6 } : shape === "port" ? { x: 13, width: 10, y: 8, height: 10 } : shape === "activation" ? { x: 15, width: 6 } : {};
+    body = <rect x={4} y={4} width={28} height={18} rx={d.rect === "pill" ? 9 : Math.min(Number(d.rect) / 3, 5)} {...common} {...thin} strokeDasharray={d.hollow ? "3 2" : undefined} />;
+  } else {
+    body = (
+      <g transform="translate(4,3) scale(0.28,0.2)">
+        <path d={d.path} {...common} />
+        {d.extra && <path d={d.extra} {...common} fill="none" />}
+      </g>
+    );
+  }
+  return (
+    <svg className="shape-preview" viewBox="0 0 36 26" aria-hidden>
+      {body}
     </svg>
   );
 }

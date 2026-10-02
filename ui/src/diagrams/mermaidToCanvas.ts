@@ -1,6 +1,7 @@
-// A note's ```mermaid block → an editable canvas, keeping the layout Mermaid computed. Flowcharts and
-// state diagrams are supported: Mermaid renders the block, and the positions, sizes, labels and
-// connections are read back from its SVG.
+// A note's ```mermaid block → an editable canvas, keeping the layout Mermaid computed. Flowcharts,
+// state and class diagrams are supported: Mermaid renders the block, and the positions, sizes, labels
+// and connections are read back from its SVG. Class boxes and relations come from the source itself
+// (members, stereotypes, arrowheads, multiplicities), with only their positions taken from the SVG.
 
 import { renderMermaid } from "../editor/render";
 import { newId, type CanvasDoc, type CanvasEdge, type CanvasNode } from "../viewers/canvas/jsonCanvas";
@@ -32,12 +33,13 @@ export function flowchartShapes(src: string): Map<string, string> {
   return shapes;
 }
 
-type Kind = "flowchart" | "state";
+type Kind = "flowchart" | "state" | "class";
 
 export function diagramKind(src: string): Kind | null {
   const first = src.trim().split("\n")[0].trim();
   if (/^(flowchart|graph)\b/.test(first)) return "flowchart";
   if (/^stateDiagram(-v2)?\b/.test(first)) return "state";
+  if (/^classDiagram(-v2)?\b/.test(first)) return "class";
   return null;
 }
 
@@ -46,7 +48,7 @@ const SPREAD = 1.35;
 
 export async function mermaidToCanvas(src: string): Promise<CanvasDoc> {
   const kind = diagramKind(src);
-  if (!kind) throw new Error("Only flowcharts and state diagrams can be opened as diagrams for now.");
+  if (!kind) throw new Error("Only flowcharts, state and class diagrams can be opened as diagrams for now.");
   const svgText = await renderMermaid(src);
   // Laid out at 1:1 off screen, so client rectangles are in the SVG's own units.
   const host = document.createElement("div");
@@ -64,6 +66,7 @@ export async function mermaidToCanvas(src: string): Promise<CanvasDoc> {
       const r = el.getBoundingClientRect();
       return { x: (r.left - origin.left) * SPREAD, y: (r.top - origin.top) * SPREAD, w: r.width, h: r.height };
     };
+    if (kind === "class") return classCanvas(src, host, box);
     const shapes = kind === "flowchart" ? flowchartShapes(src) : new Map<string, string>();
     const nodes: CanvasNode[] = [];
     const byMermaidId = new Map<string, CanvasNode>();
@@ -135,4 +138,121 @@ export async function mermaidToCanvas(src: string): Promise<CanvasDoc> {
   } finally {
     host.remove();
   }
+}
+
+export interface ClassInfo {
+  name: string;
+  stereotypes: string[];
+  attributes: string[];
+  methods: string[];
+}
+
+export interface Relation {
+  from: string;
+  to: string;
+  fromEnd: string;
+  toEnd: string;
+  dashed: boolean;
+  fromLabel?: string;
+  toLabel?: string;
+  label?: string;
+}
+
+const LEFT_END: Record<string, string> = { "<|": "triangle", "*": "diamond", o: "diamond-open", "<": "arrow" };
+const RIGHT_END: Record<string, string> = { "|>": "triangle", "*": "diamond", o: "diamond-open", ">": "arrow" };
+const RELATION = /^([\w~]+)(?:\s+"([^"]*)")?\s+(<\||\*|o|<)?(--|\.\.)(\|>|\*|o|>)?\s+(?:"([^"]*)"\s+)?([\w~]+)\s*(?::\s*(.+))?$/;
+
+/** Canvas member style: `+total() Money` → `+ total(): Money`. */
+const memberText = (m: string) => m.trim().replace(/^([-+#~])\s*/, "$1 ").replace(/\)\s*([^\s:$*].*)$/, "): $1");
+
+/** Classes (in order of appearance) and relations of a Mermaid class diagram. */
+export function parseClassDiagram(src: string): { classes: ClassInfo[]; relations: Relation[] } {
+  const classes = new Map<string, ClassInfo>();
+  const get = (name: string) => {
+    if (!classes.has(name)) classes.set(name, { name, stereotypes: [], attributes: [], methods: [] });
+    return classes.get(name)!;
+  };
+  const addMember = (c: ClassInfo, m: string) => {
+    const t = m.trim();
+    if (!t) return;
+    const st = /^<<(.+)>>$/.exec(t);
+    if (st) c.stereotypes.push(st[1]);
+    else (t.includes("(") ? c.methods : c.attributes).push(memberText(t));
+  };
+  const relations: Relation[] = [];
+  let open: ClassInfo | null = null;
+  for (const raw of src.split("\n").slice(1)) {
+    const line = raw.replace(/%%.*$/, "").trim();
+    if (!line) continue;
+    if (open) {
+      if (line === "}") open = null;
+      else addMember(open, line);
+      continue;
+    }
+    let m: RegExpExecArray | null;
+    if ((m = /^class\s+([\w~]+)\s*(\{)?\s*(\})?$/.exec(line))) {
+      const c = get(m[1]);
+      if (m[2] && !m[3]) open = c;
+    } else if ((m = /^<<(.+)>>\s+([\w~]+)$/.exec(line))) {
+      get(m[2]).stereotypes.push(m[1]);
+    } else if ((m = RELATION.exec(line))) {
+      const [, from, fromLabel, left, body, right, toLabel, to, label] = m;
+      get(from);
+      get(to);
+      // A dashed plain arrow is a dependency: UML draws it with an open head.
+      const end = (e: string) => (e === "arrow" && body === ".." ? "open" : e);
+      relations.push({
+        from,
+        to,
+        fromEnd: end(left ? LEFT_END[left] : "none"),
+        toEnd: end(right ? RIGHT_END[right] : "none"),
+        dashed: body === "..",
+        ...(fromLabel ? { fromLabel } : {}),
+        ...(toLabel ? { toLabel } : {}),
+        ...(label ? { label: label.trim() } : {}),
+      });
+    } else if ((m = /^([\w~]+)\s*:\s*(.+)$/.exec(line))) {
+      addMember(get(m[1]), m[2]);
+    }
+  }
+  return { classes: [...classes.values()], relations };
+}
+
+/** A class box's card text: «stereotypes», the bold name, then attributes and operations (empty compartments left out). */
+export function classText(c: ClassInfo): string {
+  const head = [...c.stereotypes.map((s) => `«${s}»`), `**${c.name.replace(/~([^~]*)~/g, "<$1>")}**`].join("\n");
+  const parts = [head];
+  if (c.attributes.length) parts.push(c.attributes.join("\n"));
+  if (c.methods.length) parts.push(c.methods.join("\n"));
+  return parts.join("\n---\n");
+}
+
+function classCanvas(src: string, host: HTMLElement, box: (el: Element) => { x: number; y: number; w: number; h: number }): CanvasDoc {
+  const { classes, relations } = parseClassDiagram(src);
+  const placed = new Map<string, { x: number; y: number; w: number; h: number }>();
+  for (const g of host.querySelectorAll("g.node")) {
+    const m = /classId-(.+)-\d+$/.exec(g.id);
+    if (m) placed.set(m[1], box(g));
+  }
+  const nodes: CanvasNode[] = [];
+  const ids = new Map<string, string>();
+  classes.forEach((c, i) => {
+    const lines = c.stereotypes.length + 1 + c.attributes.length + c.methods.length;
+    const width = Math.max(160, ...[c.name, ...c.attributes, ...c.methods].map((l) => Math.round(l.length * 8 + 40)));
+    const height = 40 + lines * 20 + (c.attributes.length ? 10 : 0) + (c.methods.length ? 10 : 0);
+    const b = placed.get(c.name) ?? { x: (i % 4) * 280, y: Math.floor(i / 4) * 240, w: width / SPREAD, h: height / SPREAD };
+    const id = newId();
+    ids.set(c.name, id);
+    nodes.push({ id, type: "text", x: Math.round(b.x + (b.w * SPREAD) / 2 - width / 2), y: Math.round(b.y + (b.h * SPREAD) / 2 - height / 2), width, height, text: classText(c), shape: "class" });
+  });
+  const edges: CanvasEdge[] = relations.map((r) => {
+    const e: CanvasEdge = { id: newId(), fromNode: ids.get(r.from)!, toNode: ids.get(r.to)!, toEnd: r.toEnd };
+    if (r.fromEnd !== "none") e.fromEnd = r.fromEnd;
+    if (r.dashed) e.line = "dashed";
+    if (r.fromLabel) e.fromLabel = r.fromLabel;
+    if (r.toLabel) e.toLabel = r.toLabel;
+    if (r.label) e.label = r.label;
+    return e;
+  });
+  return { nodes, edges };
 }

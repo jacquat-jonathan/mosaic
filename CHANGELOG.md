@@ -8,6 +8,11 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 - **Custom shortcuts**: in Settings › Shortcuts, click a shortcut and press new keys; any command can have one, and a taken shortcut moves over (Settings says from which command).
 - **Export a note** as a standalone HTML file (diagrams, math, images and embedded canvases included) or as PDF through the print dialog (⇧⌘P, or right-click › Export).
 - `==highlights==` now show in canvas cards, previews and exports too.
+- **Connections that go around cards**: right-click a connection › Path › Around cards draws it with right angles, avoiding the cards in between (also Straight). When you zoom out on a busy diagram, connection labels hide until you hover them.
+- **Timing diagrams** with real lanes: the new Timing shape draws each line `Door: Closed@0 Open@5 Closed@12` as a step line over a time axis (`time: 0..20 s`). The Timing template uses it.
+- **Drag shapes** from the Shape menu onto the canvas: it opens a palette of every shape and icon.
+- **Copy as Mermaid** writes a `sequenceDiagram` for canvases with lifelines (alt/loop frames included) and a `classDiagram` for class boxes (members, inheritance, composition, multiplicities).
+- **Open as diagram** now works on Mermaid class diagrams too, keeping Mermaid's layout.
 ## 0.7.0 — 2026-10-02
 
 - **Paste images** into a note: they're saved next to it and embedded.

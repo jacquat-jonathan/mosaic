@@ -5,6 +5,8 @@
 import { colorOf, type CanvasDoc, type CanvasEdge, type CanvasNode, type Side } from "../viewers/canvas/jsonCanvas";
 import { CSS_SHAPES, OUTLINES, SOLID, dashArray, isEnd, isShape, LABELLESS, type EndName, type ShapeName } from "./shapes";
 import { iconMarkup } from "./icons";
+import { midpoint, roundedPath, routeAround } from "./route";
+import { timingSvg } from "./timing";
 
 /** A card's icon, centred near the top; returns the markup and how much height it takes. */
 function iconSvg(n: CanvasNode, color: string): { svg: string; height: number } {
@@ -97,6 +99,8 @@ function shapeSvg(n: CanvasNode, shape: ShapeName, t: Theme): string {
     const s = Math.min(w / 40, (h * 0.72) / 64);
     const ox = x + w / 2 - 20 * s;
     body = `<g transform="translate(${ox},${y}) scale(${s})" fill="none" stroke="${stroke}" stroke-width="${2.5 / s}" stroke-linecap="round"><circle cx="20" cy="10" r="8" fill="${fill}"/><path d="M20,18 L20,42 M6,28 L34,28 M20,42 L8,62 M20,42 L32,62"/></g>`;
+  } else if (shape === "timing") {
+    body = `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}" ${sw}/>`;
   } else if (shape === "lifeline") {
     body = `<rect x="${x}" y="${y}" width="${w}" height="44" fill="${fill}" ${sw}/><line x1="${x + w / 2}" y1="${y + 44}" x2="${x + w / 2}" y2="${y + h}" stroke="${stroke}" stroke-width="1.5" stroke-dasharray="6 5"/>`;
   } else if (radius !== undefined) {
@@ -118,6 +122,7 @@ function shapeSvg(n: CanvasNode, shape: ShapeName, t: Theme): string {
   const lines = plainLines(n.text ?? "");
   const icon = iconSvg(n, color ?? t.fg);
   if (icon.svg) return body + icon.svg + textBlock(lines, x, y + icon.height, w, h - icon.height, t, true);
+  if (shape === "timing") return body + timingSvg(n.text ?? "", x, y, w, h, { stroke: color ?? t.fg, fg: t.fg, muted: t.muted, grid: t.card });
   if (shape === "class") {
     // Compartments: name (centred, bold), then members, divided by lines.
     const parts = (n.text ?? "").split(/^[ \t]*-{3,}[ \t]*$/m).map((p) => plainLines(p.trim()));
@@ -199,7 +204,7 @@ function markerDef(end: EndName, color: string, id: string, bg: string): string 
   return `<marker id="${id}" viewBox="0 0 20 20" refX="${refX}" refY="10" markerWidth="16" markerHeight="16" markerUnits="userSpaceOnUse" orient="auto-start-reverse">${shapes[end] ?? ""}</marker>`;
 }
 
-function edgeSvg(e: CanvasEdge, byId: Map<string, CanvasNode>, t: Theme, markers: Map<string, string>): string {
+function edgeSvg(e: CanvasEdge, byId: Map<string, CanvasNode>, t: Theme, markers: Map<string, string>, obstacles: CanvasNode[] = []): string {
   const a = byId.get(e.fromNode);
   const b = byId.get(e.toNode);
   if (!a || !b) return "";
@@ -222,17 +227,23 @@ function edgeSvg(e: CanvasEdge, byId: Map<string, CanvasNode>, t: Theme, markers
   const ms = marker(fromEnd);
   const me = marker(toEnd);
   const dash = dashArray(e.line as string | undefined, width);
-  let out = `<path d="M${p.x},${p.y} C${c1.x},${c1.y} ${c2.x},${c2.y} ${q.x},${q.y}" fill="none" stroke="${color}" stroke-width="${width}"${dash ? ` stroke-dasharray="${dash}"` : ""}${ms ? ` marker-start="${ms}"` : ""}${me ? ` marker-end="${me}"` : ""}/>`;
+  // Curved (default), straight, or around the other cards.
+  let pathD = `M${p.x},${p.y} C${c1.x},${c1.y} ${c2.x},${c2.y} ${q.x},${q.y}`;
+  let mid = { x: (p.x + 3 * c1.x + 3 * c2.x + q.x) / 8, y: (p.y + 3 * c1.y + 3 * c2.y + q.y) / 8 };
+  if (e.route === "straight") {
+    pathD = `M${p.x},${p.y} L${q.x},${q.y}`;
+    mid = { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 };
+  } else if (e.route === "orthogonal") {
+    const pts = routeAround(p, { x: p.dx, y: p.dy }, q, { x: q.dx, y: q.dy }, obstacles);
+    pathD = roundedPath(pts);
+    mid = midpoint(pts);
+  }
+  let out = `<path d="${pathD}" fill="none" stroke="${color}" stroke-width="${width}"${dash ? ` stroke-dasharray="${dash}"` : ""}${ms ? ` marker-start="${ms}"` : ""}${me ? ` marker-end="${me}"` : ""}/>`;
   const label = (text: string, x: number, y: number, size: number, fill: string) => {
     const w = text.length * size * 0.56 + 10;
     return `<rect x="${x - w / 2}" y="${y - size * 0.8}" width="${w}" height="${size * 1.5}" rx="4" fill="${t.bg}"/><text x="${x}" y="${y + size * 0.35}" text-anchor="middle" font-size="${size}" fill="${fill}">${esc(text)}</text>`;
   };
-  if (e.label) {
-    // Midpoint of the cubic curve.
-    const mx = (p.x + 3 * c1.x + 3 * c2.x + q.x) / 8;
-    const my = (p.y + 3 * c1.y + 3 * c2.y + q.y) / 8;
-    out += label(e.label, mx, my, 13, t.fg);
-  }
+  if (e.label) out += label(e.label, mid.x, mid.y, 13, t.fg);
   const near = (pt: typeof p, beside: number) =>
     pt.dx !== 0 ? { x: pt.x + pt.dx * 20, y: pt.y + beside } : { x: pt.x + beside * 1.6, y: pt.y + pt.dy * 20 };
   if (typeof e.fromLabel === "string" && e.fromLabel) {
@@ -263,7 +274,7 @@ export function canvasToSvg(doc: CanvasDoc, dark = false): string {
   const markers = new Map<string, string>();
   const parts = [
     ...nodes.filter(behind).map((n) => (n.type === "group" ? groupSvg(n, t) : shapeSvg(n, "frame", t))),
-    ...doc.edges.map((e) => edgeSvg(e, byId, t, markers)),
+    ...doc.edges.map((e) => edgeSvg(e, byId, t, markers, nodes.filter((n) => !behind(n)))),
     ...nodes.filter((n) => !behind(n)).map((n) => (n.type === "text" && isShape(n.shape) ? shapeSvg(n, n.shape, t) : cardSvg(n, t))),
   ];
   return [

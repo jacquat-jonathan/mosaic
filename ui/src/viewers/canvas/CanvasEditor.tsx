@@ -66,10 +66,12 @@ import {
 import { DiagramEdge, edgeEnds, type DiagramEdgeData } from "./DiagramEdge";
 import { align } from "./align";
 import { autoLayout } from "./layout";
+import { SHAPE_DRAG, ShapePalette, type PaletteItem } from "./ShapePalette";
 import { ICONS, ICON_NAMES, iconLabel } from "../../diagrams/icons";
 import { canvasToMermaid } from "../../diagrams/canvasToMermaid";
 import { exportCanvas } from "../../diagrams/export";
 import { plainLines } from "../../diagrams/canvasToSvg";
+import { timingSvg } from "../../diagrams/timing";
 import { errorMessage } from "../../ipc/types";
 
 const TREE_DRAG = "application/x-mosaic-path";
@@ -129,6 +131,9 @@ function toFlowEdge(e: CanvasEdge, byId: Map<string, CanvasNode>): Edge {
 }
 
 const EDGE_TYPES = { diagram: DiagramEdge };
+
+/** A card showing a network / cloud icon with its name. */
+const iconCard = (icon: string): Partial<CanvasNode> & Pick<CanvasNode, "type"> => ({ type: "text", text: iconLabel(icon), shape: "rectangle", border: "none", icon, width: 120, height: 110 });
 
 /** Sets an optional field, removing it when the value is the default, so files stay minimal. */
 function withField<T extends object>(item: T, key: string, value: unknown, fallback?: unknown): T {
@@ -528,6 +533,14 @@ function CanvasFlow({ path, doc: initial, toolsHost }: { path: string; doc: Canv
         },
       },
       {
+        label: "Path",
+        children: [
+          ["Curved", "curved"],
+          ["Straight", "straight"],
+          ["Around cards", "orthogonal"],
+        ].map(([label, r]) => ({ label, checked: (current.route ?? "curved") === r, action: () => setEdgeField({ route: r }, { route: "curved" }) })),
+      },
+      {
         label: "Line",
         children: LINES.map((l) => ({ label: l[0].toUpperCase() + l.slice(1), checked: (current.line ?? "solid") === l, action: () => setEdgeField({ line: l }, { line: "solid" }) })),
       },
@@ -558,6 +571,18 @@ function CanvasFlow({ path, doc: initial, toolsHost }: { path: string; doc: Canv
   };
 
   const onDrop = (e: DragEvent) => {
+    const dropped = e.dataTransfer.getData(SHAPE_DRAG);
+    if (dropped) {
+      // A shape or icon from the palette, centred where it was dropped.
+      e.preventDefault();
+      const at = flow.screenToFlowPosition({ x: e.clientX, y: e.clientY });
+      const item = JSON.parse(dropped) as PaletteItem;
+      if ("shape" in item) {
+        const sh = SHAPES.find((x) => x.name === item.shape);
+        if (sh) addNode({ type: "text", text: "", shape: sh.name, width: sh.width, height: sh.height }, at);
+      } else addNode(iconCard(item.icon), at);
+      return;
+    }
     if (isFinderDrag(e.dataTransfer)) {
       // Copied next to the canvas, then one file card each, fanned out from the drop point.
       e.preventDefault();
@@ -625,7 +650,7 @@ function CanvasFlow({ path, doc: initial, toolsHost }: { path: string; doc: Canv
     <div
       ref={hostRef}
       className={`canvas-host ${presenting ? "presenting" : ""}`}
-      onDragOver={(e) => (e.dataTransfer.types.includes(TREE_DRAG) || isFinderDrag(e.dataTransfer)) && e.preventDefault()}
+      onDragOver={(e) => (e.dataTransfer.types.includes(TREE_DRAG) || e.dataTransfer.types.includes(SHAPE_DRAG) || isFinderDrag(e.dataTransfer)) && e.preventDefault()}
       onDrop={onDrop}
       onDoubleClick={(e) => {
         if ((e.target as HTMLElement).classList.contains("react-flow__pane")) addNode({ type: "text", text: "" }, flow.screenToFlowPosition({ x: e.clientX, y: e.clientY }));
@@ -638,7 +663,7 @@ function CanvasFlow({ path, doc: initial, toolsHost }: { path: string; doc: Canv
             const sh = SHAPES.find((x) => x.name === shape)!;
             addNode({ type: "text", text: "", shape, width: sh.width, height: sh.height });
           }}
-          onIcon={(icon) => addNode({ type: "text", text: iconLabel(icon), shape: "rectangle", border: "none", icon, width: 120, height: 110 })}
+          onIcon={(icon) => addNode(iconCard(icon))}
           onGroup={() => addNode({ type: "group", label: "Group" })}
           onFile={() => void addFile()}
           onFit={() => void flow.fitView({ padding: 0.2, duration: 200 })}
@@ -744,25 +769,28 @@ function CanvasTools({
   onMore(anchor: DOMRect): void;
   host: HTMLElement;
 }) {
+  const [palette, setPalette] = useState<DOMRect | null>(null);
   return createPortal(
     <span className="canvas-tools">
       <button onClick={onCard} title="Add a text card (or double-click the canvas)"><Plus size={14} /> Card</button>
       <button
-        title="Add a shape: decision, database, actor…"
-        onClick={(e) => {
-          const r = e.currentTarget.getBoundingClientRect();
-          useUi.getState().showMenu(
-            r.left,
-            r.bottom + 4,
-            [
-              ...SHAPE_GROUPS.map((g) => ({ label: g, children: SHAPES.filter((sh) => sh.group === g).map((sh) => ({ label: sh.label, action: () => onShape(sh.name) })) })),
-              { label: "Icons (network, cloud)", children: ICON_NAMES.map((name) => ({ label: iconLabel(name), action: () => onIcon(name) })) },
-            ],
-          );
-        }}
+        title="Add a shape: click one, or drag it onto the canvas"
+        aria-expanded={!!palette}
+        onClick={(e) => setPalette(palette ? null : e.currentTarget.getBoundingClientRect())}
       >
         <Shapes size={14} /> Shape
       </button>
+      {palette && (
+        <ShapePalette
+          anchor={palette}
+          onClose={() => setPalette(null)}
+          onPick={(item) => {
+            setPalette(null);
+            if ("shape" in item) onShape(item.shape);
+            else onIcon(item.icon);
+          }}
+        />
+      )}
       <button onClick={onFile} title="Add a note or file (or drag one from the sidebar)"><FileText size={14} /> File</button>
       <button onClick={onGroup}><SquareDashed size={14} /> Group</button>
       <button
@@ -852,7 +880,9 @@ function ShapeCard({ data, selected, shape, color }: { data: CardData; selected:
       <Handles node={n} />
       {!css && <ShapeOutline shape={shape} style={style} />}
       {n.icon && ICONS[n.icon] && <CardIcon name={n.icon} color={color} />}
-      {!LABELLESS.has(shape) && (
+      {shape === "timing" ? (
+        <TimingCard id={n.id} text={n.text ?? ""} width={n.width} height={n.height} stroke={color} onText={data.onText} />
+      ) : !LABELLESS.has(shape) && (
         <div className="shape-text">
           <TextCard id={n.id} text={n.text ?? ""} onText={data.onText} canvasPath={data.canvasPath} compartments={shape === "class"} lineBreaks />
         </div>
@@ -960,6 +990,34 @@ function TextCard({
       {text ? <div key={body.key} ref={body.ref} dangerouslySetInnerHTML={{ __html: html }} /> : <span className="canvas-placeholder">Double-click to write</span>}
     </div>
   );
+}
+
+/** A timing diagram: lanes drawn from the card's text; double-click to edit the lanes. */
+function TimingCard({ id, text, width, height, stroke, onText }: { id: string; text: string; width: number; height: number; stroke: string | undefined; onText(id: string, t: string): void }) {
+  const [editing, setEditing] = useState(false);
+  const svg = useMemo(
+    () => timingSvg(text, 0, 0, width, height, { stroke: stroke ?? "var(--fg)", fg: "var(--fg)", muted: "var(--muted)", grid: "var(--border)" }),
+    [text, width, height, stroke],
+  );
+  if (editing) {
+    return (
+      <textarea
+        autoFocus
+        className="canvas-text-edit timing-edit nodrag nowheel"
+        defaultValue={text}
+        placeholder={"Title\nDoor: Closed@0 Open@5 Closed@12\ntime: 0..20 s"}
+        onBlur={(e) => {
+          setEditing(false);
+          if (e.target.value !== text) onText(id, e.target.value);
+        }}
+        onKeyDown={(e) => {
+          e.stopPropagation();
+          if (e.key === "Escape") (e.target as HTMLTextAreaElement).blur();
+        }}
+      />
+    );
+  }
+  return <svg className="timing-svg" viewBox={`0 0 ${width} ${height}`} onDoubleClick={() => setEditing(true)} dangerouslySetInnerHTML={{ __html: svg }} />;
 }
 
 function FileCard({ file, subpath }: { file: string; subpath?: string }) {

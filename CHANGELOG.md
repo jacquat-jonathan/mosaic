@@ -4,6 +4,10 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Properties editor**: a note's frontmatter shows as a form (lists as chips, checkboxes, dates, numbers, text). Add, rename or remove properties; "Edit as YAML" shows the source. Comments and formatting in the YAML are kept.
+- **Custom shortcuts**: in Settings › Shortcuts, click a shortcut and press new keys; any command can have one, and a taken shortcut moves over (Settings says from which command).
+- **Export a note** as a standalone HTML file (diagrams, math, images and embedded canvases included) or as PDF through the print dialog (⇧⌘P, or right-click › Export).
+- `==highlights==` now show in canvas cards, previews and exports too.
 ## 0.7.0 — 2026-10-02
 
 - **Paste images** into a note: they're saved next to it and embedded.

@@ -32,7 +32,21 @@ const mathBlock: TokenizerAndRendererExtension = {
   renderer: (t) => `<div class="md-math">${renderMath(t.text, true)}</div>`,
 };
 
-const marked = new Marked({ gfm: true, breaks: false, extensions: [mathBlock, mathInline] });
+/** Obsidian highlights: `==text==`. */
+const highlight: TokenizerAndRendererExtension = {
+  name: "highlight",
+  level: "inline",
+  start: (src) => src.indexOf("=="),
+  tokenizer(src) {
+    const m = /^==(?!\s)([^=\n]+?)(?<!\s)==/.exec(src);
+    return m ? { type: "highlight", raw: m[0], text: m[1], tokens: this.lexer.inlineTokens(m[1]) } : undefined;
+  },
+  renderer(t) {
+    return `<mark>${this.parser.parseInline(t.tokens ?? [])}</mark>`;
+  },
+};
+
+const marked = new Marked({ gfm: true, breaks: false, extensions: [mathBlock, mathInline, highlight] });
 
 const escapeAttr = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
 

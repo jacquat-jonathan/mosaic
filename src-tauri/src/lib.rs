@@ -263,6 +263,15 @@ fn delete_path(state: State<AppState>, path: String) -> CmdResult<()> {
     state.get()?.delete(&path)
 }
 
+/// Opens the macOS print dialog for the window ("Save as PDF" is in it). The UI shows only the
+/// print preview when printing, through print CSS.
+#[tauri::command]
+fn print_window(window: tauri::WebviewWindow) -> CmdResult<()> {
+    window
+        .print()
+        .map_err(|e| Error::Invalid(format!("couldn't print: {e}")))
+}
+
 #[tauri::command]
 fn unlinked_mentions(state: State<AppState>, path: String) -> CmdResult<Vec<Mention>> {
     state.get()?.unlinked_mentions(&path, 30)
@@ -446,6 +455,7 @@ pub fn run() {
             delete_path,
             file_history,
             unlinked_mentions,
+            print_window,
             link_mention,
             get_agent_rules,
             set_agent_rules,

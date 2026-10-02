@@ -39,6 +39,7 @@ import {
 } from "../actions";
 import { api, openInDefaultApp, revealInFinder } from "../ipc/api";
 import { shortcutOf } from "../commands";
+import { kindOf } from "../ipc/kinds";
 
 const DRAG_TYPE = "application/x-mosaic-path";
 
@@ -244,6 +245,17 @@ function singleMenu(entry: Entry): MenuItem[] {
           { label: "Open to the right", action: () => void openToTheRight(entry.path) },
           { label: "Open in default app", action: () => void openInDefaultApp(entry.path) },
           { label: "File history…", action: () => useUi.getState().openHistory(entry.path) },
+          ...(kindOf(entry.path) === "markdown"
+            ? [
+                {
+                  label: "Export",
+                  children: [
+                    { label: "As HTML file", action: () => void import("../export/note").then((m) => m.exportNoteHtml(entry.path)) },
+                    { label: "As PDF (print)…", action: () => void import("../export/note").then((m) => m.printNote(entry.path)) },
+                  ],
+                },
+              ]
+            : []),
           { label: "", separator: true },
           ...newItems(dir),
         ]),

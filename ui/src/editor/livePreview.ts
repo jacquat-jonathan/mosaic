@@ -91,7 +91,7 @@ function buildBlocks(state: EditorState): Blocks {
     bodyStart = end;
     code.push({ from: 0, to: end });
     if (!touches(state, 0, end)) {
-      out.push(Decoration.replace({ widget: new PropertiesWidget(fm[1]), block: true }).range(0, end));
+      out.push(Decoration.replace({ widget: new PropertiesWidget(fm[1], end), block: true }).range(0, end));
       blocked.push({ from: 0, to: end });
     }
   }

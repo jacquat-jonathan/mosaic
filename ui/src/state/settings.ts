@@ -21,7 +21,19 @@ export interface Prefs {
   dailyFolder: string;
   /** Note copied into each new daily note, with {{date}}, {{title}}, {{weekday}}, {{time}} filled in. */
   dailyTemplate: string;
+  /** Shortcuts changed in Settings › Shortcuts: command id → keys, or null for "no shortcut". */
+  shortcuts: Record<string, ShortcutKeys | null>;
 }
+
+/** Same shape as `Keys` in commands.ts (kept here so settings don't import the command registry). */
+export interface ShortcutKeys {
+  code: string;
+  meta?: boolean;
+  shift?: boolean;
+  alt?: boolean;
+}
+
+const isKeys = (v: unknown): v is ShortcutKeys => !!v && typeof v === "object" && typeof (v as ShortcutKeys).code === "string";
 
 export const DEFAULT_PREFS: Prefs = {
   theme: "system",
@@ -32,6 +44,7 @@ export const DEFAULT_PREFS: Prefs = {
   confirmTrash: true,
   dailyFolder: "Daily",
   dailyTemplate: "",
+  shortcuts: {},
 };
 
 export const NOTE_SIZE_MIN = 13;
@@ -52,6 +65,10 @@ export function sanitize(raw: unknown): Prefs {
     confirmTrash: pick("confirmTrash", (v) => typeof v === "boolean"),
     dailyFolder: pick("dailyFolder", (v) => typeof v === "string"),
     dailyTemplate: pick("dailyTemplate", (v) => typeof v === "string"),
+    shortcuts:
+      r.shortcuts && typeof r.shortcuts === "object"
+        ? Object.fromEntries(Object.entries(r.shortcuts as Record<string, unknown>).filter(([, v]) => v === null || isKeys(v))) as Prefs["shortcuts"]
+        : {},
   };
 }
 

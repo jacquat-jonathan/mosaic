@@ -639,3 +639,37 @@ svg path.flow-on { stroke-dasharray: 9 6 !important; animation: edge-flow 0.7s l
 /* Bookmark the current search (SearchPanel.tsx). */
 .search-bookmark { padding: 2px; color: var(--muted); flex: none; }
 .search-bookmark.on { color: var(--warning, #e2b400); }
+/* Settings › Shortcuts: click to record a new shortcut. */
+.shortcut-key { padding: 2px 6px; border-radius: 6px; border: 1px solid transparent; min-width: 64px; text-align: right; }
+.shortcut-key:hover { border-color: var(--border); }
+.shortcut-key.recording { border-color: var(--accent); color: var(--accent); }
+.shortcut-key.changed kbd { border-color: var(--accent); }
+.shortcut-key .muted { color: var(--muted); font-size: 12px; }
+/* Properties form (PropertiesEditor.tsx). */
+.props-form .cm-prop { display: grid; grid-template-columns: 130px 1fr 20px; align-items: center; gap: 8px; padding: 2px 0; }
+.props-input { background: transparent; border: 1px solid transparent; border-radius: 5px; padding: 3px 6px; color: var(--fg); font: inherit; width: 100%; min-width: 0; }
+.props-input:hover { border-color: var(--border); }
+.props-input:focus { border-color: var(--accent); outline: none; background: var(--bg); }
+.props-form .cm-prop-key { color: var(--muted); }
+.props-chips { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.props-chips .cm-prop-pill { display: inline-flex; align-items: center; gap: 2px; }
+.props-chips .cm-prop-pill button { padding: 0 0 0 2px; color: var(--muted); display: inline-flex; }
+.props-chip-input { width: 90px; flex: 1; }
+.props-remove { color: var(--muted); padding: 2px; opacity: 0; }
+.cm-prop:hover .props-remove { opacity: 1; }
+.props-actions { display: flex; gap: 12px; margin-top: 6px; }
+.props-link { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; color: var(--muted); padding: 2px 0; }
+.props-link:hover:not(:disabled) { color: var(--fg); }
+.props-add select { font: inherit; }
+
+/* Print preview of a note (export/note.ts › printNote). On screen it sits over the app; printed, only
+   the page shows. */
+.print-root { position: fixed; inset: 0; z-index: 9500; background: rgba(0, 0, 0, 0.45); display: flex; flex-direction: column; align-items: center; overflow: auto; }
+.print-toolbar { position: sticky; top: 0; display: flex; gap: 8px; align-items: center; width: min(860px, 94vw); padding: 10px 0; color: #fff; font-weight: 600; }
+.print-page { background: #fff; color: #1f2328; width: min(860px, 94vw); margin-bottom: 40px; border-radius: 4px; box-shadow: var(--shadow); padding: 40px 56px; }
+@media print {
+  body > *:not(.print-root) { display: none !important; }
+  .print-root { position: static; background: none; overflow: visible; display: block; }
+  .print-toolbar { display: none; }
+  .print-page { box-shadow: none; width: auto; padding: 0; margin: 0; }
+}

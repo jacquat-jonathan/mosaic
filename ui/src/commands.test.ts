@@ -38,3 +38,21 @@ describe("command registry", () => {
     expect(filterItems(items, "new fold")[0].id).toBe("new-folder");
   });
 });
+
+describe("custom shortcuts", () => {
+  it("a taken shortcut moves to the new command, and the old one says so", async () => {
+    const { rebind, keysFor, commands, sameKeys } = await import("./commands");
+    const { useSettings } = await import("./state/settings");
+    const settingsCmd = commands().find((c) => c.id === "settings")!;
+    const daily = commands().find((c) => c.id === "daily-note")!;
+    const { shortcuts, tookFrom } = rebind("daily-note", settingsCmd.keys!);
+    useSettings.getState().set("shortcuts", shortcuts);
+    expect(tookFrom).toBe(settingsCmd.label);
+    expect(sameKeys(keysFor(daily)!, settingsCmd.keys!)).toBe(true);
+    expect(keysFor(settingsCmd)).toBeUndefined();
+    // Back to its default: the override goes away.
+    useSettings.getState().set("shortcuts", rebind("daily-note", daily.keys!).shortcuts);
+    expect(useSettings.getState().shortcuts["daily-note"]).toBeUndefined();
+    useSettings.getState().set("shortcuts", {});
+  });
+});

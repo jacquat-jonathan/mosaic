@@ -7,7 +7,7 @@ import { useVault } from "../state/vault";
 import { useWorkspace } from "../state/workspace";
 import { api, onUpdateDone, onUpdateLog, pickFolder, revealInFinder } from "../ipc/api";
 import { errorMessage, type UpdateCheck, type UpdateStatus } from "../ipc/types";
-import { commands, formatKeys, shortcutOf } from "../commands";
+import { commands, formatKeys, keysFor, rebind, shortcutOf, type Keys } from "../commands";
 import { createVault, openVaultFolder } from "../actions";
 import { ConnectAiSection } from "./ConnectAi";
 
@@ -209,21 +209,70 @@ const TREE_KEYS: [string, string][] = [
 ];
 
 function Shortcuts() {
-  const list = commands().filter((c) => c.keys);
+  const custom = useSettings((s) => s.shortcuts);
+  const set = useSettings((s) => s.set);
+  const [recording, setRecording] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!recording) return;
+    // Captures the next key combination for `recording` (before the app's own shortcuts see it).
+    const onKey = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (["Meta", "Shift", "Alt", "Control"].includes(e.key)) return;
+      if (e.key === "Escape") return setRecording(null);
+      if (e.key === "Backspace" && !e.metaKey) {
+        set("shortcuts", rebind(recording, null).shortcuts);
+        setNote(null);
+        return setRecording(null);
+      }
+      if (!e.metaKey) return setNote("Shortcuts start with ⌘ (add ⇧ or ⌥ if you like). Esc cancels, ⌫ removes the shortcut.");
+      const keys: Keys = { code: e.code, meta: true, shift: e.shiftKey || undefined, alt: e.altKey || undefined };
+      const { shortcuts, tookFrom } = rebind(recording, keys);
+      set("shortcuts", shortcuts);
+      setNote(tookFrom ? `${formatKeys(keys)} was used by “${tookFrom}”, which now has no shortcut.` : null);
+      setRecording(null);
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [recording, set]);
+
+  const list = commands();
   return (
     <>
+      <p className="settings-note">Click a shortcut to change it, then press the new keys. Every command can have one.</p>
+      {note && <p className="warn-text">{note}</p>}
       <table className="shortcut-table">
         <tbody>
-          {list.map((c) => (
-            <tr key={c.id}>
-              <td>{c.label}</td>
-              <td>
-                <kbd>{formatKeys(c.keys!)}</kbd>
-              </td>
-            </tr>
-          ))}
+          {list.map((c) => {
+            const k = keysFor(c);
+            const changed = custom[c.id] !== undefined;
+            return (
+              <tr key={c.id}>
+                <td>{c.label}</td>
+                <td>
+                  <button
+                    className={`shortcut-key ${recording === c.id ? "recording" : ""} ${changed ? "changed" : ""}`}
+                    title={recording === c.id ? "Press the new keys · Esc cancels · ⌫ removes" : "Change this shortcut"}
+                    onClick={() => {
+                      setNote(null);
+                      setRecording(recording === c.id ? null : c.id);
+                    }}
+                  >
+                    {recording === c.id ? "Press keys…" : k ? <kbd>{formatKeys(k)}</kbd> : <span className="muted">None</span>}
+                  </button>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
+      {Object.keys(custom).length > 0 && (
+        <button className="secondary" onClick={() => set("shortcuts", {})}>
+          Reset all shortcuts
+        </button>
+      )}
       <h3>In the file tree</h3>
       <table className="shortcut-table">
         <tbody>

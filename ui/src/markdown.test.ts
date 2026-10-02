@@ -20,3 +20,8 @@ test("shape labels can keep single line breaks", () => {
   expect(markdownToHtml("«interface»\nPayable", undefined, true)).toContain("<br>");
   expect(markdownToHtml("«interface»\nPayable")).not.toContain("<br>");
 });
+
+test("==highlights== render as marks, with formatting inside", () => {
+  expect(markdownToHtml("a ==**bold** note== b")).toContain("<mark><strong>bold</strong> note</mark>");
+  expect(markdownToHtml("a == b == c")).not.toContain("<mark>");
+});

@@ -52,6 +52,7 @@ export const api = {
   checkUpdates: () => call<UpdateCheck>("check_updates"),
   fileHistory: (path: string) => call<Version[]>("file_history", { path }),
   agentRules: () => call<AgentRule[]>("get_agent_rules", {}),
+  printWindow: () => (inTauri ? call<void>("print_window", {}) : Promise.resolve(window.print())),
   unlinkedMentions: (path: string) => call<Mention[]>("unlinked_mentions", { path }),
   linkMention: (source: string, line: number, text: string, target: string) => call<Written>("link_mention", { source, line, text, target }),
   setAgentRules: (rules: AgentRule[]) => call<void>("set_agent_rules", { rules }),

@@ -5,6 +5,7 @@ import { useUi } from "./state/ui";
 import { parentOf, useVault } from "./state/vault";
 import { useWorkspace } from "./state/workspace";
 import { createVault, deletePath, NEW_KINDS, newNote, newNoteDir, newOfKind, openDailyNote, openVaultFolder, revealInTree } from "./actions";
+import { prefs } from "./state/settings";
 
 /** A shortcut: `code` is `KeyboardEvent.code` (layout- and ⌥-independent), e.g. "KeyP" or "Backslash". */
 export interface Keys {
@@ -17,6 +18,7 @@ export interface Keys {
 export interface Command {
   id: string;
   label: string;
+  /** The default shortcut; what applies is `keysFor(command)` (Settings › Shortcuts can change it). */
   keys?: Keys;
   run(): void;
   /** Hidden from the palette (and shortcut ignored) when this returns false. */
@@ -61,6 +63,19 @@ const buildCommands = (): Command[] => [
   })),
   { id: "new-folder", label: "New folder", keys: { code: "KeyN", meta: true, shift: true }, run: () => void useVault.getState().newFolder(activeDir()) },
   { id: "daily-note", label: "Open today's daily note", keys: { code: "KeyD", meta: true, shift: true }, run: () => void openDailyNote() },
+  {
+    id: "export-html",
+    label: "Export current note as HTML",
+    when: () => active()?.toLowerCase().endsWith(".md") ?? false,
+    run: () => void import("./export/note").then((m) => m.exportNoteHtml(active()!)),
+  },
+  {
+    id: "export-pdf",
+    label: "Export current note as PDF (print)…",
+    keys: { code: "KeyP", meta: true, shift: true },
+    when: () => active()?.toLowerCase().endsWith(".md") ?? false,
+    run: () => void import("./export/note").then((m) => m.printNote(active()!)),
+  },
   {
     id: "file-history",
     label: "Show file history",
@@ -113,8 +128,40 @@ const buildCommands = (): Command[] => [
   { id: "connect-ai", label: "Connect AI (MCP / CLI)", run: () => useUi.getState().openSettings("ai") },
 ];
 
+/** The shortcut that applies to a command: the user's choice in Settings › Shortcuts, or the default. */
+export function keysFor(c: Command): Keys | undefined {
+  const custom = prefs().shortcuts[c.id];
+  return custom === undefined ? c.keys : (custom ?? undefined);
+}
+
+export const sameKeys = (a: Keys, b: Keys) => a.code === b.code && !!a.meta === !!b.meta && !!a.shift === !!b.shift && !!a.alt === !!b.alt;
+
+/**
+ * Gives `id` the shortcut `keys` (null = none). A command that had the same keys loses them; its
+ * label is returned so Settings can say so.
+ */
+export function rebind(id: string, keys: Keys | null): { shortcuts: Record<string, Keys | null>; tookFrom?: string } {
+  const shortcuts = { ...prefs().shortcuts };
+  let tookFrom: string | undefined;
+  if (keys) {
+    for (const other of commands()) {
+      const k = keysFor(other);
+      if (other.id !== id && k && sameKeys(k, keys)) {
+        shortcuts[other.id] = null;
+        tookFrom = other.label;
+      }
+    }
+  }
+  const def = commands().find((c) => c.id === id)?.keys;
+  // Back to the default: drop the override, so later default changes apply.
+  if ((keys && def && sameKeys(keys, def)) || (!keys && !def)) delete shortcuts[id];
+  else shortcuts[id] = keys;
+  return { shortcuts, tookFrom };
+}
+
 export function shortcutOf(id: string): string | undefined {
-  const k = commands().find((c) => c.id === id)?.keys;
+  const c = commands().find((x) => x.id === id);
+  const k = c && keysFor(c);
   return k && formatKeys(k);
 }
 
@@ -124,7 +171,10 @@ export function openPalette() {
   const available = commands().filter((c) => c.id !== "palette" && (c.when?.() ?? true));
   ui.openPicker({
     placeholder: "Type a command…",
-    items: available.map((c) => ({ id: c.id, label: c.label, shortcut: c.keys && formatKeys(c.keys) })),
+    items: available.map((c) => {
+      const k = keysFor(c);
+      return { id: c.id, label: c.label, shortcut: k && formatKeys(k) };
+    }),
     hint: "↵ run · esc close",
     onPick: (item) => commands().find((c) => c.id === item.id)?.run(),
   });

@@ -1,8 +1,8 @@
 import { EditorView, WidgetType } from "@codemirror/view";
 import { createElement, type ReactElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { parse as parseYaml } from "yaml";
 import { renderMath } from "./render";
+import { PropertiesEditor } from "./PropertiesEditor";
 import { isDark } from "../theme";
 import type { EditorContext } from "./context";
 
@@ -254,46 +254,38 @@ export function stripFrontmatter(text: string): string {
   return m ? text.slice(m[0].length) : text;
 }
 
+/** The note's frontmatter as an editable form (PropertiesEditor); "Edit as YAML" shows the source. */
 export class PropertiesWidget extends WidgetType {
-  constructor(readonly yaml: string) {
+  private roots = new WeakMap<HTMLElement, Root>();
+  constructor(
+    readonly yaml: string,
+    /** Where the frontmatter block ends (it starts at 0, and the closing --- has no line break). */
+    readonly end: number,
+  ) {
     super();
   }
   eq(o: PropertiesWidget) {
-    return o.yaml === this.yaml;
+    return o.yaml === this.yaml && o.end === this.end;
   }
   toDOM(view: EditorView) {
     const el = document.createElement("div");
-    el.className = "cm-properties";
-    let data: unknown;
-    try {
-      data = parseYaml(this.yaml);
-    } catch (e) {
-      showError(el, e);
-    }
-    if (data && typeof data === "object" && !Array.isArray(data)) {
-      for (const [k, v] of Object.entries(data as Record<string, unknown>)) {
-        const row = document.createElement("div");
-        row.className = "cm-prop";
-        const key = document.createElement("span");
-        key.className = "cm-prop-key";
-        key.textContent = k;
-        const val = document.createElement("span");
-        val.className = "cm-prop-value";
-        const values = Array.isArray(v) ? v : [v];
-        for (const item of values) {
-          const pill = document.createElement("span");
-          pill.className = Array.isArray(v) ? "cm-prop-pill" : "cm-prop-text";
-          pill.textContent = item === null || item === undefined ? "" : typeof item === "object" ? JSON.stringify(item) : String(item);
-          val.appendChild(pill);
-        }
-        row.append(key, val);
-        el.appendChild(row);
-      }
-    } else if (!el.classList.contains("cm-render-error")) {
-      el.textContent = "Properties";
-    }
-    revealOnClick(el, view, () => 4);
+    const root = createRoot(el);
+    this.roots.set(el, root);
+    const onChange = (yaml: string) => {
+      const block = yaml.trim() ? `---\n${yaml.endsWith("\n") ? yaml : `${yaml}\n`}---` : "";
+      view.dispatch({ changes: { from: 0, to: this.end, insert: block } });
+    };
+    const onEditSource = () => {
+      view.dispatch({ selection: { anchor: 4 } });
+      view.focus();
+    };
+    root.render(createElement(PropertiesEditor, { yaml: this.yaml, onChange, onEditSource }));
     return el;
+  }
+  destroy(dom: HTMLElement) {
+    const root = this.roots.get(dom);
+    // Unmount after the current render, as React requires.
+    if (root) queueMicrotask(() => root.unmount());
   }
   ignoreEvent() {
     return true;

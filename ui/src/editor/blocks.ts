@@ -78,6 +78,12 @@ export function showRenderError(el: HTMLElement, err: unknown) {
  * rendered diagram. Blocks in other languages stay as code.
  */
 export function renderBlocksIn(root: HTMLElement, path: string): void {
+  void renderBlocksAll(root, path);
+}
+
+/** Like `renderBlocksIn`, resolving once every diagram has finished drawing (for exports). */
+export async function renderBlocksAll(root: HTMLElement, path: string): Promise<void> {
+  const pending: Promise<unknown>[] = [];
   for (const code of root.querySelectorAll<HTMLElement>("pre > code[class*='language-']")) {
     const lang = /language-(\S+)/.exec(code.className)?.[1]?.toLowerCase() ?? "";
     const render = blockRenderers.get(lang);
@@ -87,9 +93,10 @@ export function renderBlocksIn(root: HTMLElement, path: string): void {
     code.parentElement!.replaceWith(el);
     try {
       const out = render(code.textContent ?? "", el, { path });
-      if (out instanceof Promise) out.catch((e) => showRenderError(el, e));
+      if (out instanceof Promise) pending.push(out.catch((e) => showRenderError(el, e)));
     } catch (e) {
       showRenderError(el, e);
     }
   }
+  await Promise.all(pending);
 }

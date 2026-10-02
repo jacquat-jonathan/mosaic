@@ -1,7 +1,7 @@
 // Typed access to the backend. Inside Tauri this goes through `invoke`; in a plain browser (UI
 // development and tests) it falls back to an in-memory mock vault.
 
-import type { Backlink, CliInfo, Entry, FileContent, IndexProgress, RecentVault, Renamed, SearchHit, TagCount, UpdateCheck, UpdateDone, UpdateStatus, Version, VaultInfo, Written, AgentRule } from "./types";
+import type { Backlink, CliInfo, Entry, FileContent, IndexProgress, RecentVault, Renamed, SearchHit, TagCount, UpdateCheck, UpdateDone, UpdateStatus, Version, VaultInfo, Written, AgentRule, Mention } from "./types";
 import { mockInvoke } from "./mock";
 
 export const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -52,6 +52,8 @@ export const api = {
   checkUpdates: () => call<UpdateCheck>("check_updates"),
   fileHistory: (path: string) => call<Version[]>("file_history", { path }),
   agentRules: () => call<AgentRule[]>("get_agent_rules", {}),
+  unlinkedMentions: (path: string) => call<Mention[]>("unlinked_mentions", { path }),
+  linkMention: (source: string, line: number, text: string, target: string) => call<Written>("link_mention", { source, line, text, target }),
   setAgentRules: (rules: AgentRule[]) => call<void>("set_agent_rules", { rules }),
   versionContent: (id: number) => call<string>("version_content", { id }),
   restoreVersion: (path: string, id: number, expectedHash: string | null) => call<Written>("restore_version", { path, id, expectedHash }),

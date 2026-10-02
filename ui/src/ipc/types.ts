@@ -144,6 +144,15 @@ export interface UpdateCheck {
   dirty: boolean;
 }
 
+/** A note that mentions another note's title or alias without linking to it. */
+export interface Mention {
+  source: string;
+  line: number;
+  context: string;
+  /** The words as written. */
+  text: string;
+}
+
 /** What agents may do in a folder (Settings › AI). */
 export interface AgentRule {
   path: string;

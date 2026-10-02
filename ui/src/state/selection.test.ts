@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { rangeBetween, remapPath, topLevel, useVault } from "./vault";
-import { canMoveInto } from "../actions";
+import { canMoveInto, canvasOfFiles } from "../actions";
 import { reorder } from "../views/BookmarksPanel";
 
 describe("tree selection", () => {
@@ -77,5 +77,19 @@ describe("keyboard selection", () => {
     v().select("A/y.md", "range", order);
     v().step(1, true, order);
     expect(selected()).toEqual(["A", "A/x.md", "A/y.md", "B.md"]);
+  });
+});
+
+describe("canvas from selection", () => {
+  it("lays the files out as cards, three to a row", () => {
+    let n = 0;
+    const doc = JSON.parse(canvasOfFiles(["a.md", "b.md", "c.md", "d.png"], () => `id${n++}`));
+    expect(doc.nodes.map((x: { file: string; x: number; y: number }) => [x.file, x.x, x.y])).toEqual([
+      ["a.md", 0, 0],
+      ["b.md", 340, 0],
+      ["c.md", 680, 0],
+      ["d.png", 0, 280],
+    ]);
+    expect(doc.edges).toEqual([]);
   });
 });

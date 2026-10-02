@@ -1,5 +1,5 @@
 import { useState, type DragEvent } from "react";
-import { Folder } from "lucide-react";
+import { Folder, Search } from "lucide-react";
 import { baseName, parentOf, useVault } from "../state/vault";
 import { useWorkspace } from "../state/workspace";
 import { useUi } from "../state/ui";
@@ -24,7 +24,7 @@ export function BookmarksPanel() {
   const [dropAt, setDropAt] = useState<number | null>(null);
 
   if (bookmarks.length === 0) {
-    return <p className="tree-empty">No bookmarks yet. Right-click a file or folder and choose “Bookmark”.</p>;
+    return <p className="tree-empty">No bookmarks yet. Right-click a file or folder and choose “Bookmark”, or star a search in the Search panel.</p>;
   }
 
   const onDrop = (ev: DragEvent, index: number) => {
@@ -38,6 +38,7 @@ export function BookmarksPanel() {
   return (
     <div className="tree bookmarks" role="list">
       {bookmarks.map((path, i) => {
+        if (path.startsWith("search:")) return <SearchBookmark key={path} entry={path} index={i} dropAt={dropAt} setDropAt={setDropAt} onDrop={onDrop} />;
         const entry = byPath.get(path);
         const missing = !entry;
         const isDir = entry?.is_dir ?? false;
@@ -99,6 +100,56 @@ export function BookmarksPanel() {
         onDragLeave={() => setDropAt(null)}
         onDrop={(ev) => onDrop(ev, bookmarks.length)}
       />
+    </div>
+  );
+}
+
+/** A saved search (`search:<query>`): runs it in the Search panel. */
+function SearchBookmark({
+  entry,
+  index,
+  dropAt,
+  setDropAt,
+  onDrop,
+}: {
+  entry: string;
+  index: number;
+  dropAt: number | null;
+  setDropAt(f: (d: number | null) => number | null): void;
+  onDrop(ev: DragEvent, index: number): void;
+}) {
+  const query = entry.slice("search:".length);
+  return (
+    <div
+      role="listitem"
+      className={`tree-row ${dropAt === index ? "drop-before" : ""}`}
+      title={`Search: ${query}`}
+      draggable
+      onDragStart={(ev) => {
+        ev.dataTransfer.setData(BOOKMARK_DRAG, String(index));
+        ev.dataTransfer.effectAllowed = "move";
+      }}
+      onDragOver={(ev) => {
+        if (!ev.dataTransfer.types.includes(BOOKMARK_DRAG)) return;
+        ev.preventDefault();
+        setDropAt(() => index);
+      }}
+      onDragLeave={() => setDropAt((d) => (d === index ? null : d))}
+      onDrop={(ev) => onDrop(ev, index)}
+      onClick={() => useUi.getState().showSearch(query)}
+      onContextMenu={(ev) => {
+        ev.preventDefault();
+        useUi.getState().showMenu(ev.clientX, ev.clientY, [
+          { label: "Run search", action: () => useUi.getState().showSearch(query) },
+          { label: "", separator: true },
+          { label: "Remove bookmark", action: () => void useVault.getState().toggleBookmark(entry) },
+        ]);
+      }}
+    >
+      <span className="tree-icon">
+        <Search size={15} strokeWidth={1.75} />
+      </span>
+      <span className="tree-name">{query}</span>
     </div>
   );
 }

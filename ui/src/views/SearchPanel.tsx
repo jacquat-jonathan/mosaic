@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Search } from "lucide-react";
+import { Search, Star } from "lucide-react";
 import { api } from "../ipc/api";
 import type { SearchHit } from "../ipc/types";
 import { useVault } from "../state/vault";
@@ -70,6 +70,7 @@ export function SearchPanel() {
             if (e.key === "Escape") setQuery("");
           }}
         />
+        {query.trim() && <BookmarkSearch query={query.trim()} />}
       </label>
       <div className="panel-meta">
         {indexing ? `Indexing ${indexing.done} / ${indexing.total}…` : query.trim() && took !== null ? `${hits.length} result${hits.length === 1 ? "" : "s"} · ${Math.round(took)} ms` : ""}
@@ -93,5 +94,24 @@ export function SearchPanel() {
         ))}
       </div>
     </div>
+  );
+}
+
+/** Saves the current search as a bookmark (`search:<query>` in the bookmarks list), or removes it. */
+function BookmarkSearch({ query }: { query: string }) {
+  const key = `search:${query}`;
+  const saved = useVault((s) => s.bookmarks.includes(key));
+  return (
+    <button
+      className={`search-bookmark ${saved ? "on" : ""}`}
+      aria-pressed={saved}
+      title={saved ? "Remove this search from Bookmarks" : "Bookmark this search"}
+      onClick={(e) => {
+        e.preventDefault();
+        void useVault.getState().toggleBookmark(key);
+      }}
+    >
+      <Star size={14} fill={saved ? "currentColor" : "none"} />
+    </button>
   );
 }

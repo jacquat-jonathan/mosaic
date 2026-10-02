@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
-import { FilePlus, FolderPlus, FolderOpen, Files, Search, Hash, Shapes, Bot, Bookmark, ChevronDown, ChevronsDownUp, PanelLeftClose, Settings as Gear, Activity } from "lucide-react";
+import { FilePlus, FolderPlus, FolderOpen, Files, Search, Hash, Shapes, Bot, Bookmark, ChevronDown, ChevronsDownUp, PanelLeftClose, Settings as Gear, Activity, CalendarDays } from "lucide-react";
 import { api, onIndexProgress, pickFolder, revealInFinder } from "./ipc/api";
 import { useVault } from "./state/vault";
 import { FileTree } from "./views/FileTree";
 import { Workspace } from "./views/Workspace";
 import { ConfirmDialog, ContextMenu, ErrorToast, PromptDialog } from "./views/Overlays";
-import { createVault, newNote, newNoteDir, NEW_KINDS, newOfKind, openVaultFolder } from "./actions";
+import { createVault, newNote, newNoteDir, NEW_KINDS, newOfKind, openDailyNote, openVaultFolder } from "./actions";
 import { useShortcuts } from "./shortcuts";
 import { RIGHT_DEFAULT, SIDEBAR_DEFAULT, useUi, type MenuItem, type SidebarTab } from "./state/ui";
 import { SearchPanel } from "./views/SearchPanel";
@@ -203,6 +203,9 @@ function Main() {
                 </button>
                 <button aria-label="New folder" title={`New folder (${shortcutOf("new-folder")})`} onClick={() => void useVault.getState().newFolder("")}>
                   <FolderPlus size={15} />
+                </button>
+                <button aria-label="Today's note" title={`Open today's daily note (${shortcutOf("daily-note")})`} onClick={() => void openDailyNote()}>
+                  <CalendarDays size={15} />
                 </button>
                 <span className="spacer" />
                 <button aria-label="Collapse all folders" title="Collapse all folders" onClick={() => useVault.setState({ expanded: new Set() })}>

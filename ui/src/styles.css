@@ -631,3 +631,11 @@ svg path.flow-on { stroke-dasharray: 9 6 !important; animation: edge-flow 0.7s l
 .agent-rule { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; color: var(--muted); }
 .agent-rule code { color: var(--fg); }
 .agent-rule .icon { padding: 2px; color: var(--muted); }
+/* Unlinked mentions under Backlinks (RightPanel.tsx). */
+.section-toggle { padding: 0; font: inherit; color: inherit; text-transform: inherit; letter-spacing: inherit; }
+.mention { position: relative; }
+.mention-link { font-size: 12px; padding: 1px 8px; border: 1px solid var(--border); border-radius: 6px; color: var(--muted); margin-top: 4px; }
+.mention-link:hover { color: var(--fg); border-color: var(--accent); }
+/* Bookmark the current search (SearchPanel.tsx). */
+.search-bookmark { padding: 2px; color: var(--muted); flex: none; }
+.search-bookmark.on { color: var(--warning, #e2b400); }

@@ -4,6 +4,11 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Paste images** into a note: they're saved next to it and embedded.
+- **Daily notes**: ⌘⇧D (or the calendar button above the file tree) opens today's note, created from a template if you set one (Settings › Editor & files; `{{date}}`, `{{title}}`, `{{weekday}}`, `{{time}}`).
+- **Unlinked mentions** under Backlinks: notes that mention this one by name or alias without linking, with a one-click **Link** that keeps your wording.
+- **New canvas from selection**: select notes in the file tree, right-click, and get a canvas with them as cards.
+- **Bookmark a search** with the star in the Search panel; it shows in Bookmarks and runs with one click.
 - ⇧↑ / ⇧↓ extend the selection in the file tree.
 - Search, backlinks and tags stay responsive while a big vault is being indexed.
 - Fixed: when the app and an agent (or the `mosaic` command) opened or updated the index at the same moment, one could fail with "database is locked".

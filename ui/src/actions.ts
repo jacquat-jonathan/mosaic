@@ -8,6 +8,8 @@ import { api, pickFolder } from "./ipc/api";
 import { errorMessage } from "./ipc/types";
 import { displayName } from "./views/FileTree";
 import { prefs } from "./state/settings";
+import { resolveLink } from "./links";
+import { dailyPath, fillTemplate } from "./daily";
 
 /** Folder for a new note, per Settings › "New notes go in". */
 export function newNoteDir(): string {
@@ -232,6 +234,42 @@ export async function newOfKind(dir: string, kind: (typeof NEW_KINDS)[number]) {
   if (kind.ext === "canvas") return newDiagram(dir);
   const { EMPTY_DRAWING } = await import("./viewers/ExcalidrawEditor");
   const path = await newFileOfKind(dir, kind.stem, kind.ext, kind.ext === "excalidraw" ? EMPTY_DRAWING : kind.content);
+  if (path) useVault.getState().setRenaming(path);
+}
+
+/** Opens today's daily note, creating it (from the template, if one is set) the first time. */
+export async function openDailyNote() {
+  const { dailyFolder, dailyTemplate } = prefs();
+  const path = dailyPath(dailyFolder);
+  const vault = useVault.getState();
+  if (!vault.entries.some((e) => e.path === path)) {
+    let template = "";
+    if (dailyTemplate) {
+      const t = resolveLink(dailyTemplate, vault.entries, null);
+      template = t ? ((await api.read(t)).content ?? "") : "";
+      if (!t) vault.setError(`The daily note template “${dailyTemplate}” wasn't found; the note starts empty.`);
+    }
+    try {
+      await api.create(path, fillTemplate(template || "# {{title}}\n\n"));
+    } catch (e) {
+      // Created meanwhile (another window or an agent): just open it.
+      if ((e as { code?: string }).code !== "already_exists") throw e;
+    }
+  }
+  await useWorkspace.getState().open(path, { newTab: false });
+}
+
+/** A canvas with one file card per file, on a grid of three columns, in selection order. */
+export function canvasOfFiles(files: string[], id: () => string): string {
+  const cols = Math.min(3, files.length);
+  const nodes = files.map((file, i) => ({ id: id(), type: "file", file, x: (i % cols) * 340, y: Math.floor(i / cols) * 280, width: 300, height: 240 }));
+  return JSON.stringify({ nodes, edges: [] }, null, "\t");
+}
+
+/** "New canvas from selection": the selected files as cards, next to the first one. */
+export async function canvasFromFiles(files: string[]) {
+  const { newId } = await import("./viewers/canvas/jsonCanvas");
+  const path = await newFileOfKind(parentOf(files[0]), "Canvas", "canvas", canvasOfFiles(files, newId));
   if (path) useVault.getState().setRenaming(path);
 }
 

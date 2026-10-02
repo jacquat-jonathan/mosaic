@@ -17,6 +17,10 @@ export interface Prefs {
   newNoteLocation: "root" | "current";
   /** Ask before moving files to the Trash. */
   confirmTrash: boolean;
+  /** Folder for daily notes (vault-relative, "" = root). */
+  dailyFolder: string;
+  /** Note copied into each new daily note, with {{date}}, {{title}}, {{weekday}}, {{time}} filled in. */
+  dailyTemplate: string;
 }
 
 export const DEFAULT_PREFS: Prefs = {
@@ -26,6 +30,8 @@ export const DEFAULT_PREFS: Prefs = {
   spellcheck: true,
   newNoteLocation: "current",
   confirmTrash: true,
+  dailyFolder: "Daily",
+  dailyTemplate: "",
 };
 
 export const NOTE_SIZE_MIN = 13;
@@ -44,6 +50,8 @@ export function sanitize(raw: unknown): Prefs {
     spellcheck: pick("spellcheck", (v) => typeof v === "boolean"),
     newNoteLocation: pick("newNoteLocation", (v) => v === "root" || v === "current"),
     confirmTrash: pick("confirmTrash", (v) => typeof v === "boolean"),
+    dailyFolder: pick("dailyFolder", (v) => typeof v === "string"),
+    dailyTemplate: pick("dailyTemplate", (v) => typeof v === "string"),
   };
 }
 

@@ -137,8 +137,8 @@ function seed() {
   // An agent's changes, to try File history and AI activity in the browser.
   track("Ideas.md", "before", ideas, { source: "agent", time: now - 3_600_000 });
   track("Ideas.md", "edited", edited, { source: "agent", actor: "claude-code", time: now - 3_500_000 });
-  add("Agent notes.md", "# Agent notes\n\nWritten by an agent.\n");
-  track("Agent notes.md", "created", "# Agent notes\n\nWritten by an agent.\n", { source: "agent", actor: "claude-code", time: now - 600_000 });
+  add("Agent notes.md", "# Agent notes\n\nWritten by an agent. The ideas list needs a review.\n");
+  track("Agent notes.md", "created", "# Agent notes\n\nWritten by an agent. The ideas list needs a review.\n", { source: "agent", actor: "claude-code", time: now - 600_000 });
   add("Projects/Mosaic/Plan.md", "# Plan\n\n1. Build it\n");
   add("Projects/Data.csv", 'name,value,note\nalpha,1,"quoted, with comma"\nbeta,2,"multi\nline"\ngamma,3,\n');
   add(
@@ -369,6 +369,30 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
         content: text ? f.content : null,
       };
       return out;
+    }
+    case "unlinked_mentions": {
+      // Simplified: whole-word, case-insensitive title matches outside [[links]].
+      const target = norm(a.path);
+      const title = target.split("/").pop()!.replace(/\.md$/, "");
+      const word = new RegExp(`(^|[^\\p{L}\\p{N}])(${title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})(?=$|[^\\p{L}\\p{N}])`, "iu");
+      const out: { source: string; line: number; context: string; text: string }[] = [];
+      for (const [p, f] of files) {
+        if (p === target || !p.endsWith(".md") || f.content.includes(`[[${title}`)) continue;
+        f.content.split("\n").forEach((l, i) => {
+          const m = word.exec(l.replace(/\[\[[^\]]*\]\]/g, (x) => " ".repeat(x.length)));
+          if (m) out.push({ source: p, line: i + 1, context: l.trim(), text: m[2] });
+        });
+      }
+      return out;
+    }
+    case "link_mention": {
+      const p = norm(a.source);
+      const f = files.get(p)!;
+      const lines = f.content.split("\n");
+      const text = String(a.text);
+      const title = norm(a.target).split("/").pop()!.replace(/\.md$/, "");
+      lines[Number(a.line) - 1] = lines[Number(a.line) - 1].replace(text, text === title ? `[[${title}]]` : `[[${title}|${text}]]`);
+      return write(p, lines.join("\n"));
     }
     case "get_agent_rules":
       return agentRules;

@@ -12,6 +12,15 @@ import { droppedItems, embedsFor, importDropped, isFinderDrag, newFileOfKind } f
 import { parentOf } from "../state/vault";
 import { useUi } from "../state/ui";
 
+/** "Pasted image 2026-10-02 143005.png" (a second image in one paste gets " 2"). */
+export function pastedName(file: { type: string }, index: number, now = new Date()): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+  const sub = file.type.split("/")[1]?.split("+")[0] ?? "png";
+  const ext = sub === "jpeg" ? "jpg" : sub === "svg" ? "svg" : /^[a-z0-9]+$/.test(sub) ? sub : "png";
+  return `Pasted image ${stamp}${index ? ` ${index + 1}` : ""}.${ext}`;
+}
+
 /** Files above this size open read-only so the UI stays responsive. */
 export const LARGE_FILE_BYTES = 5 * 1024 * 1024;
 
@@ -36,6 +45,17 @@ export function editorContextFor(path: string): EditorContext {
     openTag: (tag) => useUi.getState().showSearch(`tag:${tag}`),
     fileUrl,
     readText: async (p) => (await api.read(p)).content ?? "",
+    importPaste(dt) {
+      const images = [...dt.files].filter((f) => f.type.startsWith("image/"));
+      if (!images.length) return null;
+      const dir = parentOf(path);
+      return Promise.all(
+        images.map(async (f, i) => (await api.importFile(dir ? `${dir}/${pastedName(f, i)}` : pastedName(f, i), new Uint8Array(await f.arrayBuffer()))).path),
+      ).then(embedsFor, (e) => {
+        useVault.getState().setError(`Couldn't save the pasted image: ${e instanceof Error ? e.message : String(e)}`);
+        return "";
+      });
+    },
     importDrop(dt) {
       if (!isFinderDrag(dt)) return null;
       return importDropped(droppedItems(dt), parentOf(path)).then((paths) => {

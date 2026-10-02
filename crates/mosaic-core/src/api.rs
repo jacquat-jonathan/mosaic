@@ -35,6 +35,56 @@ pub struct Renamed {
     pub updated_links_in: Vec<String>,
 }
 
+/// A note that mentions another note's title or alias without linking to it.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct Mention {
+    pub source: String,
+    /// 1-based line number.
+    pub line: usize,
+    /// The line, for display.
+    pub context: String,
+    /// The words as written in the note (e.g. "the plan" for a note called "The Plan").
+    pub text: String,
+}
+
+/// The mentions of `name` in `text` that aren't already links: (line number, byte offset in the
+/// line, matched text). Frontmatter, code and existing links don't count; matches are whole words.
+pub fn find_mentions(text: &str, name: &str) -> Vec<(usize, usize, String)> {
+    let mask = Regex::new(r"\[\[[^\]]*\]\]|\[[^\]]*\]\([^)]*\)|`[^`]*`|https?://\S+")
+        .expect("valid regex");
+    let word = Regex::new(&format!(
+        r"(?i)(^|[^\p{{L}}\p{{N}}_])({})($|[^\p{{L}}\p{{N}}_])",
+        regex::escape(name)
+    ))
+    .expect("valid regex");
+    let mut out = Vec::new();
+    let mut in_front = text.starts_with("---\n") || text.starts_with("---\r\n");
+    let mut in_code = false;
+    for (i, line) in text.lines().enumerate() {
+        let t = line.trim();
+        if in_front {
+            if i > 0 && t == "---" {
+                in_front = false;
+            }
+            continue;
+        }
+        if t.starts_with("```") {
+            in_code = !in_code;
+            continue;
+        }
+        if in_code {
+            continue;
+        }
+        // Blank out links and code, keeping positions, so matches inside them are ignored.
+        let masked = mask.replace_all(line, |c: &regex::Captures| " ".repeat(c[0].len()));
+        if let Some(m) = word.captures(&masked) {
+            let g = m.get(2).expect("group 2");
+            out.push((i + 1, g.start(), line[g.start()..g.end()].to_string()));
+        }
+    }
+    out
+}
+
 #[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct Bookmark {
     pub path: String,
@@ -553,6 +603,98 @@ impl Workspace {
         self.query().aliases()
     }
 
+    /// Notes that mention `path`'s title or aliases without linking to it (at most `limit` notes).
+    pub fn unlinked_mentions(&self, path: &str, limit: usize) -> Result<Vec<Mention>> {
+        let norm = normalize(path)?;
+        self.check_read(&norm)?;
+        let name = crate::links::file_name(&norm);
+        let mut names = vec![name.strip_suffix(".md").unwrap_or(name).to_string()];
+        if let Some(text) = self.text_of(&norm).map(|(t, _)| t) {
+            names.extend(parse::parse(&text).aliases);
+        }
+        names.retain(|n| n.chars().count() >= 3);
+        let linking: BTreeSet<String> = self
+            .backlinks(&norm)?
+            .into_iter()
+            .map(|b| b.source)
+            .collect();
+        let rules = self.rules();
+        let mut out = Vec::new();
+        let mut seen = BTreeSet::new();
+        for n in &names {
+            // The index narrows it down; each candidate is then checked line by line.
+            let hits = self
+                .query()
+                .search(&format!("\"{}\"", n.replace('"', " ")), 200)?;
+            for h in hits {
+                if out.len() >= limit {
+                    break;
+                }
+                if h.path == norm
+                    || linking.contains(&h.path)
+                    || !h.path.to_lowercase().ends_with(".md")
+                    || !Self::visible(&rules, &h.path)
+                    || !seen.insert(h.path.clone())
+                {
+                    continue;
+                }
+                let Some((text, _)) = self.text_of(&h.path) else {
+                    continue;
+                };
+                let lines: Vec<&str> = text.lines().collect();
+                for (line, _, matched) in find_mentions(&text, n).into_iter().take(3) {
+                    out.push(Mention {
+                        source: h.path.clone(),
+                        line,
+                        context: lines[line - 1].trim().to_string(),
+                        text: matched,
+                    });
+                }
+            }
+        }
+        Ok(out)
+    }
+
+    /// Turns one unlinked mention into a link to `target`: the first unlinked occurrence of `text`
+    /// on `line` of `source` becomes `[[Target]]`, or `[[Target|text]]` when the words differ.
+    pub fn link_mention(
+        &self,
+        source: &str,
+        line: usize,
+        text: &str,
+        target: &str,
+    ) -> Result<Written> {
+        let file = self.read(source)?;
+        let content = file
+            .content
+            .ok_or_else(|| Error::NotText(source.to_string()))?;
+        let found = find_mentions(&content, text)
+            .into_iter()
+            .find(|(l, _, _)| *l == line);
+        let Some((_, at, matched)) = found else {
+            return Err(Error::Invalid(format!(
+                "“{text}” isn't on line {line} of {source} any more"
+            )));
+        };
+        let files = self.query().file_set()?;
+        let link_text = wiki_text_for(&files, &normalize(target)?, Some(&file.path));
+        let link = if link_text == matched {
+            format!("[[{matched}]]")
+        } else {
+            format!("[[{link_text}|{matched}]]")
+        };
+        // Replace exactly that occurrence: the line's start plus the match's offset in it.
+        let start: usize = content
+            .split_inclusive('\n')
+            .take(line - 1)
+            .map(str::len)
+            .sum::<usize>()
+            + at;
+        let mut out = content.clone();
+        out.replace_range(start..start + matched.len(), &link);
+        self.write(&file.path, &out, Some(&file.hash))
+    }
+
     /// Cheap structural overview of a file — what an AI should read before deciding to load it all.
     pub fn outline(&self, path: &str) -> Result<Outline> {
         self.check_read(path)?;
@@ -720,15 +862,20 @@ impl Workspace {
             .bookmarks(self.vault.root())
             .into_iter()
             .map(|path| Bookmark {
-                exists: self.vault.stat(&path).is_ok(),
+                // A saved search (`search:<query>`) always "exists".
+                exists: path.starts_with("search:") || self.vault.stat(&path).is_ok(),
                 path,
             })
             .collect()
     }
 
     /// Bookmarks an existing file or folder (at the end of the list; no-op if already there).
+    /// Bookmarks a file or folder, or a search when `path` is `search:<query>`.
     pub fn add_bookmark(&self, path: &str) -> Result<Vec<Bookmark>> {
-        let path = self.vault.stat(path)?.path;
+        let path = match path.strip_prefix("search:") {
+            Some(q) if !q.trim().is_empty() => format!("search:{}", q.trim()),
+            _ => self.vault.stat(path)?.path,
+        };
         if path.is_empty() {
             return Err(Error::InvalidPath("cannot bookmark the vault root".into()));
         }
@@ -1127,5 +1274,35 @@ mod tests {
         w.rename("Note.md", "Archive/Note.md", true).unwrap();
         let other = text(&w, "Other.md");
         assert!(other.contains("[[Start]]"), "alias link kept: {other}");
+    }
+
+    #[test]
+    fn finds_unlinked_mentions_and_links_them() {
+        assert_eq!(
+            find_mentions(
+                "---\ntitle: Plan\n---\nThe plan is ready.\n[[Plan]] and `plan` and planning\nsee [x](Plan.md) then Plan",
+                "Plan"
+            ),
+            vec![(4, 4, "plan".to_string()), (6, 22, "Plan".to_string())]
+        );
+        let (_d, w) = ws();
+        w.create("Roadmap.md", "# Roadmap").unwrap();
+        w.create(
+            "Notes.md",
+            "Talked about the roadmap today.\nAlready linked elsewhere: no.",
+        )
+        .unwrap();
+        w.create("Linked.md", "See [[Roadmap]], the roadmap.")
+            .unwrap();
+        let m = w.unlinked_mentions("Roadmap.md", 10).unwrap();
+        assert_eq!(m.len(), 1, "a note that already links isn't listed: {m:?}");
+        assert_eq!(
+            (m[0].source.as_str(), m[0].line, m[0].text.as_str()),
+            ("Notes.md", 1, "roadmap")
+        );
+        w.link_mention("Notes.md", 1, "roadmap", "Roadmap.md")
+            .unwrap();
+        assert!(text(&w, "Notes.md").starts_with("Talked about the [[Roadmap|roadmap]] today."));
+        assert!(w.unlinked_mentions("Roadmap.md", 10).unwrap().is_empty());
     }
 }

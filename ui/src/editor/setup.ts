@@ -109,19 +109,34 @@ const spellcheckFollower = ViewPlugin.define((view) => {
 });
 
 /** Files dropped from Finder are copied into the vault and embedded where they were dropped. */
+/** The text a paste or drop resolved to, inserted where it happened (or at the cursor). */
+function insertWhenReady(view: EditorView, pending: Promise<string>, at: number) {
+  void pending.then((embeds) => {
+    if (!embeds) return;
+    const pos = Math.min(at, view.state.doc.length);
+    // At the start of a line with text on it, keep that text on its own line (a heading stays a heading).
+    const line = view.state.doc.lineAt(pos);
+    const text = pos === line.from && line.length > 0 ? `${embeds}\n` : embeds;
+    view.dispatch({ changes: { from: pos, insert: text }, selection: { anchor: pos + text.length } });
+    view.focus();
+  });
+}
+
 const finderDrop = EditorView.domEventHandlers({
+  paste(e, view) {
+    const ctx = view.state.facet(editorContext);
+    const pending = e.clipboardData && ctx.importPaste?.(e.clipboardData);
+    if (!pending) return false;
+    e.preventDefault();
+    insertWhenReady(view, pending, view.state.selection.main.head);
+    return true;
+  },
   drop(e, view) {
     if (!e.dataTransfer || view.state.readOnly) return false;
     const pending = view.state.facet(editorContext).importDrop(e.dataTransfer);
     if (!pending) return false;
     e.preventDefault();
-    const at = view.posAtCoords({ x: e.clientX, y: e.clientY }) ?? view.state.selection.main.head;
-    void pending.then((text) => {
-      if (!text) return;
-      const pos = Math.min(at, view.state.doc.length);
-      view.dispatch({ changes: { from: pos, insert: text }, selection: { anchor: pos + text.length } });
-      view.focus();
-    });
+    insertWhenReady(view, pending, view.posAtCoords({ x: e.clientX, y: e.clientY }) ?? view.state.selection.main.head);
     return true;
   },
 });

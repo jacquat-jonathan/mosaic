@@ -34,6 +34,10 @@ of its own source when you click **Check for updates** or **Update** in Settings
   between recent vaults or create a new one.
 - **Import from Finder:** drop files or folders onto the tree to copy them in; drop images into a
   note or onto a canvas to copy them next to it and embed them. Nothing is ever overwritten.
+- **Everyday notes:** daily notes from a template (⌘⇧D), paste images straight into a note, unlinked
+  mentions with a one-click link, saved searches in Bookmarks, a canvas from selected notes.
+- **History and undo:** every change keeps a version (right-click › File history…), and the AI activity
+  tab lists what agents changed, with Undo.
 - **Safe editing:** deletes go to the macOS Trash; renames update links everywhere. When a file
   changes on disk while you're editing it, Mosaic asks you what to do instead of overwriting.
 

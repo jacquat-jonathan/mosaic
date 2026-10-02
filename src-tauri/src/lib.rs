@@ -2,7 +2,7 @@
 
 mod update;
 
-use mosaic_core::api::{Outline, Renamed};
+use mosaic_core::api::{Mention, Outline, Renamed};
 use mosaic_core::history::Version;
 use mosaic_core::index::{Backlink, SearchHit, TagCount};
 use mosaic_core::settings::{AgentRule, Settings};
@@ -264,6 +264,22 @@ fn delete_path(state: State<AppState>, path: String) -> CmdResult<()> {
 }
 
 #[tauri::command]
+fn unlinked_mentions(state: State<AppState>, path: String) -> CmdResult<Vec<Mention>> {
+    state.get()?.unlinked_mentions(&path, 30)
+}
+
+#[tauri::command]
+fn link_mention(
+    state: State<AppState>,
+    source: String,
+    line: usize,
+    text: String,
+    target: String,
+) -> CmdResult<Written> {
+    state.get()?.link_mention(&source, line, &text, &target)
+}
+
+#[tauri::command]
 fn file_history(state: State<AppState>, path: String) -> CmdResult<Vec<Version>> {
     state.get()?.history(&path, 50)
 }
@@ -429,6 +445,8 @@ pub fn run() {
             rename_path,
             delete_path,
             file_history,
+            unlinked_mentions,
+            link_mention,
             get_agent_rules,
             set_agent_rules,
             version_content,

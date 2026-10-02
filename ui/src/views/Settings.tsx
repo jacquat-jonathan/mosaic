@@ -7,7 +7,7 @@ import { useVault } from "../state/vault";
 import { useWorkspace } from "../state/workspace";
 import { api, onUpdateDone, onUpdateLog, pickFolder, revealInFinder } from "../ipc/api";
 import { errorMessage, type UpdateCheck, type UpdateStatus } from "../ipc/types";
-import { commands, formatKeys } from "../commands";
+import { commands, formatKeys, shortcutOf } from "../commands";
 import { createVault, openVaultFolder } from "../actions";
 import { ConnectAiSection } from "./ConnectAi";
 
@@ -152,6 +152,20 @@ function EditorFiles() {
       </Row>
       <Row label="Ask before moving to the Trash" hint="Files always go to the macOS Trash, so they can be restored either way.">
         <Toggle label="Ask before moving to the Trash" checked={s.confirmTrash} onChange={(v) => s.set("confirmTrash", v)} />
+      </Row>
+      <Row label="Daily notes folder" hint={`Where “Open today's note” (${shortcutOf("daily-note")}) keeps one note per day, named like 2026-10-02.`}>
+        <input className="text-input" aria-label="Daily notes folder" value={s.dailyFolder} placeholder="Vault root" onChange={(e) => s.set("dailyFolder", e.target.value.replace(/^\/+|\/+$/g, ""))} />
+      </Row>
+      <Row
+        label="Daily note template"
+        hint={
+          <>
+            A note to copy into each new daily note. <code>{"{{date}}"}</code>, <code>{"{{title}}"}</code>, <code>{"{{weekday}}"}</code> and{" "}
+            <code>{"{{time}}"}</code> are filled in.
+          </>
+        }
+      >
+        <input className="text-input" aria-label="Daily note template" value={s.dailyTemplate} placeholder="None (empty note)" onChange={(e) => s.set("dailyTemplate", e.target.value.trim())} />
       </Row>
     </>
   );

@@ -4,7 +4,7 @@
 import { useUi } from "./state/ui";
 import { parentOf, useVault } from "./state/vault";
 import { useWorkspace } from "./state/workspace";
-import { createVault, deletePath, NEW_KINDS, newNote, newNoteDir, newOfKind, openVaultFolder, revealInTree } from "./actions";
+import { createVault, deletePath, NEW_KINDS, newNote, newNoteDir, newOfKind, openDailyNote, openVaultFolder, revealInTree } from "./actions";
 
 /** A shortcut: `code` is `KeyboardEvent.code` (layout- and ⌥-independent), e.g. "KeyP" or "Backslash". */
 export interface Keys {
@@ -60,6 +60,7 @@ const buildCommands = (): Command[] => [
     run: () => void newOfKind(activeDir(), k),
   })),
   { id: "new-folder", label: "New folder", keys: { code: "KeyN", meta: true, shift: true }, run: () => void useVault.getState().newFolder(activeDir()) },
+  { id: "daily-note", label: "Open today's daily note", keys: { code: "KeyD", meta: true, shift: true }, run: () => void openDailyNote() },
   {
     id: "file-history",
     label: "Show file history",

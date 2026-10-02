@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+## 0.8.0 — 2026-10-02
+
 - **Properties editor**: a note's frontmatter shows as a form (lists as chips, checkboxes, dates, numbers, text). Add, rename or remove properties; "Edit as YAML" shows the source. Comments and formatting in the YAML are kept.
 - **Custom shortcuts**: in Settings › Shortcuts, click a shortcut and press new keys; any command can have one, and a taken shortcut moves over (Settings says from which command).
 - **Export a note** as a standalone HTML file (diagrams, math, images and embedded canvases included) or as PDF through the print dialog (⇧⌘P, or right-click › Export).
@@ -13,6 +15,7 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 - **Drag shapes** from the Shape menu onto the canvas: it opens a palette of every shape and icon.
 - **Copy as Mermaid** writes a `sequenceDiagram` for canvases with lifelines (alt/loop frames included) and a `classDiagram` for class boxes (members, inheritance, composition, multiplicities).
 - **Open as diagram** now works on Mermaid class diagrams too, keeping Mermaid's layout.
+
 ## 0.7.0 — 2026-10-02
 
 - **Paste images** into a note: they're saved next to it and embedded.

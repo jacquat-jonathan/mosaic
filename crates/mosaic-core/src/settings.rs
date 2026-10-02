@@ -28,6 +28,8 @@ pub enum Access {
     ReadOnly,
     /// Agents can't see it: it's left out of listings and search, and reading it says "not found".
     Hidden,
+    /// Agents' changes become proposals that the person accepts or rejects in the app.
+    Review,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -37,17 +39,16 @@ pub struct AgentRule {
     pub access: Access,
 }
 
-/// The strictest rule covering `path` (a rule on a folder covers everything inside it).
+/// The strictest rule covering `path` (a rule on a folder covers everything inside it): hidden,
+/// then read-only, then review.
 pub fn access_for(rules: &[AgentRule], path: &str) -> Option<Access> {
     let covered = |r: &&AgentRule| {
         r.path.is_empty() || path == r.path || path.starts_with(&format!("{}/", r.path))
     };
     let found: Vec<Access> = rules.iter().filter(covered).map(|r| r.access).collect();
-    if found.contains(&Access::Hidden) {
-        Some(Access::Hidden)
-    } else {
-        found.first().copied()
-    }
+    [Access::Hidden, Access::ReadOnly, Access::Review]
+        .into_iter()
+        .find(|a| found.contains(a))
 }
 
 /// Where settings.json lives. `MOSAIC_SETTINGS_DIR` overrides it (used by tests).

@@ -1,8 +1,9 @@
-// Renderers for fenced code blocks by language (Mermaid, math, Vega-Lite, Graphviz), shared by the
+// Renderers for fenced code blocks by language (Mermaid, math, Vega-Lite, Graphviz, queries), shared by the
 // note editor and by static Markdown (canvas cards, file-card previews).
 
 import { renderMath, renderMermaid } from "./render";
 import { renderChart, renderGraphviz } from "../viewers/visuals";
+import { renderQuery } from "./queryBlock";
 
 /** Renders `source` into `el`; `path` is the file it's in (charts load their data relative to it). */
 export type BlockRenderer = (source: string, el: HTMLElement, ctx: { path: string }) => void | Promise<void>;
@@ -67,6 +68,7 @@ registerBlockRenderer(["math", "latex", "tex"], (src, el) => {
 });
 registerBlockRenderer(["vega-lite", "vegalite", "chart"], (src, el, ctx) => renderChart(src, el, ctx.path));
 registerBlockRenderer(["dot", "graphviz"], (src, el) => renderGraphviz(src, el));
+registerBlockRenderer(["query"], (src, el) => renderQuery(src, el));
 
 export function showRenderError(el: HTMLElement, err: unknown) {
   el.classList.add("cm-render-error");

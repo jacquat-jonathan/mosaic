@@ -23,6 +23,14 @@ write shows up in the app within a second.
 - **Some folders may be off limits.** The person can make folders read-only for you (changes fail with
   `denied`) or hide them (they don't appear anywhere and read as `not_found`). Don't try to work around it;
   tell them if you need access.
+- **Some folders are reviewed.** There, your create, edit, patch, append, restore and delete calls succeed
+  but don't change the file: the result has a `review` id (a proposal) and a note saying so. The person
+  sees the change as a diff in the app and accepts or rejects it. Until then, your reads of that file show
+  your proposal and your next edits build on it, so a multi-step change is reviewed as one. Moving files
+  and adding binary files there is refused. `list_proposals` shows what's pending and the person's
+  decisions (a rejection may carry a reason: read it and adapt); `withdraw_proposal` takes one back. Tell
+  the person what you proposed and why, since they decide.
+- **Find notes by their properties with `query`** rather than reading many files: see "Queries" below.
 - **Several files at once:** `move_files` moves a list into one folder in a single call; `import_file`
   adds an image or other binary file from base64 (never overwrites).
 - **Deleting is safe but visible:** files go to the macOS Trash.
@@ -70,6 +78,8 @@ write shows up in the app within a second.
   - ` ```vega-lite ` — a Vega-Lite JSON spec; `"data": {"url": "data.csv"}` loads a vault file
     (relative to the note). Remote URLs are not loaded.
   - ` ```math ` — display math.
+  - ` ```query ` — a live table of the notes matching a query (see "Queries"), e.g. a project dashboard:
+    ` tag:project status!=done sort:due show:status,due `.
 
 ## Canvases (JSON Canvas 1.0)
 
@@ -154,3 +164,25 @@ A Vega-Lite spec, e.g.
 
 Words must all match (prefix match); `"exact phrase"`; filters `tag:project` (includes nested tags)
 and `path:Projects` (folder).
+
+## Queries
+
+`query` (CLI: `mosaic query …`) finds notes by structure instead of words. Terms are combined with AND:
+
+| Term | Meaning |
+|---|---|
+| `tag:project`, `tag:a\|b` | Has the tag (nested tags count: `tag:area` matches `#area/work`) |
+| `folder:Projects` | Anywhere under the folder |
+| `kind:markdown`, `kind:canvas` | File kind |
+| `links-to:Note` / `linked-from:Note` | Links to that note / is linked from it |
+| `has:due` | The frontmatter field is set |
+| `status=active`, `status!=done`, `priority>2`, `due<=today+7`, `title~draft` | Compare a field (`~` = contains). Fields: frontmatter keys plus `title`, `name`, `path`, `folder`, `tags`, `modified` |
+| `-tag:done`, `-has:due`, `-folder:Archive` | Negate a filter |
+| `sort:due`, `sort:-modified` | Order (`-` = descending; notes without the field go last) |
+| `limit:20`, `show:status,owner` | How many (default 100) and which columns to show |
+| other words | Full-text search, as in `search` |
+
+Values: `a|b` matches either; list fields (`tags: [a, b]`, `owners: […]`) match if any item does; dates as
+`2026-10-02`, `today`, `today-7`, compared by day; numbers as numbers; other text ignoring case. Quote
+values with spaces: `status="in progress"`. The result lists each note's path, title, modified time, tags
+and full frontmatter, plus `columns` (the fields worth showing) and `total` (matches before `limit`).

@@ -683,3 +683,21 @@ svg path.flow-on { stroke-dasharray: 9 6 !important; animation: edge-flow 0.7s l
 .palette-tile:hover { background: var(--bg-hover, rgba(127, 127, 127, 0.1)); }
 .palette-tile span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; color: var(--muted); }
 .shape-preview { width: 36px; height: 26px; }
+
+/* ```query blocks in notes (editor/queryBlock.ts). */
+.query-table { border-collapse: collapse; width: 100%; font-size: 13px; margin: 4px 0; }
+.query-table th { text-align: left; font-weight: 600; color: var(--muted); border-bottom: 1px solid var(--border); padding: 4px 10px 4px 0; }
+.query-table td { border-bottom: 1px solid var(--border); padding: 4px 10px 4px 0; vertical-align: top; }
+.query-table .md-wikilink { color: var(--accent); cursor: pointer; }
+.query-empty, .query-more { color: var(--muted); font-size: 12px; padding: 4px 0; }
+
+/* Agents' changes waiting for review (views/ActivityPanel.tsx, ReviewModal.tsx). */
+.sidebar-tabs button { position: relative; }
+.tab-badge { position: absolute; top: 1px; right: 1px; min-width: 14px; height: 14px; padding: 0 3px; border-radius: 7px; background: var(--accent); color: #fff; font-size: 9px; font-weight: 700; line-height: 14px; text-align: center; }
+.review-inbox { padding-bottom: 6px; border-bottom: 1px solid var(--border); margin-bottom: 6px; }
+.review-item .activity-path { cursor: default; }
+.review-item .activity-meta button.primary, .review-item .activity-meta button.primary:hover { padding: 2px 8px; color: #fff; }
+.review-stale { color: var(--danger); font-size: 11px; }
+.review-reason { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); margin-top: 8px; }
+.review-reason textarea { font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; resize: vertical; }
+.modal.review .history-diff { max-height: 56vh; }

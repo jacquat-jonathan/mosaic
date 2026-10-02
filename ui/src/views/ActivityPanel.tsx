@@ -1,16 +1,59 @@
-// AI activity: every change AI agents and the command line made to the vault, newest first, each with
-// a one-click undo (built on the file history, see crates/mosaic-core/src/history.rs).
+// AI activity: changes waiting for review (folders under review), then every change AI agents and the
+// command line made to the vault, newest first, each with a one-click undo (built on the file history,
+// see crates/mosaic-core/src/history.rs and review.rs).
 
 import { useCallback, useEffect, useState } from "react";
-import { History as HistoryIcon, Undo2 } from "lucide-react";
+import { Eye, History as HistoryIcon, Undo2 } from "lucide-react";
 import { api, onVaultChanged } from "../ipc/api";
-import { errorMessage, type Version } from "../ipc/types";
+import { errorMessage, type Proposal, type Version } from "../ipc/types";
+import { useReview } from "../state/review";
+import { ReviewModal, proposalWhat, proposalWho } from "./ReviewModal";
 import { useUi } from "../state/ui";
 import { useWorkspace } from "../state/workspace";
 import { ago, dayLabel } from "../time";
 import { what, who } from "./history";
 
+/** Agents' changes waiting for the person's decision, oldest first. */
+function ReviewInbox() {
+  const pending = useReview((s) => s.pending);
+  const [open, setOpen] = useState<Proposal | null>(null);
+  if (!pending.length) return null;
+  return (
+    <section className="review-inbox" aria-label="Waiting for your review">
+      <h4 className="activity-day">Waiting for your review ({pending.length})</h4>
+      {pending.map((p) => (
+        <div key={p.id} className="activity-item review-item">
+          <div className="activity-line">
+            <span className={`history-who source-${p.source}`}>{proposalWho(p)}</span> {proposalWhat(p)}
+          </div>
+          <div className="activity-path" title={p.path}>
+            {p.path.replace(/\.md$/, "")}
+          </div>
+          <div className="activity-meta">
+            <span>{ago(p.updated)}</span>
+            {p.stale && <span className="review-stale" title="The file changed since the agent proposed this">changed since</span>}
+            <span className="spacer" />
+            <button className="primary" onClick={() => setOpen(p)}>
+              <Eye size={13} /> Review
+            </button>
+          </div>
+        </div>
+      ))}
+      {open && <ReviewModal proposal={open} onClose={() => setOpen(null)} />}
+    </section>
+  );
+}
+
 export function ActivityPanel() {
+  return (
+    <>
+      <ReviewInbox />
+      <Activity />
+    </>
+  );
+}
+
+function Activity() {
   const [items, setItems] = useState<Version[] | null>(null);
   const [problem, setProblem] = useState<{ id: number; message: string } | null>(null);
   const [undone, setUndone] = useState<Set<number>>(new Set());

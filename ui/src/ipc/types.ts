@@ -79,6 +79,24 @@ export interface SearchHit {
   score: number;
 }
 
+export interface QueryRow {
+  path: string;
+  title: string;
+  /** Milliseconds since the Unix epoch. */
+  modified: number;
+  tags: string[];
+  /** The note's frontmatter. */
+  props: Record<string, unknown>;
+}
+
+export interface QueryResult {
+  /** Fields worth showing next to each note. */
+  columns: string[];
+  rows: QueryRow[];
+  /** Matches before `limit`. */
+  total: number;
+}
+
 export interface Backlink {
   source: string;
   line: number;
@@ -156,7 +174,25 @@ export interface Mention {
 /** What agents may do in a folder (Settings › AI). */
 export interface AgentRule {
   path: string;
-  access: "read-only" | "hidden";
+  access: "read-only" | "hidden" | "review";
+}
+
+/** A change an agent proposed in a folder under review (crates/mosaic-core/src/review.rs). */
+export interface Proposal {
+  id: number;
+  path: string;
+  action: "created" | "edited" | "deleted";
+  status: "pending" | "accepted" | "rejected" | "withdrawn";
+  source: string;
+  actor: string | null;
+  created: number;
+  updated: number;
+  decided: number | null;
+  reason: string | null;
+  base_hash: string | null;
+  hash: string | null;
+  /** The file changed since the proposal was made: accepting overwrites that. */
+  stale: boolean;
 }
 
 /** One version of a file kept by Mosaic (see crates/mosaic-core/src/history.rs). */

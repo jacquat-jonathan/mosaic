@@ -106,7 +106,7 @@ function AgentRules() {
     const taken = new Set(rules?.map((r) => r.path));
     const folders = useVault.getState().entries.filter((e) => e.is_dir && !taken.has(e.path));
     useUi.getState().openPicker({
-      placeholder: "Protect which folder from agents?",
+      placeholder: "Which folder should agents treat differently?",
       items: folders.map((f) => ({ id: f.path, label: f.path.split("/").pop()!, detail: f.path.includes("/") ? f.path : undefined })),
       hint: "↵ choose · esc cancel",
       onPick: (item) => save([...(rules ?? []), { path: item.id, access: "read-only" }]),
@@ -116,9 +116,10 @@ function AgentRules() {
   return (
     <div className="agent-rules">
       <p className="settings-note">
-        <strong>Read-only:</strong> agents can read and search it but not change, move or delete anything. <strong>Hidden:</strong>{" "}
-        agents can't see it at all: it's left out of listings, search and backlinks. This applies to the MCP server and the{" "}
-        <code>mosaic</code> command, never to you.
+        <strong>Review changes:</strong> agents' edits, new files and deletions wait for you under AI activity, where you see each
+        change and accept or reject it; nothing changes until you do. <strong>Read-only:</strong> agents can read and search it but
+        not change, move or delete anything. <strong>Hidden:</strong> agents can't see it at all: it's left out of listings, search
+        and backlinks. This applies to the MCP server and the <code>mosaic</code> command, never to you.
       </p>
       {rules.map((r, i) => (
         <div key={r.path} className="agent-rule">
@@ -126,6 +127,7 @@ function AgentRules() {
           <code>{r.path}</code>
           <span className="spacer" />
           <select value={r.access} aria-label={`Access for ${r.path}`} onChange={(e) => save(rules.map((x, j) => (j === i ? { ...x, access: e.target.value as AgentRule["access"] } : x)))}>
+            <option value="review">Review changes</option>
             <option value="read-only">Read-only</option>
             <option value="hidden">Hidden</option>
           </select>

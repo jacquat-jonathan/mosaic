@@ -38,12 +38,35 @@ pub struct FileContent {
     pub hash: String,
     /// `None` for binary kinds (images, PDF, unknown).
     pub content: Option<String>,
+    /// For an agent in a folder under review: the pending proposal this content comes from.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub review: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Written {
     pub path: String,
     pub hash: String,
+    /// Set when the change wasn't made but proposed: the id of the proposal waiting for the
+    /// person's review (see `crate::review`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub review: Option<i64>,
+}
+
+/// `text` with exactly one occurrence of `find` replaced (the rule `patch` enforces).
+pub(crate) fn replace_once(norm: &str, text: &str, find: &str, replace: &str) -> Result<String> {
+    if find.is_empty() {
+        return Err(Error::Invalid("find text is empty".into()));
+    }
+    match text.matches(find).count() {
+        1 => Ok(text.replacen(find, replace, 1)),
+        0 => Err(Error::Invalid(format!(
+            "text to replace not found in {norm}"
+        ))),
+        n => Err(Error::Invalid(format!(
+            "text to replace occurs {n} times in {norm}; include more context so it is unique"
+        ))),
+    }
 }
 
 pub fn hash_bytes(bytes: &[u8]) -> String {
@@ -270,6 +293,7 @@ impl Vault {
             path: norm,
             kind,
             content,
+            review: None,
         })
     }
 
@@ -343,6 +367,7 @@ impl Vault {
         Ok(Written {
             hash: hash_bytes(content.as_bytes()),
             path: norm,
+            review: None,
         })
     }
 
@@ -360,6 +385,7 @@ impl Vault {
         Ok(Written {
             hash: hash_bytes(bytes),
             path: norm,
+            review: None,
         })
     }
 
@@ -391,6 +417,7 @@ impl Vault {
         Ok(Written {
             hash: hash_bytes(content.as_bytes()),
             path: norm,
+            review: None,
         })
     }
 
@@ -429,18 +456,8 @@ impl Vault {
                 current_hash: file.hash,
             });
         }
-        if find.is_empty() {
-            return Err(Error::Invalid("find text is empty".into()));
-        }
-        match text.matches(find).count() {
-            1 => self.write(&norm, &text.replacen(find, replace, 1), Some(&file.hash)),
-            0 => Err(Error::Invalid(format!(
-                "text to replace not found in {norm}"
-            ))),
-            n => Err(Error::Invalid(format!(
-                "text to replace occurs {n} times in {norm}; include more context so it is unique"
-            ))),
-        }
+        let next = replace_once(&norm, &text, find, replace)?;
+        self.write(&norm, &next, Some(&file.hash))
     }
 
     pub fn mkdir(&self, rel: &str) -> Result<()> {
@@ -497,6 +514,7 @@ impl Vault {
         Ok(Written {
             hash: hash_bytes(&bytes),
             path: to_n,
+            review: None,
         })
     }
 

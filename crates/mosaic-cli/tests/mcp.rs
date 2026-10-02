@@ -564,3 +564,83 @@ fn notes_are_resources() {
             .contains("Home")
     );
 }
+
+#[test]
+fn query_finds_notes_by_frontmatter_tags_and_links() {
+    let dir = fixture();
+    let mut c = Client::start(dir.path());
+    for (path, status) in [
+        ("Projects/Alpha.md", "active"),
+        ("Projects/Beta.md", "paused"),
+    ] {
+        let content = format!("---\nstatus: {status}\npriority: 3\n---\nSee [[Ideas]].\n");
+        let (err, _) = c.call("create_file", json!({ "path": path, "content": content }));
+        assert!(!err);
+    }
+    let (err, r) = c.call("query", json!({ "query": "status=active links-to:Ideas" }));
+    assert!(!err, "{r}");
+    assert_eq!(r["total"], 1);
+    assert_eq!(r["rows"][0]["path"], "Projects/Alpha.md");
+    assert_eq!(r["rows"][0]["props"]["priority"], 3);
+    assert_eq!(r["columns"], json!(["status"]));
+    let (err, r) = c.call("query", json!({ "query": "folder:Projects sort:-status" }));
+    assert!(!err);
+    assert_eq!(r["rows"][0]["path"], "Projects/Beta.md");
+    let (err, r) = c.call("query", json!({ "query": "limit:lots" }));
+    assert!(err);
+    assert_eq!(r["code"], "invalid");
+}
+
+#[test]
+fn changes_in_a_reviewed_folder_become_proposals() {
+    let dir = fixture();
+    let root = std::fs::canonicalize(dir.path()).unwrap();
+    std::fs::create_dir_all(root.join("Drafts")).unwrap();
+    std::fs::write(root.join("Drafts/Plan.md"), "# Plan\n").unwrap();
+    let settings = root.join(".test-settings");
+    std::fs::create_dir_all(&settings).unwrap();
+    let rules = json!({ "agent_rules": { root.to_str().unwrap(): [
+        { "path": "Drafts", "access": "review" }
+    ] } });
+    std::fs::write(settings.join("settings.json"), rules.to_string()).unwrap();
+    let mut c = Client::start(&root);
+
+    let (err, w) = c.call(
+        "append_to_file",
+        json!({ "path": "Drafts/Plan.md", "content": "- step one\n" }),
+    );
+    assert!(!err, "{w}");
+    let id = w["review"].as_i64().expect("a proposal id");
+    assert!(
+        w["note"]
+            .as_str()
+            .unwrap()
+            .contains("Proposed, not applied")
+    );
+    // The file is untouched; the agent's reads see its proposal.
+    assert_eq!(
+        std::fs::read_to_string(root.join("Drafts/Plan.md")).unwrap(),
+        "# Plan\n"
+    );
+    let (_, f) = c.call("read_file", json!({ "path": "Drafts/Plan.md" }));
+    assert_eq!(f["content"], "# Plan\n- step one\n");
+    assert_eq!(f["review"], id);
+    let (_, list) = c.call("list_proposals", json!({}));
+    assert_eq!(list[0]["status"], "pending");
+    assert_eq!(list[0]["actor"], "test");
+    // Agents can't accept their own changes; they can take them back.
+    let (err, _) = c.call("withdraw_proposal", json!({ "id": id }));
+    assert!(!err);
+    let (_, list) = c.call("list_proposals", json!({}));
+    assert_eq!(list[0]["status"], "withdrawn");
+    // A deletion is proposed too, and moves are refused.
+    let (err, d) = c.call("delete_file", json!({ "path": "Drafts/Plan.md" }));
+    assert!(!err && d["review"].is_i64(), "{d}");
+    assert!(root.join("Drafts/Plan.md").exists());
+    let (err, m) = c.call(
+        "rename",
+        json!({ "from": "Drafts/Plan.md", "to": "Plan.md" }),
+    );
+    assert!(err);
+    assert_eq!(m["code"], "denied");
+}

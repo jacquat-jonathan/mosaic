@@ -2509,6 +2509,7 @@ dependencies = [
 name = "mosaic-core"
 version = "0.8.0"
 dependencies = [
+ "chrono",
  "notify",
  "notify-debouncer-full",
  "regex",

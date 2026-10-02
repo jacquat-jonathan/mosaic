@@ -32,7 +32,16 @@ pub enum Source {
 }
 
 impl Source {
-    fn as_str(&self) -> &'static str {
+    pub(crate) fn parse(s: &str) -> Source {
+        match s {
+            "app" => Source::App,
+            "cli" => Source::Cli,
+            "external" => Source::External,
+            _ => Source::Agent,
+        }
+    }
+
+    pub(crate) fn as_str(&self) -> &'static str {
         match self {
             Source::App => "app",
             Source::Cli => "cli",
@@ -86,7 +95,7 @@ pub struct Version {
 }
 
 pub struct History {
-    conn: Connection,
+    pub(crate) conn: Connection,
 }
 
 fn sql_err(e: rusqlite::Error) -> Error {
@@ -121,6 +130,11 @@ impl History {
         Self::init(Connection::open_in_memory().map_err(sql_err)?)
     }
 
+    /// A history in a given database file (tests where two workspaces share one history).
+    pub fn open_at(db: &Path) -> Result<Self> {
+        Self::init(Connection::open(db).map_err(sql_err)?)
+    }
+
     fn init(conn: Connection) -> Result<Self> {
         conn.busy_timeout(std::time::Duration::from_secs(5))
             .map_err(sql_err)?;
@@ -132,7 +146,13 @@ impl History {
                 source TEXT NOT NULL, actor TEXT, action TEXT NOT NULL, hash TEXT NOT NULL,
                 size INTEGER NOT NULL, content TEXT, from_path TEXT);
              CREATE INDEX IF NOT EXISTS versions_path ON versions(path, id);
-             CREATE INDEX IF NOT EXISTS versions_source ON versions(source, id);",
+             CREATE INDEX IF NOT EXISTS versions_source ON versions(source, id);
+             CREATE TABLE IF NOT EXISTS proposals (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, path TEXT NOT NULL, action TEXT NOT NULL,
+                base_hash TEXT, content TEXT, hash TEXT, source TEXT NOT NULL, actor TEXT,
+                created INTEGER NOT NULL, updated INTEGER NOT NULL, status TEXT NOT NULL,
+                reason TEXT, decided INTEGER);
+             CREATE INDEX IF NOT EXISTS proposals_status ON proposals(status, path);",
         )
         .map_err(sql_err)?;
         let h = History { conn };

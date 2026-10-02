@@ -19,6 +19,20 @@ use std::sync::{Arc, RwLock};
 
 type ToolResult = Result<String, String>;
 
+/// Added to results of changes that were proposed instead of made (folders under review).
+const REVIEW_NOTE: &str = "Proposed, not applied: the person reviews changes in this folder and will accept or reject it in the Mosaic app. Your later reads and edits of this file build on the proposal. Check the outcome with list_proposals.";
+
+/// A write's result, with a note when it became a proposal.
+fn written(w: mosaic_core::Written) -> ToolResult {
+    if w.review.is_some() {
+        let mut v = serde_json::to_value(&w).map_err(|e| e.to_string())?;
+        v["note"] = REVIEW_NOTE.into();
+        ok(v)
+    } else {
+        ok(w)
+    }
+}
+
 fn ok<T: Serialize>(value: T) -> ToolResult {
     serde_json::to_string_pretty(&value).map_err(|e| e.to_string())
 }
@@ -49,6 +63,24 @@ struct SearchArgs {
     query: String,
     /// Maximum results (default 20).
     limit: Option<usize>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct ProposalsArgs {
+    /// Maximum proposals (default 30): pending ones first, then recent decisions.
+    limit: Option<usize>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct IdArg {
+    /// A proposal id from list_proposals.
+    id: i64,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct QueryArgs {
+    /// The query, e.g. `tag:project status=active due<today+7 sort:due limit:20`. See the tool description.
+    query: String,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -340,13 +372,39 @@ impl MosaicMcp {
     }
 
     #[tool(
+        description = "Structured query over the vault's notes: by tag, folder, frontmatter field, date and links. More precise than search. Filters (prefix - to negate): tag:project (nested tags match; tag:a|b for either), folder:Projects, kind:markdown|canvas, links-to:Note (notes linking to it), linked-from:Note (notes it links to), has:field. Comparisons on frontmatter fields and on title, name, folder, tags, modified: status=active, status!=done, priority>2, due<=today+7, title~draft (contains); a|b matches either; list fields match if any item does; dates as 2026-10-02, today, today-7. Also sort:due or sort:-modified (descending), limit:N (default 100), show:a,b (columns), and plain words for full-text search. Quote values with spaces: status=\"in progress\". Returns matching notes with title, modified time, tags and frontmatter, the columns worth showing, and the total before limit."
+    )]
+    async fn query(&self, Parameters(a): Parameters<QueryArgs>) -> ToolResult {
+        self.fresh();
+        self.ws().query(&a.query).map_err(err).and_then(ok)
+    }
+
+    #[tool(
+        description = "Your changes waiting for the person's review (in folders where they review agents' changes), and their decisions on recent ones: status pending, accepted, rejected (with their reason) or withdrawn. stale means the file changed since you proposed."
+    )]
+    async fn list_proposals(&self, Parameters(a): Parameters<ProposalsArgs>) -> ToolResult {
+        self.ws()
+            .proposals(true, a.limit.unwrap_or(30))
+            .map_err(err)
+            .and_then(ok)
+    }
+
+    #[tool(description = "Take back one of your pending proposals (the file stays as it is).")]
+    async fn withdraw_proposal(&self, Parameters(a): Parameters<IdArg>) -> ToolResult {
+        self.ws()
+            .withdraw_proposal(a.id)
+            .map_err(err)
+            .and_then(|_| ok(serde_json::json!({ "withdrawn": a.id })))
+    }
+
+    #[tool(
         description = "Create a new file (fails if it exists). Use .md for notes, .canvas for boards, .vl.json for charts, .dot for graphs."
     )]
     async fn create_file(&self, Parameters(a): Parameters<CreateArgs>) -> ToolResult {
         self.ws()
             .create(&a.path, &a.content)
             .map_err(err)
-            .and_then(ok)
+            .and_then(written)
     }
 
     #[tool(
@@ -356,7 +414,7 @@ impl MosaicMcp {
         self.ws()
             .write(&a.path, &a.content, a.expected_hash.as_deref())
             .map_err(err)
-            .and_then(ok)
+            .and_then(written)
     }
 
     #[tool(
@@ -366,7 +424,7 @@ impl MosaicMcp {
         self.ws()
             .patch(&a.path, &a.find, &a.replace, a.expected_hash.as_deref())
             .map_err(err)
-            .and_then(ok)
+            .and_then(written)
     }
 
     #[tool(
@@ -376,7 +434,7 @@ impl MosaicMcp {
         self.ws()
             .append(&a.path, &a.content)
             .map_err(err)
-            .and_then(ok)
+            .and_then(written)
     }
 
     #[tool(
@@ -422,15 +480,20 @@ impl MosaicMcp {
         description = "Duplicate a file (any kind, including binary). Never overwrites: fails if `to` exists."
     )]
     async fn copy_file(&self, Parameters(a): Parameters<CopyArgs>) -> ToolResult {
-        self.ws().copy(&a.from, &a.to).map_err(err).and_then(ok)
+        self.ws()
+            .copy(&a.from, &a.to)
+            .map_err(err)
+            .and_then(written)
     }
 
     #[tool(description = "Move a file or folder to the macOS Trash (recoverable).")]
     async fn delete_file(&self, Parameters(a): Parameters<PathArg>) -> ToolResult {
-        self.ws()
-            .delete(&a.path)
-            .map_err(err)
-            .and_then(|_| ok(serde_json::json!({ "deleted": a.path })))
+        match self.ws().delete(&a.path).map_err(err)? {
+            Some(id) => {
+                ok(serde_json::json!({ "path": a.path, "review": id, "note": REVIEW_NOTE }))
+            }
+            None => ok(serde_json::json!({ "deleted": a.path })),
+        }
     }
 
     #[tool(description = "Create a folder (and any missing parents).")]
@@ -484,7 +547,7 @@ impl MosaicMcp {
         self.ws()
             .restore(&a.path, a.id, a.expected_hash.as_deref())
             .map_err(err)
-            .and_then(ok)
+            .and_then(written)
     }
 
     #[tool(

@@ -93,11 +93,13 @@ vaults, so agents always write where you're looking. To tie it to one vault, use
 
 The MCP tools are `vault_guide`, `list_files`, `read_file`, `outline`, `search`, `create_file`,
 `edit_file`, `patch_file`, `append_to_file`, `rename`, `copy_file`, `delete_file`, `create_folder`,
-`get_backlinks`, `list_tags`, `list_bookmarks`, `add_bookmark`, `remove_bookmark`, `move_files`,
-`import_file`, `file_history`, `restore_version` and `render` (a PNG of a canvas, so the agent can check
-what it drew). Notes are also MCP resources (`mosaic:///Folder/Note.md`). In Settings › AI you can make
-folders read-only for agents or hide them. Edits accept an `expected_hash` so an agent never overwrites a
-newer human edit.
+`get_backlinks`, `list_tags`, `query` (notes by tag, frontmatter field, date or links), `list_bookmarks`,
+`add_bookmark`, `remove_bookmark`, `move_files`, `import_file`, `file_history`, `restore_version`,
+`list_proposals`, `withdraw_proposal` and `render` (a PNG of a canvas, so the agent can check what it
+drew). Notes are also MCP resources (`mosaic:///Folder/Note.md`). In Settings › AI you can make folders
+read-only for agents, hide them, or **review** agents' changes there: edits, new files and deletions wait
+under AI activity until you accept or reject them. Edits accept an `expected_hash` so an agent never
+overwrites a newer human edit.
 
 **Command line**
 

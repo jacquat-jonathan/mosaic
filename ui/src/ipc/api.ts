@@ -1,7 +1,7 @@
 // Typed access to the backend. Inside Tauri this goes through `invoke`; in a plain browser (UI
 // development and tests) it falls back to an in-memory mock vault.
 
-import type { Backlink, CliInfo, Entry, FileContent, IndexProgress, RecentVault, Renamed, SearchHit, TagCount, UpdateCheck, UpdateDone, UpdateStatus, Version, VaultInfo, Written, AgentRule, Mention } from "./types";
+import type { Backlink, CliInfo, Entry, FileContent, IndexProgress, RecentVault, Renamed, SearchHit, TagCount, UpdateCheck, UpdateDone, UpdateStatus, Version, VaultInfo, Written, AgentRule, Mention, QueryResult, Proposal } from "./types";
 import { mockInvoke } from "./mock";
 
 export const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -42,6 +42,14 @@ export const api = {
   remove: (path: string) => call<void>("delete_path", { path }),
   absolutePath: (path: string) => call<string>("absolute_path", { path }),
   search: (query: string, limit = 50) => call<SearchHit[]>("search", { query, limit }),
+  /** Notes matching a structured query (crates/mosaic-core/src/query.rs). */
+  query: (query: string) => call<QueryResult>("query_notes", { query }),
+  /** Agents' proposals in folders under review: pending first, then recent decisions. */
+  proposals: (includeDecided = false) => call<Proposal[]>("proposals", { includeDecided }),
+  /** The proposed content (null for a deletion). */
+  proposalContent: (id: number) => call<string | null>("proposal_content", { id }),
+  acceptProposal: (id: number, force = false) => call<string>("accept_proposal", { id, force }),
+  rejectProposal: (id: number, reason: string | null) => call<void>("reject_proposal", { id, reason }),
   backlinks: (path: string) => call<Backlink[]>("backlinks", { path }),
   tags: () => call<TagCount[]>("tags"),
   aliases: () => call<[string, string][]>("aliases"),

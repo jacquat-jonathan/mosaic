@@ -20,6 +20,7 @@ import { BookmarksPanel } from "./views/BookmarksPanel";
 import { Resizer } from "./views/Resizer";
 import { HistoryModal } from "./views/HistoryModal";
 import { ActivityPanel } from "./views/ActivityPanel";
+import { useReview } from "./state/review";
 import { shortcutOf } from "./commands";
 
 export function App() {
@@ -145,7 +146,10 @@ function Main() {
   const rightWidth = useUi((s) => s.rightWidth);
   const indexing = useVault((s) => s.indexing);
   const offline = useVault((s) => s.offline);
+  const pendingReviews = useReview((s) => s.pending.length);
   const ui = useUi.getState;
+  // Agents' proposals arrive from another process: check for them while this vault is open.
+  useEffect(() => useReview.getState().watch(), [vault.root]);
   return (
     <div className={`shell ${left ? "" : "no-left"}`}>
       {left && (
@@ -175,6 +179,7 @@ function Main() {
                 onClick={() => (t.id === "search" ? ui().showSearch() : ui().setSidebarTab(t.id))}
               >
                 <t.icon size={15} />
+                {t.id === "activity" && pendingReviews > 0 && <span className="tab-badge" aria-label={`${pendingReviews} waiting for review`}>{pendingReviews}</span>}
               </button>
             ))}
             <span className="spacer" />

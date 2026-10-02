@@ -51,6 +51,12 @@ enum Cmd {
         #[arg(short, long, default_value_t = 20)]
         limit: usize,
     },
+    /// Notes matching a structured query, e.g. `tag:project status=active due<today+7 sort:due`.
+    /// Filters: tag:, folder:, kind:, links-to:, linked-from:, has: (prefix - to negate); field=value,
+    /// != > >= < <= ~ (contains) on frontmatter fields, title, name, folder, tags, modified; a|b for
+    /// either; today, today-7 as dates. Also sort:field / sort:-field, limit:N, show:a,b, and words
+    /// for full-text search.
+    Query { query: Vec<String> },
     /// Create a new file; content from --content or stdin.
     Create {
         path: String,
@@ -137,6 +143,14 @@ enum Cmd {
         #[arg(long)]
         dark: bool,
     },
+    /// Changes waiting for the person's review (folders under review in Settings › AI), and the
+    /// decisions on recent ones.
+    Proposals {
+        #[arg(short, long, default_value_t = 30)]
+        limit: usize,
+    },
+    /// Take back one of your pending proposals (an id from `proposals`).
+    Withdraw { id: i64 },
     /// Changes made by AI agents and the command line, newest first.
     Activity {
         #[arg(short, long, default_value_t = 30)]
@@ -242,6 +256,17 @@ fn content_arg(content: Option<String>) -> Result<String> {
     Ok(s)
 }
 
+/// "wrote Notes/Plan.md", or, in a folder under review, that the change waits for the person.
+fn done(w: &mosaic_core::Written, verb: &str) -> String {
+    match w.review {
+        Some(id) => format!(
+            "proposed: {verb} {} is waiting for the person's review in the Mosaic app (proposal {id})",
+            w.path
+        ),
+        None => format!("{verb} {}", w.path),
+    }
+}
+
 fn print<T: Serialize>(json: bool, value: &T, human: impl FnOnce(&T) -> String) -> Result<()> {
     if json {
         println!("{}", serde_json::to_string_pretty(value)?);
@@ -300,6 +325,7 @@ fn run(cli: Cli) -> Result<()> {
     let needs_index = matches!(
         cli.cmd,
         Cmd::Search { .. }
+            | Cmd::Query { .. }
             | Cmd::Backlinks { .. }
             | Cmd::Tags
             | Cmd::Outline { .. }
@@ -340,9 +366,37 @@ fn run(cli: Cli) -> Result<()> {
                 .collect::<Vec<_>>()
                 .join("\n")
         }),
+        Cmd::Query { query } => print(json, &ws.query(&query.join(" "))?, |r| {
+            let mut lines: Vec<String> = r
+                .rows
+                .iter()
+                .map(|row| {
+                    let cells: Vec<String> = r
+                        .columns
+                        .iter()
+                        .map(|c| format!("{c}: {}", row.cell(c)))
+                        .collect();
+                    if cells.is_empty() {
+                        row.path.clone()
+                    } else {
+                        format!("{}\n    {}", row.path, cells.join("   "))
+                    }
+                })
+                .collect();
+            if r.total > r.rows.len() {
+                lines.push(format!(
+                    "({} of {} shown; add limit:N for more)",
+                    r.rows.len(),
+                    r.total
+                ));
+            } else if r.rows.is_empty() {
+                lines.push("no matching notes".into());
+            }
+            lines.join("\n")
+        }),
         Cmd::Create { path, content } => {
             let w = ws.create(&path, &content_arg(content)?)?;
-            print(json, &w, |w| format!("created {}", w.path))
+            print(json, &w, |w| done(w, "created"))
         }
         Cmd::Write {
             path,
@@ -350,11 +404,11 @@ fn run(cli: Cli) -> Result<()> {
             expected_hash,
         } => {
             let w = ws.write(&path, &content_arg(content)?, expected_hash.as_deref())?;
-            print(json, &w, |w| format!("wrote {}", w.path))
+            print(json, &w, |w| done(w, "wrote"))
         }
         Cmd::Append { path, content } => {
             let w = ws.append(&path, &content_arg(content)?)?;
-            print(json, &w, |w| format!("appended to {}", w.path))
+            print(json, &w, |w| done(w, "appended to"))
         }
         Cmd::Patch {
             path,
@@ -363,7 +417,7 @@ fn run(cli: Cli) -> Result<()> {
             expected_hash,
         } => {
             let w = ws.patch(&path, &find, &replace, expected_hash.as_deref())?;
-            print(json, &w, |w| format!("patched {}", w.path))
+            print(json, &w, |w| done(w, "patched"))
         }
         Cmd::Rename {
             from,
@@ -403,14 +457,22 @@ fn run(cli: Cli) -> Result<()> {
         }
         Cmd::Copy { from, to } => {
             let w = ws.copy(&from, &to)?;
-            print(json, &w, |w| format!("copied to {}", w.path))
+            print(json, &w, |w| done(w, "copied to"))
         }
-        Cmd::Delete { path } => {
-            ws.delete(&path)?;
-            print(json, &serde_json::json!({ "deleted": path }), |_| {
+        Cmd::Delete { path } => match ws.delete(&path)? {
+            Some(id) => print(
+                json,
+                &serde_json::json!({ "path": path, "review": id }),
+                |_| {
+                    format!(
+                        "proposed deleting {path}: waiting for the person's review (proposal {id})"
+                    )
+                },
+            ),
+            None => print(json, &serde_json::json!({ "deleted": path }), |_| {
                 format!("moved {path} to the Trash")
-            })
-        }
+            }),
+        },
         Cmd::Mkdir { path } => {
             ws.mkdir(&path)?;
             print(json, &serde_json::json!({ "created": path }), |_| {
@@ -455,8 +517,9 @@ fn run(cli: Cli) -> Result<()> {
             expected_hash,
         } => {
             let w = ws.restore(&path, id, expected_hash.as_deref())?;
-            print(json, &w, |w| {
-                format!("restored {} ({})", w.path, &w.hash[..12])
+            print(json, &w, |w| match w.review {
+                Some(_) => done(w, "restored"),
+                None => format!("restored {} ({})", w.path, &w.hash[..12]),
             })
         }
         Cmd::Render { path, output, dark } => {
@@ -482,6 +545,36 @@ fn run(cli: Cli) -> Result<()> {
         Cmd::Activity { limit } => print(json, &ws.activity(limit)?, |vs| {
             vs.iter().map(version_line).collect::<Vec<_>>().join("\n")
         }),
+        Cmd::Proposals { limit } => print(json, &ws.proposals(true, limit)?, |ps| {
+            if ps.is_empty() {
+                return "no proposals".into();
+            }
+            ps.iter()
+                .map(|p| {
+                    let who = p.actor.clone().unwrap_or_else(|| p.source.clone());
+                    let mut line = format!(
+                        "{:>6}  {:<9}  {:<8}  {who:<16}  {}",
+                        p.id, p.status, p.action, p.path
+                    );
+                    if let Some(r) = &p.reason {
+                        line.push_str(&format!("\n        reason: {r}"));
+                    }
+                    if p.stale {
+                        line.push_str(
+                            "\n        the file changed since; the person will see a conflict",
+                        );
+                    }
+                    line
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+        }),
+        Cmd::Withdraw { id } => {
+            ws.withdraw_proposal(id)?;
+            print(json, &serde_json::json!({ "withdrawn": id }), |_| {
+                format!("withdrew proposal {id}")
+            })
+        }
         Cmd::Undo { id } => {
             let path = ws.undo(id)?;
             print(json, &path, |p| format!("undone: {p}"))

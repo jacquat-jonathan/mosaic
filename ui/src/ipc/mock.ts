@@ -2,8 +2,9 @@
 // It mirrors the core's semantics closely enough for UI work; it is not a second implementation to keep in sync
 // feature-for-feature.
 
-import type { Backlink, CoreError, Entry, FileContent, SearchHit, Version } from "./types";
+import type { Backlink, CoreError, Entry, FileContent, Proposal, QueryResult, QueryRow, SearchHit, Version } from "./types";
 import { kindOf } from "./kinds";
+import { parse as parseYaml } from "yaml";
 
 interface MockFile {
   content: string;
@@ -19,6 +20,33 @@ let updateBuilt = false;
 let updateRunning = false;
 let updateTimers: ReturnType<typeof setTimeout>[] = [];
 let agentRules: { path: string; access: string }[] = [];
+const proposals: (Proposal & { content: string | null })[] = [];
+
+/** Browser testing: what an agent's change in a folder under review leaves behind. */
+export function mockPropose(path: string, content: string | null, actor = "claude-code"): number {
+  const now = Date.now();
+  const existing = files.get(path);
+  const p = {
+    id: proposals.length + 1,
+    path,
+    action: (content === null ? "deleted" : existing ? "edited" : "created") as Proposal["action"],
+    status: "pending" as const,
+    source: "agent",
+    actor,
+    created: now,
+    updated: now,
+    decided: null,
+    reason: null,
+    base_hash: existing ? hash(existing.content) : null,
+    hash: content === null ? null : hash(content),
+    stale: false,
+    content,
+  };
+  proposals.push(p);
+  return p.id;
+}
+// Reachable from the browser console (a module imported by URL can be a separate copy after a hot reload).
+(globalThis as { mosaicMock?: object }).mosaicMock = { propose: mockPropose };
 
 const emit = (name: string, detail: unknown) => window.dispatchEvent(new CustomEvent(`mock-${name}`, { detail }));
 
@@ -484,6 +512,29 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
       }
       return hits;
     }
+    case "proposals": {
+      const list = proposals.filter((p) => a.includeDecided || p.status === "pending").map(({ content: _c, ...p }) => ({ ...p, stale: p.status === "pending" && (files.has(p.path) ? hash(files.get(p.path)!.content) : null) !== p.base_hash }));
+      return list;
+    }
+    case "proposal_content":
+      return proposals.find((p) => p.id === a.id)?.content ?? null;
+    case "accept_proposal":
+    case "reject_proposal": {
+      const p = proposals.find((x) => x.id === a.id && x.status === "pending");
+      if (!p) throw err("not_found", `proposal ${a.id}`);
+      if (cmd === "accept_proposal") {
+        const current = files.has(p.path) ? hash(files.get(p.path)!.content) : null;
+        if (current !== p.base_hash && !a.force) throw err("conflict", `file changed since it was read: ${p.path}`);
+        if (p.content === null) files.delete(p.path);
+        else write(p.path, p.content);
+        track(p.path, p.action, p.content, { source: "agent", actor: p.actor });
+        emit("vault-changed", { paths: [p.path] });
+      }
+      Object.assign(p, { status: cmd === "accept_proposal" ? "accepted" : "rejected", reason: (a.reason as string | null) ?? null, decided: Date.now() });
+      return cmd === "accept_proposal" ? p.path : null;
+    }
+    case "query_notes":
+      return mockQuery(String(a.query ?? ""));
     case "backlinks": {
       const target = norm(a.path).split("/").pop()!.replace(/\.md$/, "").toLowerCase();
       const out: Backlink[] = [];
@@ -516,4 +567,46 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
     default:
       throw err("invalid", `mock: unknown command ${cmd}`);
   }
+}
+
+/** A small subset of the core's query language (tag:, folder:, field=value and friends, sort:, limit:, show:). */
+function mockQuery(q: string): QueryResult {
+  const tokens = q.match(/(?:[^\s"]+|"[^"]*")+/g) ?? [];
+  let rows: QueryRow[] = [...files].map(([path, f]) => {
+    const fm = /^---\n([\s\S]*?)\n---/.exec(f.content);
+    let props: Record<string, unknown> = {};
+    try {
+      props = (fm && (parseYaml(fm[1]) as Record<string, unknown>)) || {};
+    } catch {
+      /* keep empty */
+    }
+    const tags = [...(Array.isArray(props.tags) ? props.tags.map(String) : []), ...[...f.content.matchAll(/(?:^|\s)#([\w/-]+)/g)].map((m) => m[1])];
+    return { path, title: path.split("/").pop()!.replace(/\.md$/, ""), modified: f.mtime, tags, props };
+  });
+  const columns: string[] = [];
+  const sort: [string, boolean][] = [];
+  let limit = 100;
+  const value = (r: QueryRow, f: string) => (f === "title" ? r.title : f === "path" ? r.path : r.props[f]);
+  for (const tok of tokens) {
+    const t = tok.replace(/"/g, "");
+    let m: RegExpExecArray | null;
+    if ((m = /^(-?)tag:(.+)$/.exec(t))) {
+      const want = m[2].split("|");
+      rows = rows.filter((r) => r.tags.some((x) => want.some((w) => x === w || x.startsWith(`${w}/`))) !== (m![1] === "-"));
+    } else if ((m = /^folder:(.+)$/.exec(t))) rows = rows.filter((r) => r.path.startsWith(`${m![1]}/`));
+    else if ((m = /^sort:(-?)(.+)$/.exec(t))) sort.push([m[2], m[1] === "-"]);
+    else if ((m = /^limit:(\d+)$/.exec(t))) limit = Number(m[1]);
+    else if ((m = /^show:(.+)$/.exec(t))) columns.push(...m[1].split(","));
+    else if ((m = /^([\w.-]+)(!=|=|>|<|~)(.+)$/.exec(t))) {
+      const [, f, op, v] = m;
+      if (!columns.includes(f)) columns.push(f);
+      rows = rows.filter((r) => {
+        const x = String(value(r, f) ?? "").toLowerCase();
+        const y = v.toLowerCase();
+        return op === "=" ? x === y : op === "!=" ? x !== y : op === ">" ? x > y : op === "<" ? x < y && x !== "" : x.includes(y);
+      });
+    } else rows = rows.filter((r) => files.get(r.path)!.content.toLowerCase().includes(t.toLowerCase()));
+  }
+  for (const [f, desc] of sort.reverse()) rows.sort((a, b) => String(value(a, f) ?? "").localeCompare(String(value(b, f) ?? "")) * (desc ? -1 : 1));
+  return { columns, rows: rows.slice(0, limit), total: rows.length };
 }

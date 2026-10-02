@@ -17,7 +17,8 @@ use std::sync::{Arc, RwLock};
 const MAX_INDEXED_BYTES: u64 = 2 * 1024 * 1024;
 /// Bump when the tables or what's extracted from files change: the index is then rebuilt from scratch.
 /// 2: Excalidraw text only, canvas backlink context, chart data files as embeds.
-const SCHEMA_VERSION: i64 = 2;
+/// 3: frontmatter properties as JSON (`files.props`), for queries.
+const SCHEMA_VERSION: i64 = 3;
 
 pub struct Index {
     conn: Connection,
@@ -60,6 +61,19 @@ pub struct OutLink {
     pub resolved: Option<String>,
     pub line: usize,
     pub embed: bool,
+}
+
+/// What a query can filter and sort on, for one file.
+#[derive(Debug, Clone)]
+pub struct NoteMeta {
+    pub path: String,
+    pub kind: String,
+    pub title: String,
+    /// Milliseconds since the Unix epoch.
+    pub mtime: u64,
+    /// Frontmatter as a JSON object (empty without frontmatter).
+    pub props: serde_json::Value,
+    pub tags: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -412,7 +426,7 @@ impl Index {
         tx.execute_batch(
             "CREATE TABLE IF NOT EXISTS files (
                 path TEXT PRIMARY KEY, kind TEXT NOT NULL, size INTEGER NOT NULL, mtime INTEGER NOT NULL,
-                hash TEXT, title TEXT NOT NULL, aliases TEXT NOT NULL DEFAULT '[]');
+                hash TEXT, title TEXT NOT NULL, aliases TEXT NOT NULL DEFAULT '[]', props TEXT NOT NULL DEFAULT '{}');
              CREATE TABLE IF NOT EXISTS links (
                 src TEXT NOT NULL, target TEXT NOT NULL, key TEXT NOT NULL, heading TEXT, alias TEXT,
                 embed INTEGER NOT NULL, markdown INTEGER NOT NULL, line INTEGER NOT NULL, context TEXT NOT NULL);
@@ -604,8 +618,16 @@ impl Index {
             },
         };
         let hash = text.as_ref().map(|t| hash_bytes(t.as_bytes()));
+        // Frontmatter as a JSON object (dates stay strings), for structured queries.
+        let props = ex
+            .parsed
+            .frontmatter
+            .as_deref()
+            .and_then(|y| serde_norway::from_str::<serde_json::Value>(y).ok())
+            .filter(serde_json::Value::is_object)
+            .map_or_else(|| "{}".to_string(), |v| v.to_string());
         tx.execute(
-            "INSERT INTO files (path, kind, size, mtime, hash, title, aliases) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            "INSERT INTO files (path, kind, size, mtime, hash, title, aliases, props) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             params![
                 e.path,
                 serde_json::to_value(kind).ok().and_then(|v| v.as_str().map(str::to_string)).unwrap_or_default(),
@@ -614,6 +636,7 @@ impl Index {
                 hash,
                 ex.title,
                 serde_json::to_string(&ex.parsed.aliases).unwrap_or_else(|_| "[]".into()),
+                props,
             ],
         )
         .map_err(sql_err)?;
@@ -851,6 +874,52 @@ impl Index {
         .map_err(sql_err)?
         .collect::<std::result::Result<_, _>>()
         .map_err(sql_err)
+    }
+
+    /// Every indexed file with its frontmatter and tags (for `crate::query`).
+    pub fn notes_meta(&self) -> Result<Vec<NoteMeta>> {
+        let mut tags: HashMap<String, Vec<String>> = HashMap::new();
+        {
+            let mut stmt = self
+                .conn
+                .prepare_cached("SELECT path, tag FROM tags")
+                .map_err(sql_err)?;
+            let rows = stmt
+                .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
+                .map_err(sql_err)?;
+            for row in rows {
+                let (p, t) = row.map_err(sql_err)?;
+                tags.entry(p).or_default().push(t);
+            }
+        }
+        let mut stmt = self
+            .conn
+            .prepare_cached("SELECT path, kind, title, mtime, props FROM files ORDER BY path")
+            .map_err(sql_err)?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                    r.get::<_, i64>(3)?,
+                    r.get::<_, String>(4)?,
+                ))
+            })
+            .map_err(sql_err)?;
+        let mut out = Vec::new();
+        for row in rows {
+            let (path, kind, title, mtime, props) = row.map_err(sql_err)?;
+            out.push(NoteMeta {
+                tags: tags.remove(&path).unwrap_or_default(),
+                path,
+                kind,
+                title,
+                mtime: mtime as u64,
+                props: serde_json::from_str(&props).unwrap_or_else(|_| serde_json::json!({})),
+            });
+        }
+        Ok(out)
     }
 
     /// Hash of the last indexed content of `path` (used to recognise the app's own writes).

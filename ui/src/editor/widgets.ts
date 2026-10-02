@@ -40,6 +40,14 @@ export class RenderedBlockWidget extends WidgetType {
   toDOM(view: EditorView) {
     const el = document.createElement("div");
     el.className = `cm-rendered-block cm-lang-${this.lang}${this.previewKey ? " cm-block-preview" : ""}`;
+    // Links drawn by a renderer (query tables): the editor ignores events inside widgets, so open them here.
+    el.addEventListener("click", (e) => {
+      const link = (e.target as HTMLElement).closest<HTMLElement>("[data-target]");
+      if (!link) return;
+      e.preventDefault();
+      e.stopPropagation();
+      this.ctx.openLink(link.dataset.target!, e.metaKey);
+    });
     const r = blockRenderers.get(this.lang);
     const key = this.previewKey;
     const failed = (e: unknown) => {

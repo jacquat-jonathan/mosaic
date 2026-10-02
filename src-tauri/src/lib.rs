@@ -260,7 +260,7 @@ fn rename_path(state: State<AppState>, from: String, to: String) -> CmdResult<Re
 
 #[tauri::command]
 fn delete_path(state: State<AppState>, path: String) -> CmdResult<()> {
-    state.get()?.delete(&path)
+    state.get()?.delete(&path).map(|_| ())
 }
 
 /// Opens the macOS print dialog for the window ("Save as PDF" is in it). The UI shows only the
@@ -330,6 +330,39 @@ fn search(
     limit: Option<usize>,
 ) -> CmdResult<Vec<SearchHit>> {
     state.get()?.search(&query, limit.unwrap_or(50))
+}
+
+#[tauri::command]
+fn proposals(
+    state: State<AppState>,
+    include_decided: Option<bool>,
+) -> CmdResult<Vec<mosaic_core::review::Proposal>> {
+    state
+        .get()?
+        .proposals(include_decided.unwrap_or(false), 200)
+}
+
+#[tauri::command]
+fn proposal_content(state: State<AppState>, id: i64) -> CmdResult<Option<String>> {
+    state.get()?.proposal_content(id)
+}
+
+#[tauri::command]
+fn accept_proposal(state: State<AppState>, id: i64, force: Option<bool>) -> CmdResult<String> {
+    state.get()?.accept_proposal(id, force.unwrap_or(false))
+}
+
+#[tauri::command]
+fn reject_proposal(state: State<AppState>, id: i64, reason: Option<String>) -> CmdResult<()> {
+    state.get()?.reject_proposal(id, reason.as_deref())
+}
+
+#[tauri::command]
+fn query_notes(
+    state: State<AppState>,
+    query: String,
+) -> CmdResult<mosaic_core::query::QueryResult> {
+    state.get()?.query(&query)
 }
 
 #[tauri::command]
@@ -437,6 +470,11 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             open_vault,
+            query_notes,
+            proposals,
+            proposal_content,
+            accept_proposal,
+            reject_proposal,
             create_vault,
             recent_vaults,
             forget_vault,

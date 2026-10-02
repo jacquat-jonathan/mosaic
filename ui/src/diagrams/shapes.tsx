@@ -1,5 +1,6 @@
-// Diagram shapes, borders, line styles and arrowheads for canvases. The names and default sizes live
-// in crates/mosaic-core/src/diagram_format.json, shared with the write validator and docs/AGENTS.md.
+// Diagram shapes, borders, line styles and arrowheads for canvases. Names, sizes and how each shape is
+// drawn live in crates/mosaic-core/src/diagram_format.json, shared with the write validator, the Rust
+// renderer (agents' `render` tool) and docs/AGENTS.md.
 
 import type { ReactElement } from "react";
 import format from "../../../crates/mosaic-core/src/diagram_format.json";
@@ -9,14 +10,32 @@ export type Border = (typeof format.borders)[number];
 export type LineStyle = (typeof format.lines)[number];
 export type EndName = keyof typeof format.ends;
 
-export const SHAPES = Object.entries(format.shapes).map(([name, s]) => ({ name: name as ShapeName, ...s }));
+/** How a shape is drawn (see "draw" in the format file). */
+interface Draw {
+  rect?: number | "pill";
+  ellipse?: boolean;
+  path?: string;
+  extra?: string;
+  inset?: number;
+  special?: "actor" | "final" | "lifeline";
+  solid?: boolean;
+  hollow?: boolean;
+  label?: boolean;
+  behind?: boolean;
+  decor?: string;
+  compartments?: boolean;
+}
+
+export const SHAPES = Object.entries(format.shapes).map(([name, s]) => ({ name: name as ShapeName, ...s, draw: s.draw as Draw }));
+const DRAW = Object.fromEntries(SHAPES.map((s) => [s.name, s.draw])) as Record<ShapeName, Draw>;
+export const drawOf = (shape: ShapeName): Draw => DRAW[shape];
 /** Shape menu sections, in the order they first appear in the format file. */
 export const SHAPE_GROUPS = [...new Set(SHAPES.map((s) => s.group))];
 
 /** Shapes that are symbols without a label (pseudo-states, bars, ports). */
-export const LABELLESS = new Set<ShapeName>(["initial", "final", "bar", "port", "activation"]);
+export const LABELLESS = new Set(SHAPES.filter((s) => s.draw.label === false).map((s) => s.name));
 /** Shapes drawn behind other cards, like groups. */
-export const BACKGROUND = new Set<ShapeName>(["frame"]);
+export const BACKGROUND = new Set(SHAPES.filter((s) => s.draw.behind).map((s) => s.name));
 export const BORDERS = format.borders as Border[];
 export const LINES = format.lines as LineStyle[];
 export const ENDS = Object.entries(format.ends).map(([name, label]) => ({ name: name as EndName, label }));
@@ -24,21 +43,12 @@ export const ENDS = Object.entries(format.ends).map(([name, label]) => ({ name: 
 export const isShape = (s: unknown): s is ShapeName => typeof s === "string" && s in format.shapes;
 export const isEnd = (s: unknown): s is EndName => typeof s === "string" && s in format.ends;
 
-/** Shapes drawn with CSS border-radius on the card itself; the others are SVG outlines. */
-export const CSS_SHAPES: Partial<Record<ShapeName, string>> = {
-  rectangle: "0",
-  rounded: "14px",
-  pill: "9999px",
-  ellipse: "50%",
-  class: "0",
-  port: "0",
-  activation: "0",
-  bar: "3px",
-  initial: "50%",
-  frame: "0",
-};
-/** CSS shapes filled with the line colour instead of the card colour. */
-export const SOLID = new Set<ShapeName>(["bar", "initial"]);
+/** Shapes drawn with CSS border-radius on the card itself (rectangles, ellipses); the others are SVG. */
+export const CSS_SHAPES: Partial<Record<ShapeName, string>> = Object.fromEntries(
+  SHAPES.flatMap((s) => (s.draw.ellipse ? [[s.name, "50%"]] : s.draw.rect !== undefined ? [[s.name, s.draw.rect === "pill" ? "9999px" : `${s.draw.rect}px`]] : [])),
+);
+/** Shapes filled with the line colour instead of the card colour. */
+export const SOLID = new Set(SHAPES.filter((s) => s.draw.solid).map((s) => s.name));
 
 export function dashArray(style: string | undefined, width = 2): string | undefined {
   if (style === "dashed") return `${width * 4} ${width * 3}`;
@@ -50,34 +60,9 @@ export function dashArray(style: string | undefined, width = 2): string | undefi
  * SVG outlines in a 100×100 box, stretched to the card. `non-scaling-stroke` keeps the line width even
  * when the box isn't square. Extra lines (cylinder rim, process bars, note fold) have no fill.
  */
-export const OUTLINES: Partial<Record<ShapeName, { body: string; extra?: string }>> = {
-  diamond: { body: "M50,1 L99,50 L50,99 L1,50 Z" },
-  parallelogram: { body: "M16,1 L99,1 L84,99 L1,99 Z" },
-  hexagon: { body: "M14,1 L86,1 L99,50 L86,99 L14,99 L1,50 Z" },
-  cylinder: { body: "M1,12 A49,11 0 0 1 99,12 L99,88 A49,11 0 0 1 1,88 Z", extra: "M1,12 A49,11 0 0 0 99,12" },
-  document: { body: "M1,1 L99,1 L99,86 C75,72 50,100 1,86 Z" },
-  process: { body: "M1,1 L99,1 L99,99 L1,99 Z", extra: "M10,1 L10,99 M90,1 L90,99" },
-  cloud: {
-    body: "M26,86 C8,86 2,66 14,56 C4,44 14,24 32,28 C36,10 62,6 70,22 C86,14 100,32 92,46 C102,58 94,84 76,82 C68,96 38,96 26,86 Z",
-  },
-  note: { body: "M1,1 L80,1 L99,20 L99,99 L1,99 Z", extra: "M80,1 L80,20 L99,20" },
-  package: { body: "M1,1 L42,1 L42,16 L99,16 L99,99 L1,99 Z", extra: "M1,16 L42,16" },
-  node: { body: "M1,16 L14,1 L99,1 L99,85 L86,99 L1,99 Z", extra: "M1,16 L86,16 L86,99 M86,16 L99,1" },
-  component: { body: "M1,1 L99,1 L99,99 L1,99 Z" },
-  artifact: { body: "M1,1 L99,1 L99,99 L1,99 Z" },
-};
-
-/** Small fixed-size UML icons in a card's top-right corner (not stretched with the shape). */
-const ICONS: Partial<Record<ShapeName, ReactElement>> = {
-  component: (
-    <>
-      <rect x="4" y="1" width="12" height="16" />
-      <rect x="1" y="4" width="6" height="3" />
-      <rect x="1" y="10" width="6" height="3" />
-    </>
-  ),
-  artifact: <path d="M3,1 L11,1 L15,5 L15,17 L3,17 Z M11,1 L11,5 L15,5" />,
-};
+export const OUTLINES: Partial<Record<ShapeName, { body: string; extra?: string }>> = Object.fromEntries(
+  SHAPES.filter((s) => s.draw.path).map((s) => [s.name, { body: s.draw.path!, extra: s.draw.extra }]),
+);
 
 export interface ShapeStyle {
   stroke: string;
@@ -133,18 +118,17 @@ export function ShapeOutline({ shape, style }: { shape: ShapeName; style: ShapeS
   }
   const o = OUTLINES[shape];
   if (!o) return null;
-  const icon = ICONS[shape];
+  const decor = DRAW[shape].decor;
   return (
     <>
       <svg className="shape-outline" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden>
         <path d={o.body} fill={style.fill} stroke={stroke} strokeWidth="2" strokeDasharray={dash} vectorEffect="non-scaling-stroke" />
         {o.extra && <path d={o.extra} fill="none" stroke={stroke} strokeWidth="2" strokeDasharray={dash} vectorEffect="non-scaling-stroke" />}
       </svg>
-      {icon && (
+      {decor && (
+        // Small fixed-size UML icon in the top-right corner (from the format file, not stretched).
         <svg className="shape-icon" viewBox="0 0 18 18" aria-hidden>
-          <g fill={style.fill} stroke={stroke} strokeWidth="1.4">
-            {icon}
-          </g>
+          <g fill={style.fill} stroke={stroke} strokeWidth="1.4" dangerouslySetInnerHTML={{ __html: decor }} />
         </svg>
       )}
     </>

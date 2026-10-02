@@ -124,6 +124,10 @@ Special shapes:
 Shape labels keep every line break. Mosaic ships a template for each of the 14 UML diagram types (New
 diagram… in the app); they're plain canvases you can read for examples.
 
+**Check what you drew:** after writing or changing a canvas, call `render` with its path. You get a PNG
+of the diagram; look for overlapping cards, labels that don't fit and arrows pointing the wrong way,
+fix the canvas, and render again.
+
 Good sizes: about 180×100 for boxes, 180×130 for a diamond, 150×130 for a cylinder, 100×140 for an
 actor. Leave 80–120 px between shapes so arrowheads and labels have room.
 

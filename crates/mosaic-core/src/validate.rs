@@ -10,7 +10,7 @@ use std::path::Path;
 use std::sync::LazyLock;
 
 /// The diagram fields Mosaic adds to canvases (shapes, borders, line styles, arrowheads).
-static FORMAT: LazyLock<Value> = LazyLock::new(|| {
+pub(crate) static FORMAT: LazyLock<Value> = LazyLock::new(|| {
     serde_json::from_str(include_str!("diagram_format.json")).expect("valid diagram_format.json")
 });
 

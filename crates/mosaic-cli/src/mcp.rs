@@ -1,11 +1,13 @@
 //! MCP server over stdio: one typed tool per core operation. Tool errors are returned as tool results
 //! (`is_error`) with a stable code, so the model can recover (e.g. re-read after a `conflict`).
 
+use base64::Engine;
 use mosaic_core::settings::Settings;
 use mosaic_core::{Error, Workspace};
 use rmcp::handler::server::{router::tool::ToolRouter, wrapper::Parameters};
 use rmcp::model::{
-    Implementation, InitializeRequestParams, InitializeResult, ServerCapabilities, ServerConfig,
+    CallToolResult, ContentBlock, Implementation, InitializeRequestParams, InitializeResult,
+    ServerCapabilities, ServerConfig,
 };
 use rmcp::service::RequestContext;
 use rmcp::{ErrorData, RoleServer, ServerHandler, ServiceExt, tool, tool_handler, tool_router};
@@ -108,6 +110,14 @@ struct RestoreArgs {
     id: i64,
     /// Hash from `read_file`; the restore is refused if the file changed since.
     expected_hash: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct RenderArgs {
+    /// Vault-relative path of a .canvas (or .svg) file.
+    path: String,
+    /// Dark theme (default false).
+    dark: Option<bool>,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -365,6 +375,34 @@ impl MosaicMcp {
             .restore(&a.path, a.id, a.expected_hash.as_deref())
             .map_err(err)
             .and_then(ok)
+    }
+
+    #[tool(
+        description = "Draw a canvas (.canvas, including diagrams) or an SVG file as a PNG image, to check what you wrote: layout, overlaps, labels, arrows. Fix the canvas and render again until it looks right."
+    )]
+    async fn render(
+        &self,
+        Parameters(a): Parameters<RenderArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let ws = self.ws();
+        let png = crate::render_file(&ws, &a.path, a.dark.unwrap_or(false))
+            .and_then(|svg| crate::png::svg_to_png(&svg, 1.5));
+        Ok(match png {
+            Ok(bytes) => CallToolResult::success(vec![ContentBlock::image(
+                base64::engine::general_purpose::STANDARD.encode(bytes),
+                "image/png",
+            )]),
+            // Same error shape as the other tools: {"code", "message"} for core errors.
+            Err(e) => {
+                CallToolResult::error(vec![ContentBlock::text(match e.downcast::<Error>() {
+                    Ok(core) => err(core),
+                    Err(other) => {
+                        serde_json::json!({ "code": "invalid", "message": other.to_string() })
+                            .to_string()
+                    }
+                })])
+            }
+        })
     }
 
     #[tool(description = "Remove a bookmark (the file itself is untouched). Returns the new list.")]

@@ -63,7 +63,8 @@ export const ICONS: Record<string, LucideIcon> = {
   workflow: Workflow,
 };
 
-export const ICON_NAMES = format.icons;
+/** Icon names, in the order of the format file (which also holds their SVG for the Rust renderer). */
+export const ICON_NAMES = Object.keys(format.icons);
 export const iconLabel = (name: string) => name[0].toUpperCase() + name.slice(1).replace(/-/g, " ");
 
 /** The icon as standalone SVG markup, for exports. */

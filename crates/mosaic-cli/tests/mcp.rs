@@ -406,3 +406,40 @@ fn agent_changes_are_kept_and_can_be_restored() {
         original
     );
 }
+
+#[test]
+fn render_returns_a_picture_of_a_canvas() {
+    let dir = fixture();
+    let mut c = Client::start(dir.path());
+    let canvas = json!({ "nodes": [
+        { "id": "a", "type": "text", "text": "Start", "shape": "pill", "x": 0, "y": 0, "width": 160, "height": 60 },
+        { "id": "b", "type": "text", "text": "DB", "shape": "cylinder", "icon": "database", "x": 300, "y": 0, "width": 150, "height": 130 }
+    ], "edges": [{ "id": "e", "fromNode": "a", "toNode": "b", "label": "saves" }] });
+    let (err, _) = c.call(
+        "create_file",
+        json!({ "path": "Flow.canvas", "content": canvas.to_string() }),
+    );
+    assert!(!err);
+    let res = c.request(
+        "tools/call",
+        json!({ "name": "render", "arguments": { "path": "Flow.canvas" } }),
+    );
+    let block = &res["result"]["content"][0];
+    assert_eq!(block["type"], "image");
+    assert_eq!(block["mimeType"], "image/png");
+    use base64::Engine;
+    let png = base64::engine::general_purpose::STANDARD
+        .decode(block["data"].as_str().unwrap())
+        .unwrap();
+    assert_eq!(&png[1..4], b"PNG");
+
+    let (err, payload) = c.call("render", json!({ "path": "Home.md" }));
+    assert!(err);
+    assert!(
+        payload["message"]
+            .as_str()
+            .unwrap()
+            .contains("draws canvases"),
+        "{payload}"
+    );
+}

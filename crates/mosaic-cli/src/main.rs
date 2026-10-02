@@ -2,6 +2,7 @@
 //! `mosaic mcp` — the same operations as an MCP server over stdio.
 
 mod mcp;
+mod png;
 
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
@@ -119,6 +120,16 @@ enum Cmd {
         #[arg(long)]
         expected_hash: Option<String>,
     },
+    /// Draw a canvas as a picture: PNG (default) or SVG, chosen by the -o extension.
+    Render {
+        path: String,
+        /// Output file (.png or .svg). Default: the canvas name with .png, in the current folder.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+        /// Dark theme.
+        #[arg(long)]
+        dark: bool,
+    },
     /// Changes made by AI agents and the command line, newest first.
     Activity {
         #[arg(short, long, default_value_t = 30)]
@@ -192,6 +203,22 @@ fn chrono_like(ms: i64) -> String {
                 rem % 3600 / 60
             )
         }
+    }
+}
+
+/// A vault file drawn as SVG: canvases, or SVG images as they are.
+pub fn render_file(ws: &Workspace, path: &str, dark: bool) -> Result<String> {
+    let file = ws.read(path)?;
+    let text = file
+        .content
+        .ok_or_else(|| anyhow::anyhow!("{path} isn't a text file"))?;
+    let lower = path.to_lowercase();
+    if lower.ends_with(".canvas") {
+        Ok(mosaic_core::render::canvas_to_svg(&text, dark)?)
+    } else if lower.ends_with(".svg") {
+        Ok(text)
+    } else {
+        bail!("render draws canvases (.canvas) and SVG images for now; {path} is neither")
     }
 }
 
@@ -416,6 +443,26 @@ fn run(cli: Cli) -> Result<()> {
             print(json, &w, |w| {
                 format!("restored {} ({})", w.path, &w.hash[..12])
             })
+        }
+        Cmd::Render { path, output, dark } => {
+            let svg = render_file(&ws, &path, dark)?;
+            let out = output.unwrap_or_else(|| {
+                let stem = path.rsplit('/').next().unwrap_or(&path);
+                PathBuf::from(format!(
+                    "{}.png",
+                    stem.strip_suffix(".canvas").unwrap_or(stem)
+                ))
+            });
+            let svg_out = out
+                .extension()
+                .is_some_and(|e| e.eq_ignore_ascii_case("svg"));
+            let bytes = if svg_out {
+                svg.into_bytes()
+            } else {
+                png::svg_to_png(&svg, 2.0)?
+            };
+            std::fs::write(&out, bytes).with_context(|| format!("writing {}", out.display()))?;
+            print(json, &out.display().to_string(), |p| format!("wrote {p}"))
         }
         Cmd::Activity { limit } => print(json, &ws.activity(limit)?, |vs| {
             vs.iter().map(version_line).collect::<Vec<_>>().join("\n")

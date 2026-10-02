@@ -1,155 +1,250 @@
 {
-  "about": "Diagram fields Mosaic adds to JSON Canvas. Read by the write validator (validate.rs) and the canvas editor (ui/src/diagrams/shapes.tsx), and documented in docs/AGENTS.md. A node without \"shape\" is an ordinary card. \"group\" sorts shapes in the Shape menu. \"icons\" are names for a card's \"icon\" (drawn above its label).",
+  "about": "Diagram fields Mosaic adds to JSON Canvas, and how to draw them. Read by the write validator (validate.rs), the Rust renderer (render.rs) and the canvas editor (ui/src/diagrams/shapes.tsx), and documented in docs/AGENTS.md. A node without \"shape\" is an ordinary card. \"group\" sorts shapes in the Shape menu. \"draw\": rect (corner radius or \"pill\"), ellipse, or path (100×100 box, stretched; extra = unfilled lines; inset = label margin as a fraction), special figures, solid (filled with the line colour), hollow (no fill), label false (a symbol), behind (drawn under other cards), decor (an 18×18 UML icon top right), compartments (class box). \"icons\": inner SVG of 24×24 Lucide icons for a card's \"icon\".",
   "shapes": {
     "rectangle": {
       "label": "Rectangle",
       "width": 180,
       "height": 100,
-      "group": "Basic"
+      "group": "Basic",
+      "draw": {
+        "rect": 0
+      }
     },
     "rounded": {
       "label": "Rounded rectangle",
       "width": 180,
       "height": 100,
-      "group": "Basic"
+      "group": "Basic",
+      "draw": {
+        "rect": 14
+      }
     },
     "pill": {
       "label": "Pill (start / end, state)",
       "width": 180,
       "height": 70,
-      "group": "Basic"
+      "group": "Basic",
+      "draw": {
+        "rect": "pill"
+      }
     },
     "ellipse": {
       "label": "Ellipse (use case)",
       "width": 180,
       "height": 110,
-      "group": "Basic"
+      "group": "Basic",
+      "draw": {
+        "ellipse": true
+      }
     },
     "diamond": {
       "label": "Diamond (decision)",
       "width": 180,
       "height": 130,
-      "group": "Basic"
+      "group": "Basic",
+      "draw": {
+        "path": "M50,1 L99,50 L50,99 L1,50 Z",
+        "inset": 0.22
+      }
     },
     "parallelogram": {
       "label": "Parallelogram (input / output)",
       "width": 200,
       "height": 100,
-      "group": "Flowchart"
+      "group": "Flowchart",
+      "draw": {
+        "path": "M16,1 L99,1 L84,99 L1,99 Z",
+        "inset": 0.15
+      }
     },
     "hexagon": {
       "label": "Hexagon (preparation)",
       "width": 200,
       "height": 100,
-      "group": "Flowchart"
+      "group": "Flowchart",
+      "draw": {
+        "path": "M14,1 L86,1 L99,50 L86,99 L14,99 L1,50 Z",
+        "inset": 0.15
+      }
     },
     "cylinder": {
       "label": "Cylinder (database)",
       "width": 150,
       "height": 130,
-      "group": "Basic"
+      "group": "Basic",
+      "draw": {
+        "path": "M1,12 A49,11 0 0 1 99,12 L99,88 A49,11 0 0 1 1,88 Z",
+        "extra": "M1,12 A49,11 0 0 0 99,12"
+      }
     },
     "document": {
       "label": "Document",
       "width": 180,
       "height": 120,
-      "group": "Flowchart"
+      "group": "Flowchart",
+      "draw": {
+        "path": "M1,1 L99,1 L99,86 C75,72 50,100 1,86 Z"
+      }
     },
     "process": {
       "label": "Predefined process",
       "width": 200,
       "height": 100,
-      "group": "Flowchart"
+      "group": "Flowchart",
+      "draw": {
+        "path": "M1,1 L99,1 L99,99 L1,99 Z",
+        "extra": "M10,1 L10,99 M90,1 L90,99"
+      }
     },
     "cloud": {
       "label": "Cloud",
       "width": 200,
       "height": 130,
-      "group": "Basic"
+      "group": "Basic",
+      "draw": {
+        "path": "M26,86 C8,86 2,66 14,56 C4,44 14,24 32,28 C36,10 62,6 70,22 C86,14 100,32 92,46 C102,58 94,84 76,82 C68,96 38,96 26,86 Z"
+      }
     },
     "note": {
       "label": "Note",
       "width": 180,
       "height": 140,
-      "group": "Basic"
+      "group": "Basic",
+      "draw": {
+        "path": "M1,1 L80,1 L99,20 L99,99 L1,99 Z",
+        "extra": "M80,1 L80,20 L99,20"
+      }
     },
     "actor": {
       "label": "Actor (person)",
       "width": 100,
       "height": 140,
-      "group": "Basic"
+      "group": "Basic",
+      "draw": {
+        "special": "actor"
+      }
     },
     "class": {
       "label": "Class (name --- attributes --- operations)",
       "width": 220,
       "height": 160,
-      "group": "UML structure"
+      "group": "UML structure",
+      "draw": {
+        "rect": 0,
+        "compartments": true
+      }
     },
     "package": {
       "label": "Package",
       "width": 240,
       "height": 160,
-      "group": "UML structure"
+      "group": "UML structure",
+      "draw": {
+        "path": "M1,1 L42,1 L42,16 L99,16 L99,99 L1,99 Z",
+        "extra": "M1,16 L42,16"
+      }
     },
     "component": {
       "label": "Component",
       "width": 220,
       "height": 100,
-      "group": "UML structure"
+      "group": "UML structure",
+      "draw": {
+        "path": "M1,1 L99,1 L99,99 L1,99 Z",
+        "decor": "<rect x=\"4\" y=\"1\" width=\"12\" height=\"16\"/><rect x=\"1\" y=\"4\" width=\"6\" height=\"3\"/><rect x=\"1\" y=\"10\" width=\"6\" height=\"3\"/>"
+      }
     },
     "node": {
       "label": "Node (deployment)",
       "width": 220,
       "height": 130,
-      "group": "UML structure"
+      "group": "UML structure",
+      "draw": {
+        "path": "M1,16 L14,1 L99,1 L99,85 L86,99 L1,99 Z",
+        "extra": "M1,16 L86,16 L86,99 M86,16 L99,1"
+      }
     },
     "artifact": {
       "label": "Artifact",
       "width": 180,
       "height": 90,
-      "group": "UML structure"
+      "group": "UML structure",
+      "draw": {
+        "path": "M1,1 L99,1 L99,99 L1,99 Z",
+        "decor": "<path d=\"M3,1 L11,1 L15,5 L15,17 L3,17 Z M11,1 L11,5 L15,5\"/>"
+      }
     },
     "port": {
       "label": "Port",
       "width": 20,
       "height": 20,
-      "group": "UML structure"
+      "group": "UML structure",
+      "draw": {
+        "rect": 0,
+        "label": false
+      }
     },
     "initial": {
       "label": "Initial state",
       "width": 30,
       "height": 30,
-      "group": "UML behaviour"
+      "group": "UML behaviour",
+      "draw": {
+        "ellipse": true,
+        "solid": true,
+        "label": false
+      }
     },
     "final": {
       "label": "Final state",
       "width": 34,
       "height": 34,
-      "group": "UML behaviour"
+      "group": "UML behaviour",
+      "draw": {
+        "special": "final",
+        "label": false
+      }
     },
     "bar": {
       "label": "Fork / join bar",
       "width": 160,
       "height": 10,
-      "group": "UML behaviour"
+      "group": "UML behaviour",
+      "draw": {
+        "rect": 3,
+        "solid": true,
+        "label": false
+      }
     },
     "lifeline": {
       "label": "Lifeline (sequence)",
       "width": 140,
       "height": 420,
-      "group": "UML behaviour"
+      "group": "UML behaviour",
+      "draw": {
+        "special": "lifeline"
+      }
     },
     "activation": {
       "label": "Activation bar",
       "width": 16,
       "height": 90,
-      "group": "UML behaviour"
+      "group": "UML behaviour",
+      "draw": {
+        "rect": 0,
+        "label": false
+      }
     },
     "frame": {
       "label": "Frame (sd, alt, loop…)",
       "width": 420,
       "height": 260,
-      "group": "UML behaviour"
+      "group": "UML behaviour",
+      "draw": {
+        "rect": 0,
+        "hollow": true,
+        "behind": true
+      }
     }
   },
   "borders": [
@@ -172,32 +267,32 @@
     "diamond-open": "Hollow diamond (aggregation)",
     "circle": "Circle"
   },
-  "icons": [
-    "server",
-    "database",
-    "cloud",
-    "laptop",
-    "smartphone",
-    "monitor",
-    "router",
-    "network",
-    "wifi",
-    "globe",
-    "shield",
-    "lock",
-    "key",
-    "user",
-    "users",
-    "building",
-    "mail",
-    "message",
-    "bell",
-    "credit-card",
-    "cpu",
-    "hard-drive",
-    "container",
-    "box",
-    "file",
-    "workflow"
-  ]
+  "icons": {
+    "server": "<rect width=\"20\" height=\"8\" x=\"2\" y=\"2\" rx=\"2\" ry=\"2\"></rect><rect width=\"20\" height=\"8\" x=\"2\" y=\"14\" rx=\"2\" ry=\"2\"></rect><line x1=\"6\" x2=\"6.01\" y1=\"6\" y2=\"6\"></line><line x1=\"6\" x2=\"6.01\" y1=\"18\" y2=\"18\"></line>",
+    "database": "<ellipse cx=\"12\" cy=\"5\" rx=\"9\" ry=\"3\"></ellipse><path d=\"M3 5V19A9 3 0 0 0 21 19V5\"></path><path d=\"M3 12A9 3 0 0 0 21 12\"></path>",
+    "cloud": "<path d=\"M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z\"></path>",
+    "laptop": "<path d=\"M18 5a2 2 0 0 1 2 2v8.526a2 2 0 0 0 .212.897l1.068 2.127a1 1 0 0 1-.9 1.45H3.62a1 1 0 0 1-.9-1.45l1.068-2.127A2 2 0 0 0 4 15.526V7a2 2 0 0 1 2-2z\"></path><path d=\"M20.054 15.987H3.946\"></path>",
+    "smartphone": "<rect width=\"14\" height=\"20\" x=\"5\" y=\"2\" rx=\"2\" ry=\"2\"></rect><path d=\"M12 18h.01\"></path>",
+    "monitor": "<rect width=\"20\" height=\"14\" x=\"2\" y=\"3\" rx=\"2\"></rect><line x1=\"8\" x2=\"16\" y1=\"21\" y2=\"21\"></line><line x1=\"12\" x2=\"12\" y1=\"17\" y2=\"21\"></line>",
+    "router": "<rect width=\"20\" height=\"8\" x=\"2\" y=\"14\" rx=\"2\"></rect><path d=\"M6.01 18H6\"></path><path d=\"M10.01 18H10\"></path><path d=\"M15 10v4\"></path><path d=\"M17.84 7.17a4 4 0 0 0-5.66 0\"></path><path d=\"M20.66 4.34a8 8 0 0 0-11.31 0\"></path>",
+    "network": "<rect x=\"16\" y=\"16\" width=\"6\" height=\"6\" rx=\"1\"></rect><rect x=\"2\" y=\"16\" width=\"6\" height=\"6\" rx=\"1\"></rect><rect x=\"9\" y=\"2\" width=\"6\" height=\"6\" rx=\"1\"></rect><path d=\"M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3\"></path><path d=\"M12 12V8\"></path>",
+    "wifi": "<path d=\"M12 20h.01\"></path><path d=\"M2 8.82a15 15 0 0 1 20 0\"></path><path d=\"M5 12.859a10 10 0 0 1 14 0\"></path><path d=\"M8.5 16.429a5 5 0 0 1 7 0\"></path>",
+    "globe": "<circle cx=\"12\" cy=\"12\" r=\"10\"></circle><path d=\"M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20\"></path><path d=\"M2 12h20\"></path>",
+    "shield": "<path d=\"M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z\"></path>",
+    "lock": "<rect width=\"18\" height=\"11\" x=\"3\" y=\"11\" rx=\"2\" ry=\"2\"></rect><path d=\"M7 11V7a5 5 0 0 1 10 0v4\"></path>",
+    "key": "<path d=\"m2 21 9.6-9.6\"></path><path d=\"m7.5 15.5 2.3 2.3a1 1 0 0 1 0 1.4l-2.1 2.1a1 1 0 0 1-1.4 0L4 19\"></path><circle cx=\"15.5\" cy=\"7.5\" r=\"5.5\"></circle>",
+    "user": "<path d=\"M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2\"></path><circle cx=\"12\" cy=\"7\" r=\"4\"></circle>",
+    "users": "<path d=\"M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2\"></path><path d=\"M16 3.128a4 4 0 0 1 0 7.744\"></path><path d=\"M22 21v-2a4 4 0 0 0-3-3.87\"></path><circle cx=\"9\" cy=\"7\" r=\"4\"></circle>",
+    "building": "<path d=\"M10 12h4\"></path><path d=\"M10 8h4\"></path><path d=\"M14 21v-3a2 2 0 0 0-4 0v3\"></path><path d=\"M6 10H4a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-2\"></path><path d=\"M6 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v16\"></path>",
+    "mail": "<path d=\"m22 7-8.991 5.727a2 2 0 0 1-2.009 0L2 7\"></path><rect x=\"2\" y=\"4\" width=\"20\" height=\"16\" rx=\"2\"></rect>",
+    "message": "<path d=\"M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z\"></path>",
+    "bell": "<path d=\"M10.268 21a2 2 0 0 0 3.464 0\"></path><path d=\"M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326\"></path>",
+    "credit-card": "<rect width=\"20\" height=\"14\" x=\"2\" y=\"5\" rx=\"2\"></rect><line x1=\"2\" x2=\"22\" y1=\"10\" y2=\"10\"></line><path d=\"M6 14h2\"></path>",
+    "cpu": "<path d=\"M12 20v2\"></path><path d=\"M12 2v2\"></path><path d=\"M17 20v2\"></path><path d=\"M17 2v2\"></path><path d=\"M2 12h2\"></path><path d=\"M2 17h2\"></path><path d=\"M2 7h2\"></path><path d=\"M20 12h2\"></path><path d=\"M20 17h2\"></path><path d=\"M20 7h2\"></path><path d=\"M7 20v2\"></path><path d=\"M7 2v2\"></path><rect x=\"4\" y=\"4\" width=\"16\" height=\"16\" rx=\"2\"></rect><rect x=\"8\" y=\"8\" width=\"8\" height=\"8\" rx=\"1\"></rect>",
+    "hard-drive": "<path d=\"M10 16h.01\"></path><path d=\"M2.212 11.577a2 2 0 0 0-.212.896V18a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-5.527a2 2 0 0 0-.212-.896L18.55 5.11A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z\"></path><path d=\"M21.946 12.013H2.054\"></path><path d=\"M6 16h.01\"></path>",
+    "container": "<path d=\"M22 7.7c0-.6-.4-1.2-.8-1.5l-6.3-3.9a1.72 1.72 0 0 0-1.7 0l-10.3 6c-.5.2-.9.8-.9 1.4v6.6c0 .5.4 1.2.8 1.5l6.3 3.9a1.72 1.72 0 0 0 1.7 0l10.3-6c.5-.3.9-1 .9-1.5Z\"></path><path d=\"M10 21.9V14L2.1 9.1\"></path><path d=\"m10 14 11.9-6.9\"></path><path d=\"M14 19.8v-8.1\"></path><path d=\"M18 17.5V9.4\"></path>",
+    "box": "<path d=\"M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z\"></path><path d=\"m3.3 7 8.7 5 8.7-5\"></path><path d=\"M12 22V12\"></path>",
+    "file": "<path d=\"M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z\"></path><path d=\"M14 2v5a1 1 0 0 0 1 1h5\"></path>",
+    "workflow": "<rect width=\"8\" height=\"8\" x=\"3\" y=\"3\" rx=\"2\"></rect><path d=\"M7 11v4a2 2 0 0 0 2 2h4\"></path><rect width=\"8\" height=\"8\" x=\"13\" y=\"13\" rx=\"2\"></rect>"
+  }
 }

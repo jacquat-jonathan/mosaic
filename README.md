@@ -89,7 +89,8 @@ vaults, so agents always write where you're looking. To tie it to one vault, use
 
 The MCP tools are `vault_guide`, `list_files`, `read_file`, `outline`, `search`, `create_file`,
 `edit_file`, `patch_file`, `append_to_file`, `rename`, `copy_file`, `delete_file`, `create_folder`,
-`get_backlinks`, `list_tags`, `list_bookmarks`, `add_bookmark` and `remove_bookmark`. Edits accept an `expected_hash` so an agent never overwrites a
+`get_backlinks`, `list_tags`, `list_bookmarks`, `add_bookmark`, `remove_bookmark`, `file_history`,
+`restore_version` and `render` (a PNG of a canvas, so the agent can check what it drew). Edits accept an `expected_hash` so an agent never overwrites a
 newer human edit.
 
 **Command line**
@@ -103,6 +104,9 @@ mosaic rename Ideas.md Archive/Ideas.md   # links follow
 mosaic copy Template.md Projects/New.md   # never overwrites
 mosaic bookmarks add Projects/Plan.md     # shows up in the app's Bookmarks panel
 mosaic --json backlinks Projects/Plan.md
+mosaic render Architecture.canvas -o map.png   # a canvas as a picture (or .svg)
+mosaic history Projects/Plan.md           # versions Mosaic kept; `mosaic restore <path> <id>` puts one back
+mosaic activity                           # what agents changed; `mosaic undo <id>` reverts one
 mosaic guide                              # conventions for AI agents (docs/AGENTS.md)
 ```
 

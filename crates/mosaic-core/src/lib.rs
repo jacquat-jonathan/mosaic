@@ -7,6 +7,7 @@ pub mod index;
 pub mod kind;
 pub mod links;
 pub mod parse;
+pub mod render;
 pub mod settings;
 pub mod validate;
 pub mod vault;

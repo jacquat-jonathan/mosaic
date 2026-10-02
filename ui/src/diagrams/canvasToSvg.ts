@@ -41,8 +41,9 @@ export function plainLines(text: string): string[] {
         .replace(/^\s*[-*+]\s+/, "• ")
         .replace(/!?\[\[([^\]|]+)(\|([^\]]+))?\]\]/g, (_m, t: string, _a, alias?: string) => alias ?? t)
         .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
-        .replace(/<\/?[a-z][^<>]*>/gi, "")
-        .replace(/[*_`~]/g, "")
+        .replace(/<\/?(a|b|br|code|div|em|font|i|kbd|mark|p|s|small|span|strong|sub|sup|u)\b[^<>]*>/gi, "")
+        .replace(/~~/g, "")
+        .replace(/[*_`]/g, "")
         .trim(),
     );
 }

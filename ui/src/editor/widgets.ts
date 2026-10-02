@@ -52,7 +52,11 @@ export class RenderedBlockWidget extends WidgetType {
       note.textContent = e instanceof Error ? e.message : String(e);
       el.appendChild(note);
     };
-    const succeeded = () => key && lastGood.set(key, el.innerHTML);
+    const succeeded = () => {
+      if (key) lastGood.set(key, el.innerHTML);
+      // Added after rendering: the renderer replaces the block's content when the drawing arrives.
+      else this.addOpenAsDiagram(el);
+    };
     try {
       const out = r?.(this.source, el, this.ctx);
       if (out instanceof Promise) out.then(succeeded, failed);
@@ -61,19 +65,21 @@ export class RenderedBlockWidget extends WidgetType {
       failed(e);
     }
     if (key) return el;
-    if (this.lang === "mermaid" && this.ctx.openAsDiagram && diagramKind(this.source)) {
-      const open = document.createElement("button");
-      open.className = "block-action";
-      open.textContent = "Open as diagram";
-      open.title = "Make an editable canvas from this diagram, next to the note";
-      open.addEventListener("click", (e) => {
-        e.stopPropagation();
-        this.ctx.openAsDiagram!(this.source);
-      });
-      el.appendChild(open);
-    }
     revealOnClick(el, view, () => view.posAtDOM(el));
     return el;
+  }
+  /** "Open as diagram" on a rendered Mermaid flowchart or state diagram. */
+  private addOpenAsDiagram(el: HTMLElement) {
+    if (this.lang !== "mermaid" || !this.ctx.openAsDiagram || !diagramKind(this.source)) return;
+    const open = document.createElement("button");
+    open.className = "block-action";
+    open.textContent = "Open as diagram";
+    open.title = "Make an editable canvas from this diagram, next to the note";
+    open.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.ctx.openAsDiagram!(this.source);
+    });
+    el.appendChild(open);
   }
   get estimatedHeight() {
     return 120;

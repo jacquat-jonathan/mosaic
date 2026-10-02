@@ -4,6 +4,7 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- Fixed: the **Open as diagram** button on Mermaid blocks in notes didn't appear.
 ## 0.5.0 — 2026-10-02
 
 - Network and cloud icons for diagrams (server, database, router, user…) under Shape › Icons, or right-click a card › Icon; they're included in exports. New **C4 containers** template.

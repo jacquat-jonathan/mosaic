@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+## 0.7.0 — 2026-10-02
+
 - **Paste images** into a note: they're saved next to it and embedded.
 - **Daily notes**: ⌘⇧D (or the calendar button above the file tree) opens today's note, created from a template if you set one (Settings › Editor & files; `{{date}}`, `{{title}}`, `{{weekday}}`, `{{time}}`).
 - **Unlinked mentions** under Backlinks: notes that mention this one by name or alias without linking, with a one-click **Link** that keeps your wording.

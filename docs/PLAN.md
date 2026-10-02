@@ -181,6 +181,11 @@ Done 2026-10-02, released as 0.8.0. Details in the vault note `Architecture/Done
 - [x] Timing shape with state lanes (`timing.ts` / `timing.rs`), shape palette with drag and drop
 - [x] Copy as Mermaid for sequence and class diagrams; Open as diagram for class diagrams
 
+### M17 — Agent review mode, queries
+Done 2026-10-02. Details in the vault note `Architecture/Done.md`.
+- [x] Review mode: folder rule "review", proposals in `history.db` (`review.rs`), inbox with diff / accept / reject in the app, `list_proposals` / `withdraw_proposal`
+- [x] Queries: frontmatter in the index, query language (`query.rs`), MCP `query`, `mosaic query`, ```query blocks
+
 ## Working rules
 - `scripts/check.sh` green before each milestone commit.
 - Core logic gets Rust tests; UI logic gets Vitest; don't test third-party renderers beyond a smoke test.

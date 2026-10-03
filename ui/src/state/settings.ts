@@ -6,12 +6,16 @@ import { inTauri } from "../ipc/api";
 
 export type Theme = "system" | "light" | "dark";
 
+export type NoteWidth = "narrow" | "medium" | "wide" | "full";
+/** Max width of a note's text column, per setting. */
+export const NOTE_WIDTHS: Record<NoteWidth, string> = { narrow: "640px", medium: "760px", wide: "1040px", full: "none" };
+
 export interface Prefs {
   theme: Theme;
   /** Note text size in px. */
   noteSize: number;
-  /** Keep notes to a comfortable line length instead of the full pane width. */
-  readableWidth: boolean;
+  /** How wide notes may get: a comfortable line length, or the full pane. */
+  noteWidth: NoteWidth;
   spellcheck: boolean;
   /** Where ⌘N and the "New note" button put new notes. */
   newNoteLocation: "root" | "current";
@@ -38,7 +42,7 @@ const isKeys = (v: unknown): v is ShortcutKeys => !!v && typeof v === "object" &
 export const DEFAULT_PREFS: Prefs = {
   theme: "system",
   noteSize: 16,
-  readableWidth: true,
+  noteWidth: "medium",
   spellcheck: true,
   newNoteLocation: "current",
   confirmTrash: true,
@@ -59,7 +63,8 @@ export function sanitize(raw: unknown): Prefs {
   return {
     theme: pick("theme", (v) => v === "system" || v === "light" || v === "dark"),
     noteSize: size,
-    readableWidth: pick("readableWidth", (v) => typeof v === "boolean"),
+    // Before 0.9.2 this was an on/off "readable line width": off means full width.
+    noteWidth: typeof r.noteWidth === "string" && r.noteWidth in NOTE_WIDTHS ? (r.noteWidth as NoteWidth) : r.readableWidth === false ? "full" : DEFAULT_PREFS.noteWidth,
     spellcheck: pick("spellcheck", (v) => typeof v === "boolean"),
     newNoteLocation: pick("newNoteLocation", (v) => v === "root" || v === "current"),
     confirmTrash: pick("confirmTrash", (v) => typeof v === "boolean"),
@@ -102,7 +107,7 @@ export function applyPrefs(p: Prefs) {
   if (p.theme === "system") delete root.dataset.theme;
   else root.dataset.theme = p.theme;
   root.style.setProperty("--note-size", `${p.noteSize}px`);
-  root.style.setProperty("--note-width", p.readableWidth ? "760px" : "none");
+  root.style.setProperty("--note-width", NOTE_WIDTHS[p.noteWidth]);
   if (inTauri) {
     void import("@tauri-apps/api/window").then(({ getCurrentWindow }) =>
       getCurrentWindow()

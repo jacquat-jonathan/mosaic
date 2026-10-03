@@ -85,7 +85,16 @@ button.secondary { border: 1px solid var(--border); padding: 7px 14px; }
 /* Shell */
 .shell { height: 100%; display: flex; }
 .sidebar { position: relative; flex: none; background: var(--bg-side); border-right: 1px solid var(--border); display: flex; flex-direction: column; }
-.sidebar-head { height: var(--titlebar); display: flex; align-items: center; justify-content: space-between; gap: 4px; padding: 0 8px 0 78px; flex: none; }
+/* Fixed icon bar at the far left: the sidebar's panels, Connect AI and Settings. The window's traffic
+   lights sit over its top and the sidebar head (78px from the left in all). */
+.icon-bar { flex: none; width: 44px; display: flex; flex-direction: column; align-items: center; gap: 2px; padding-bottom: 8px; background: var(--bg-side); border-right: 1px solid var(--border); color: var(--muted); }
+.icon-bar-drag { height: var(--titlebar); width: 100%; flex: none; }
+.icon-bar-group { display: flex; flex-direction: column; gap: 2px; }
+.icon-bar button { position: relative; padding: 7px; border-radius: 7px; color: inherit; }
+.icon-bar button:hover { color: var(--fg); background: var(--bg-hover, var(--bg-active)); }
+.icon-bar button.active { color: var(--accent); background: var(--bg-active); }
+.icon-bar .spacer { flex: 1; }
+.sidebar-head { height: var(--titlebar); display: flex; align-items: center; justify-content: space-between; gap: 4px; padding: 0 8px 0 34px; flex: none; border-bottom: 1px solid var(--border); }
 .vault-name { font-weight: 600; min-width: 0; padding: 4px 6px; gap: 3px; }
 .vault-name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .vault-name svg { flex: none; color: var(--muted); }
@@ -134,7 +143,7 @@ button.secondary { border: 1px solid var(--border); padding: 7px 14px; }
 .bar-toggle { flex: none; padding: 4px; color: var(--muted); }
 .bar-toggle.active { color: var(--fg); }
 /* With the sidebar hidden, the top-left pane makes room for the window buttons. */
-.shell.no-left .pane.top-left .tabbar { padding-left: 78px; }
+.shell.no-left .pane.top-left .tabbar { padding-left: 34px; }
 .pane.focused .tabbar { box-shadow: inset 0 2px 0 var(--accent); }
 .tab { display: flex; align-items: center; gap: 6px; height: 30px; padding: 0 4px 0 10px; border-radius: 7px 7px 0 0; max-width: 200px; color: var(--muted); flex: none; }
 .tab:hover { background: var(--bg-hover); }
@@ -148,7 +157,11 @@ button.secondary { border: 1px solid var(--border); padding: 7px 14px; }
 .tab-close.dirty::before { content: ""; width: 7px; height: 7px; margin: 2.5px; border-radius: 50%; background: var(--fg); }
 .tab-close.dirty:hover svg { display: block; }
 .tab-close.dirty:hover::before { display: none; }
-.pane-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.pane-body { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+/* Where a dragged tab will open: the right or bottom half of the pane. */
+.split-preview { position: absolute; z-index: 20; pointer-events: none; background: color-mix(in srgb, var(--accent) 14%, transparent); border: 2px solid var(--accent); border-radius: 6px; }
+.split-preview.row { top: 4px; bottom: 4px; right: 4px; width: calc(50% - 6px); }
+.split-preview.column { left: 4px; right: 4px; bottom: 4px; height: calc(50% - 6px); }
 .file-view { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 
 /* Editors and viewers */
@@ -233,6 +246,7 @@ button.secondary { border: 1px solid var(--border); padding: 7px 14px; }
 .cm-tag { color: var(--accent); background: rgba(64, 120, 242, 0.1); border-radius: 10px; padding: 0 0.35em; font-size: 0.92em; }
 .cm-quote { border-left: 3px solid var(--border); padding-left: 16px !important; color: var(--muted); }
 .cm-bullet { color: var(--muted); display: inline-block; width: 0.9em; }
+.cm-outline-number { font-variant-numeric: tabular-nums; }
 .cm-task { margin: 0 0.4em 0 0; vertical-align: -0.1em; accent-color: var(--accent); cursor: pointer; }
 .cm-task-done { color: var(--muted); text-decoration: line-through; }
 .cm-hr { display: inline-block; width: 100%; height: 1px; background: var(--border); vertical-align: middle; }
@@ -290,10 +304,6 @@ button.secondary { border: 1px solid var(--border); padding: 7px 14px; }
 :root[data-theme="dark"] .tok-property, :root[data-theme="dark"] .tok-tag { color: #e06c75; }
 
 /* ---------- Sidebar tabs, panels ---------- */
-.sidebar-tabs { display: flex; gap: 2px; padding: 0 8px 6px; color: var(--muted); border-bottom: 1px solid var(--border); flex: none; }
-.sidebar-tabs button { padding: 5px 7px; }
-.sidebar-tabs button.active { color: var(--accent); background: var(--bg-active); }
-.sidebar-tabs .spacer { flex: 1; }
 .status { padding: 6px 12px; font-size: 12px; color: var(--muted); border-top: 1px solid var(--border); }
 .panel { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .panel-meta { color: var(--muted); font-size: 12px; padding: 6px 12px; min-height: 26px; }
@@ -428,6 +438,10 @@ td.csv-rownum { color: var(--faint); text-align: right; padding: 5px 8px; min-wi
 .md-render h3 { font-size: 1.05em; margin: 0.4em 0; }
 .md-render p, .md-render ul, .md-render ol { margin: 0.4em 0; }
 .md-render ul, .md-render ol { padding-left: 1.3em; }
+/* Ordered lists nested in ordered lists number as an outline (2.1, 2.2), like the editor. */
+.md-render ol { counter-reset: outline; }
+.md-render ol > li { counter-increment: outline; }
+.md-render ol ol > li::marker { content: counters(outline, ".") ". "; }
 .md-render code { font: 0.9em var(--font-mono); background: var(--bg-hover); padding: 0.1em 0.3em; border-radius: 4px; }
 .md-render pre { background: var(--bg-side); padding: 8px 10px; border-radius: 6px; overflow: auto; }
 .md-render a, .md-wikilink { color: var(--accent); cursor: pointer; text-decoration: none; }
@@ -700,7 +714,6 @@ svg path.flow-on { stroke-dasharray: 9 6 !important; animation: edge-flow 0.7s l
 .query-task.status-moved .query-task-text { color: var(--muted); }
 
 /* Agents' changes waiting for review (views/ActivityPanel.tsx, ReviewModal.tsx). */
-.sidebar-tabs button { position: relative; }
 .tab-badge { position: absolute; top: 1px; right: 1px; min-width: 14px; height: 14px; padding: 0 3px; border-radius: 7px; background: var(--accent); color: #fff; font-size: 9px; font-weight: 700; line-height: 14px; text-align: center; }
 .review-inbox { padding-bottom: 6px; border-bottom: 1px solid var(--border); margin-bottom: 6px; }
 .review-item .activity-path { cursor: default; }

@@ -10,9 +10,11 @@ import { onDarkChange } from "../theme";
 import { parseWikiLink, linkLabel } from "../links";
 import { kindOf } from "../ipc/kinds";
 import { blockRenderers } from "./blocks";
+import { outlineNumber } from "./outline";
 import { MATH_INLINE_RE } from "../markdown";
 import {
   BulletWidget,
+  OutlineNumberWidget,
   CanvasEmbedWidget,
   CheckboxWidget,
   ImageWidget,
@@ -268,6 +270,9 @@ function buildInline(state: EditorState, blocks: Blocks, rangeFrom: number, rang
             out.push(hide.range(from, after));
           } else if (/^[-*+]$/.test(mk) && !lineTouches(state, from)) {
             out.push(Decoration.replace({ widget: new BulletWidget() }).range(from, to));
+          } else if (/^\d+[.)]$/.test(mk) && !lineTouches(state, from)) {
+            const label = outlineNumber(node, (a, b) => doc.sliceString(a, b));
+            if (label) out.push(Decoration.replace({ widget: new OutlineNumberWidget(label) }).range(from, to));
           }
           break;
         }
@@ -453,3 +458,4 @@ const themeRedraw = ViewPlugin.define((view) => {
 export function livePreview(): Extension {
   return [blockField, inlinePlugin, linkClicks, themeRedraw];
 }
+

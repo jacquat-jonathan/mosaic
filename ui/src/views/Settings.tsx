@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { create } from "zustand";
 import { Bot, Download, FolderOpen, Info, Keyboard, Palette, PenLine, RefreshCw, X } from "lucide-react";
 import { useUi, type SettingsSection } from "../state/ui";
-import { NOTE_SIZE_MAX, NOTE_SIZE_MIN, useSettings, type Theme } from "../state/settings";
+import { NOTE_SIZE_MAX, NOTE_SIZE_MIN, useSettings, type NoteWidth, type Theme } from "../state/settings";
 import { useVault } from "../state/vault";
 import { useWorkspace } from "../state/workspace";
 import { api, onUpdateDone, onUpdateLog, pickFolder, revealInFinder } from "../ipc/api";
@@ -125,8 +125,18 @@ function Appearance() {
           <span className="range-value">{s.noteSize}px</span>
         </div>
       </Row>
-      <Row label="Readable line width" hint="Keep notes to a comfortable line length instead of the full width of the pane.">
-        <Toggle label="Readable line width" checked={s.readableWidth} onChange={(v) => s.set("readableWidth", v)} />
+      <Row label="Note width" hint="How wide the text of a note gets. Full uses the whole pane; the others keep lines comfortable to read.">
+        <Segmented<NoteWidth>
+          label="Note width"
+          value={s.noteWidth}
+          options={[
+            { value: "narrow", label: "Narrow" },
+            { value: "medium", label: "Medium" },
+            { value: "wide", label: "Wide" },
+            { value: "full", label: "Full" },
+          ]}
+          onChange={(v) => s.set("noteWidth", v)}
+        />
       </Row>
     </>
   );

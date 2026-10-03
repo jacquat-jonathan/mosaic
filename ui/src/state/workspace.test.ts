@@ -59,6 +59,19 @@ test("split and close panes", async () => {
   expect(ws().panes).toHaveLength(1);
 });
 
+test("dropping a tab on a pane's edge splits it off", async () => {
+  await ws().open("Welcome.md");
+  await ws().open("Ideas.md", { newTab: true });
+  ws().splitWith("Ideas.md", "p", "p", "column");
+  expect(ws().direction).toBe("column");
+  expect(ws().panes.map((p) => p.tabs)).toEqual([["Welcome.md"], ["Ideas.md"]]);
+  expect(ws().panes[0].active).toBe("Welcome.md");
+  expect(ws().focused).toBe(ws().panes[1].id);
+  // A pane's only tab stays where it is too (the pane isn't emptied).
+  ws().splitWith("Welcome.md", "p", ws().panes[1].id, "column");
+  expect(ws().panes.map((p) => p.tabs)).toEqual([["Welcome.md"], ["Ideas.md"], ["Welcome.md"]]);
+});
+
 test("uniquePath picks the first free name", () => {
   const existing = new Set(["untitled.md", "untitled 1.md"]);
   expect(uniquePath(existing, "", "Untitled", "md")).toBe("Untitled 2.md");

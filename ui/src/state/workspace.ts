@@ -44,6 +44,9 @@ interface WorkspaceState {
   focus(paneId: string): void;
   activate(paneId: string, path: string): void;
   split(direction: SplitDirection): void;
+  /** Opens `path` (a tab dragged from pane `from`) in a new pane next to `beside`; the tab leaves
+   *  `from` unless it's that pane's only tab. */
+  splitWith(path: string, from: string, beside: string, direction: SplitDirection): void;
   closePane(paneId: string): void;
   moveTab(path: string, from: string, to: string, index?: number): void;
   edit(path: string, content: string): void;
@@ -176,6 +179,20 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
         const at = s.panes.findIndex((p) => p.id === s.focused);
         const panes = [...s.panes];
         panes.splice(at + 1, 0, { id, tabs, active: tabs[0] ?? null });
+        return { panes, direction, focused: id };
+      });
+    },
+
+    splitWith(path, from, beside, direction) {
+      const id = newPaneId();
+      set((s) => {
+        const panes = s.panes.map((p) => {
+          if (p.id !== from || p.tabs.length < 2) return p;
+          const tabs = p.tabs.filter((t) => t !== path);
+          return { ...p, tabs, active: p.active === path ? tabs[Math.max(0, p.tabs.indexOf(path) - 1)] : p.active };
+        });
+        const at = panes.findIndex((p) => p.id === beside);
+        panes.splice(at + 1, 0, { id, tabs: [path], active: path });
         return { panes, direction, focused: id };
       });
     },

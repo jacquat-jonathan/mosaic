@@ -152,6 +152,37 @@ function Main() {
   useEffect(() => useReview.getState().watch(), [vault.root]);
   return (
     <div className={`shell ${left ? "" : "no-left"}`}>
+      <nav className="icon-bar" aria-label="Panels">
+        <div className="icon-bar-drag" data-tauri-drag-region />
+        <div role="tablist" aria-orientation="vertical" className="icon-bar-group">
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              role="tab"
+              aria-selected={left && tab === t.id}
+              aria-label={t.label}
+              title={left && tab === t.id ? `${t.label} — click to hide the sidebar` : t.label}
+              className={left && tab === t.id ? "active" : ""}
+              onClick={() => {
+                // The open panel's icon hides the sidebar; any other icon shows its panel.
+                if (left && tab === t.id) ui().toggleLeftSidebar();
+                else if (t.id === "search") ui().showSearch();
+                else ui().setSidebarTab(t.id);
+              }}
+            >
+              <t.icon size={18} />
+              {t.id === "activity" && pendingReviews > 0 && <span className="tab-badge" aria-label={`${pendingReviews} waiting for review`}>{pendingReviews}</span>}
+            </button>
+          ))}
+        </div>
+        <span className="spacer" />
+        <button title="Connect AI (MCP / CLI)" aria-label="Connect AI" onClick={() => ui().openSettings("ai")}>
+          <Bot size={18} />
+        </button>
+        <button title={`Settings (${shortcutOf("settings")})`} aria-label="Settings" onClick={() => ui().openSettings()}>
+          <Gear size={18} />
+        </button>
+      </nav>
       {left && (
         <aside className="sidebar" style={{ width: sidebarWidth }}>
           <div className="sidebar-head" data-tauri-drag-region>
@@ -166,28 +197,6 @@ function Main() {
             </button>
             <button className="head-button" aria-label="Hide sidebar" title={`Hide sidebar (${shortcutOf("toggle-left")})`} onClick={() => ui().toggleLeftSidebar()}>
               <PanelLeftClose size={16} />
-            </button>
-          </div>
-          <div className="sidebar-tabs" role="tablist">
-            {TABS.map((t) => (
-              <button
-                key={t.id}
-                role="tab"
-                aria-selected={tab === t.id}
-                title={t.label}
-                className={tab === t.id ? "active" : ""}
-                onClick={() => (t.id === "search" ? ui().showSearch() : ui().setSidebarTab(t.id))}
-              >
-                <t.icon size={15} />
-                {t.id === "activity" && pendingReviews > 0 && <span className="tab-badge" aria-label={`${pendingReviews} waiting for review`}>{pendingReviews}</span>}
-              </button>
-            ))}
-            <span className="spacer" />
-            <button title="Connect AI (MCP / CLI)" aria-label="Connect AI" onClick={() => ui().openSettings("ai")}>
-              <Bot size={15} />
-            </button>
-            <button title={`Settings (${shortcutOf("settings")})`} aria-label="Settings" onClick={() => ui().openSettings()}>
-              <Gear size={15} />
             </button>
           </div>
           {tab === "files" && (

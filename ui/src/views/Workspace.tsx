@@ -1,6 +1,6 @@
 import { Fragment, useState, type DragEvent } from "react";
-import { PanelLeftOpen, PanelRight, X } from "lucide-react";
-import { useWorkspace, type Pane } from "../state/workspace";
+import { Columns2, PanelLeftOpen, PanelRight, X } from "lucide-react";
+import { useWorkspace, type Pane, type SplitDirection } from "../state/workspace";
 import { useVault } from "../state/vault";
 import { useUi } from "../state/ui";
 import { FileView } from "../viewers/FileView";
@@ -59,6 +59,16 @@ function PaneView({ pane, topLeft, topRight }: { pane: Pane; topLeft: boolean; t
   const focused = useWorkspace((s) => s.focused === pane.id);
   const multi = useWorkspace((s) => s.panes.length > 1);
   const [dropping, setDropping] = useState(false);
+  // Dragging a tab over the right or bottom edge of the pane body: drop to split there.
+  const [edge, setEdge] = useState<SplitDirection | null>(null);
+  const edgeOf = (ev: DragEvent): SplitDirection | null => {
+    const r = ev.currentTarget.getBoundingClientRect();
+    const x = (ev.clientX - r.left) / r.width;
+    const y = (ev.clientY - r.top) / r.height;
+    if (x > 0.7 && x - 0.7 >= y - 0.7) return "row";
+    if (y > 0.7) return "column";
+    return null;
+  };
 
   const onDrop = (ev: DragEvent, index?: number) => {
     const raw = ev.dataTransfer.getData(TAB_DRAG);
@@ -95,6 +105,17 @@ function PaneView({ pane, topLeft, topRight }: { pane: Pane; topLeft: boolean; t
             <Tab key={path} pane={pane} path={path} active={pane.active === path} onDropAt={(ev) => onDrop(ev, i)} />
           ))}
         </div>
+        <button
+          className="bar-toggle"
+          aria-label="Split right"
+          title={`Split right (${shortcutOf("split-right")}); split down: ${shortcutOf("split-down")}. Or drag a tab to the right or bottom edge of a pane.`}
+          onClick={() => {
+            useWorkspace.getState().focus(pane.id);
+            useWorkspace.getState().split("row");
+          }}
+        >
+          <Columns2 size={16} />
+        </button>
         {topRight && (
           <button
             className={`bar-toggle ${right ? "active" : ""}`}
@@ -107,8 +128,30 @@ function PaneView({ pane, topLeft, topRight }: { pane: Pane; topLeft: boolean; t
           </button>
         )}
       </div>
-      <div className="pane-body">
+      <div
+        className="pane-body"
+        onDragOver={(ev) => {
+          if (!ev.dataTransfer.types.includes(TAB_DRAG)) return;
+          ev.preventDefault();
+          setEdge(edgeOf(ev));
+        }}
+        onDragLeave={(ev) => {
+          if (!ev.currentTarget.contains(ev.relatedTarget as Node | null)) setEdge(null);
+        }}
+        onDrop={(ev) => {
+          const raw = ev.dataTransfer.getData(TAB_DRAG);
+          const where = edgeOf(ev);
+          setEdge(null);
+          if (!raw || !where) return; // the middle: the pane's own drop (moves the tab here)
+          ev.preventDefault();
+          ev.stopPropagation();
+          setDropping(false);
+          const { path, from } = JSON.parse(raw) as { path: string; from: string };
+          useWorkspace.getState().splitWith(path, from, pane.id, where);
+        }}
+      >
         {pane.active ? <FileView key={pane.active} path={pane.active} /> : <EmptyPane />}
+        {edge && <div className={`split-preview ${edge}`} aria-hidden />}
       </div>
     </section>
   );

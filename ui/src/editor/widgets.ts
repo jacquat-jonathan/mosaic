@@ -301,6 +301,22 @@ export class PropertiesWidget extends WidgetType {
   }
 }
 
+/** A nested ordered list's number shown as an outline number ("2.1."); the Markdown keeps "1.". */
+export class OutlineNumberWidget extends WidgetType {
+  constructor(readonly label: string) {
+    super();
+  }
+  eq(o: OutlineNumberWidget) {
+    return o.label === this.label;
+  }
+  toDOM() {
+    const el = document.createElement("span");
+    el.className = "cm-outline-number";
+    el.textContent = this.label;
+    return el;
+  }
+}
+
 export class BulletWidget extends WidgetType {
   eq() {
     return true;

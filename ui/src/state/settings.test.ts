@@ -9,7 +9,13 @@ describe("settings", () => {
   });
 
   it("keeps valid values and clamps the text size", () => {
-    const p = sanitize({ theme: "dark", noteSize: 99, readableWidth: false, confirmTrash: false, newNoteLocation: "root" });
-    expect(p).toMatchObject({ theme: "dark", noteSize: NOTE_SIZE_MAX, readableWidth: false, confirmTrash: false, newNoteLocation: "root" });
+    const p = sanitize({ theme: "dark", noteSize: 99, noteWidth: "wide", confirmTrash: false, newNoteLocation: "root" });
+    expect(p).toMatchObject({ theme: "dark", noteSize: NOTE_SIZE_MAX, noteWidth: "wide", confirmTrash: false, newNoteLocation: "root" });
+  });
+
+  it("turns the old on/off readable width into a note width", () => {
+    expect(sanitize({ readableWidth: false }).noteWidth).toBe("full");
+    expect(sanitize({ readableWidth: true }).noteWidth).toBe("medium");
+    expect(sanitize({ noteWidth: "huge" }).noteWidth).toBe("medium");
   });
 });

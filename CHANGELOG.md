@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+## 0.10.0 — 2026-10-04
+
 - **Calendar** (the calendar icon in the left bar, or "Open calendar" in the command palette): each day's tasks, from its daily note and from tasks anywhere with a `📅 2026-10-04` date. The week view lists every task, with subtasks and their progress (2/3), and you tick them right there; the month view shows each day's open and done counts and first tasks. Click a day to open its note (or create it). Dated tasks still open after their day show as overdue.
 - **Carry-over**: when you open today's daily note, the unfinished tasks of your last daily note move into it, each with its unfinished subtasks; the old note keeps them as `- [>]` (moved), and finished subtasks stay there. Agents can do the same (`carry_over`) and see the calendar (`tasks_by_day`); also `mosaic days` and `mosaic carry-over`.
 - **Tables you edit in place**: click a cell and type. Tab, ⇧Tab and Enter move between cells (past the last row adds one); right-click for inserting or deleting rows and columns and aligning a column; the + buttons beside and under a table add a column or a row. The Markdown is written back with aligned columns.
@@ -12,6 +14,7 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 - **Icon bar on the left**: Files, Search, Bookmarks, Tags and AI activity are always one click away, even with the sidebar hidden; clicking the open panel's icon hides the sidebar.
 - **Splitting is easier to find**: a split button in each pane's tab bar, and you can drop a tab on the right or bottom edge of a pane to open it there.
 - Errors in ```query blocks (and a few other places, like saving a pasted image) showed "[object Object]" instead of the message.
+
 ## 0.9.1 — 2026-10-03
 
 - **Task queries**: `task:open` lists checkbox tasks across notes instead of notes, e.g. `task:open folder:Daily` or `task:open due<=today sort:due` (a task's own `📅 2026-10-05`, else its note's `due`). Subtasks stay nested under their task, and in a ```query block you tick tasks right in the table. Also `task:done`, `moved` (`[>]`), `cancelled` (`[-]`) and `all`, from the CLI and for agents too.

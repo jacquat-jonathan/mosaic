@@ -3,7 +3,7 @@ resolver = "3"
 members = ["crates/mosaic-core", "crates/mosaic-cli", "src-tauri"]
 
 [workspace.package]
-version = "0.9.1"
+version = "0.10.0"
 edition = "2024"
 license = "MIT"
 

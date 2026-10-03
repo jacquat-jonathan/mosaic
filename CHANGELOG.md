@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+## 0.9.0 — 2026-10-03
+
 - **Review agents' changes** (Settings › AI › a folder › Review changes): in that folder, an agent's edits, new files and deletions don't touch your files. They wait under AI activity (with a count on its tab); open one to see the change as a diff, then accept or reject it, optionally saying why. Accepted changes show in AI activity with Undo. Agents see your decisions (`list_proposals`) and can take a proposal back.
 - **Queries**: find notes by tag, folder, frontmatter field, date or links, e.g. `tag:project status!=done due<=today+7 sort:due`. Put one in a note as a ` ```query ` block to get a live table (a project dashboard), run `mosaic query …`, or let agents use the new `query` tool.
 

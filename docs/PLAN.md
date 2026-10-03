@@ -186,6 +186,20 @@ Done 2026-10-02, released as 0.9.0. Details in the vault note `Architecture/Done
 - [x] Review mode: folder rule "review", proposals in `history.db` (`review.rs`), inbox with diff / accept / reject in the app, `list_proposals` / `withdraw_proposal`
 - [x] Queries: frontmatter in the index, query language (`query.rs`), MCP `query`, `mosaic query`, ```query blocks
 
+### M18 — UI comfort
+From the vault note `Architecture/Ideas.md` (UI).
+- [ ] Note width setting (narrow / medium / wide / full)
+- [ ] Numbered sublists shown as 2.1, 2.2 (display only)
+- [ ] Fixed icon bar on the left (sidebar panels, settings)
+- [ ] Easier splitting: split button in the tab bar, drag a tab to the side
+- [ ] Table editing in place: cells, Tab / Enter, add or remove rows and columns
+
+### M19 — Calendar view and carry-over
+Decisions in the vault note `Architecture/Next steps.md` §4.
+- [ ] Core: tasks per day (daily note tasks plus `📅` tasks), carry-over (move, leave `[>]`, unfinished subtasks only)
+- [ ] Calendar view: month (counts, first tasks) and week (every task, tickable)
+- [ ] CLI and MCP: tasks by day; carry-over for agents
+
 ## Working rules
 - `scripts/check.sh` green before each milestone commit.
 - Core logic gets Rust tests; UI logic gets Vitest; don't test third-party renderers beyond a smoke test.

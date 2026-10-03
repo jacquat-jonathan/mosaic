@@ -4,6 +4,7 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- Settings › AI › Add a folder…: the folder picker opens in front of Settings, not behind it.
 - Queries: comparing a date or number with a word that is neither (a typo like `due<=tomorow`) now matches nothing instead of every note.
 - Settings › AI: the folder rules section is called "Folder rules for agents", and a folder you add starts as "Review changes".
 

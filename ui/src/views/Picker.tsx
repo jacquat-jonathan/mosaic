@@ -40,7 +40,7 @@ function PickerDialog({ spec }: { spec: PickerSpec }) {
   };
 
   return (
-    <div className="modal-backdrop top" onMouseDown={close}>
+    <div className="modal-backdrop top picker" onMouseDown={close}>
       <div className="switcher" role="dialog" aria-label={spec.placeholder} onMouseDown={(e) => e.stopPropagation()}>
         <input
           ref={input}

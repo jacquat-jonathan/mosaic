@@ -3,7 +3,7 @@
 // agent can read.
 
 import { useEffect, useMemo, useState } from "react";
-import { Check, X } from "lucide-react";
+import { AlertTriangle, Check, X } from "lucide-react";
 import { api } from "../ipc/api";
 import { errorMessage, type Proposal } from "../ipc/types";
 import { diffLines } from "../diff";
@@ -23,6 +23,9 @@ export function ReviewModal({ proposal, onClose }: { proposal: Proposal; onClose
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState("");
   const [conflict, setConflict] = useState(proposal.stale);
+  // The file as the agent saw it, to show what the person changed since (on a conflict).
+  const [base, setBase] = useState<string | null | undefined>(undefined);
+  const [showYours, setShowYours] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -32,6 +35,10 @@ export function ReviewModal({ proposal, onClose }: { proposal: Proposal; onClose
       () => setCurrent(null),
     );
   }, [proposal.id, proposal.path]);
+
+  useEffect(() => {
+    if (conflict && base === undefined) api.proposalBase(proposal.id).then(setBase, () => setBase(null));
+  }, [conflict, base, proposal.id]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -46,6 +53,9 @@ export function ReviewModal({ proposal, onClose }: { proposal: Proposal; onClose
     if (proposed === null) return current.split("\n").map((text) => ({ op: "del" as const, text }));
     return diffLines(current, proposed);
   }, [proposed, current]);
+  // What the person changed since the proposal: the file then → the file now.
+  const yours = useMemo(() => (typeof base === "string" && typeof current === "string" ? diffLines(base, current) : null), [base, current]);
+  const shown = showYours && yours ? yours : lines;
 
   const done = () => {
     void useReview.getState().refresh();
@@ -94,14 +104,31 @@ export function ReviewModal({ proposal, onClose }: { proposal: Proposal; onClose
           Accepted changes show in AI activity, with Undo.
         </p>
         {conflict && (
-          <p className="error-text">
-            The file changed since the agent proposed this. Accepting anyway replaces those changes with the agent's version.
-          </p>
+          <div className="review-conflict" role="alert">
+            <AlertTriangle size={16} />
+            <div>
+              <strong>The file changed after the agent proposed this.</strong>{" "}
+              {proposal.action === "deleted"
+                ? "Accepting deletes it, with those changes."
+                : "Accepting replaces those changes with the agent's version."}{" "}
+              They stay in the file's history.
+              {yours && (
+                <div className="review-toggle" role="group" aria-label="Which change to show">
+                  <button className={showYours ? "" : "on"} onClick={() => setShowYours(false)}>
+                    What accepting does
+                  </button>
+                  <button className={showYours ? "on" : ""} onClick={() => setShowYours(true)}>
+                    What changed since
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
         )}
         <div className="history-diff">
-          {lines && (
+          {shown && (
             <pre className="diff">
-              {lines.map((l, i) => (
+              {shown.map((l, i) => (
                 <div key={i} className={`diff-${l.op}`}>
                   <span className="diff-sign">{l.op === "add" ? "+" : l.op === "del" ? "−" : " "}</span>
                   {l.text || " "}
@@ -130,7 +157,7 @@ export function ReviewModal({ proposal, onClose }: { proposal: Proposal; onClose
               <button onClick={() => setRejecting(true)}>
                 <X size={14} /> Reject…
               </button>
-              <button className="primary" disabled={lines === null} onClick={() => void accept(conflict)}>
+              <button className={conflict ? "primary danger" : "primary"} disabled={lines === null} onClick={() => void accept(conflict)}>
                 <Check size={14} /> {conflict ? "Accept anyway" : "Accept"}
               </button>
             </>

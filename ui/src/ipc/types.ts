@@ -182,7 +182,7 @@ export interface Proposal {
   id: number;
   path: string;
   action: "created" | "edited" | "deleted";
-  status: "pending" | "accepted" | "rejected" | "withdrawn";
+  status: "pending" | "accepted" | "rejected" | "withdrawn" | "undone";
   source: string;
   actor: string | null;
   created: number;
@@ -193,6 +193,8 @@ export interface Proposal {
   hash: string | null;
   /** The file changed since the proposal was made: accepting overwrites that. */
   stale: boolean;
+  /** Accepted anyway after the file changed: the person's changes since were replaced. */
+  overwrote: boolean;
 }
 
 /** One version of a file kept by Mosaic (see crates/mosaic-core/src/history.rs). */

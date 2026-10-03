@@ -28,7 +28,8 @@ write shows up in the app within a second.
   sees the change as a diff in the app and accepts or rejects it. Until then, your reads of that file show
   your proposal and your next edits build on it, so a multi-step change is reviewed as one. Moving files
   and adding binary files there is refused. `list_proposals` shows what's pending and the person's
-  decisions (a rejection may carry a reason: read it and adapt); `withdraw_proposal` takes one back. Tell
+  decisions (a rejection may carry a reason: read it and adapt; `undone` means they accepted it, then
+  undid it, so the file no longer has your change); `withdraw_proposal` takes one back. Tell
   the person what you proposed and why, since they decide.
 - **Find notes by their properties with `query`** rather than reading many files: see "Queries" below.
 - **Several files at once:** `move_files` moves a list into one folder in a single call; `import_file`

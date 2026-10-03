@@ -22,7 +22,7 @@ pub struct Proposal {
     pub path: String,
     /// "created", "edited" or "deleted".
     pub action: String,
-    /// "pending", "accepted", "rejected" or "withdrawn".
+    /// "pending", "accepted", "rejected", "withdrawn", or "undone" (accepted, then undone by the person).
     pub status: String,
     pub source: String,
     /// The agent or client name (e.g. "claude-code"), when known.
@@ -40,10 +40,13 @@ pub struct Proposal {
     /// True when the file changed since the proposal was made (accepting would overwrite that).
     #[serde(default)]
     pub stale: bool,
+    /// True when the person accepted it anyway after the file had changed: their changes made
+    /// since the proposal were replaced (they're kept in the file's history).
+    #[serde(default)]
+    pub overwrote: bool,
 }
 
-const COLUMNS: &str =
-    "id, path, action, status, source, actor, created, updated, decided, reason, base_hash, hash";
+const COLUMNS: &str = "id, path, action, status, source, actor, created, updated, decided, reason, base_hash, hash, overwrote";
 
 fn sql_err(e: rusqlite::Error) -> Error {
     Error::Io {
@@ -67,6 +70,7 @@ fn row(r: &rusqlite::Row) -> rusqlite::Result<Proposal> {
         base_hash: r.get(10)?,
         hash: r.get(11)?,
         stale: false,
+        overwrote: r.get(12)?,
     })
 }
 
@@ -148,6 +152,27 @@ impl History {
             .execute(
                 "UPDATE proposals SET status = ?1, reason = ?2, decided = ?3 WHERE id = ?4",
                 params![status, reason, now_ms(), id],
+            )
+            .map_err(sql_err)?;
+        Ok(())
+    }
+
+    fn accepted(&self, id: i64, overwrote: bool, version_id: Option<i64>) -> Result<()> {
+        self.conn
+            .execute(
+                "UPDATE proposals SET status = 'accepted', reason = NULL, decided = ?1, overwrote = ?2, version_id = ?3 WHERE id = ?4",
+                params![now_ms(), overwrote, version_id, id],
+            )
+            .map_err(sql_err)?;
+        Ok(())
+    }
+
+    /// Marks the accepted proposal that made history entry `version_id` as undone.
+    pub(crate) fn proposal_undone(&self, version_id: i64) -> Result<()> {
+        self.conn
+            .execute(
+                "UPDATE proposals SET status = 'undone' WHERE version_id = ?1 AND status = 'accepted'",
+                [version_id],
             )
             .map_err(sql_err)?;
         Ok(())
@@ -272,7 +297,12 @@ impl Workspace {
         }
         let base = match &pending {
             Some((p, _)) => p.base_hash.clone(),
-            None => disk.as_ref().map(|(_, h)| h.clone()),
+            None => {
+                // Keep the file as the agent saw it, so the review can show what the person
+                // changed since, should they edit it before deciding.
+                self.keep_before(norm);
+                disk.as_ref().map(|(_, h)| h.clone())
+            }
         };
         let action = if disk.is_some() {
             Action::Edited
@@ -350,7 +380,10 @@ impl Workspace {
             (_, pending) => {
                 let base = match &pending {
                     Some((p, _)) => p.base_hash.clone(),
-                    None => disk.as_ref().map(|(_, h)| h.clone()),
+                    None => {
+                        self.keep_before(norm);
+                        disk.as_ref().map(|(_, h)| h.clone())
+                    }
                 };
                 let id = self.hist().propose(
                     norm,
@@ -376,6 +409,19 @@ impl Workspace {
             }
         }
         Ok(list)
+    }
+
+    /// The file as it was when the proposal was made (`None`: it didn't exist, or that version
+    /// wasn't kept). Diffed against the file now, it shows what the person changed since.
+    pub fn proposal_base(&self, id: i64) -> Result<Option<String>> {
+        let p = self
+            .hist()
+            .proposal(id)?
+            .ok_or_else(|| Error::NotFound(format!("proposal {id}")))?;
+        match &p.base_hash {
+            Some(h) => self.hist().content_by_hash(&p.path, h),
+            None => Ok(None),
+        }
     }
 
     /// The proposed content (`None` for a deletion).
@@ -463,7 +509,10 @@ impl Workspace {
                 }
             }
         }
-        self.hist().decide(id, "accepted", None)?;
+        // The entry just recorded is what Undo in AI activity reverts; link it so the agent sees that.
+        let version_id = self.hist().latest(&p.path)?.map(|v| v.id);
+        self.hist()
+            .accepted(id, current != p.base_hash, version_id)?;
         self.reindex(&p.path);
         Ok(p.path)
     }
@@ -566,7 +615,15 @@ mod tests {
             ),
             ("agent", Some("claude-code"), "edited")
         );
-        assert_eq!(agent.proposals(true, 10).unwrap()[0].status, "accepted");
+        let accepted = &agent.proposals(true, 10).unwrap()[0];
+        assert_eq!(
+            (accepted.status.as_str(), accepted.overwrote),
+            ("accepted", false)
+        );
+        // The person undoes it in AI activity: the agent sees that its change is gone.
+        app.undo(act[0].id).unwrap();
+        assert_eq!(disk(&dir, "Reviewed/Plan.md").unwrap(), "# Plan\n- one\n");
+        assert_eq!(agent.proposals(true, 10).unwrap()[0].status, "undone");
         // Outside the review folder, agents write directly.
         assert_eq!(
             agent.write("Free.md", "changed\n", None).unwrap().review,
@@ -617,6 +674,13 @@ mod tests {
         ));
         app.accept_proposal(w.review.unwrap(), true).unwrap();
         assert_eq!(disk(&dir, "Reviewed/Plan.md").unwrap(), "# Plan v2\n");
+        // The decision records that it replaced the person's edit (stale only means something
+        // while pending).
+        let forced = &agent.proposals(true, 10).unwrap()[0];
+        assert_eq!(
+            (forced.status.as_str(), forced.overwrote),
+            ("accepted", true)
+        );
         // Moves and binary files can't be reviewed.
         assert!(matches!(
             agent.rename("Reviewed/Plan.md", "Plan.md", true),

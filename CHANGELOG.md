@@ -4,6 +4,7 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- Review: when you changed a file after an agent proposed a change to it, the review window says so in a clear banner and can show what you changed since. The agent now sees "undone" when you undo a change you accepted, and `overwrote` when you accepted it over your own edits.
 - Folder rules for agents fail closed: a rule this version doesn't understand (written by a newer Mosaic) is enforced as read-only, and settings it doesn't know are kept when it saves. Before, an older Mosaic dropped every folder rule in that case.
 - Settings › AI › Add a folder…: the folder picker opens in front of Settings, not behind it.
 - Queries: comparing a date or number with a word that is neither (a typo like `due<=tomorow`) now matches nothing instead of every note.

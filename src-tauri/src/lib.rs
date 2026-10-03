@@ -348,6 +348,11 @@ fn proposal_content(state: State<AppState>, id: i64) -> CmdResult<Option<String>
 }
 
 #[tauri::command]
+fn proposal_base(state: State<AppState>, id: i64) -> CmdResult<Option<String>> {
+    state.get()?.proposal_base(id)
+}
+
+#[tauri::command]
 fn accept_proposal(state: State<AppState>, id: i64, force: Option<bool>) -> CmdResult<String> {
     state.get()?.accept_proposal(id, force.unwrap_or(false))
 }
@@ -473,6 +478,7 @@ pub fn run() {
             query_notes,
             proposals,
             proposal_content,
+            proposal_base,
             accept_proposal,
             reject_proposal,
             create_vault,

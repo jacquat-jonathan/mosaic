@@ -155,6 +155,23 @@ impl History {
              CREATE INDEX IF NOT EXISTS proposals_status ON proposals(status, path);",
         )
         .map_err(sql_err)?;
+        // Added in 0.9.1: what an accepted proposal overwrote, and the change it made (for Undo).
+        for (col, ty) in [
+            ("overwrote", "INTEGER NOT NULL DEFAULT 0"),
+            ("version_id", "INTEGER"),
+        ] {
+            let has: bool = conn
+                .query_row(
+                    "SELECT COUNT(*) > 0 FROM pragma_table_info('proposals') WHERE name = ?1",
+                    [col],
+                    |r| r.get(0),
+                )
+                .map_err(sql_err)?;
+            if !has {
+                conn.execute_batch(&format!("ALTER TABLE proposals ADD COLUMN {col} {ty}"))
+                    .map_err(sql_err)?;
+            }
+        }
         let h = History { conn };
         h.prune()?;
         Ok(h)
@@ -305,6 +322,18 @@ impl History {
             .map_err(sql_err)
     }
 
+    /// The newest kept content of `path` with this hash.
+    pub fn content_by_hash(&self, path: &str, hash: &str) -> Result<Option<String>> {
+        self.conn
+            .query_row(
+                "SELECT content FROM versions WHERE path = ?1 AND hash = ?2 AND content IS NOT NULL ORDER BY id DESC LIMIT 1",
+                params![path, hash],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(sql_err)
+    }
+
     pub fn get(&self, id: i64) -> Result<Option<Version>> {
         self.conn
             .query_row(
@@ -385,6 +414,30 @@ mod tests {
 
     fn h() -> History {
         History::in_memory().unwrap()
+    }
+
+    #[test]
+    fn a_090_database_gains_the_new_proposal_columns() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("history.db");
+        let old = Connection::open(&db).unwrap();
+        old.execute_batch(
+            "CREATE TABLE proposals (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, path TEXT NOT NULL, action TEXT NOT NULL,
+                base_hash TEXT, content TEXT, hash TEXT, source TEXT NOT NULL, actor TEXT,
+                created INTEGER NOT NULL, updated INTEGER NOT NULL, status TEXT NOT NULL,
+                reason TEXT, decided INTEGER);
+             INSERT INTO proposals (path, action, source, created, updated, status)
+                VALUES ('A.md', 'edited', 'agent', 1, 1, 'accepted');",
+        )
+        .unwrap();
+        drop(old);
+        let h = History::open_at(&db).unwrap();
+        let p = h.proposals(true, 10).unwrap();
+        assert_eq!((p.len(), p[0].overwrote), (1, false));
+        // Opening it again doesn't try to add the columns twice.
+        drop(h);
+        History::open_at(&db).unwrap();
     }
 
     #[test]

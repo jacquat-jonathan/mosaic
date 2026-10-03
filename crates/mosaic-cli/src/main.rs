@@ -559,6 +559,11 @@ fn run(cli: Cli) -> Result<()> {
                     if let Some(r) = &p.reason {
                         line.push_str(&format!("\n        reason: {r}"));
                     }
+                    if p.overwrote {
+                        line.push_str(
+                            "\n        accepted over the person's own changes made since",
+                        );
+                    }
                     if p.stale {
                         line.push_str(
                             "\n        the file changed since; the person will see a conflict",

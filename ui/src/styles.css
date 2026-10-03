@@ -700,6 +700,11 @@ svg path.flow-on { stroke-dasharray: 9 6 !important; animation: edge-flow 0.7s l
 .review-item .activity-path { cursor: default; }
 .review-item .activity-meta button.primary, .review-item .activity-meta button.primary:hover { padding: 2px 8px; color: #fff; }
 .review-stale { color: var(--danger); font-size: 11px; }
+.review-conflict { display: flex; gap: 10px; align-items: flex-start; margin: 8px 0; padding: 10px 12px; border: 1px solid var(--danger); border-radius: 8px; background: color-mix(in srgb, var(--danger) 10%, var(--bg)); font-size: 13px; line-height: 1.45; }
+.review-conflict > svg { color: var(--danger); flex: none; margin-top: 2px; }
+.review-toggle { display: flex; gap: 4px; margin-top: 8px; }
+.review-toggle button { font-size: 12px; padding: 3px 9px; }
+.review-toggle button.on { background: var(--fg); color: var(--bg); border-color: var(--fg); }
 .review-reason { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); margin-top: 8px; }
 .review-reason textarea { font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; resize: vertical; }
 .modal.review .history-diff { max-height: 56vh; }

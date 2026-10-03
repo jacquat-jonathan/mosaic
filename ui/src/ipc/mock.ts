@@ -40,6 +40,7 @@ export function mockPropose(path: string, content: string | null, actor = "claud
     base_hash: existing ? hash(existing.content) : null,
     hash: content === null ? null : hash(content),
     stale: false,
+    overwrote: false,
     content,
   };
   proposals.push(p);
@@ -513,11 +514,13 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
       return hits;
     }
     case "proposals": {
-      const list = proposals.filter((p) => a.includeDecided || p.status === "pending").map(({ content: _c, ...p }) => ({ ...p, stale: p.status === "pending" && (files.has(p.path) ? hash(files.get(p.path)!.content) : null) !== p.base_hash }));
+      const list = proposals.filter((p) => a.includeDecided || p.status === "pending").map(({ content: _c, ...p }) => ({ ...p, overwrote: false, stale: p.status === "pending" && (files.has(p.path) ? hash(files.get(p.path)!.content) : null) !== p.base_hash }));
       return list;
     }
     case "proposal_content":
       return proposals.find((p) => p.id === a.id)?.content ?? null;
+    case "proposal_base":
+      return null;
     case "accept_proposal":
     case "reject_proposal": {
       const p = proposals.find((x) => x.id === a.id && x.status === "pending");

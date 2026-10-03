@@ -573,6 +573,13 @@ impl Workspace {
     /// created file goes to the Trash, a deleted file comes back, a rename is reversed. Refuses
     /// (`conflict`) when the file changed again since. Returns the file's path afterwards.
     pub fn undo(&self, id: i64) -> Result<String> {
+        let path = self.undo_change(id)?;
+        // An accepted proposal that this undoes: tell the agent (list_proposals shows "undone").
+        let _ = self.hist().proposal_undone(id);
+        Ok(path)
+    }
+
+    fn undo_change(&self, id: i64) -> Result<String> {
         let v = self
             .hist()
             .get(id)?

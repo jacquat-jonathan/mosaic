@@ -380,7 +380,7 @@ impl MosaicMcp {
     }
 
     #[tool(
-        description = "Your changes waiting for the person's review (in folders where they review agents' changes), and their decisions on recent ones: status pending, accepted, rejected (with their reason) or withdrawn. stale means the file changed since you proposed."
+        description = "Your changes waiting for the person's review (in folders where they review agents' changes), and their decisions on recent ones: status pending, accepted, rejected (with their reason), withdrawn, or undone (accepted, then undone by the person: the file no longer has your change). stale means the file changed since you proposed; overwrote means they accepted it anyway, replacing their own changes made since."
     )]
     async fn list_proposals(&self, Parameters(a): Parameters<ProposalsArgs>) -> ToolResult {
         self.ws()

@@ -363,6 +363,17 @@ fn reject_proposal(state: State<AppState>, id: i64, reason: Option<String>) -> C
 }
 
 #[tauri::command]
+fn set_task(
+    state: State<AppState>,
+    path: String,
+    line: usize,
+    text: String,
+    done: bool,
+) -> CmdResult<Written> {
+    state.get()?.set_task(&path, line, &text, done)
+}
+
+#[tauri::command]
 fn query_notes(
     state: State<AppState>,
     query: String,
@@ -476,6 +487,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             open_vault,
             query_notes,
+            set_task,
             proposals,
             proposal_content,
             proposal_base,

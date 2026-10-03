@@ -44,6 +44,8 @@ export const api = {
   search: (query: string, limit = 50) => call<SearchHit[]>("search", { query, limit }),
   /** Notes matching a structured query (crates/mosaic-core/src/query.rs). */
   query: (query: string) => call<QueryResult>("query_notes", { query }),
+  /** Ticks or unticks the task on `line` of a note; `conflict` when that line changed. */
+  setTask: (path: string, line: number, text: string, done: boolean) => call<Written>("set_task", { path, line, text, done }),
   /** Agents' proposals in folders under review: pending first, then recent decisions. */
   proposals: (includeDecided = false) => call<Proposal[]>("proposals", { includeDecided }),
   /** The proposed content (null for a deletion). */

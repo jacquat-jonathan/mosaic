@@ -536,6 +536,8 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
       Object.assign(p, { status: cmd === "accept_proposal" ? "accepted" : "rejected", reason: (a.reason as string | null) ?? null, decided: Date.now() });
       return cmd === "accept_proposal" ? p.path : null;
     }
+    case "set_task":
+      return { path: a.path, hash: "" };
     case "query_notes":
       return mockQuery(String(a.query ?? ""));
     case "backlinks": {

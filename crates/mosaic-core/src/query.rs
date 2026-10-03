@@ -14,9 +14,14 @@
 //!   `today`, `today-7`) by day, other text alphabetically and ignoring case.
 //! - `sort:field` (or `sort:-field`, descending), `limit:N`, `show:a,b` (columns to display).
 //! - Other words are full-text search terms, as in `search`.
+//! - `task:open` (or `done`, `moved`, `cancelled`, `all`; `a|b` for several) lists checkbox tasks
+//!   instead of notes. Every filter then applies per task: the task's own fields (`text`, `status`,
+//!   `due` from a `📅 2026-10-05` on its line, `line`) come first, the rest from its note (so a task
+//!   in a `due:` note has that due date unless it sets its own). `tag:` matches #tags in the task
+//!   or the note's frontmatter tags; other words must all appear in the task's text.
 
 use crate::error::{Error, Result};
-use crate::index::{Index, NoteMeta};
+use crate::index::{Index, NoteMeta, TaskMeta};
 use chrono::{Local, TimeZone};
 use regex::Regex;
 use serde::Serialize;
@@ -29,7 +34,7 @@ pub const DEFAULT_LIMIT: usize = 100;
 pub const MAX_LIMIT: usize = 1000;
 
 static RESERVED: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^(-?)(tag|folder|path|kind|links-to|linked-from|has|sort|limit|show):(.*)$")
+    Regex::new(r"^(-?)(tag|folder|path|kind|links-to|linked-from|has|sort|limit|show|task):(.*)$")
         .expect("valid")
 });
 static COMPARISON: LazyLock<Regex> = LazyLock::new(|| {
@@ -70,6 +75,38 @@ pub struct Query {
     sort: Vec<(String, bool)>,
     limit: Option<usize>,
     show: Vec<String>,
+    /// `task:`: list tasks with these statuses instead of notes.
+    tasks: Option<Vec<String>>,
+}
+
+const TASK_STATUSES: [&str; 4] = ["open", "done", "moved", "cancelled"];
+
+/// A task's status from its checkbox mark: `[x]` done, `[>]` moved (to another day), `[-]`
+/// cancelled, anything else (`[ ]`, `[/]` in progress, …) open.
+pub fn task_status(mark: char) -> &'static str {
+    match mark {
+        'x' | 'X' => "done",
+        '>' => "moved",
+        '-' => "cancelled",
+        _ => "open",
+    }
+}
+
+/// A task row's own fields.
+#[derive(Debug, Clone, Serialize)]
+pub struct TaskRow {
+    /// 1-based line in the note.
+    pub line: usize,
+    /// "open", "done", "moved" or "cancelled".
+    pub status: &'static str,
+    /// The checkbox character as written.
+    pub mark: char,
+    pub text: String,
+    pub depth: usize,
+    /// Line of the task it's nested under.
+    pub parent: Option<usize>,
+    /// Its own due date (`📅`), if it has one.
+    pub due: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -81,11 +118,23 @@ pub struct QueryRow {
     pub tags: Vec<String>,
     /// The note's frontmatter.
     pub props: Value,
+    /// Set for task queries (`task:`): the row is this task, in the note above.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub task: Option<TaskRow>,
 }
 
 impl QueryRow {
     /// A column's value as plain text (lists joined with ", "; empty when missing).
     pub fn cell(&self, column: &str) -> String {
+        if let Some(t) = &self.task {
+            match column {
+                "text" => return t.text.clone(),
+                "status" => return t.status.to_string(),
+                "line" => return t.line.to_string(),
+                "due" if t.due.is_some() => return t.due.clone().unwrap_or_default(),
+                _ => {}
+            }
+        }
         match column {
             "title" => self.title.clone(),
             "path" => self.path.clone(),
@@ -194,6 +243,32 @@ pub fn parse(q: &str) -> Result<Query> {
                 "links-to" => Filter::LinksTo(one()?),
                 "linked-from" => Filter::LinkedFrom(one()?),
                 "has" => Filter::Has(one()?),
+                "task" => {
+                    let mut wanted: Vec<String> = Vec::new();
+                    for v in vals.iter().map(|v| v.to_lowercase()) {
+                        match v.as_str() {
+                            "all" | "any" => wanted.extend(TASK_STATUSES.map(String::from)),
+                            s if TASK_STATUSES.contains(&s) => wanted.push(v),
+                            _ => {
+                                return Err(Error::Invalid(format!(
+                                    "task:{v}: expected open, done, moved, cancelled or all"
+                                )));
+                            }
+                        }
+                    }
+                    if wanted.is_empty() {
+                        wanted.push("open".into());
+                    }
+                    if neg {
+                        wanted = TASK_STATUSES
+                            .iter()
+                            .filter(|s| !wanted.iter().any(|w| w == *s))
+                            .map(|s| s.to_string())
+                            .collect();
+                    }
+                    query.tasks = Some(wanted);
+                    continue;
+                }
                 "sort" => {
                     for f in unquote(raw).split(',').filter(|f| !f.is_empty()) {
                         match f.strip_prefix('-') {
@@ -379,6 +454,24 @@ fn compare(vals: &[Scalar], op: Op, targets: &[String]) -> bool {
     }
 }
 
+/// A field of a task: its own (`text`, `status`, `line`, `due` when it has one), else its note's.
+fn task_field(n: &NoteMeta, t: &TaskMeta, name: &str) -> Vec<Scalar> {
+    match name {
+        "text" => vec![Scalar::Text(t.text.clone())],
+        "status" => vec![Scalar::Text(task_status(t.mark).into())],
+        "line" => vec![Scalar::Num(t.line as f64)],
+        "due" if t.due.is_some() => vec![Scalar::Text(t.due.clone().unwrap_or_default())],
+        _ => field(n, name),
+    }
+}
+
+fn subject_field(n: &NoteMeta, t: Option<&TaskMeta>, name: &str) -> Vec<Scalar> {
+    match t {
+        Some(t) => task_field(n, t, name),
+        None => field(n, name),
+    }
+}
+
 fn sort_key_cmp(a: &[Scalar], b: &[Scalar]) -> Ordering {
     match (a.first(), b.first()) {
         (None, None) => Ordering::Equal,
@@ -404,6 +497,7 @@ impl Query {
                 })
                 .chain(self.sort.iter().map(|(f, _)| f.clone()))
                 .filter(|f| f != "title" && f != "path")
+                .filter(|f| self.tasks.is_none() || (f != "text" && f != "status"))
                 .collect()
         } else {
             self.show.clone()
@@ -420,34 +514,50 @@ impl Query {
             .into_iter()
             .filter(|n| visible(&n.path))
             .collect();
-        // Full-text terms narrow the set and give the default order (best match first).
-        let mut rank: Option<Vec<String>> = None;
-        if !self.text.is_empty() {
-            let hits = index.search(&self.text.join(" "), 100_000)?;
-            rank = Some(hits.into_iter().map(|h| h.path).collect());
-        }
         let files = index.file_set()?;
         let resolve = |target: &str| -> Result<String> {
             files
                 .resolve(&unquote(target), None, false)
                 .ok_or_else(|| Error::NotFound(format!("no note named {target:?}")))
         };
+        // Each filter checks a note, or a task in it (task queries).
+        type Keep<'a> = Box<dyn Fn(&NoteMeta, Option<&TaskMeta>) -> bool + 'a>;
+        let mut keeps: Vec<(Keep, bool)> = Vec::new();
         for (f, neg) in &self.filters {
-            let keep: Box<dyn Fn(&NoteMeta) -> bool> = match f {
-                Filter::Tag(tags) => Box::new(move |n: &NoteMeta| {
-                    n.tags.iter().any(|t| {
+            let keep: Keep = match f {
+                Filter::Tag(tags) => Box::new(move |n: &NoteMeta, t: Option<&TaskMeta>| {
+                    // A task has its own #tags and its note's frontmatter tags; a #tag written
+                    // next to another task in the note isn't one of them.
+                    let found = match t {
+                        Some(t) => {
+                            let mut v = crate::parse::tags_in(&t.text);
+                            for key in ["tags", "tag"] {
+                                let mut out = Vec::new();
+                                if let Some(p) = prop(&n.props, key) {
+                                    scalars(p, &mut out);
+                                }
+                                v.extend(
+                                    out.iter()
+                                        .map(|s| s.text().trim_start_matches('#').to_string()),
+                                );
+                            }
+                            v
+                        }
+                        None => n.tags.clone(),
+                    };
+                    found.iter().any(|t| {
                         let t = t.to_lowercase();
                         tags.iter()
                             .any(|w| t == *w || t.starts_with(&format!("{w}/")))
                     })
                 }),
-                Filter::Folder(folders) => Box::new(move |n: &NoteMeta| {
+                Filter::Folder(folders) => Box::new(move |n: &NoteMeta, _| {
                     let p = n.path.to_lowercase();
                     folders
                         .iter()
                         .any(|f| f.is_empty() || p.starts_with(&format!("{f}/")))
                 }),
-                Filter::Kind(kinds) => Box::new(move |n: &NoteMeta| kinds.contains(&n.kind)),
+                Filter::Kind(kinds) => Box::new(move |n: &NoteMeta, _| kinds.contains(&n.kind)),
                 Filter::LinksTo(target) => {
                     let to = resolve(target)?;
                     let sources: HashSet<String> = index
@@ -455,7 +565,7 @@ impl Query {
                         .into_iter()
                         .map(|b| b.source)
                         .collect();
-                    Box::new(move |n: &NoteMeta| sources.contains(&n.path))
+                    Box::new(move |n: &NoteMeta, _| sources.contains(&n.path))
                 }
                 Filter::LinkedFrom(target) => {
                     let from = resolve(target)?;
@@ -464,65 +574,144 @@ impl Query {
                         .into_iter()
                         .filter_map(|l| l.resolved)
                         .collect();
-                    Box::new(move |n: &NoteMeta| targets.contains(&n.path))
+                    Box::new(move |n: &NoteMeta, _| targets.contains(&n.path))
                 }
-                Filter::Has(name) => Box::new(move |n: &NoteMeta| !field(n, name).is_empty()),
+                Filter::Has(name) => Box::new(move |n: &NoteMeta, t: Option<&TaskMeta>| {
+                    !subject_field(n, t, name).is_empty()
+                }),
                 Filter::Compare(name, op, targets) => {
-                    Box::new(move |n: &NoteMeta| compare(&field(n, name), *op, targets))
+                    Box::new(move |n: &NoteMeta, t: Option<&TaskMeta>| {
+                        compare(&subject_field(n, t, name), *op, targets)
+                    })
                 }
             };
-            notes.retain(|n| keep(n) != *neg);
+            keeps.push((keep, *neg));
         }
-        if let Some(rank) = &rank {
-            let pos: std::collections::HashMap<&str, usize> = rank
-                .iter()
+        let kept =
+            |n: &NoteMeta, t: Option<&TaskMeta>| keeps.iter().all(|(k, neg)| k(n, t) != *neg);
+        if let Some(statuses) = &self.tasks {
+            return self.run_tasks(index, notes, statuses, &kept);
+        }
+        notes.retain(|n| kept(n, None));
+        // Full-text terms narrow the set and give the default order (best match first).
+        if !self.text.is_empty() {
+            let hits = index.search(&self.text.join(" "), 100_000)?;
+            let pos: std::collections::HashMap<String, usize> = hits
+                .into_iter()
                 .enumerate()
-                .map(|(i, p)| (p.as_str(), i))
+                .map(|(i, h)| (h.path, i))
                 .collect();
-            notes.retain(|n| pos.contains_key(n.path.as_str()));
+            notes.retain(|n| pos.contains_key(&n.path));
             if self.sort.is_empty() {
-                notes.sort_by_key(|n| pos[n.path.as_str()]);
+                notes.sort_by_key(|n| pos[&n.path]);
             }
         }
         if !self.sort.is_empty() {
             notes.sort_by(|a, b| {
-                for (name, desc) in &self.sort {
-                    let o = if name == "modified" {
-                        let o = a.mtime.cmp(&b.mtime);
-                        if *desc { o.reverse() } else { o }
-                    } else {
-                        let (fa, fb) = (field(a, name), field(b, name));
-                        match (fa.is_empty(), fb.is_empty()) {
-                            // Notes without the field go last, in either direction.
-                            (true, false) => Ordering::Greater,
-                            (false, true) => Ordering::Less,
-                            _ if *desc => sort_key_cmp(&fa, &fb).reverse(),
-                            _ => sort_key_cmp(&fa, &fb),
-                        }
-                    };
-                    if o != Ordering::Equal {
-                        return o;
-                    }
-                }
-                a.path.cmp(&b.path)
+                self.order(a, None, b, None)
+                    .then_with(|| a.path.cmp(&b.path))
             });
         }
         let total = notes.len();
         notes.truncate(self.limit.unwrap_or(DEFAULT_LIMIT));
         Ok(QueryResult {
             columns: self.columns(),
-            rows: notes
+            rows: notes.into_iter().map(|n| row_of(n, None)).collect(),
+            total,
+        })
+    }
+
+    /// `task:` queries: the tasks of the notes, each checked against every filter.
+    fn run_tasks(
+        &self,
+        index: &Index,
+        notes: Vec<NoteMeta>,
+        statuses: &[String],
+        kept: &dyn Fn(&NoteMeta, Option<&TaskMeta>) -> bool,
+    ) -> Result<QueryResult> {
+        let by_path: std::collections::HashMap<String, NoteMeta> =
+            notes.into_iter().map(|n| (n.path.clone(), n)).collect();
+        let words: Vec<String> = self
+            .text
+            .iter()
+            .map(|w| unquote(w).to_lowercase())
+            .collect();
+        let mut found: Vec<(&NoteMeta, TaskMeta)> = index
+            .tasks()?
+            .into_iter()
+            .filter_map(|t| Some((by_path.get(&t.path)?, t)))
+            .filter(|(_, t)| statuses.iter().any(|s| s == task_status(t.mark)))
+            .filter(|(_, t)| {
+                let text = t.text.to_lowercase();
+                words.iter().all(|w| text.contains(w.as_str()))
+            })
+            .filter(|(n, t)| kept(n, Some(t)))
+            .collect();
+        // Index order (by note, then line) unless sorted.
+        if !self.sort.is_empty() {
+            found.sort_by(|(na, ta), (nb, tb)| {
+                self.order(na, Some(ta), nb, Some(tb))
+                    .then_with(|| (&ta.path, ta.line).cmp(&(&tb.path, tb.line)))
+            });
+        }
+        let total = found.len();
+        found.truncate(self.limit.unwrap_or(DEFAULT_LIMIT));
+        Ok(QueryResult {
+            columns: self.columns(),
+            rows: found
                 .into_iter()
-                .map(|n| QueryRow {
-                    path: n.path,
-                    title: n.title,
-                    modified: n.mtime,
-                    tags: n.tags,
-                    props: n.props,
-                })
+                .map(|(n, t)| row_of(n.clone(), Some(t)))
                 .collect(),
             total,
         })
+    }
+
+    /// Compares two notes (or tasks) by the `sort:` fields.
+    fn order(
+        &self,
+        a: &NoteMeta,
+        ta: Option<&TaskMeta>,
+        b: &NoteMeta,
+        tb: Option<&TaskMeta>,
+    ) -> Ordering {
+        for (name, desc) in &self.sort {
+            let o = if name == "modified" {
+                let o = a.mtime.cmp(&b.mtime);
+                if *desc { o.reverse() } else { o }
+            } else {
+                let (fa, fb) = (subject_field(a, ta, name), subject_field(b, tb, name));
+                match (fa.is_empty(), fb.is_empty()) {
+                    // Without the field: last, in either direction.
+                    (true, false) => Ordering::Greater,
+                    (false, true) => Ordering::Less,
+                    _ if *desc => sort_key_cmp(&fa, &fb).reverse(),
+                    _ => sort_key_cmp(&fa, &fb),
+                }
+            };
+            if o != Ordering::Equal {
+                return o;
+            }
+        }
+        Ordering::Equal
+    }
+}
+
+fn row_of(n: NoteMeta, t: Option<TaskMeta>) -> QueryRow {
+    QueryRow {
+        path: n.path,
+        title: n.title,
+        modified: n.mtime,
+        tags: n.tags,
+        props: n.props,
+        task: t.map(|t| TaskRow {
+            line: t.line,
+            status: task_status(t.mark),
+            mark: t.mark,
+            text: t.text,
+            depth: t.depth,
+            parent: t.parent,
+            due: t.due,
+        }),
     }
 }
 
@@ -637,6 +826,99 @@ mod tests {
         assert!(paths("due<=tomorow", &idx).is_empty());
         assert!(paths("priority>high", &idx).is_empty());
         assert_eq!(paths("tag:project priority!=high", &idx).len(), 3);
+    }
+
+    fn tasks(q: &str, idx: &Index) -> Vec<String> {
+        parse(q)
+            .unwrap()
+            .run(idx, |_| true)
+            .unwrap()
+            .rows
+            .into_iter()
+            .map(|r| {
+                let t = r.task.expect("a task row");
+                format!("{}:{} {}", r.path, t.line, t.text)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn task_queries() {
+        let (_d, idx) = vault(&[
+            (
+                "Daily/2026-10-02.md",
+                "# Fri\n- [x] Standup\n- [>] Write report\n- [ ] Call Anna #urgent 📅 2026-10-05\n",
+            ),
+            (
+                "Daily/2026-10-03.md",
+                "# Sat\n- [ ] Write report\n    - [x] Outline\n    - [ ] Draft\n- [-] Gym\n",
+            ),
+            (
+                "Projects/Site.md",
+                "---\ndue: 2026-10-20\ntags: [project]\n---\n- [ ] Wireframes\n- [ ] Copy 📅 2026-10-04\n",
+            ),
+            ("Plain.md", "No tasks here.\n"),
+        ]);
+        assert_eq!(
+            tasks("task:open folder:Daily", &idx),
+            [
+                "Daily/2026-10-02.md:4 Call Anna #urgent 📅 2026-10-05",
+                "Daily/2026-10-03.md:2 Write report",
+                "Daily/2026-10-03.md:4 Draft",
+            ]
+        );
+        assert_eq!(
+            tasks("task:done|moved", &idx),
+            [
+                "Daily/2026-10-02.md:2 Standup",
+                "Daily/2026-10-02.md:3 Write report",
+                "Daily/2026-10-03.md:3 Outline",
+            ]
+        );
+        assert_eq!(tasks("-task:open folder:Daily", &idx).len(), 4);
+        // A task's own date first, else its note's.
+        assert_eq!(
+            tasks("task:open due<=2026-10-05 sort:due", &idx),
+            [
+                "Projects/Site.md:6 Copy 📅 2026-10-04",
+                "Daily/2026-10-02.md:4 Call Anna #urgent 📅 2026-10-05",
+            ]
+        );
+        assert_eq!(
+            tasks("task:open tag:project -has:nothing sort:-due", &idx),
+            [
+                "Projects/Site.md:5 Wireframes",
+                "Projects/Site.md:6 Copy 📅 2026-10-04",
+            ]
+        );
+        // Tags written in the task, and words in its text.
+        assert_eq!(
+            tasks("task:all tag:urgent", &idx),
+            ["Daily/2026-10-02.md:4 Call Anna #urgent 📅 2026-10-05"]
+        );
+        assert_eq!(tasks("task:all report", &idx).len(), 2);
+        assert_eq!(
+            tasks("task:all text~gym", &idx),
+            ["Daily/2026-10-03.md:5 Gym"]
+        );
+        // Subtasks know their parent.
+        let r = parse("task:all folder:Daily name=2026-10-03")
+            .unwrap()
+            .run(&idx, |_| true)
+            .unwrap();
+        let draft = r.rows[2].task.as_ref().unwrap();
+        assert_eq!(
+            (draft.text.as_str(), draft.depth, draft.parent, draft.status),
+            ("Draft", 1, Some(2), "open")
+        );
+        assert_eq!(r.rows[2].cell("status"), "open");
+        // Hidden notes' tasks stay hidden; a bad status is an error.
+        let hidden = parse("task:all")
+            .unwrap()
+            .run(&idx, |p| !p.starts_with("Daily/"))
+            .unwrap();
+        assert_eq!(hidden.total, 2);
+        assert!(parse("task:later").is_err());
     }
 
     #[test]

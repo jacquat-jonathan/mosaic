@@ -36,6 +36,23 @@ pub struct Heading {
     pub line: usize,
 }
 
+/// A checkbox list item: `- [ ] text`. Subtasks are checkboxes indented under another one.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Task {
+    /// 1-based line number.
+    pub line: usize,
+    /// The character between the brackets: ' ' open, 'x' done, '>' moved, '-' cancelled, …
+    pub mark: char,
+    /// The text after the checkbox.
+    pub text: String,
+    /// How many tasks it's nested under (0 = top level).
+    pub depth: usize,
+    /// Line of the task it's nested under.
+    pub parent: Option<usize>,
+    /// `📅 2026-10-05` in the text (the Obsidian Tasks plugin's due date).
+    pub due: Option<String>,
+}
+
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct Parsed {
     /// Raw YAML between the `---` fences, if any.
@@ -45,6 +62,7 @@ pub struct Parsed {
     pub links: Vec<Link>,
     pub headings: Vec<Heading>,
     pub block_ids: Vec<String>,
+    pub tasks: Vec<Task>,
     /// Body text without frontmatter (for full-text search).
     #[serde(skip)]
     pub body: String,
@@ -63,6 +81,11 @@ static HEADING: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^(#{1,6})[ \t]+(.+?)[ \t#]*$").unwrap());
 static BLOCK_ID: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\s\^([A-Za-z0-9-]+)\s*$").unwrap());
+static TASK: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^([ \t]*)(?:[-*+]|\d+[.)])[ \t]+\[(.)\](?:[ \t]+(.*))?$").unwrap()
+});
+static TASK_DUE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"📅\s*(\d{4}-\d{2}-\d{2})").unwrap());
 static FENCE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s{0,3}(`{3,}|~{3,})").unwrap());
 
 pub fn split_wiki_inner(inner: &str) -> (String, Option<String>, Option<String>, Option<String>) {
@@ -173,6 +196,21 @@ pub fn frontmatter_span(text: &str) -> Option<(usize, String)> {
         .map(|c| (c.get(0).unwrap().end(), c[1].to_string()))
 }
 
+/// `line` with its checkbox set to `mark`, if it's a task line whose text is `text`.
+pub fn with_task_mark(line: &str, text: &str, mark: char) -> Option<String> {
+    let c = TASK.captures(line)?;
+    if c.get(3).map_or("", |m| m.as_str()).trim() != text.trim() {
+        return None;
+    }
+    let m = c.get(2)?;
+    Some(format!("{}{mark}{}", &line[..m.start()], &line[m.end()..]))
+}
+
+/// The #tags in one line of text (e.g. a task's).
+pub fn tags_in(text: &str) -> Vec<String> {
+    TAG.captures_iter(text).map(|c| c[1].to_string()).collect()
+}
+
 pub fn parse(text: &str) -> Parsed {
     let mut p = Parsed::default();
     let mut body_start = 0;
@@ -196,6 +234,9 @@ pub fn parse(text: &str) -> Parsed {
     let body_line_offset = text[..body_start].matches('\n').count();
     let mut offset = body_start;
     let mut fence: Option<String> = None;
+    // Open list items above the current line, as (indent width, task line): a task's parent is
+    // the nearest one indented less.
+    let mut task_stack: Vec<(usize, usize)> = Vec::new();
     for (i, raw_line) in text[body_start..].split_inclusive('\n').enumerate() {
         let line_no = body_line_offset + i + 1;
         let line_start = offset;
@@ -229,6 +270,25 @@ pub fn parse(text: &str) -> Parsed {
         }
         if let Some(b) = BLOCK_ID.captures(line) {
             p.block_ids.push(b[1].to_string());
+        }
+        if let Some(t) = TASK.captures(line) {
+            let indent: usize = t[1].chars().map(|c| if c == '\t' { 4 } else { 1 }).sum();
+            while task_stack.last().is_some_and(|(w, _)| *w >= indent) {
+                task_stack.pop();
+            }
+            let text = t.get(3).map_or("", |m| m.as_str()).trim().to_string();
+            p.tasks.push(Task {
+                line: line_no,
+                mark: t[2].chars().next().unwrap_or(' '),
+                due: TASK_DUE.captures(&text).map(|d| d[1].to_string()),
+                text,
+                depth: task_stack.len(),
+                parent: task_stack.last().map(|(_, l)| *l),
+            });
+            task_stack.push((indent, line_no));
+        } else if !line.starts_with([' ', '\t']) && !line.trim().is_empty() {
+            // Unindented text ends the list.
+            task_stack.clear();
         }
 
         let scan = blank_inline_code(line);
@@ -315,6 +375,33 @@ pub fn title(parsed: &Parsed, path: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tasks_with_subtasks_marks_and_due_dates() {
+        let p = parse(
+            "# Day\n- [ ] Write report 📅 2026-10-05\n    - [x] Outline\n    - [ ] Draft\n\t\t- [>] Deep\n- [-] Cancelled\n\nText\n  - [ ] after text\n1. [ ] numbered\n- [ ]\n```\n- [ ] in code\n```\n- plain item\n",
+        );
+        let t: Vec<(usize, char, &str, usize, Option<usize>)> = p
+            .tasks
+            .iter()
+            .map(|t| (t.line, t.mark, t.text.as_str(), t.depth, t.parent))
+            .collect();
+        assert_eq!(
+            t,
+            [
+                (2, ' ', "Write report 📅 2026-10-05", 0, None),
+                (3, 'x', "Outline", 1, Some(2)),
+                (4, ' ', "Draft", 1, Some(2)),
+                (5, '>', "Deep", 2, Some(4)),
+                (6, '-', "Cancelled", 0, None),
+                (9, ' ', "after text", 0, None),
+                (10, ' ', "numbered", 0, None),
+                (11, ' ', "", 0, None),
+            ]
+        );
+        assert_eq!(p.tasks[0].due.as_deref(), Some("2026-10-05"));
+        assert_eq!(p.tasks[1].due, None);
+    }
 
     const HOME: &str = "---\naliases: [Start, Index]\ntags: [hub]\ncustom_key: keep me\n---\n# Home\n\nSee [[Projects/Mosaic/Plan|the plan]], [[Ideas]] and [[Ideas#Later]].\nEmbedded: ![[diagram.png]]\n\n```\n[[not a link]] #notatag\n```\n\nInline `[[nope]]` and [md](../Other%20Note.md#Sec) and [web](https://x.y) #hub #area/work\nEnd ^blk-1\n";
 

@@ -187,3 +187,12 @@ Values: `a|b` matches either; list fields (`tags: [a, b]`, `owners: […]`) matc
 `2026-10-02`, `today`, `today-7`, compared by day; numbers as numbers; other text ignoring case. Quote
 values with spaces: `status="in progress"`. The result lists each note's path, title, modified time, tags
 and full frontmatter, plus `columns` (the fields worth showing) and `total` (matches before `limit`).
+
+**Tasks.** `task:open` (or `done`, `moved` for `[>]`, `cancelled` for `[-]`, `all`; `task:open|moved` for
+several) lists checkbox tasks (`- [ ] text`, subtasks indented under them) instead of notes. Each row then
+has a `task`: `line`, `status`, `mark`, `text`, `depth` and `parent` (the line of the task it's nested
+under), `due`. Every filter applies per task: first the task's own `text`, `status`, `due` (a
+`📅 2026-10-05` on its line, else the note's `due`) and `line`, then its note's fields. `tag:` matches
+#tags in the task or the note's frontmatter tags; plain words must appear in the task's text. Examples:
+`task:open folder:Daily`, `task:open due<=today sort:due`, `task:open tag:project show:status`. To tick a
+task, `patch_file` its line (`- [ ]` → `- [x]`).

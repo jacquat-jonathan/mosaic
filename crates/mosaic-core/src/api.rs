@@ -378,6 +378,27 @@ impl Workspace {
         Ok(w)
     }
 
+    /// Ticks (`done`) or unticks the task on `line` (1-based) of a note, from a task query. Refused
+    /// with `conflict` when that line no longer holds the task `text` (the note changed since).
+    pub fn set_task(&self, path: &str, line: usize, text: &str, done: bool) -> Result<Written> {
+        let norm = normalize(path)?;
+        let (content, hash) = self
+            .text_of(&norm)
+            .ok_or_else(|| Error::NotFound(norm.clone()))?;
+        let mut lines: Vec<&str> = content.split_inclusive('\n').collect();
+        let conflict = || Error::Conflict {
+            path: norm.clone(),
+            current_hash: hash.clone(),
+        };
+        let raw = *lines.get(line.wrapping_sub(1)).ok_or_else(conflict)?;
+        let body = raw.trim_end_matches(['\n', '\r']);
+        let updated = crate::parse::with_task_mark(body, text, if done { 'x' } else { ' ' })
+            .ok_or_else(conflict)?;
+        let new_line = format!("{updated}{}", &raw[body.len()..]);
+        lines[line - 1] = &new_line;
+        self.write(&norm, &lines.concat(), Some(&hash))
+    }
+
     pub fn patch(
         &self,
         path: &str,
@@ -1102,6 +1123,33 @@ mod tests {
 
     fn text(w: &Workspace, p: &str) -> String {
         w.read(p).unwrap().content.unwrap()
+    }
+
+    #[test]
+    fn ticking_a_task_from_a_query() {
+        let (d, w) = ws();
+        w.create("Day.md", "# Day\r\n- [ ] Write\r\n    - [ ] Sub\r\n")
+            .unwrap();
+        w.set_task("Day.md", 3, "Sub", true).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(d.path().join("Day.md")).unwrap(),
+            "# Day\r\n- [ ] Write\r\n    - [x] Sub\r\n"
+        );
+        w.set_task("Day.md", 3, "Sub", false).unwrap();
+        // The line moved or holds another task: refused, nothing written.
+        assert!(matches!(
+            w.set_task("Day.md", 2, "Sub", true),
+            Err(Error::Conflict { .. })
+        ));
+        assert!(matches!(
+            w.set_task("Day.md", 9, "Sub", true),
+            Err(Error::Conflict { .. })
+        ));
+        assert!(
+            std::fs::read_to_string(d.path().join("Day.md"))
+                .unwrap()
+                .contains("- [ ] Sub")
+        );
     }
 
     #[test]

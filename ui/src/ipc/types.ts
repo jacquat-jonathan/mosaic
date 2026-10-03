@@ -79,6 +79,21 @@ export interface SearchHit {
   score: number;
 }
 
+/** A checkbox task, in task queries (`task:open`). */
+export interface TaskRow {
+  /** 1-based line in the note. */
+  line: number;
+  status: "open" | "done" | "moved" | "cancelled";
+  /** The checkbox character as written (" ", "x", ">", "-", …). */
+  mark: string;
+  text: string;
+  depth: number;
+  /** Line of the task it's nested under. */
+  parent: number | null;
+  /** Its own due date (📅), if any. */
+  due: string | null;
+}
+
 export interface QueryRow {
   path: string;
   title: string;
@@ -87,6 +102,8 @@ export interface QueryRow {
   tags: string[];
   /** The note's frontmatter. */
   props: Record<string, unknown>;
+  /** Set in task queries: the row is this task, in the note above. */
+  task?: TaskRow;
 }
 
 export interface QueryResult {

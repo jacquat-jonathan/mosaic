@@ -4,6 +4,7 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Task queries**: `task:open` lists checkbox tasks across notes instead of notes, e.g. `task:open folder:Daily` or `task:open due<=today sort:due` (a task's own `📅 2026-10-05`, else its note's `due`). Subtasks stay nested under their task, and in a ```query block you tick tasks right in the table. Also `task:done`, `moved` (`[>]`), `cancelled` (`[-]`) and `all`, from the CLI and for agents too.
 - Review: when you changed a file after an agent proposed a change to it, the review window says so in a clear banner and can show what you changed since. The agent now sees "undone" when you undo a change you accepted, and `overwrote` when you accepted it over your own edits.
 - Folder rules for agents fail closed: a rule this version doesn't understand (written by a newer Mosaic) is enforced as read-only, and settings it doesn't know are kept when it saves. Before, an older Mosaic dropped every folder rule in that case.
 - Settings › AI › Add a folder…: the folder picker opens in front of Settings, not behind it.

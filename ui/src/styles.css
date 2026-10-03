@@ -692,6 +692,12 @@ svg path.flow-on { stroke-dasharray: 9 6 !important; animation: edge-flow 0.7s l
 .query-table td { border-bottom: 1px solid var(--border); padding: 4px 10px 4px 0; vertical-align: top; }
 .query-table .md-wikilink { color: var(--accent); cursor: pointer; }
 .query-empty, .query-more { color: var(--muted); font-size: 12px; padding: 4px 0; }
+.query-task { white-space: normal; }
+.query-task-box { margin: 0 6px 0 0; vertical-align: -2px; cursor: pointer; }
+.query-task-box:disabled { cursor: default; }
+.query-task-mark { color: var(--muted); margin-right: 4px; }
+.query-task.status-done .query-task-text, .query-task.status-cancelled .query-task-text { text-decoration: line-through; color: var(--muted); }
+.query-task.status-moved .query-task-text { color: var(--muted); }
 
 /* Agents' changes waiting for review (views/ActivityPanel.tsx, ReviewModal.tsx). */
 .sidebar-tabs button { position: relative; }

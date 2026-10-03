@@ -55,7 +55,8 @@ enum Cmd {
     /// Filters: tag:, folder:, kind:, links-to:, linked-from:, has: (prefix - to negate); field=value,
     /// != > >= < <= ~ (contains) on frontmatter fields, title, name, folder, tags, modified; a|b for
     /// either; today, today-7 as dates. Also sort:field / sort:-field, limit:N, show:a,b, and words
-    /// for full-text search.
+    /// for full-text search. `task:open` (done, moved, cancelled, all) lists checkbox tasks instead,
+    /// with their own fields text, status, due (📅 date) and line, e.g. `task:open folder:Daily`.
     Query { query: Vec<String> },
     /// Create a new file; content from --content or stdin.
     Create {
@@ -376,10 +377,21 @@ fn run(cli: Cli) -> Result<()> {
                         .iter()
                         .map(|c| format!("{c}: {}", row.cell(c)))
                         .collect();
+                    let head = match &row.task {
+                        Some(t) => format!(
+                            "{}- [{}] {}   ({}:{})",
+                            "    ".repeat(t.depth),
+                            t.mark,
+                            t.text,
+                            row.path,
+                            t.line
+                        ),
+                        None => row.path.clone(),
+                    };
                     if cells.is_empty() {
-                        row.path.clone()
+                        head
                     } else {
-                        format!("{}\n    {}", row.path, cells.join("   "))
+                        format!("{head}\n    {}", cells.join("   "))
                     }
                 })
                 .collect();
@@ -390,7 +402,13 @@ fn run(cli: Cli) -> Result<()> {
                     r.total
                 ));
             } else if r.rows.is_empty() {
-                lines.push("no matching notes".into());
+                lines.push(
+                    if r.rows.is_empty() && query.iter().any(|q| q.contains("task:")) {
+                        "no matching tasks".into()
+                    } else {
+                        "no matching notes".into()
+                    },
+                );
             }
             lines.join("\n")
         }),

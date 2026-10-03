@@ -18,7 +18,8 @@ const MAX_INDEXED_BYTES: u64 = 2 * 1024 * 1024;
 /// Bump when the tables or what's extracted from files change: the index is then rebuilt from scratch.
 /// 2: Excalidraw text only, canvas backlink context, chart data files as embeds.
 /// 3: frontmatter properties as JSON (`files.props`), for queries.
-const SCHEMA_VERSION: i64 = 3;
+/// 4: checkbox tasks (`tasks`), for task queries.
+const SCHEMA_VERSION: i64 = 4;
 
 pub struct Index {
     conn: Connection,
@@ -74,6 +75,18 @@ pub struct NoteMeta {
     /// Frontmatter as a JSON object (empty without frontmatter).
     pub props: serde_json::Value,
     pub tags: Vec<String>,
+}
+
+/// A checkbox task in a note, for task queries.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct TaskMeta {
+    pub path: String,
+    pub line: usize,
+    pub mark: char,
+    pub text: String,
+    pub depth: usize,
+    pub parent: Option<usize>,
+    pub due: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -419,7 +432,7 @@ impl Index {
             .map_err(sql_err)?;
         if version != SCHEMA_VERSION {
             tx.execute_batch(
-                "DROP TABLE IF EXISTS files; DROP TABLE IF EXISTS links; DROP TABLE IF EXISTS tags; DROP TABLE IF EXISTS fts; DROP TABLE IF EXISTS fts_paths;",
+                "DROP TABLE IF EXISTS files; DROP TABLE IF EXISTS links; DROP TABLE IF EXISTS tags; DROP TABLE IF EXISTS fts; DROP TABLE IF EXISTS fts_paths; DROP TABLE IF EXISTS tasks;",
             )
             .map_err(sql_err)?;
         }
@@ -436,7 +449,11 @@ impl Index {
              CREATE INDEX IF NOT EXISTS tags_tag ON tags(tag COLLATE NOCASE);
              CREATE INDEX IF NOT EXISTS tags_path ON tags(path);
              CREATE VIRTUAL TABLE IF NOT EXISTS fts USING fts5(path, title, body, tokenize = 'unicode61 remove_diacritics 2');
-             CREATE TABLE IF NOT EXISTS fts_paths (rowid INTEGER PRIMARY KEY, path TEXT NOT NULL UNIQUE);",
+             CREATE TABLE IF NOT EXISTS fts_paths (rowid INTEGER PRIMARY KEY, path TEXT NOT NULL UNIQUE);
+             CREATE TABLE IF NOT EXISTS tasks (
+                path TEXT NOT NULL, line INTEGER NOT NULL, mark TEXT NOT NULL, text TEXT NOT NULL,
+                depth INTEGER NOT NULL, parent INTEGER, due TEXT);
+             CREATE INDEX IF NOT EXISTS tasks_path ON tasks(path, line);",
         )
         .map_err(sql_err)?;
         tx.pragma_update(None, "user_version", SCHEMA_VERSION)
@@ -588,6 +605,7 @@ impl Index {
             "DELETE FROM files WHERE path = ?1",
             "DELETE FROM links WHERE src = ?1",
             "DELETE FROM tags WHERE path = ?1",
+            "DELETE FROM tasks WHERE path = ?1",
             "DELETE FROM fts WHERE rowid = (SELECT rowid FROM fts_paths WHERE path = ?1)",
             "DELETE FROM fts_paths WHERE path = ?1",
         ] {
@@ -670,6 +688,21 @@ impl Index {
             tx.execute(
                 "INSERT INTO tags (path, tag) VALUES (?1, ?2)",
                 params![e.path, t],
+            )
+            .map_err(sql_err)?;
+        }
+        for t in &ex.parsed.tasks {
+            tx.execute(
+                "INSERT INTO tasks (path, line, mark, text, depth, parent, due) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![
+                    e.path,
+                    t.line as i64,
+                    t.mark.to_string(),
+                    t.text,
+                    t.depth as i64,
+                    t.parent.map(|l| l as i64),
+                    t.due,
+                ],
             )
             .map_err(sql_err)?;
         }
@@ -869,6 +902,30 @@ impl Index {
             Ok(TagCount {
                 tag: r.get(0)?,
                 count: r.get::<_, i64>(1)? as usize,
+            })
+        })
+        .map_err(sql_err)?
+        .collect::<std::result::Result<_, _>>()
+        .map_err(sql_err)
+    }
+
+    /// Every checkbox task, in note order (for task queries in `crate::query`).
+    pub fn tasks(&self) -> Result<Vec<TaskMeta>> {
+        let mut stmt = self
+            .conn
+            .prepare_cached(
+                "SELECT path, line, mark, text, depth, parent, due FROM tasks ORDER BY path, line",
+            )
+            .map_err(sql_err)?;
+        stmt.query_map([], |r| {
+            Ok(TaskMeta {
+                path: r.get(0)?,
+                line: r.get::<_, i64>(1)? as usize,
+                mark: r.get::<_, String>(2)?.chars().next().unwrap_or(' '),
+                text: r.get(3)?,
+                depth: r.get::<_, i64>(4)? as usize,
+                parent: r.get::<_, Option<i64>>(5)?.map(|l| l as usize),
+                due: r.get(6)?,
             })
         })
         .map_err(sql_err)?

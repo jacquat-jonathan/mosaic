@@ -1,5 +1,6 @@
 import { Fragment, useState, type DragEvent } from "react";
-import { Columns2, PanelLeftOpen, PanelRight, X } from "lucide-react";
+import { CalendarDays, Columns2, PanelLeftOpen, PanelRight, X } from "lucide-react";
+import { isSpecialTab, specialTabName } from "./specialTabs";
 import { useWorkspace, type Pane, type SplitDirection } from "../state/workspace";
 import { useVault } from "../state/vault";
 import { useUi } from "../state/ui";
@@ -160,12 +161,13 @@ function PaneView({ pane, topLeft, topRight }: { pane: Pane; topLeft: boolean; t
 function Tab({ pane, path, active, onDropAt }: { pane: Pane; path: string; active: boolean; onDropAt(ev: DragEvent): void }) {
   const dirty = useWorkspace((s) => s.buffers[path]?.dirty ?? false);
   const kind = useWorkspace((s) => s.buffers[path]?.kind) ?? kindOf(path);
-  const name = displayName({ name: path.split("/").pop() ?? path, kind });
+  const special = isSpecialTab(path);
+  const name = special ? specialTabName(path) : displayName({ name: path.split("/").pop() ?? path, kind });
   const ws = useWorkspace.getState;
   return (
     <div
       className={`tab ${active ? "active" : ""}`}
-      title={path}
+      title={special ? specialTabName(path) : path}
       draggable
       onDragStart={(ev) => ev.dataTransfer.setData(TAB_DRAG, JSON.stringify({ path, from: pane.id }))}
       onDrop={onDropAt}
@@ -182,7 +184,7 @@ function Tab({ pane, path, active, onDropAt }: { pane: Pane; path: string; activ
         ]);
       }}
     >
-      <span className="tab-icon">{kindIcon(kind, 13)}</span>
+      <span className="tab-icon">{special ? <CalendarDays size={13} /> : kindIcon(kind, 13)}</span>
       <span className="tab-name">{name}</span>
       <button
         className={`tab-close ${dirty ? "dirty" : ""}`}

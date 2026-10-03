@@ -195,10 +195,10 @@ Done 2026-10-04. From the vault note `Architecture/Ideas.md` (UI).
 - [x] Table editing in place: cells, Tab / Enter, add or remove rows and columns
 
 ### M19 — Calendar view and carry-over
-Decisions in the vault note `Architecture/Next steps.md` §4.
-- [ ] Core: tasks per day (daily note tasks plus `📅` tasks), carry-over (move, leave `[>]`, unfinished subtasks only)
-- [ ] Calendar view: month (counts, first tasks) and week (every task, tickable)
-- [ ] CLI and MCP: tasks by day; carry-over for agents
+Done 2026-10-04. Decisions in the vault note `Architecture/Next steps.md` §4.
+- [x] Core: tasks per day (daily note tasks plus `📅` tasks), carry-over (move, leave `[>]`, unfinished subtasks only)
+- [x] Calendar view: month (counts, first tasks) and week (every task, tickable)
+- [x] CLI and MCP: tasks by day; carry-over for agents
 
 ## Working rules
 - `scripts/check.sh` green before each milestone commit.

@@ -736,3 +736,39 @@ svg path.flow-on { stroke-dasharray: 9 6 !important; animation: edge-flow 0.7s l
 .review-reason { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); margin-top: 8px; }
 .review-reason textarea { font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; resize: vertical; }
 .modal.review .history-diff { max-height: 56vh; }
+
+/* Calendar tab (views/CalendarView.tsx). */
+.calendar { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: auto; }
+.calendar-title { font-size: 15px; font-weight: 600; margin: 0 0 0 8px; }
+.calendar-error { margin: 8px 16px 0; }
+.calendar-overdue { margin: 12px 16px 0; padding: 8px 12px; border: 1px solid color-mix(in srgb, var(--danger) 45%, var(--border)); border-radius: 8px; }
+.calendar-overdue h3 { margin: 0 0 4px; font-size: 12px; font-weight: 600; color: var(--danger); text-transform: uppercase; letter-spacing: 0.04em; }
+.calendar-month { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); grid-template-rows: auto repeat(6, minmax(96px, 1fr)); gap: 1px; margin: 12px 16px 16px; background: var(--border); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; flex: 1; }
+.calendar-month .calendar-weekday { background: var(--bg-side); color: var(--muted); font-size: 11px; font-weight: 600; text-transform: uppercase; padding: 6px 8px; min-height: 0; }
+.calendar-cell { display: flex; flex-direction: column; align-items: stretch; gap: 3px; text-align: left; padding: 6px 7px; background: var(--bg); border: none; border-radius: 0; min-width: 0; overflow: hidden; cursor: pointer; color: var(--fg); }
+.calendar-cell:hover { background: var(--bg-hover); }
+.calendar-cell.other-month { color: var(--muted); background: color-mix(in srgb, var(--bg-side) 50%, var(--bg)); }
+.calendar-cell .calendar-date { font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.calendar-cell.today .calendar-date, .calendar-day.today .calendar-date { background: var(--accent); color: #fff; border-radius: 10px; padding: 0 6px; align-self: flex-start; }
+.calendar-counts { display: flex; gap: 6px; font-size: 10.5px; color: var(--muted); }
+.calendar-counts .open { color: var(--accent); }
+.calendar-chip { font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 1px 5px; border-radius: 4px; background: var(--bg-side); }
+.calendar-chip.status-done { color: var(--muted); text-decoration: line-through; }
+.calendar-chip.dated::before { content: "📅 "; font-size: 10px; }
+.calendar-more { font-size: 10.5px; color: var(--muted); }
+.calendar-week { display: grid; grid-template-columns: repeat(7, minmax(150px, 1fr)); gap: 8px; margin: 12px 16px 16px; align-items: start; overflow-x: auto; }
+.calendar-day { border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px 8px; min-height: 140px; background: var(--bg); }
+.calendar-day.today { border-color: var(--accent); }
+.calendar-day-head { display: flex; align-items: center; gap: 6px; width: 100%; padding: 2px 0 6px; margin-bottom: 4px; border: none; border-bottom: 1px solid var(--border); border-radius: 0; background: none; color: var(--fg); cursor: pointer; }
+.calendar-day-head .calendar-weekday { color: var(--muted); font-size: 11px; font-weight: 600; text-transform: uppercase; }
+.calendar-day-head .calendar-date { font-weight: 600; font-variant-numeric: tabular-nums; }
+.calendar-empty { color: var(--muted); font-size: 12px; margin: 4px 0; }
+.calendar-tasks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+.calendar-task { display: flex; align-items: flex-start; gap: 6px; font-size: 13px; line-height: 1.35; }
+.calendar-task input { margin-top: 2px; flex: none; }
+.calendar-task-text { min-width: 0; overflow-wrap: anywhere; }
+.calendar-task.status-done .calendar-task-text, .calendar-task.status-cancelled .calendar-task-text { color: var(--muted); text-decoration: line-through; }
+.calendar-task.status-moved .calendar-task-text { color: var(--muted); }
+.calendar-progress { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.calendar-note-link { display: inline; margin-left: 6px; padding: 0 4px; font-size: 11px; color: var(--accent); background: none; border: none; cursor: pointer; }
+.calendar-note-link:hover { text-decoration: underline; }

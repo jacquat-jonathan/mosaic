@@ -105,6 +105,47 @@ function track(path: string, action: Version["action"], content: string | null, 
   versions.push({ id: nextVersion++, path, time: Date.now(), source: "app", actor: null, action, hash: content === null ? "" : hash(content), size: content?.length ?? 0, from_path: null, content, ...extra });
 }
 
+const mockDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+/** Checkbox tasks of a note, like the core's parser (crates/mosaic-core/src/parse.rs), simplified. */
+function mockTasks(path: string, content: string) {
+  const out: { path: string; line: number; mark: string; text: string; depth: number; parent: number | null; due: string | null }[] = [];
+  const stack: { indent: number; line: number }[] = [];
+  content.split("\n").forEach((l, i) => {
+    const m = /^(\s*)[-*+] \[(.)\](?: (.*))?$/.exec(l);
+    if (!m) return;
+    const indent = m[1].replace(/\t/g, "    ").length;
+    while (stack.length && stack[stack.length - 1].indent >= indent) stack.pop();
+    const text = (m[3] ?? "").trim();
+    out.push({ path, line: i + 1, mark: m[2], text, depth: stack.length, parent: stack[stack.length - 1]?.line ?? null, due: /📅\s*(\d{4}-\d{2}-\d{2})/.exec(text)?.[1] ?? null });
+    stack.push({ indent, line: i + 1 });
+  });
+  return out;
+}
+
+const taskStatus = (mark: string) => (mark === "x" || mark === "X" ? "done" : mark === ">" ? "moved" : mark === "-" ? "cancelled" : "open");
+
+function mockDays(from: string, to: string, today: string) {
+  const dailyOf = (p: string) => /(?:^|\/)(\d{4}-\d{2}-\d{2})\.md$/.exec(p)?.[1] ?? null;
+  const days: { date: string; note: string | null; tasks: unknown[] }[] = [];
+  for (let d = new Date(`${from}T12:00`); mockDay(d) <= to; d.setDate(d.getDate() + 1)) {
+    const date = mockDay(d);
+    days.push({ date, note: [...files.keys()].find((p) => dailyOf(p) === date) ?? null, tasks: [] });
+  }
+  const overdue: unknown[] = [];
+  for (const [path, f] of [...files.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+    if (!path.endsWith(".md")) continue;
+    for (const t of mockTasks(path, f.content)) {
+      const daily = dailyOf(path);
+      const task = { ...t, status: taskStatus(t.mark), daily: !!daily };
+      const on = daily ?? t.due;
+      if (!daily && t.due && task.status === "open" && t.due < today) overdue.push(task);
+      days.find((x) => x.date === on)?.tasks.push(task);
+    }
+  }
+  return { days, overdue };
+}
+
 function seed() {
   const now = Date.now();
   const add = (p: string, c: string) => files.set(p, { content: c, mtime: now });
@@ -169,6 +210,15 @@ function seed() {
   add("Agent notes.md", "# Agent notes\n\nWritten by an agent. The ideas list needs a review.\n");
   track("Agent notes.md", "created", "# Agent notes\n\nWritten by an agent. The ideas list needs a review.\n", { source: "agent", actor: "claude-code", time: now - 600_000 });
   add("Projects/Mosaic/Plan.md", "# Plan\n\n1. Build it\n");
+  // Daily notes around today, for the calendar.
+  const day = (offset: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() + offset);
+    return mockDay(d);
+  };
+  add(`Daily/${day(-1)}.md`, `# ${day(-1)}\n\n- [x] Standup\n- [>] Write the release notes\n- [-] Gym\n`);
+  add(`Daily/${day(0)}.md`, `# ${day(0)}\n\n- [ ] Write the release notes\n    - [x] Outline\n    - [ ] Draft\n    - [ ] Proofread\n- [ ] Call Anna\n- [x] Inbox zero\n`);
+  add("Projects/Mosaic/Tasks.md", `# Tasks\n\n- [ ] Ship the calendar 📅 ${day(2)}\n- [ ] Overdue review 📅 ${day(-3)}\n`);
   add("Projects/Data.csv", 'name,value,note\nalpha,1,"quoted, with comma"\nbeta,2,"multi\nline"\ngamma,3,\n');
   add(
     "Diagram.canvas",
@@ -536,8 +586,23 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
       Object.assign(p, { status: cmd === "accept_proposal" ? "accepted" : "rejected", reason: (a.reason as string | null) ?? null, decided: Date.now() });
       return cmd === "accept_proposal" ? p.path : null;
     }
-    case "set_task":
-      return { path: a.path, hash: "" };
+    case "set_task": {
+      const f = files.get(a.path as string);
+      if (!f) throw err("not_found", String(a.path));
+      const lines = f.content.split("\n");
+      const i = (a.line as number) - 1;
+      const m = /^(\s*(?:[-*+]|\d+[.)])\s+\[)(.)(\].*)$/.exec(lines[i] ?? "");
+      if (!m) throw err("conflict", String(a.path));
+      lines[i] = `${m[1]}${a.done ? "x" : " "}${m[3]}`;
+      f.content = lines.join("\n");
+      f.mtime = Date.now();
+      emit("vault-changed", { paths: [a.path] });
+      return { path: a.path, hash: hash(f.content) };
+    }
+    case "days":
+      return mockDays(a.from as string, a.to as string, a.today as string);
+    case "carry_over":
+      return { from: null, to: a.path ?? `${a.day}.md`, moved: 0, created: false };
     case "query_notes":
       return mockQuery(String(a.query ?? ""));
     case "backlinks": {

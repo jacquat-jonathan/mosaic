@@ -9,7 +9,8 @@ import { errorMessage } from "./ipc/types";
 import { displayName } from "./views/FileTree";
 import { prefs } from "./state/settings";
 import { resolveLink } from "./links";
-import { dailyPath, fillTemplate } from "./daily";
+import { dailyPath, dayStamp, fillTemplate } from "./daily";
+import { CALENDAR_TAB } from "./views/specialTabs";
 
 /** Folder for a new note, per Settings › "New notes go in". */
 export function newNoteDir(): string {
@@ -238,25 +239,47 @@ export async function newOfKind(dir: string, kind: (typeof NEW_KINDS)[number]) {
 }
 
 /** Opens today's daily note, creating it (from the template, if one is set) the first time. */
-export async function openDailyNote() {
+/**
+ * Opens a day's daily note (default today), creating it from the template if needed. For today,
+ * the unfinished tasks of the last daily note move into it first (carry-over, crates/mosaic-core/src/days.rs).
+ */
+export async function openDailyNote(d = new Date(), opts: { newTab?: boolean } = {}) {
   const { dailyFolder, dailyTemplate } = prefs();
-  const path = dailyPath(dailyFolder);
+  const path = dailyPath(dailyFolder, d);
   const vault = useVault.getState();
-  if (!vault.entries.some((e) => e.path === path)) {
+  const exists = () => useVault.getState().entries.some((e) => e.path === path);
+  let content: string | null = null;
+  if (!exists()) {
     let template = "";
     if (dailyTemplate) {
       const t = resolveLink(dailyTemplate, vault.entries, null);
       template = t ? ((await api.read(t)).content ?? "") : "";
       if (!t) vault.setError(`The daily note template “${dailyTemplate}” wasn't found; the note starts empty.`);
     }
+    content = fillTemplate(template || "# {{title}}\n\n", d);
+  }
+  let created = false;
+  if (dayStamp(d) === dayStamp()) {
     try {
-      await api.create(path, fillTemplate(template || "# {{title}}\n\n"));
+      created = (await api.carryOver(dayStamp(d), path, content)).created;
+    } catch (e) {
+      vault.setError(`Unfinished tasks weren't carried over: ${errorMessage(e)}`);
+    }
+  }
+  if (!created && content !== null) {
+    try {
+      await api.create(path, content);
     } catch (e) {
       // Created meanwhile (another window or an agent): just open it.
       if ((e as { code?: string }).code !== "already_exists") throw e;
     }
   }
-  await useWorkspace.getState().open(path, { newTab: false });
+  await useWorkspace.getState().open(path, { newTab: opts.newTab ?? false });
+}
+
+/** Opens the calendar tab (or shows it if it's open). */
+export function openCalendar() {
+  void useWorkspace.getState().open(CALENDAR_TAB, { newTab: true });
 }
 
 /** A canvas with one file card per file, on a grid of three columns, in selection order. */

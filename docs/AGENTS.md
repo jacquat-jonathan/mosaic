@@ -188,6 +188,12 @@ Values: `a|b` matches either; list fields (`tags: [a, b]`, `owners: […]`) matc
 values with spaces: `status="in progress"`. The result lists each note's path, title, modified time, tags
 and full frontmatter, plus `columns` (the fields worth showing) and `total` (matches before `limit`).
 
+**Days.** `tasks_by_day` (CLI: `mosaic days [from] [to]`) gives the person's calendar: for each day, its
+daily note (any note named after its date, like `Daily/2026-10-04.md`) with that note's tasks, plus tasks in
+other notes due that day (`📅 2026-10-04`), and `overdue` dated tasks. `carry_over` (CLI: `mosaic carry-over
+[day]`) does what the app does when the person opens today's note: the open tasks of the last daily note
+move into the day's note with their open subtasks, and the old note keeps them as `- [>] task`.
+
 **Tasks.** `task:open` (or `done`, `moved` for `[>]`, `cancelled` for `[-]`, `all`; `task:open|moved` for
 several) lists checkbox tasks (`- [ ] text`, subtasks indented under them) instead of notes. Each row then
 has a `task`: `line`, `status`, `mark`, `text`, `depth` and `parent` (the line of the task it's nested

@@ -84,6 +84,20 @@ struct QueryArgs {
 }
 
 #[derive(Deserialize, JsonSchema)]
+struct DaysArgs {
+    /// First day, `2026-10-01`. Default: today.
+    from: Option<String>,
+    /// Last day (at most 62 days after `from`). Default: `from` plus 6 days.
+    to: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct CarryOverArgs {
+    /// The day to carry tasks into, `2026-10-04`. Default: today.
+    day: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
 struct CreateArgs {
     /// Vault-relative path of the new file, including its extension (`.md`, `.canvas`, …).
     path: String,
@@ -377,6 +391,32 @@ impl MosaicMcp {
     async fn query(&self, Parameters(a): Parameters<QueryArgs>) -> ToolResult {
         self.fresh();
         self.ws().query(&a.query).map_err(err).and_then(ok)
+    }
+
+    #[tool(
+        description = "Tasks by day, as the person's calendar shows them: for each day from `from` to `to` (default: today and the 6 days after), its daily note (a note named after the date, e.g. `Daily/2026-10-04.md`) and its tasks — the daily note's checkboxes (daily: true) plus tasks in other notes due that day with `📅 2026-10-04` (daily: false). Each task has path, line, status (open, done, moved, cancelled), text, depth and parent (subtasks). Also `overdue`: dated tasks still open after their day. Use it to plan or summarise a week."
+    )]
+    async fn tasks_by_day(&self, Parameters(a): Parameters<DaysArgs>) -> ToolResult {
+        self.fresh();
+        let today = mosaic_core::days::today();
+        let from = a.from.unwrap_or_else(|| today.clone());
+        let to = match a.to {
+            Some(t) => t,
+            None => mosaic_core::days::plus_days(&from, 6).map_err(err)?,
+        };
+        self.ws().days(&from, &to, &today).map_err(err).and_then(ok)
+    }
+
+    #[tool(
+        description = "Carry unfinished tasks over to a day (default today), as the app does when the person opens the day's note: the open tasks of the most recent daily note before that day move into the day's note (created beside it if missing), each with its open subtasks; the old note keeps them as `- [>] task`. Returns from, to, moved (count) and created. Running it again moves nothing more."
+    )]
+    async fn carry_over(&self, Parameters(a): Parameters<CarryOverArgs>) -> ToolResult {
+        self.fresh();
+        let day = a.day.unwrap_or_else(mosaic_core::days::today);
+        self.ws()
+            .carry_over(&day, None, None)
+            .map_err(err)
+            .and_then(ok)
     }
 
     #[tool(

@@ -363,6 +363,28 @@ fn reject_proposal(state: State<AppState>, id: i64, reason: Option<String>) -> C
 }
 
 #[tauri::command]
+fn days(
+    state: State<AppState>,
+    from: String,
+    to: String,
+    today: String,
+) -> CmdResult<mosaic_core::days::Days> {
+    state.get()?.days(&from, &to, &today)
+}
+
+#[tauri::command]
+fn carry_over(
+    state: State<AppState>,
+    day: String,
+    path: Option<String>,
+    new_note: Option<String>,
+) -> CmdResult<mosaic_core::days::CarryOver> {
+    state
+        .get()?
+        .carry_over(&day, path.as_deref(), new_note.as_deref())
+}
+
+#[tauri::command]
 fn set_task(
     state: State<AppState>,
     path: String,
@@ -488,6 +510,8 @@ pub fn run() {
             open_vault,
             query_notes,
             set_task,
+            days,
+            carry_over,
             proposals,
             proposal_content,
             proposal_base,

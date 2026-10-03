@@ -94,6 +94,40 @@ export interface TaskRow {
   due: string | null;
 }
 
+/** A task on a day of the calendar (crates/mosaic-core/src/days.rs). */
+export interface DayTask {
+  path: string;
+  line: number;
+  status: TaskRow["status"];
+  mark: string;
+  text: string;
+  depth: number;
+  parent: number | null;
+  due: string | null;
+  /** In the day's daily note (true), or a dated task (📅) from another note. */
+  daily: boolean;
+}
+
+export interface Day {
+  /** 2026-10-04 */
+  date: string;
+  note: string | null;
+  tasks: DayTask[];
+}
+
+export interface Days {
+  days: Day[];
+  /** Dated tasks still open after their day. */
+  overdue: DayTask[];
+}
+
+export interface CarryOver {
+  from: string | null;
+  to: string;
+  moved: number;
+  created: boolean;
+}
+
 export interface QueryRow {
   path: string;
   title: string;

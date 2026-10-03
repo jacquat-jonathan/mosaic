@@ -170,7 +170,7 @@ impl Workspace {
     }
 
     /// The index for queries: the read-only connection when there is one.
-    fn reading(&self) -> MutexGuard<'_, Index> {
+    pub(crate) fn reading(&self) -> MutexGuard<'_, Index> {
         match &self.reader {
             Some(r) => r.lock().unwrap_or_else(|p| p.into_inner()),
             None => self.index(),
@@ -200,7 +200,7 @@ impl Workspace {
         }
     }
 
-    fn visible(rules: &[AgentRule], path: &str) -> bool {
+    pub(crate) fn visible(rules: &[AgentRule], path: &str) -> bool {
         access_for(rules, path) != Some(Access::Hidden)
     }
 

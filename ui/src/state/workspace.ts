@@ -3,6 +3,7 @@
 // silently overwritten.
 
 import { create } from "zustand";
+import { isSpecialTab } from "../views/specialTabs";
 import { api } from "../ipc/api";
 import { errorMessage, isCoreError, type FileKind } from "../ipc/types";
 import { useVault } from "./vault";
@@ -81,6 +82,13 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
     set((s) => (s.buffers[path] ? { buffers: { ...s.buffers, [path]: { ...s.buffers[path], ...patch } } } : s));
 
   const load = async (path: string) => {
+    // A view, not a file: an empty buffer so the tab shows (FileView draws the view).
+    if (isSpecialTab(path)) {
+      set((s) => ({
+        buffers: { ...s.buffers, [path]: { path, kind: "other", content: null, baseHash: "", dirty: false, conflict: null, deleted: false, error: null, version: 1 } },
+      }));
+      return;
+    }
     try {
       const f = await api.read(path);
       const prev = get().buffers[path];

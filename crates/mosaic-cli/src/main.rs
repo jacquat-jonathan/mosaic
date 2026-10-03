@@ -58,6 +58,15 @@ enum Cmd {
     /// for full-text search. `task:open` (done, moved, cancelled, all) lists checkbox tasks instead,
     /// with their own fields text, status, due (📅 date) and line, e.g. `task:open folder:Daily`.
     Query { query: Vec<String> },
+    /// Tasks by day, as the calendar shows them: each day's daily note tasks plus tasks due that
+    /// day (📅 date), and overdue ones. Dates as 2026-10-04; default today and the next 6 days.
+    Days {
+        from: Option<String>,
+        to: Option<String>,
+    },
+    /// Move the unfinished tasks of the last daily note before a day (default today) into that
+    /// day's note; the old note keeps them as `- [>]`.
+    CarryOver { day: Option<String> },
     /// Create a new file; content from --content or stdin.
     Create {
         path: String,
@@ -327,6 +336,8 @@ fn run(cli: Cli) -> Result<()> {
         cli.cmd,
         Cmd::Search { .. }
             | Cmd::Query { .. }
+            | Cmd::Days { .. }
+            | Cmd::CarryOver { .. }
             | Cmd::Backlinks { .. }
             | Cmd::Tags
             | Cmd::Outline { .. }
@@ -412,6 +423,57 @@ fn run(cli: Cli) -> Result<()> {
             }
             lines.join("\n")
         }),
+        Cmd::Days { from, to } => {
+            let today = mosaic_core::days::today();
+            let from = from.unwrap_or_else(|| today.clone());
+            let to = match to {
+                Some(t) => t,
+                None => mosaic_core::days::plus_days(&from, 6)?,
+            };
+            print(json, &ws.days(&from, &to, &today)?, |r| {
+                let task = |t: &mosaic_core::days::DayTask| {
+                    let place = if t.daily {
+                        String::new()
+                    } else {
+                        format!("   ({})", t.path)
+                    };
+                    format!(
+                        "  {}- [{}] {}{place}",
+                        "    ".repeat(t.depth),
+                        t.mark,
+                        t.text
+                    )
+                };
+                let mut out = Vec::new();
+                if !r.overdue.is_empty() {
+                    out.push("Overdue".to_string());
+                    out.extend(r.overdue.iter().map(task));
+                }
+                for d in &r.days {
+                    let note = d
+                        .note
+                        .as_deref()
+                        .map_or(String::new(), |n| format!("   {n}"));
+                    out.push(format!("{}{note}", d.date));
+                    out.extend(d.tasks.iter().map(task));
+                }
+                out.join("\n")
+            })
+        }
+        Cmd::CarryOver { day } => {
+            let day = day.unwrap_or_else(mosaic_core::days::today);
+            print(json, &ws.carry_over(&day, None, None)?, |c| {
+                match (&c.from, c.moved) {
+                    (Some(from), n) if n > 0 => format!(
+                        "moved {n} task{} from {from} to {}{}",
+                        if n == 1 { "" } else { "s" },
+                        c.to,
+                        if c.created { " (created)" } else { "" }
+                    ),
+                    _ => "nothing to carry over".into(),
+                }
+            })
+        }
         Cmd::Create { path, content } => {
             let w = ws.create(&path, &content_arg(content)?)?;
             print(json, &w, |w| done(w, "created"))

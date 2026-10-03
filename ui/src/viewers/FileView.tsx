@@ -13,6 +13,8 @@ import { CanvasEditor } from "./canvas/CanvasEditor";
 import { ExcalidrawEditor } from "./ExcalidrawEditor";
 import { RenderedSourceViewer } from "./RenderedSourceViewer";
 import { renderChart, renderGraphviz } from "./visuals";
+import { CALENDAR_TAB } from "../views/specialTabs";
+import { CalendarView } from "../views/CalendarView";
 
 /** Picks the viewer or editor for a file by its kind. */
 export function FileView({ path }: { path: string }) {
@@ -21,6 +23,7 @@ export function FileView({ path }: { path: string }) {
   useEffect(() => {
     if (!buffer) void useWorkspace.getState().ensure(path);
   }, [buffer, path]);
+  if (path === CALENDAR_TAB) return <CalendarView />;
   if (!buffer) return <div className="empty"><p>Loading…</p></div>;
   return (
     <div className="file-view">

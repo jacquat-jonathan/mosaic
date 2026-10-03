@@ -4,7 +4,8 @@
 import { useUi } from "./state/ui";
 import { parentOf, useVault } from "./state/vault";
 import { useWorkspace } from "./state/workspace";
-import { createVault, deletePath, NEW_KINDS, newNote, newNoteDir, newOfKind, openDailyNote, openVaultFolder, revealInTree } from "./actions";
+import { createVault, deletePath, NEW_KINDS, newNote, newNoteDir, newOfKind, openCalendar, openDailyNote, openVaultFolder, revealInTree } from "./actions";
+import { isSpecialTab } from "./views/specialTabs";
 import { prefs } from "./state/settings";
 
 /** A shortcut: `code` is `KeyboardEvent.code` (layout- and ⌥-independent), e.g. "KeyP" or "Backslash". */
@@ -37,7 +38,11 @@ export function matches(k: Keys, e: Pick<KeyboardEvent, "code" | "metaKey" | "sh
   return e.code === k.code && e.metaKey === !!k.meta && e.shiftKey === !!k.shift && e.altKey === !!k.alt && !e.ctrlKey;
 }
 
-const active = () => useWorkspace.getState().activePath();
+// The active file (not a view such as the calendar).
+const active = () => {
+  const p = useWorkspace.getState().activePath();
+  return p && !isSpecialTab(p) ? p : null;
+};
 const activeDir = () => {
   const a = active();
   return a ? parentOf(a) : "";
@@ -62,6 +67,7 @@ const buildCommands = (): Command[] => [
     run: () => void newOfKind(activeDir(), k),
   })),
   { id: "new-folder", label: "New folder", keys: { code: "KeyN", meta: true, shift: true }, run: () => void useVault.getState().newFolder(activeDir()) },
+  { id: "calendar", label: "Open calendar", run: () => openCalendar() },
   { id: "daily-note", label: "Open today's daily note", keys: { code: "KeyD", meta: true, shift: true }, run: () => void openDailyNote() },
   {
     id: "export-html",

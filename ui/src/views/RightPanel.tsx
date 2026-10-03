@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { isSpecialTab } from "./specialTabs";
 import { api } from "../ipc/api";
 import { errorMessage, type Backlink, type Mention } from "../ipc/types";
 import { useVault } from "../state/vault";
@@ -13,7 +14,7 @@ export function RightPanel() {
   const [backlinks, setBacklinks] = useState<Backlink[]>([]);
 
   useEffect(() => {
-    if (!active) {
+    if (!active || isSpecialTab(active)) {
       setBacklinks([]);
       return;
     }
@@ -40,6 +41,7 @@ export function RightPanel() {
   }, [backlinks]);
 
   if (!active) return <aside className="right-panel"><div className="panel-meta">No file open.</div></aside>;
+  if (isSpecialTab(active)) return <aside className="right-panel"><div className="panel-meta">Backlinks and the outline show for notes.</div></aside>;
   return (
     <aside className="right-panel">
       <section>

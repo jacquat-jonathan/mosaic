@@ -1,7 +1,7 @@
 // Typed access to the backend. Inside Tauri this goes through `invoke`; in a plain browser (UI
 // development and tests) it falls back to an in-memory mock vault.
 
-import type { Backlink, CliInfo, Entry, FileContent, IndexProgress, RecentVault, Renamed, SearchHit, TagCount, UpdateCheck, UpdateDone, UpdateStatus, Version, VaultInfo, Written, AgentRule, Mention, QueryResult, Proposal } from "./types";
+import type { Backlink, CliInfo, Entry, FileContent, IndexProgress, RecentVault, Renamed, SearchHit, TagCount, UpdateCheck, UpdateDone, UpdateStatus, Version, VaultInfo, Written, AgentRule, Mention, QueryResult, Proposal, Days, CarryOver } from "./types";
 import { mockInvoke } from "./mock";
 
 export const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -44,6 +44,10 @@ export const api = {
   search: (query: string, limit = 50) => call<SearchHit[]>("search", { query, limit }),
   /** Notes matching a structured query (crates/mosaic-core/src/query.rs). */
   query: (query: string) => call<QueryResult>("query_notes", { query }),
+  /** Each day's tasks from `from` to `to` (2026-10-04; at most 62 days), and overdue dated tasks. */
+  days: (from: string, to: string, today: string) => call<Days>("days", { from, to, today }),
+  /** Moves the open tasks of the last daily note before `day` into `path` (created with `newNote`). */
+  carryOver: (day: string, path: string | null, newNote: string | null) => call<CarryOver>("carry_over", { day, path, newNote }),
   /** Ticks or unticks the task on `line` of a note; `conflict` when that line changed. */
   setTask: (path: string, line: number, text: string, done: boolean) => call<Written>("set_task", { path, line, text, done }),
   /** Agents' proposals in folders under review: pending first, then recent decisions. */

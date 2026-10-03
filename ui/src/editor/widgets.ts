@@ -9,6 +9,9 @@ import type { EditorContext } from "./context";
 import { blockRenderers, showRenderError as showError } from "./blocks";
 import { errorMessage } from "../ipc/types";
 import { diagramKind } from "../diagrams/mermaidToCanvas";
+import { useUi, type MenuItem } from "../state/ui";
+import { deleteColumn, deleteRow, formatTable, insertColumn, insertRow, parseTable, setAlign, type TableModel } from "./tableEdit";
+export { splitRow } from "./tableEdit";
 
 /** Moves the cursor to `pos` so the source is revealed for editing. */
 function revealOnClick(dom: HTMLElement, view: EditorView, pos: () => number) {
@@ -367,6 +370,14 @@ export class RuleWidget extends WidgetType {
   }
 }
 
+/** Where the caret goes once a table edit has redrawn the table (the widget is rebuilt). */
+let tableFocus: { from: number; row: number; col: number; caret?: "start" | "end" } | null = null;
+
+/**
+ * A Markdown table you edit in place: type in a cell; Tab / ⇧Tab and Enter move between cells (adding
+ * a row past the last one); right-click for rows, columns and alignment; the + buttons add a row or a
+ * column. Edits are written back to the Markdown, with aligned pipes, when you leave a cell.
+ */
 export class TableWidget extends WidgetType {
   constructor(readonly source: string) {
     super();
@@ -377,29 +388,178 @@ export class TableWidget extends WidgetType {
   toDOM(view: EditorView) {
     const wrap = document.createElement("div");
     wrap.className = "cm-table-wrap";
+    const model = parseTable(this.source);
     const table = document.createElement("table");
-    const lines = this.source.split("\n").filter((l) => l.trim());
-    const cells = (l: string) => splitRow(l);
-    const align = cells(lines[1] ?? "").map((c) =>
-      c.startsWith(":") && c.endsWith(":") ? "center" : c.endsWith(":") ? "right" : "left",
-    );
-    const addRow = (parent: HTMLElement, l: string, tag: "th" | "td") => {
+    const cellEls: HTMLElement[][] = [];
+    const addRow = (parent: HTMLElement, cells: string[], row: number) => {
       const tr = document.createElement("tr");
-      cells(l).forEach((c, i) => {
-        const td = document.createElement(tag);
-        td.textContent = c;
-        td.style.textAlign = align[i] ?? "left";
+      const els: HTMLElement[] = [];
+      cells.forEach((text, col) => {
+        const td = document.createElement(row < 0 ? "th" : "td");
+        td.textContent = text;
+        td.contentEditable = "plaintext-only";
+        td.spellcheck = false;
+        td.dataset.row = String(row);
+        td.dataset.col = String(col);
+        td.style.textAlign = model.align[col] ?? "left";
         tr.appendChild(td);
+        els.push(td);
       });
+      cellEls.push(els);
       parent.appendChild(tr);
     };
     const thead = document.createElement("thead");
-    if (lines[0]) addRow(thead, lines[0], "th");
+    addRow(thead, model.header, -1);
     const tbody = document.createElement("tbody");
-    lines.slice(2).forEach((l) => addRow(tbody, l, "td"));
+    model.rows.forEach((r, i) => addRow(tbody, r, i));
     table.append(thead, tbody);
-    wrap.appendChild(table);
-    revealOnClick(wrap, view, () => view.posAtDOM(wrap));
+
+    const addRowButton = document.createElement("button");
+    addRowButton.className = "table-add row";
+    addRowButton.title = "Add a row";
+    addRowButton.textContent = "+";
+    const addColButton = document.createElement("button");
+    addColButton.className = "table-add col";
+    addColButton.title = "Add a column";
+    addColButton.textContent = "+";
+    const inner = document.createElement("div");
+    inner.className = "cm-table-inner";
+    inner.append(table, addColButton, addRowButton);
+    wrap.append(inner);
+
+    const from = () => view.posAtDOM(wrap);
+    const cellAt = (row: number, col: number) => cellEls[row + 1]?.[col];
+    const posOf = (el: Element) => ({ row: Number((el as HTMLElement).dataset.row), col: Number((el as HTMLElement).dataset.col) });
+    // The table as typed so far (cells hold plain text).
+    const typed = (): TableModel => ({
+      header: cellEls[0].map((c) => c.textContent ?? ""),
+      align: [...model.align],
+      rows: cellEls.slice(1).map((r) => r.map((c) => c.textContent ?? "")),
+    });
+    const focusCell = (el: HTMLElement | undefined, caret: "start" | "end" = "end") => {
+      if (!el) return;
+      el.focus();
+      const sel = window.getSelection();
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      range.collapse(caret === "start");
+      sel?.removeAllRanges();
+      sel?.addRange(range);
+    };
+    const unchanged = (t: TableModel) => JSON.stringify(t) === JSON.stringify(model);
+    // Once an edit is written, the editor draws a new table; this one is done.
+    let replaced = false;
+    /** Writes `next` to the note (unless nothing changed); the redrawn table puts the caret in `focus`. */
+    const commit = (next: TableModel, focus?: { row: number; col: number }) => {
+      if (replaced || !wrap.isConnected) return;
+      if (unchanged(next)) {
+        if (focus) focusCell(cellAt(focus.row, focus.col));
+        return;
+      }
+      replaced = true;
+      const start = from();
+      tableFocus = focus ? { from: start, ...focus } : null;
+      view.dispatch({ changes: { from: start, to: start + this.source.length, insert: formatTable(next) } });
+    };
+    const move = (row: number, col: number, dRow: number, dCol: number) => {
+      let t = typed();
+      const cols = t.header.length;
+      let r = row;
+      let c = col + dCol;
+      if (c >= cols) (c = 0), r++;
+      if (c < 0) (c = cols - 1), r--;
+      r += dRow;
+      if (r < -1) return;
+      if (r >= t.rows.length) t = insertRow(t, t.rows.length);
+      commit(t, { row: r, col: c });
+    };
+    wrap.addEventListener("keydown", (e) => {
+      const cell = (e.target as HTMLElement).closest<HTMLElement>("th, td");
+      if (!cell) return;
+      const { row, col } = posOf(cell);
+      if (e.key === "Tab") {
+        e.preventDefault();
+        move(row, col, 0, e.shiftKey ? -1 : 1);
+      } else if (e.key === "Enter" && !e.shiftKey && !e.metaKey) {
+        e.preventDefault();
+        move(row, col, 1, 0);
+      } else if (e.key === "Escape") {
+        // Back to the note, on the line after the table.
+        e.preventDefault();
+        const start = from();
+        const t = typed();
+        const length = unchanged(t) ? this.source.length : formatTable(t).length;
+        commit(t);
+        view.dispatch({ selection: { anchor: Math.min(view.state.doc.length, start + length + 1) } });
+        view.focus();
+      }
+    });
+    // Leaving a cell writes the table; moving to another cell of it keeps the caret there.
+    wrap.addEventListener("focusout", (e) => {
+      const next = e.relatedTarget as HTMLElement | null;
+      if (next && wrap.contains(next) && next.matches("th, td")) {
+        const t = typed();
+        if (!unchanged(t)) commit(t, posOf(next));
+        return;
+      }
+      if (!next || !wrap.contains(next)) commit(typed());
+    });
+    const menuFor = (row: number, col: number): MenuItem[] => {
+      const t = () => typed();
+      const at = (focus: { row: number; col: number }) => focus;
+      return [
+        { label: "Insert row above", disabled: row < 0, action: () => commit(insertRow(t(), row), at({ row, col })) },
+        { label: "Insert row below", action: () => commit(insertRow(t(), row + 1), at({ row: row + 1, col })) },
+        { label: "Delete row", disabled: row < 0, danger: true, action: () => commit(deleteRow(t(), row)) },
+        { label: "", separator: true },
+        { label: "Insert column left", action: () => commit(insertColumn(t(), col), at({ row, col })) },
+        { label: "Insert column right", action: () => commit(insertColumn(t(), col + 1), at({ row, col: col + 1 })) },
+        { label: "Delete column", disabled: model.header.length <= 1, danger: true, action: () => commit(deleteColumn(t(), col)) },
+        { label: "", separator: true },
+        {
+          label: "Align column",
+          children: (["left", "center", "right"] as const).map((a) => ({
+            label: a[0].toUpperCase() + a.slice(1),
+            checked: (model.align[col] ?? "left") === a,
+            action: () => commit(setAlign(t(), col, a === "left" ? null : a)),
+          })),
+        },
+        { label: "Edit as Markdown", action: () => (view.dispatch({ selection: { anchor: from() } }), view.focus()) },
+      ];
+    };
+    wrap.addEventListener("contextmenu", (e) => {
+      const cell = (e.target as HTMLElement).closest<HTMLElement>("th, td");
+      if (!cell) return;
+      e.preventDefault();
+      const { row, col } = posOf(cell);
+      useUi.getState().showMenu(e.clientX, e.clientY, menuFor(row, col));
+    });
+    addRowButton.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      const t = typed();
+      commit(insertRow(t, t.rows.length), { row: t.rows.length, col: 0 });
+    });
+    addColButton.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      const t = typed();
+      commit(insertColumn(t, t.header.length), { row: -1, col: t.header.length });
+    });
+    // Clicking beside the cells shows the Markdown source.
+    wrap.addEventListener("mousedown", (e) => {
+      if ((e.target as HTMLElement).closest("th, td, button")) return;
+      e.preventDefault();
+      view.dispatch({ selection: { anchor: from() } });
+      view.focus();
+    });
+    // Put the caret back after an edit redrew the table: the editor inserts this table in the same
+    // task as the edit, so a microtask runs once it's in the page.
+    queueMicrotask(() => {
+      if (!tableFocus || !wrap.isConnected) return;
+      const f = tableFocus;
+      if (from() !== f.from) return;
+      tableFocus = null;
+      focusCell(cellAt(f.row, f.col), f.caret);
+    });
     return wrap;
   }
   ignoreEvent() {
@@ -407,25 +567,6 @@ export class TableWidget extends WidgetType {
   }
 }
 
-/** Splits a GFM table row into trimmed cells, honouring escaped pipes. */
-export function splitRow(line: string): string[] {
-  let l = line.trim();
-  if (l.startsWith("|")) l = l.slice(1);
-  if (l.endsWith("|") && !l.endsWith("\\|")) l = l.slice(0, -1);
-  const out: string[] = [];
-  let cur = "";
-  for (let i = 0; i < l.length; i++) {
-    if (l[i] === "\\" && l[i + 1] === "|") {
-      cur += "|";
-      i++;
-    } else if (l[i] === "|") {
-      out.push(cur.trim());
-      cur = "";
-    } else cur += l[i];
-  }
-  out.push(cur.trim());
-  return out;
-}
 
 /** Hosts a React component inside the editor (PDF pages, canvases…). */
 export class ReactWidget extends WidgetType {

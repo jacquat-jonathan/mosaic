@@ -187,12 +187,12 @@ Done 2026-10-02, released as 0.9.0. Details in the vault note `Architecture/Done
 - [x] Queries: frontmatter in the index, query language (`query.rs`), MCP `query`, `mosaic query`, ```query blocks
 
 ### M18 — UI comfort
-From the vault note `Architecture/Ideas.md` (UI).
-- [ ] Note width setting (narrow / medium / wide / full)
-- [ ] Numbered sublists shown as 2.1, 2.2 (display only)
-- [ ] Fixed icon bar on the left (sidebar panels, settings)
-- [ ] Easier splitting: split button in the tab bar, drag a tab to the side
-- [ ] Table editing in place: cells, Tab / Enter, add or remove rows and columns
+Done 2026-10-04. From the vault note `Architecture/Ideas.md` (UI).
+- [x] Note width setting (narrow / medium / wide / full)
+- [x] Numbered sublists shown as 2.1, 2.2 (display only)
+- [x] Fixed icon bar on the left (sidebar panels, settings)
+- [x] Easier splitting: split button in the tab bar, drag a tab to the side
+- [x] Table editing in place: cells, Tab / Enter, add or remove rows and columns
 
 ### M19 — Calendar view and carry-over
 Decisions in the vault note `Architecture/Next steps.md` §4.

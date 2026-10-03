@@ -4,6 +4,11 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Tables you edit in place**: click a cell and type. Tab, ⇧Tab and Enter move between cells (past the last row adds one); right-click for inserting or deleting rows and columns and aligning a column; the + buttons beside and under a table add a column or a row. The Markdown is written back with aligned columns.
+- **Note width**: Settings › Editor › Note width is now Narrow, Medium, Wide or Full (it was an on/off "readable line width").
+- **Numbered sublists** show as 2.1, 2.2, 2.2.1 (the Markdown stays `1.` indented, as Obsidian expects).
+- **Icon bar on the left**: Files, Search, Bookmarks, Tags and AI activity are always one click away, even with the sidebar hidden; clicking the open panel's icon hides the sidebar.
+- **Splitting is easier to find**: a split button in each pane's tab bar, and you can drop a tab on the right or bottom edge of a pane to open it there.
 - Errors in ```query blocks (and a few other places, like saving a pasted image) showed "[object Object]" instead of the message.
 ## 0.9.1 — 2026-10-03
 

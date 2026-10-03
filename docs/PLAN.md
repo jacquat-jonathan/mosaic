@@ -182,7 +182,7 @@ Done 2026-10-02, released as 0.8.0. Details in the vault note `Architecture/Done
 - [x] Copy as Mermaid for sequence and class diagrams; Open as diagram for class diagrams
 
 ### M17 — Agent review mode, queries
-Done 2026-10-02. Details in the vault note `Architecture/Done.md`.
+Done 2026-10-02, released as 0.9.0. Details in the vault note `Architecture/Done.md`.
 - [x] Review mode: folder rule "review", proposals in `history.db` (`review.rs`), inbox with diff / accept / reject in the app, `list_proposals` / `withdraw_proposal`
 - [x] Queries: frontmatter in the index, query language (`query.rs`), MCP `query`, `mosaic query`, ```query blocks
 

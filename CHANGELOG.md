@@ -4,6 +4,7 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- Errors in ```query blocks (and a few other places, like saving a pasted image) showed "[object Object]" instead of the message.
 ## 0.9.1 — 2026-10-03
 
 - **Task queries**: `task:open` lists checkbox tasks across notes instead of notes, e.g. `task:open folder:Daily` or `task:open due<=today sort:due` (a task's own `📅 2026-10-05`, else its note's `due`). Subtasks stay nested under their task, and in a ```query block you tick tasks right in the table. Also `task:done`, `moved` (`[>]`), `cancelled` (`[-]`) and `all`, from the CLI and for agents too.

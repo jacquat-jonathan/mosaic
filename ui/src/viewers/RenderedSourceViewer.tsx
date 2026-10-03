@@ -3,6 +3,7 @@ import type { Buffer } from "../state/workspace";
 import { useDark } from "../theme";
 import { CodeEditor } from "./CodeEditor";
 import { Segmented, Toolbar } from "./Toolbar";
+import { errorMessage } from "../ipc/types";
 
 /** A text file shown rendered (chart, graph…) with a Source tab; render errors appear inline. */
 export function RenderedSourceViewer({
@@ -25,7 +26,7 @@ export function RenderedSourceViewer({
     const t = setTimeout(() => {
       render(buffer.content ?? "", host.current!).then(
         () => live && setError(null),
-        (e) => live && setError(e instanceof Error ? e.message : String(e)),
+        (e) => live && setError(errorMessage(e)),
       );
     }, 150);
     return () => {

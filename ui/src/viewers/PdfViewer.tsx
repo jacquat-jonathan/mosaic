@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import * as pdfjs from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { fileUrl } from "../ipc/api";
+import { errorMessage } from "../ipc/types";
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -21,7 +22,7 @@ export function PdfViewer({ path, maxPages, compact }: { path: string; maxPages?
         const loaded = await task.promise;
         if (live) setDoc(loaded);
       } catch (e) {
-        if (live) setError(e instanceof Error ? e.message : String(e));
+        if (live) setError(errorMessage(e));
       }
     })();
     return () => {

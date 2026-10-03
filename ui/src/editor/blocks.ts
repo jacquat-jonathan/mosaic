@@ -4,6 +4,7 @@
 import { renderMath, renderMermaid } from "./render";
 import { renderChart, renderGraphviz } from "../viewers/visuals";
 import { renderQuery } from "./queryBlock";
+import { errorMessage } from "../ipc/types";
 
 /** Renders `source` into `el`; `path` is the file it's in (charts load their data relative to it). */
 export type BlockRenderer = (source: string, el: HTMLElement, ctx: { path: string }) => void | Promise<void>;
@@ -72,7 +73,8 @@ registerBlockRenderer(["query"], (src, el) => renderQuery(src, el));
 
 export function showRenderError(el: HTMLElement, err: unknown) {
   el.classList.add("cm-render-error");
-  el.textContent = err instanceof Error ? err.message : String(err);
+  // Core errors arrive as { code, message }, not as Error objects.
+  el.textContent = errorMessage(err);
 }
 
 /**

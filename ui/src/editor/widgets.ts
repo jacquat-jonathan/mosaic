@@ -7,6 +7,7 @@ import { isDark } from "../theme";
 import type { EditorContext } from "./context";
 
 import { blockRenderers, showRenderError as showError } from "./blocks";
+import { errorMessage } from "../ipc/types";
 import { diagramKind } from "../diagrams/mermaidToCanvas";
 
 /** Moves the cursor to `pos` so the source is revealed for editing. */
@@ -57,7 +58,7 @@ export class RenderedBlockWidget extends WidgetType {
       el.innerHTML = good;
       const note = document.createElement("div");
       note.className = "cm-render-error";
-      note.textContent = e instanceof Error ? e.message : String(e);
+      note.textContent = errorMessage(e);
       el.appendChild(note);
     };
     const succeeded = () => {

@@ -7,6 +7,7 @@ import type { EditorContext } from "../editor/context";
 import { useWorkspace, type Buffer } from "../state/workspace";
 import { useVault } from "../state/vault";
 import { api, fileUrl, openExternal } from "../ipc/api";
+import { errorMessage } from "../ipc/types";
 import { resolveLink, linkTextFor } from "../links";
 import { droppedItems, embedsFor, importDropped, isFinderDrag, newFileOfKind } from "../actions";
 import { parentOf } from "../state/vault";
@@ -52,7 +53,7 @@ export function editorContextFor(path: string): EditorContext {
       return Promise.all(
         images.map(async (f, i) => (await api.importFile(dir ? `${dir}/${pastedName(f, i)}` : pastedName(f, i), new Uint8Array(await f.arrayBuffer()))).path),
       ).then(embedsFor, (e) => {
-        useVault.getState().setError(`Couldn't save the pasted image: ${e instanceof Error ? e.message : String(e)}`);
+        useVault.getState().setError(`Couldn't save the pasted image: ${errorMessage(e)}`);
         return "";
       });
     },
@@ -71,7 +72,7 @@ export function editorContextFor(path: string): EditorContext {
         const stem = `${path.split("/").pop()!.replace(/\.md$/i, "")} diagram`;
         await newFileOfKind(parentOf(path), stem, "canvas", serializeCanvas(doc));
       } catch (e) {
-        useVault.getState().setError(`Couldn't open the diagram: ${e instanceof Error ? e.message : String(e)}`);
+        useVault.getState().setError(`Couldn't open the diagram: ${errorMessage(e)}`);
       }
     },
     linkCandidates: () => {

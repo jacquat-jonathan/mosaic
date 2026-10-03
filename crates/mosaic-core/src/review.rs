@@ -507,6 +507,7 @@ mod tests {
             .with_agent_rules(vec![AgentRule {
                 path: "Reviewed".into(),
                 access: Access::Review,
+                written_as: None,
             }]);
         agent.set_actor("claude-code");
         (dir, app, agent)

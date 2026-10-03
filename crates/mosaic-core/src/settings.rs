@@ -18,6 +18,9 @@ pub struct Settings {
     pub update_source: Option<PathBuf>,
     /// Folders agents (MCP, CLI) may only read, or can't see at all, per vault root.
     pub agent_rules: BTreeMap<PathBuf, Vec<AgentRule>>,
+    /// Settings a newer Mosaic wrote that this version doesn't know: kept so saving doesn't drop them.
+    #[serde(flatten)]
+    pub other: BTreeMap<String, serde_json::Value>,
 }
 
 /// What agents may do in a folder (and everything inside it).
@@ -33,10 +36,46 @@ pub enum Access {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(from = "RawRule", into = "RawRule")]
 pub struct AgentRule {
     /// Vault-relative folder (or file) path.
     pub path: String,
     pub access: Access,
+    /// The access as written, when it's one this version doesn't know (a newer Mosaic added it).
+    /// Such a rule is enforced as read-only and saved back unchanged.
+    pub written_as: Option<String>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct RawRule {
+    path: String,
+    access: String,
+}
+
+impl From<RawRule> for AgentRule {
+    fn from(r: RawRule) -> Self {
+        let known = serde_json::from_value(serde_json::Value::String(r.access.clone())).ok();
+        AgentRule {
+            path: r.path,
+            access: known.unwrap_or(Access::ReadOnly),
+            written_as: known.is_none().then_some(r.access),
+        }
+    }
+}
+
+impl From<AgentRule> for RawRule {
+    fn from(r: AgentRule) -> Self {
+        let access = r.written_as.unwrap_or_else(|| {
+            serde_json::to_value(r.access)
+                .ok()
+                .and_then(|v| v.as_str().map(str::to_string))
+                .unwrap_or_default()
+        });
+        RawRule {
+            path: r.path,
+            access,
+        }
+    }
 }
 
 /// The strictest rule covering `path` (a rule on a folder covers everything inside it): hidden,
@@ -175,6 +214,31 @@ impl Settings {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn settings_from_a_newer_version_load_fail_closed_and_survive_a_save() {
+        // A newer Mosaic added an access kind and a setting this version doesn't know. Loading must
+        // keep every other rule (not fall back to no rules at all), enforce the unknown one as
+        // read-only, and write both back unchanged.
+        let json = r#"{
+            "bookmarks": { "/v": ["A.md"] },
+            "agent_rules": { "/v": [
+                { "path": "Private", "access": "hidden" },
+                { "path": "Drafts", "access": "approve-twice" }
+            ] },
+            "future_setting": { "on": true }
+        }"#;
+        let s: Settings = serde_json::from_str(json).unwrap();
+        let rules = s.agent_rules(Path::new("/v"));
+        assert_eq!(access_for(&rules, "Private/x.md"), Some(Access::Hidden));
+        assert_eq!(access_for(&rules, "Drafts/x.md"), Some(Access::ReadOnly));
+        assert_eq!(s.bookmarks[Path::new("/v")], ["A.md"]);
+
+        let saved: serde_json::Value = serde_json::to_value(&s).unwrap();
+        assert_eq!(saved["agent_rules"]["/v"][1]["access"], "approve-twice");
+        assert_eq!(saved["agent_rules"]["/v"][0]["access"], "hidden");
+        assert_eq!(saved["future_setting"]["on"], true);
+    }
 
     #[test]
     fn recent_vaults_are_ordered_capped_and_forgettable() {

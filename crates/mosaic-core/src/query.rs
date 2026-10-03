@@ -328,28 +328,53 @@ fn number(s: &Scalar) -> Option<f64> {
     }
 }
 
-/// Orders a value against a query value: numbers as numbers, dates by day, text ignoring case.
-fn order(v: &Scalar, target: &str) -> Ordering {
-    if let (Some(a), Ok(b)) = (number(v), target.trim().parse::<f64>()) {
-        return a.partial_cmp(&b).unwrap_or(Ordering::Equal);
+#[derive(PartialEq)]
+enum Kind {
+    Num,
+    Date,
+    Text,
+}
+
+fn kind(s: &str) -> Kind {
+    if s.trim().parse::<f64>().is_ok() {
+        Kind::Num
+    } else if s.len() >= 10 && s.is_char_boundary(10) && DATE.is_match(&s[..10]) {
+        Kind::Date
+    } else {
+        Kind::Text
     }
+}
+
+/// Orders a value against a query value: numbers as numbers, dates by day, text ignoring case.
+/// `None` when they can't be compared (a date against a word like `tomorow`, a number against text),
+/// so a typo matches nothing instead of everything.
+fn order(v: &Scalar, target: &str) -> Option<Ordering> {
     let mut a = v.text().to_lowercase();
-    if DATE.is_match(target) && a.len() > 10 && DATE.is_match(&a[..10]) {
+    if kind(&a) != kind(target) {
+        return None;
+    }
+    if let (Some(a), Ok(b)) = (number(v), target.trim().parse::<f64>()) {
+        return a.partial_cmp(&b);
+    }
+    if DATE.is_match(target) && a.len() > 10 {
         a.truncate(10);
     }
-    a.as_str().cmp(target.to_lowercase().as_str())
+    Some(a.as_str().cmp(target.to_lowercase().as_str()))
 }
 
 fn compare(vals: &[Scalar], op: Op, targets: &[String]) -> bool {
     let any =
         |f: &dyn Fn(&Scalar, &str) -> bool| vals.iter().any(|v| targets.iter().any(|t| f(v, t)));
+    let is = |want: &'static [Ordering]| {
+        any(&move |v, t| order(v, t).is_some_and(|o| want.contains(&o)))
+    };
     match op {
-        Op::Eq => any(&|v, t| order(v, t) == Ordering::Equal),
-        Op::Ne => !any(&|v, t| order(v, t) == Ordering::Equal),
-        Op::Gt => any(&|v, t| order(v, t) == Ordering::Greater),
-        Op::Ge => any(&|v, t| order(v, t) != Ordering::Less),
-        Op::Lt => any(&|v, t| order(v, t) == Ordering::Less),
-        Op::Le => any(&|v, t| order(v, t) != Ordering::Greater),
+        Op::Eq => is(&[Ordering::Equal]),
+        Op::Ne => !is(&[Ordering::Equal]),
+        Op::Gt => is(&[Ordering::Greater]),
+        Op::Ge => is(&[Ordering::Greater, Ordering::Equal]),
+        Op::Lt => is(&[Ordering::Less]),
+        Op::Le => is(&[Ordering::Less, Ordering::Equal]),
         Op::Contains => any(&|v, t| v.text().to_lowercase().contains(&t.to_lowercase())),
     }
 }
@@ -608,6 +633,10 @@ mod tests {
         assert_eq!(paths("modified>=today", &idx).len(), 5);
         assert_eq!(paths("modified<today", &idx).len(), 0);
         assert_eq!(paths("title~pla", &idx), ["Plan.md"]);
+        // A word that isn't a date or number (a typo) matches nothing, not every dated note.
+        assert!(paths("due<=tomorow", &idx).is_empty());
+        assert!(paths("priority>high", &idx).is_empty());
+        assert_eq!(paths("tag:project priority!=high", &idx).len(), 3);
     }
 
     #[test]

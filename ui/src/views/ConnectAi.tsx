@@ -85,13 +85,13 @@ export function ConnectAiSection() {
         another vault. If you set Mosaic up before version 0.5, run <code>claude mcp remove mosaic</code>, then the command above, so your agent follows the app.
       </p>
 
-      <h3>4 · Folders agents can't change</h3>
+      <h3>4 · Folder rules for agents</h3>
       <AgentRules />
     </div>
   );
 }
 
-/** Folders agents (MCP, CLI) may only read, or can't see at all. Enforced in the core, not by the agent. */
+/** Folders where agents (MCP, CLI) must have changes reviewed, may only read, or can't see at all. Enforced in the core, not by the agent. */
 function AgentRules() {
   const [rules, setRules] = useState<AgentRule[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -109,7 +109,7 @@ function AgentRules() {
       placeholder: "Which folder should agents treat differently?",
       items: folders.map((f) => ({ id: f.path, label: f.path.split("/").pop()!, detail: f.path.includes("/") ? f.path : undefined })),
       hint: "↵ choose · esc cancel",
-      onPick: (item) => save([...(rules ?? []), { path: item.id, access: "read-only" }]),
+      onPick: (item) => save([...(rules ?? []), { path: item.id, access: "review" }]),
     });
   };
   if (!rules) return error ? <p className="error-text">{error}</p> : null;

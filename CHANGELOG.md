@@ -4,6 +4,9 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- Queries: comparing a date or number with a word that is neither (a typo like `due<=tomorow`) now matches nothing instead of every note.
+- Settings › AI: the folder rules section is called "Folder rules for agents", and a folder you add starts as "Review changes".
+
 ## 0.9.0 — 2026-10-03
 
 - **Review agents' changes** (Settings › AI › a folder › Review changes): in that folder, an agent's edits, new files and deletions don't touch your files. They wait under AI activity (with a count on its tab); open one to see the change as a diff, then accept or reject it, optionally saying why. Accepted changes show in AI activity with Undo. Agents see your decisions (`list_proposals`) and can take a proposal back.

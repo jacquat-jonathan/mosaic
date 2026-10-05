@@ -21,7 +21,8 @@ interface ChatState {
   cost: number;
   /** Mosaic's tools weren't connected in the last answer. */
   noMosaic: boolean;
-  send(message: string, context: string[], agent: string | null): Promise<void>;
+  /** `active`: the open note, which requests that don't name a note are about. */
+  send(message: string, context: string[], active: string | null, agent: string | null): Promise<void>;
   stop(): void;
   clear(): void;
   apply(run: number, e: ChatEvent): void;
@@ -34,11 +35,11 @@ export const useChat = create<ChatState>((set, get) => ({
   cost: 0,
   noMosaic: false,
 
-  async send(message, context, agent) {
+  async send(message, context, active, agent) {
     if (get().run !== null) return;
     set((s) => ({ items: [...s.items, { kind: "user", text: message, agent, context }], run: -1 }));
     try {
-      const run = await api.chatSend(message, get().session, context, agent);
+      const run = await api.chatSend(message, get().session, context, active, agent);
       set({ run });
       // Events that came in before the id was known.
       for (const e of early.get(run) ?? []) get().apply(run, e);

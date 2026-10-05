@@ -13,22 +13,30 @@ pub const ALLOWED_TOOLS: &str = "mcp__mosaic Read Glob Grep WebSearch WebFetch T
 /// Built-in tools that would change files behind Mosaic's back.
 pub const DISALLOWED_TOOLS: &str = "Write Edit MultiEdit NotebookEdit Bash";
 
-/// What the chat tells Claude about where it is and how to work.
-pub fn system_prompt(vault_name: &str, context: &[String]) -> String {
+/// What the chat tells Claude about where it is and how to work. `active` is the note the person
+/// has open (requests that don't name a note are about it); `attached` are other notes they added.
+pub fn system_prompt(vault_name: &str, active: Option<&str>, attached: &[String]) -> String {
     let mut s = format!(
         "You are the assistant inside Mosaic, a notes app, working on the person's vault \"{vault_name}\" (the current folder). \
          Change files only with the mosaic MCP tools (create_file, patch_file, edit_file, …), never by other means, so each change keeps its history and can be undone or reviewed; \
          call mosaic's vault_guide once for the vault's conventions. Files in Agents/ are agent definitions: when asked to run one, follow it. \
          Refer to notes as [[Note name]] links in your answers, so the person can click them. Keep answers short."
     );
-    if !context.is_empty() {
+    if let Some(a) = active {
         s.push_str(&format!(
-            "\n\nThe person has these notes open or attached (read them if they matter for the request): {}.",
-            context
-                .iter()
-                .map(|p| format!("`{p}`"))
-                .collect::<Vec<_>>()
-                .join(", ")
+            "\n\nThe person is looking at the note `{a}`. \"This note\", \"here\", and any request to change something that doesn't name another note are about `{a}`: read it first and change it, not another note. \
+             If the request seems to be about a different note, say which note you'll change before changing it."
+        ));
+    }
+    let others: Vec<String> = attached
+        .iter()
+        .filter(|p| Some(p.as_str()) != active)
+        .map(|p| format!("`{p}`"))
+        .collect();
+    if !others.is_empty() {
+        s.push_str(&format!(
+            "\n\nThey also attached: {} (read them when they matter for the request).",
+            others.join(", ")
         ));
     }
     s
@@ -350,7 +358,15 @@ mod tests {
         );
         assert!(summarize_tool("mcp__mosaic__delete_file", &json!({"path":"A.md"})).2);
         assert!(!summarize_tool("mcp__mosaic__read_file", &json!({"path":"A.md"})).2);
-        let p = system_prompt("Work", &["Projects/Site.md".into()]);
-        assert!(p.contains("\"Work\"") && p.contains("`Projects/Site.md`"));
+        let p = system_prompt(
+            "Work",
+            Some("Ideas.md"),
+            &["Ideas.md".into(), "Projects/Site.md".into()],
+        );
+        assert!(p.contains("\"Work\""));
+        assert!(p.contains("looking at the note `Ideas.md`") && p.contains("are about `Ideas.md`"));
+        assert!(p.contains("also attached: `Projects/Site.md`"));
+        let none = system_prompt("Work", None, &[]);
+        assert!(!none.contains("looking at"));
     }
 }

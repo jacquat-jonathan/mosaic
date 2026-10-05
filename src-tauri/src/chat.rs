@@ -112,6 +112,7 @@ pub fn chat_send(
     message: String,
     session: Option<String>,
     context: Vec<String>,
+    active: Option<String>,
     agent: Option<String>,
 ) -> CmdResult<u64> {
     let ws = state.get()?;
@@ -149,7 +150,7 @@ pub fn chat_send(
     .arg("--mcp-config")
     .arg(mcp.to_string())
     .arg("--append-system-prompt")
-    .arg(system_prompt(&name, &context))
+    .arg(system_prompt(&name, active.as_deref(), &context))
     .arg("--allowedTools")
     .args(ALLOWED_TOOLS.split(' '))
     .arg("--disallowedTools")

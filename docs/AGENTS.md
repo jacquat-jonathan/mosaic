@@ -36,7 +36,7 @@ write shows up in the app within a second.
   and, for Mosaic, `schedule` (when it runs on its own) and `may-change` (folders it may write without
   review); the body is its instructions. When the person points you at one, or names an agent, **act
   as that agent**: follow its instructions for this task. `list_agents` lists them; each is also an MCP
-  prompt (in Claude Code: `/mcp__mosaic__<name>`), and Mosaic mirrors them into the vault's
+  prompt (in Claude Code: `/mosaic:<name>`), and Mosaic mirrors them into the vault's
   `.claude/skills/`, so Claude Code started in the vault has them as skills. Edit an agent in `Agents/`,
   never its mirror.
 - **Find notes by their properties with `query`** rather than reading many files: see "Queries" below.

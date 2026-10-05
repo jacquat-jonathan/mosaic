@@ -683,7 +683,7 @@ impl ServerHandler for MosaicMcp {
         .into())
     }
 
-    /// Every agent in `Agents/` as a prompt: in Claude Code, `/mcp__mosaic__<name>` starts it.
+    /// Every agent in `Agents/` as a prompt: in Claude Code, `/mosaic:<name>` starts it.
     async fn list_prompts(
         &self,
         _request: Option<PaginatedRequestParams>,

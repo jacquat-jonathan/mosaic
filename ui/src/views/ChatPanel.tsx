@@ -60,7 +60,7 @@ export function ChatPanel() {
     if (!text && !use) return;
     setError(null);
     setInput("");
-    void useChat.getState().send(text || "Go ahead.", context, use);
+    void useChat.getState().send(text || "Go ahead.", context, activeNote, use);
   };
   const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {

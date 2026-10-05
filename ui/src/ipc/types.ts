@@ -94,6 +94,19 @@ export interface TaskRow {
   due: string | null;
 }
 
+/** What a chat answer is made of, as it streams in (crates/mosaic-core/src/chat.rs). */
+export type ChatEvent =
+  | { kind: "started"; session_id: string; mosaic: boolean }
+  | { kind: "text"; text: string }
+  | { kind: "tool"; id: string; summary: string; path: string | null; writes: boolean }
+  | { kind: "tool_done"; id: string; error: string | null; review: number | null }
+  | { kind: "done"; session_id: string | null; cost_usd: number | null; error: string | null };
+
+export interface ClaudeInfo {
+  path: string | null;
+  version: string | null;
+}
+
 /** An agent defined in the vault's Agents/ folder (crates/mosaic-core/src/agents.rs). */
 export interface Agent {
   /** weekly-review: the slash command and skill name. */

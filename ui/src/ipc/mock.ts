@@ -105,6 +105,7 @@ function track(path: string, action: Version["action"], content: string | null, 
   versions.push({ id: nextVersion++, path, time: Date.now(), source: "app", actor: null, action, hash: content === null ? "" : hash(content), size: content?.length ?? 0, from_path: null, content, ...extra });
 }
 
+let chatRuns = 0;
 const mockDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
 /** Checkbox tasks of a note, like the core's parser (crates/mosaic-core/src/parse.rs), simplified. */
@@ -611,6 +612,27 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
           const desc = /\ndescription:\s*(.+)/.exec(f.content)?.[1] ?? body.split("\n").find((l) => l.trim())?.replace(/^#+\s*/, "") ?? title;
           return { name: title.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-|-$/g, ""), title, description: desc, path: p, skill_folder: skill, schedule: null, may_change: [], instructions: body };
         });
+    case "chat_check":
+      return { path: "/mock/claude", version: "mock" };
+    case "chat_send": {
+      // A canned answer, streamed, for trying the chat panel in the browser.
+      const run = ++chatRuns;
+      const target = (a.context as string[])[0] ?? "Ideas.md";
+      const steps: unknown[] = [
+        { kind: "started", session_id: "mock-session", mosaic: true },
+        { kind: "tool", id: "t1", summary: `Read ${target.replace(/\.md$/, "")}`, path: target, writes: false },
+        { kind: "tool_done", id: "t1", error: null, review: null },
+        { kind: "text", text: a.agent ? `Running the **${a.agent}** agent.` : `You asked: *${String(a.message).slice(0, 80)}*.` },
+        { kind: "tool", id: "t2", summary: "Edited Ideas", path: "Ideas.md", writes: true },
+        { kind: "tool_done", id: "t2", error: null, review: null },
+        { kind: "text", text: "Done: I added a line to [[Ideas]].\n\n- one\n- two" },
+        { kind: "done", session_id: "mock-session", cost_usd: 0.0123, error: null },
+      ];
+      steps.forEach((event, i) => setTimeout(() => emit("chat-event", { run, event }), 250 * (i + 1)));
+      return run;
+    }
+    case "chat_stop":
+      return null;
     case "mirror_agents":
       return { written: [], removed: [], skipped: [] };
     case "days":

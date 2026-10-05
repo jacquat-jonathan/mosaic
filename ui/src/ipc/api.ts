@@ -1,7 +1,7 @@
 // Typed access to the backend. Inside Tauri this goes through `invoke`; in a plain browser (UI
 // development and tests) it falls back to an in-memory mock vault.
 
-import type { Backlink, CliInfo, Entry, FileContent, IndexProgress, RecentVault, Renamed, SearchHit, TagCount, UpdateCheck, UpdateDone, UpdateStatus, Version, VaultInfo, Written, AgentRule, Mention, QueryResult, Proposal, Days, CarryOver, Agent } from "./types";
+import type { Backlink, CliInfo, Entry, FileContent, IndexProgress, RecentVault, Renamed, SearchHit, TagCount, UpdateCheck, UpdateDone, UpdateStatus, Version, VaultInfo, Written, AgentRule, Mention, QueryResult, Proposal, Days, CarryOver, Agent, ChatEvent, ClaudeInfo } from "./types";
 import { mockInvoke } from "./mock";
 
 export const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -44,6 +44,11 @@ export const api = {
   search: (query: string, limit = 50) => call<SearchHit[]>("search", { query, limit }),
   /** Notes matching a structured query (crates/mosaic-core/src/query.rs). */
   query: (query: string) => call<QueryResult>("query_notes", { query }),
+  /** Whether Claude Code is installed (and where). */
+  chatCheck: () => call<ClaudeInfo>("chat_check", {}),
+  /** Sends a chat message (as `agent` from Agents/ if given); events arrive through `onChatEvent`. Returns the run id. */
+  chatSend: (message: string, session: string | null, context: string[], agent: string | null) => call<number>("chat_send", { message, session, context, agent }),
+  chatStop: (run: number) => call<void>("chat_stop", { run }),
   /** The agents in the vault's Agents/ folder. */
   agents: () => call<Agent[]>("agents", {}),
   /** Mirrors the agents into the vault's .claude/skills/ for Claude Code. */
@@ -141,6 +146,20 @@ export async function onVaultChanged(cb: (c: VaultChanges) => void): Promise<() 
   }
   const { listen } = await import("@tauri-apps/api/event");
   return listen<VaultChanges>("vault-changed", (e) => cb(e.payload));
+}
+
+/** Streams the chat's answers: one event at a time, with the run it belongs to. */
+export async function onChatEvent(cb: (run: number, event: ChatEvent) => void): Promise<() => void> {
+  if (!inTauri) {
+    const handler = (e: Event) => {
+      const d = (e as CustomEvent<{ run: number; event: ChatEvent }>).detail;
+      cb(d.run, d.event);
+    };
+    window.addEventListener("mock-chat-event", handler);
+    return () => window.removeEventListener("mock-chat-event", handler);
+  }
+  const { listen } = await import("@tauri-apps/api/event");
+  return listen<{ run: number; event: ChatEvent }>("chat-event", (e) => cb(e.payload.run, e.payload.event));
 }
 
 /** Subscribes to changes of the app's settings file (e.g. an agent added a bookmark). */

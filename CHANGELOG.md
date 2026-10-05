@@ -4,6 +4,7 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Chat with Claude** (the chat icon in the left bar, ⇧⌘L, or the Chat tab of the right panel): ask about your notes or have Claude change them. It runs Claude Code in the vault with only Mosaic's tools for changes, so every change is in AI activity with Undo, and in folders you review it waits for you. The open note is attached (remove it, or attach more with the clip); answers link to notes; each step shows as a short line ("Edited Projects/Site"). Start an agent from the buttons of an empty chat or with `/name`. New chat, Stop, Save as note (in `Agents/Chats/`), and the cost so far. Needs Claude Code installed and logged in.
 - **Agents in the vault**: a note in `Agents/` (or a Claude Code skill folder `Agents/Name/SKILL.md`) defines an agent: its properties give a `description` (and `schedule` and `may-change` for later), its body the instructions. Claude recognizes them as agents: each is an MCP prompt (in Claude Code, `/mcp__mosaic__<name>`), Mosaic mirrors them into the vault's `.claude/skills/` (never touching skills it didn't make), the vault guide explains them, and agents get `list_agents`; also `mosaic agents [--sync]`.
 ## 0.10.1 — 2026-10-05
 

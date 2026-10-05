@@ -52,6 +52,8 @@ export type SettingsSection = "appearance" | "editor" | "vault" | "ai" | "shortc
 
 export type SidebarTab = "files" | "search" | "tags" | "bookmarks" | "activity";
 
+export type RightTab = "links" | "chat";
+
 export const SIDEBAR_DEFAULT = 260;
 export const RIGHT_DEFAULT = 280;
 export const PANEL_MIN = 180;
@@ -97,6 +99,10 @@ interface UiState {
   history: { path: string; focus?: number } | null;
   openHistory(path: string, focus?: number): void;
   closeHistory(): void;
+  /** What the right panel shows: backlinks and outline, or the chat with Claude. */
+  rightTab: RightTab;
+  showChat(): void;
+  setRightTab(tab: RightTab): void;
   rightPanel: boolean;
   leftSidebar: boolean;
   sidebarWidth: number;
@@ -137,6 +143,9 @@ export const useUi = create<UiState>((set, get) => ({
   openHistory: (path, focus) => set({ history: { path, focus }, menu: null, picker: null }),
   closeHistory: () => set({ history: null }),
   rightPanel: prefs.rightPanel,
+  rightTab: "links",
+  showChat: () => set({ rightPanel: true, rightTab: "chat" }),
+  setRightTab: (rightTab) => set({ rightTab }),
   leftSidebar: prefs.leftSidebar,
   sidebarWidth: prefs.sidebarWidth,
   rightWidth: prefs.rightWidth,

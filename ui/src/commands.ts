@@ -69,6 +69,7 @@ const buildCommands = (): Command[] => [
   })),
   { id: "new-folder", label: "New folder", keys: { code: "KeyN", meta: true, shift: true }, run: () => void useVault.getState().newFolder(activeDir()) },
   { id: "calendar", label: "Open calendar", run: () => openCalendar() },
+  { id: "chat", label: "Chat with Claude", keys: { code: "KeyL", meta: true, shift: true }, run: () => useUi.getState().showChat() },
   {
     id: "add-property",
     label: "Add a property to this note",

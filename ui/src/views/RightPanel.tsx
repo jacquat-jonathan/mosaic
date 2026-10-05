@@ -5,9 +5,29 @@ import { errorMessage, type Backlink, type Mention } from "../ipc/types";
 import { useVault } from "../state/vault";
 import { useWorkspace } from "../state/workspace";
 import { parse as parseMarkdownHeadings } from "./outline";
+import { useUi } from "../state/ui";
+import { ChatPanel } from "./ChatPanel";
+
+/** The right panel: backlinks and outline of the active note, or the chat with Claude. */
+export function RightPanel() {
+  const tab = useUi((s) => s.rightTab);
+  return (
+    <aside className="right-panel">
+      <div className="right-tabs segmented" role="tablist" aria-label="Right panel">
+        <button role="tab" aria-selected={tab === "links"} className={tab === "links" ? "active" : ""} onClick={() => useUi.getState().setRightTab("links")}>
+          Links
+        </button>
+        <button role="tab" aria-selected={tab === "chat"} className={tab === "chat" ? "active" : ""} onClick={() => useUi.getState().setRightTab("chat")}>
+          Chat
+        </button>
+      </div>
+      {tab === "chat" ? <ChatPanel /> : <LinksPanel />}
+    </aside>
+  );
+}
 
 /** Backlinks and outline of the active note. */
-export function RightPanel() {
+function LinksPanel() {
   const active = useWorkspace((s) => s.panes.find((p) => p.id === s.focused)?.active ?? null);
   const content = useWorkspace((s) => (active ? s.buffers[active]?.content : null));
   const revision = useVault((s) => s.revision);
@@ -40,10 +60,10 @@ export function RightPanel() {
     return [...m];
   }, [backlinks]);
 
-  if (!active) return <aside className="right-panel"><div className="panel-meta">No file open.</div></aside>;
-  if (isSpecialTab(active)) return <aside className="right-panel"><div className="panel-meta">Backlinks and the outline show for notes.</div></aside>;
+  if (!active) return <div className="links-panel"><div className="panel-meta">No file open.</div></div>;
+  if (isSpecialTab(active)) return <div className="links-panel"><div className="panel-meta">Backlinks and the outline show for notes.</div></div>;
   return (
-    <aside className="right-panel">
+    <div className="links-panel">
       <section>
         <h3>Backlinks <span className="count">{backlinks.length}</span></h3>
         {grouped.length === 0 && <p className="panel-meta">No other notes link here yet.</p>}
@@ -75,7 +95,7 @@ export function RightPanel() {
           </div>
         </section>
       )}
-    </aside>
+    </div>
   );
 }
 

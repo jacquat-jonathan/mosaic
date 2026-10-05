@@ -207,9 +207,10 @@ Done 2026-10-05. From the vault note `Architecture/Agentic.md`.
 - [x] Mirror agents into the vault's `.claude/skills/<name>/SKILL.md`
 
 ### M21 — Chat panel
-- [ ] Tauri: run Claude Code headless in the vault (stream-json), continue the session, stop
-- [ ] Right panel chat: messages, Markdown answers, tool calls as linked lines, open note attached, agent picker and `/name`
-- [ ] Missing or logged-out Claude Code explained
+Done 2026-10-06.
+- [x] Tauri: run Claude Code headless in the vault (stream-json), continue the session, stop
+- [x] Right panel chat: messages, Markdown answers, tool calls as linked lines, open note attached, agent picker and `/name`
+- [x] Missing or logged-out Claude Code explained
 
 ### M22 — Tessera (scheduled agents)
 - [ ] Schedules while the app is open, missed runs at start, run log, Run now, may-change enforced

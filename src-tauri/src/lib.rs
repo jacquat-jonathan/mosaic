@@ -1,5 +1,6 @@
 //! Tauri front end: every command is a thin mapping onto `mosaic_core::Workspace`.
 
+mod chat;
 mod update;
 
 use mosaic_core::api::{Mention, Outline, Renamed};
@@ -15,14 +16,14 @@ use tauri::{AppHandle, Emitter, Manager, State};
 type CmdResult<T> = Result<T, Error>;
 
 #[derive(Default)]
-struct AppState {
+pub(crate) struct AppState {
     ws: RwLock<Option<Arc<Workspace>>>,
     watcher: Mutex<Option<mosaic_core::watch::Watcher>>,
     settings_watcher: Mutex<Option<mosaic_core::watch::Watcher>>,
 }
 
 impl AppState {
-    fn get(&self) -> CmdResult<Arc<Workspace>> {
+    pub(crate) fn get(&self) -> CmdResult<Arc<Workspace>> {
         self.ws
             .read()
             .expect("workspace lock poisoned")
@@ -442,7 +443,7 @@ struct CliInfo {
     installed: bool,
 }
 
-fn bundled_cli() -> Option<PathBuf> {
+pub(crate) fn bundled_cli() -> Option<PathBuf> {
     let exe = std::env::current_exe().ok()?;
     let p = exe.parent()?.join("mosaic");
     p.is_file().then_some(p)
@@ -503,6 +504,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .manage(AppState::default())
         .manage(update::UpdateState::default())
+        .manage(chat::ChatState::default())
         .setup(|app| {
             // Agents change bookmarks through the CLI/MCP, which write settings.json directly.
             let handle = app.handle().clone();
@@ -524,6 +526,9 @@ pub fn run() {
             carry_over,
             agents,
             mirror_agents,
+            chat::chat_check,
+            chat::chat_send,
+            chat::chat_stop,
             proposals,
             proposal_content,
             proposal_base,

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { FilePlus, FolderPlus, FolderOpen, Files, Search, Hash, Shapes, Bot, Bookmark, ChevronDown, ChevronsDownUp, PanelLeftClose, Settings as Gear, Activity, CalendarDays, CalendarRange } from "lucide-react";
+import { FilePlus, FolderPlus, FolderOpen, Files, Search, Hash, Shapes, Bot, Bookmark, ChevronDown, ChevronsDownUp, PanelLeftClose, Settings as Gear, Activity, CalendarDays, CalendarRange, MessageSquare } from "lucide-react";
 import { api, onIndexProgress, pickFolder, revealInFinder } from "./ipc/api";
 import { useVault } from "./state/vault";
 import { FileTree } from "./views/FileTree";
@@ -177,6 +177,9 @@ function Main() {
         </div>
         <button aria-label="Calendar" title="Calendar: each day's tasks" onClick={() => openCalendar()}>
           <CalendarRange size={18} />
+        </button>
+        <button aria-label="Chat with Claude" title={`Chat with Claude (${shortcutOf("chat")})`} onClick={() => ui().showChat()}>
+          <MessageSquare size={18} />
         </button>
         <span className="spacer" />
         <button title="Connect AI (MCP / CLI)" aria-label="Connect AI" onClick={() => ui().openSettings("ai")}>

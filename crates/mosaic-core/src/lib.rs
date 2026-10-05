@@ -2,6 +2,7 @@
 
 pub mod agents;
 pub mod api;
+pub mod chat;
 pub mod days;
 pub mod error;
 pub mod history;

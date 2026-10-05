@@ -31,6 +31,14 @@ write shows up in the app within a second.
   decisions (a rejection may carry a reason: read it and adapt; `undone` means they accepted it, then
   undid it, so the file no longer has your change); `withdraw_proposal` takes one back. Tell
   the person what you proposed and why, since they decide.
+- **Files in `Agents/` are agents, not documents.** A note `Agents/Name.md` or a skill folder
+  `Agents/Name/SKILL.md` defines an agent the person made: its frontmatter has `name`, `description`
+  and, for Mosaic, `schedule` (when it runs on its own) and `may-change` (folders it may write without
+  review); the body is its instructions. When the person points you at one, or names an agent, **act
+  as that agent**: follow its instructions for this task. `list_agents` lists them; each is also an MCP
+  prompt (in Claude Code: `/mcp__mosaic__<name>`), and Mosaic mirrors them into the vault's
+  `.claude/skills/`, so Claude Code started in the vault has them as skills. Edit an agent in `Agents/`,
+  never its mirror.
 - **Find notes by their properties with `query`** rather than reading many files: see "Queries" below.
 - **Several files at once:** `move_files` moves a list into one folder in a single call; `import_file`
   adds an image or other binary file from base64 (never overwrites).

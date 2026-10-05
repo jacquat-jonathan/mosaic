@@ -5,6 +5,13 @@ import { useVault } from "./state/vault";
 import { useWorkspace } from "./state/workspace";
 
 let treeTimer: ReturnType<typeof setTimeout> | undefined;
+let agentTimer: ReturnType<typeof setTimeout> | undefined;
+
+/** Keeps the vault's .claude/skills/ in step with Agents/ (crates/mosaic-core/src/agents.rs). */
+export function mirrorAgentsSoon() {
+  clearTimeout(agentTimer);
+  agentTimer = setTimeout(() => void api.mirrorAgents().catch(() => {}), 500);
+}
 
 export function startVaultSync(): Promise<() => void> {
   return onVaultChanged(({ paths, root_missing }) => {
@@ -12,6 +19,7 @@ export function startVaultSync(): Promise<() => void> {
     if (root_missing) return;
     clearTimeout(treeTimer);
     treeTimer = setTimeout(() => void useVault.getState().refresh(), 50);
+    if (paths.some((p) => p === "Agents" || p.startsWith("Agents/"))) mirrorAgentsSoon();
     const ws = useWorkspace.getState();
     for (const open of Object.keys(ws.buffers)) {
       if (paths.some((p) => open === p || open.startsWith(`${p}/`))) void ws.externalChange(open);

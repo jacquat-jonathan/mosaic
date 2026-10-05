@@ -363,6 +363,16 @@ fn reject_proposal(state: State<AppState>, id: i64, reason: Option<String>) -> C
 }
 
 #[tauri::command]
+fn agents(state: State<AppState>) -> CmdResult<Vec<mosaic_core::agents::Agent>> {
+    state.get()?.agents()
+}
+
+#[tauri::command]
+fn mirror_agents(state: State<AppState>) -> CmdResult<mosaic_core::agents::MirrorReport> {
+    state.get()?.mirror_agents()
+}
+
+#[tauri::command]
 fn days(
     state: State<AppState>,
     from: String,
@@ -512,6 +522,8 @@ pub fn run() {
             set_task,
             days,
             carry_over,
+            agents,
+            mirror_agents,
             proposals,
             proposal_content,
             proposal_base,

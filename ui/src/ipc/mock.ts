@@ -218,6 +218,8 @@ function seed() {
   };
   add(`Daily/${day(-1)}.md`, `# ${day(-1)}\n\n- [x] Standup\n- [>] Write the release notes\n- [-] Gym\n`);
   add(`Daily/${day(0)}.md`, `# ${day(0)}\n\n- [ ] Write the release notes\n    - [x] Outline\n    - [ ] Draft\n    - [ ] Proofread\n- [ ] Call Anna\n- [x] Inbox zero\n`);
+  add("Agents/Weekly review.md", "---\ndescription: Sum up the week's tasks into Friday's daily note\nschedule: fri 17:00\n---\nRead this week's daily notes and write a short summary.\n");
+  add("Agents/Inbox triage.md", "---\ndescription: Sort meeting notes into their projects\n---\nMove each note in Inbox/ to its project folder.\n");
   add("Projects/Mosaic/Tasks.md", `# Tasks\n\n- [ ] Ship the calendar 📅 ${day(2)}\n- [ ] Overdue review 📅 ${day(-3)}\n`);
   add("Projects/Data.csv", 'name,value,note\nalpha,1,"quoted, with comma"\nbeta,2,"multi\nline"\ngamma,3,\n');
   add(
@@ -599,6 +601,18 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
       emit("vault-changed", { paths: [a.path] });
       return { path: a.path, hash: hash(f.content) };
     }
+    case "agents":
+      return [...files.entries()]
+        .filter(([p]) => /^Agents\/[^/]+\.md$/.test(p) || /^Agents\/[^/]+\/SKILL\.md$/i.test(p))
+        .map(([p, f]) => {
+          const skill = /\/SKILL\.md$/i.test(p);
+          const title = skill ? p.split("/")[1] : p.slice(7, -3);
+          const body = f.content.replace(/^---[\s\S]*?\n---\n?/, "").trim();
+          const desc = /\ndescription:\s*(.+)/.exec(f.content)?.[1] ?? body.split("\n").find((l) => l.trim())?.replace(/^#+\s*/, "") ?? title;
+          return { name: title.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-|-$/g, ""), title, description: desc, path: p, skill_folder: skill, schedule: null, may_change: [], instructions: body };
+        });
+    case "mirror_agents":
+      return { written: [], removed: [], skipped: [] };
     case "days":
       return mockDays(a.from as string, a.to as string, a.today as string);
     case "carry_over":

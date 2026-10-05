@@ -168,6 +168,12 @@ enum Cmd {
     },
     /// Undo one change from `activity` (refused if the file changed again since).
     Undo { id: i64 },
+    /// The vault's agents (files in `Agents/`). With --sync, also mirror them into the vault's
+    /// `.claude/skills/` so Claude Code started in the vault knows them as skills.
+    Agents {
+        #[arg(long)]
+        sync: bool,
+    },
     /// Print the guide for AI agents working with this vault.
     Guide,
     /// Run as an MCP server over stdio (for Claude Code, Claude Desktop, …).
@@ -423,6 +429,37 @@ fn run(cli: Cli) -> Result<()> {
             }
             lines.join("\n")
         }),
+        Cmd::Agents { sync } => {
+            let agents = ws.agents()?;
+            if sync {
+                let r = ws.mirror_agents()?;
+                if !json {
+                    for s in &r.skipped {
+                        eprintln!(
+                            "skipped {s}: .claude/skills/{s} exists and wasn't made by Mosaic"
+                        );
+                    }
+                }
+            }
+            print(json, &agents, |list| {
+                if list.is_empty() {
+                    return format!(
+                        "no agents (add notes to {}/)",
+                        mosaic_core::agents::AGENTS_DIR
+                    );
+                }
+                list.iter()
+                    .map(|a| {
+                        let when = a
+                            .schedule
+                            .as_deref()
+                            .map_or(String::new(), |s| format!("   [{s}]"));
+                        format!("{:<24} {}{when}\n    {}", a.name, a.description, a.path)
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            })
+        }
         Cmd::Days { from, to } => {
             let today = mosaic_core::days::today();
             let from = from.unwrap_or_else(|| today.clone());

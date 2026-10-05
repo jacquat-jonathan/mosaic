@@ -1,5 +1,6 @@
 //! Mosaic core: the only code that touches a vault. The app, CLI and MCP server are thin front ends over it.
 
+pub mod agents;
 pub mod api;
 pub mod days;
 pub mod error;

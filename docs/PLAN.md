@@ -201,10 +201,10 @@ Done 2026-10-04. Decisions in the vault note `Architecture/Next steps.md` §4.
 - [x] CLI and MCP: tasks by day; carry-over for agents
 
 ### M20 — Agents in the vault
-From the vault note `Architecture/Agentic.md`.
-- [ ] Core: agents from `Agents/` (`Name.md` or `Name/SKILL.md`): name, description, schedule, may-change, instructions
-- [ ] MCP: every agent as a prompt; `list_agents`; vault guide; CLI `mosaic agents`
-- [ ] Mirror agents into the vault's `.claude/skills/<name>/SKILL.md`
+Done 2026-10-05. From the vault note `Architecture/Agentic.md`.
+- [x] Core: agents from `Agents/` (`Name.md` or `Name/SKILL.md`): name, description, schedule, may-change, instructions
+- [x] MCP: every agent as a prompt; `list_agents`; vault guide; CLI `mosaic agents`
+- [x] Mirror agents into the vault's `.claude/skills/<name>/SKILL.md`
 
 ### M21 — Chat panel
 - [ ] Tauri: run Claude Code headless in the vault (stream-json), continue the session, stop

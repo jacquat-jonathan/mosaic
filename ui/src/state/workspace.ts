@@ -3,6 +3,7 @@
 // silently overwritten.
 
 import { create } from "zustand";
+import { mirrorAgentsSoon } from "../sync";
 import { isSpecialTab } from "../views/specialTabs";
 import { api } from "../ipc/api";
 import { errorMessage, isCoreError, type FileKind } from "../ipc/types";
@@ -252,6 +253,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
         const w = await api.write(path, content, b.baseHash || null);
         const now = get().buffers[path];
         if (now) updateBuffer(path, { baseHash: w.hash, dirty: now.content !== content, error: null });
+        if (path.startsWith("Agents/")) mirrorAgentsSoon();
         useVault.getState().touched();
       } catch (e) {
         if (isCoreError(e) && e.code === "conflict") updateBuffer(path, { conflict: { diskHash: e.current_hash } });

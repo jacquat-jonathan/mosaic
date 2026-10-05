@@ -120,6 +120,7 @@ export const useVault = create<VaultState>((set, get) => {
         set({ vault, entries: [], expanded: new Set(), renaming: null, error: null, offline: false, selected: new Set(), anchor: null, bookmarks: [] });
         await get().refresh();
         set({ bookmarks: await api.bookmarks().catch(() => []) });
+        void api.mirrorAgents().catch(() => {});
         await useWorkspace.getState().restoreLayout(vault.root);
       } catch (e) {
         fail(e);

@@ -6,9 +6,11 @@ use mosaic_core::settings::Settings;
 use mosaic_core::{Error, Workspace};
 use rmcp::handler::server::{router::tool::ToolRouter, wrapper::Parameters};
 use rmcp::model::{
-    CallToolResult, ContentBlock, Implementation, InitializeRequestParams, InitializeResult,
-    ListResourcesResult, PaginatedRequestParams, ReadResourceRequestParams, ReadResourceResponse,
-    ReadResourceResult, Resource, ResourceContents, ServerCapabilities, ServerConfig,
+    CallToolResult, ContentBlock, GetPromptRequestParams, GetPromptResponse, GetPromptResult,
+    Implementation, InitializeRequestParams, InitializeResult, ListPromptsResult,
+    ListResourcesResult, PaginatedRequestParams, Prompt, PromptArgument, PromptMessage,
+    ReadResourceRequestParams, ReadResourceResponse, ReadResourceResult, Resource,
+    ResourceContents, Role, ServerCapabilities, ServerConfig,
 };
 use rmcp::service::RequestContext;
 use rmcp::{ErrorData, RoleServer, ServerHandler, ServiceExt, tool, tool_handler, tool_router};
@@ -408,6 +410,14 @@ impl MosaicMcp {
     }
 
     #[tool(
+        description = "The person's agents: files in the vault's `Agents/` folder (a note `Agents/Name.md`, or a skill folder `Agents/Name/SKILL.md`) that define how an agent acts. Each has name, title, description, path, schedule (when it runs on its own), may_change (folders it may write without review) and its instructions. When the person points you at one of these files (or names an agent), act as that agent: follow its instructions, don't treat it as an ordinary document. The same agents are slash commands (MCP prompts) in Claude Code."
+    )]
+    async fn list_agents(&self) -> ToolResult {
+        self.fresh();
+        self.ws().agents().map_err(err).and_then(ok)
+    }
+
+    #[tool(
         description = "Carry unfinished tasks over to a day (default today), as the app does when the person opens the day's note: the open tasks of the most recent daily note before that day move into the day's note (created beside it if missing), each with its open subtasks; the old note keeps them as `- [>] task`. Returns from, to, moved (count) and created. Running it again moves nothing more."
     )]
     async fn carry_over(&self, Parameters(a): Parameters<CarryOverArgs>) -> ToolResult {
@@ -673,6 +683,53 @@ impl ServerHandler for MosaicMcp {
         .into())
     }
 
+    /// Every agent in `Agents/` as a prompt: in Claude Code, `/mcp__mosaic__<name>` starts it.
+    async fn list_prompts(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ListPromptsResult, ErrorData> {
+        let agents = self
+            .ws()
+            .agents()
+            .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
+        let prompts = agents
+            .into_iter()
+            .map(|a| {
+                let mut arg = PromptArgument::new("request");
+                arg.description = Some("Anything to add for this run (optional)".into());
+                arg.required = Some(false);
+                let mut p = Prompt::new(a.name, Some(a.description), Some(vec![arg]));
+                p.title = Some(a.title);
+                p
+            })
+            .collect();
+        Ok(ListPromptsResult::with_all_items(prompts))
+    }
+
+    async fn get_prompt(
+        &self,
+        request: GetPromptRequestParams,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<GetPromptResponse, ErrorData> {
+        let agent = self
+            .ws()
+            .agent(&request.name)
+            .map_err(|e| ErrorData::invalid_params(e.to_string(), None))?;
+        let extra = request
+            .arguments
+            .as_ref()
+            .and_then(|a| a.get("request"))
+            .and_then(|v| v.as_str())
+            .map(str::to_string);
+        let text = mosaic_core::agents::agent_prompt(&agent, extra.as_deref());
+        Ok(
+            GetPromptResult::new(vec![PromptMessage::new_text(Role::User, text)])
+                .with_description(agent.description)
+                .into(),
+        )
+    }
+
     /// Remembers the client's name (e.g. "claude-code") for the file history and activity log.
     async fn initialize(
         &self,
@@ -694,7 +751,11 @@ impl ServerHandler for MosaicMcp {
             ),
             VaultMode::Pinned => format!("the Mosaic vault at {root}"),
         };
-        ServerConfig::new(ServerCapabilities::builder().enable_tools().enable_resources().build())
+        ServerConfig::new(ServerCapabilities::builder()
+                .enable_tools()
+                .enable_resources()
+                .enable_prompts()
+                .build())
             .with_server_info(Implementation::new("mosaic", env!("CARGO_PKG_VERSION")))
             .with_instructions(format!(
                 "{}Tools for {which}: an Obsidian-compatible folder of Markdown notes, canvases, charts and diagrams that a human reads in the Mosaic app. Call vault_guide once for the conventions. Use vault-relative paths; read (or outline) before editing, prefer patch_file, and pass expected_hash to avoid overwriting the human's edits.",

@@ -4,6 +4,7 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Agents in the vault**: a note in `Agents/` (or a Claude Code skill folder `Agents/Name/SKILL.md`) defines an agent: its properties give a `description` (and `schedule` and `may-change` for later), its body the instructions. Claude recognizes them as agents: each is an MCP prompt (in Claude Code, `/mcp__mosaic__<name>`), Mosaic mirrors them into the vault's `.claude/skills/` (never touching skills it didn't make), the vault guide explains them, and agents get `list_agents`; also `mosaic agents [--sync]`.
 ## 0.10.1 — 2026-10-05
 
 - **Add a property** (⌘; or the command palette): opens the properties panel's "Add property" form, also on a note that has no properties yet.

@@ -94,6 +94,20 @@ export interface TaskRow {
   due: string | null;
 }
 
+/** An agent defined in the vault's Agents/ folder (crates/mosaic-core/src/agents.rs). */
+export interface Agent {
+  /** weekly-review: the slash command and skill name. */
+  name: string;
+  /** Weekly review */
+  title: string;
+  description: string;
+  path: string;
+  skill_folder: boolean;
+  schedule: string | null;
+  may_change: string[];
+  instructions: string;
+}
+
 /** A task on a day of the calendar (crates/mosaic-core/src/days.rs). */
 export interface DayTask {
   path: string;

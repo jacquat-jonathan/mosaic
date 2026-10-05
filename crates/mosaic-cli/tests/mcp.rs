@@ -644,3 +644,66 @@ fn changes_in_a_reviewed_folder_become_proposals() {
     assert!(err);
     assert_eq!(m["code"], "denied");
 }
+
+#[test]
+fn agents_are_prompts_and_days_carry_over() {
+    let dir = fixture();
+    let mut c = Client::start(dir.path());
+    let (err, _) = c.call(
+        "create_file",
+        json!({ "path": "Agents/Weekly review.md", "content": "---\ndescription: Sum up the week\nschedule: fri 17:00\n---\nRead this week's daily notes.\n" }),
+    );
+    assert!(!err);
+    let (err, list) = c.call("list_agents", json!({}));
+    assert!(!err, "{list}");
+    assert_eq!(list[0]["name"], "weekly-review");
+    assert_eq!(list[0]["schedule"], "fri 17:00");
+    // The agent is a prompt (a slash command in Claude Code).
+    let prompts = c.request("prompts/list", json!({}));
+    let p = &prompts["result"]["prompts"][0];
+    assert_eq!(
+        (p["name"].as_str(), p["description"].as_str()),
+        (Some("weekly-review"), Some("Sum up the week"))
+    );
+    let got = c.request(
+        "prompts/get",
+        json!({ "name": "weekly-review", "arguments": { "request": "only project Site" } }),
+    );
+    let text = got["result"]["messages"][0]["content"]["text"]
+        .as_str()
+        .unwrap();
+    assert!(
+        text.contains("Act as the agent \"Weekly review\"")
+            && text.contains("Read this week's daily notes.")
+            && text.contains("only project Site")
+    );
+    let missing = c.request("prompts/get", json!({ "name": "nope" }));
+    assert!(missing["error"].is_object());
+
+    // Days and carry-over.
+    for (path, content) in [
+        (
+            "Daily/2026-10-02.md",
+            "- [x] Done\n- [ ] Report\n    - [ ] Draft\n",
+        ),
+        ("Projects/Site.md", "- [ ] Copy 📅 2026-10-03\n"),
+    ] {
+        assert!(
+            !c.call("create_file", json!({ "path": path, "content": content }))
+                .0
+        );
+    }
+    let (err, d) = c.call(
+        "tasks_by_day",
+        json!({ "from": "2026-10-02", "to": "2026-10-03" }),
+    );
+    assert!(!err, "{d}");
+    assert_eq!(d["days"][0]["tasks"].as_array().unwrap().len(), 3);
+    assert_eq!(d["days"][1]["tasks"][0]["daily"], false);
+    let (err, r) = c.call("carry_over", json!({ "day": "2026-10-03" }));
+    assert!(!err, "{r}");
+    assert_eq!(
+        (r["moved"].as_u64(), r["to"].as_str()),
+        (Some(2), Some("Daily/2026-10-03.md"))
+    );
+}

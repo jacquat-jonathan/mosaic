@@ -4,8 +4,11 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+## 0.11.1 — 2026-10-06
+
 - Chat: Claude now knows which note you have open, and a change you ask for without naming a note goes to that note (it edited another one before); if it means to change a different note, it says which first.
 - Agents in Claude Code are `/mosaic:<name>` (shown with "(MCP)"); the docs said `/mcp__mosaic__<name>`, which Claude Code doesn't accept.
+
 ## 0.11.0 — 2026-10-06
 
 - **Chat with Claude** (the chat icon in the left bar, ⇧⌘L, or the Chat tab of the right panel): ask about your notes or have Claude change them. It runs Claude Code in the vault with only Mosaic's tools for changes, so every change is in AI activity with Undo, and in folders you review it waits for you. The open note is attached (remove it, or attach more with the clip); answers link to notes; each step shows as a short line ("Edited Projects/Site"). Start an agent from the buttons of an empty chat or with `/name`. New chat, Stop, Save as note (in `Agents/Chats/`), and the cost so far. Needs Claude Code installed and logged in.

@@ -2,6 +2,7 @@
 // show their shortcuts from here.
 
 import { useUi } from "./state/ui";
+import { addProperty } from "./editor/noteViews";
 import { parentOf, useVault } from "./state/vault";
 import { useWorkspace } from "./state/workspace";
 import { createVault, deletePath, NEW_KINDS, newNote, newNoteDir, newOfKind, openCalendar, openDailyNote, openVaultFolder, revealInTree } from "./actions";
@@ -26,7 +27,7 @@ export interface Command {
   when?(): boolean;
 }
 
-const KEY_LABELS: Record<string, string> = { Backslash: "\\", Backspace: "⌫", Comma: ",", Enter: "↵", BracketLeft: "[", BracketRight: "]" };
+const KEY_LABELS: Record<string, string> = { Semicolon: ";", Backslash: "\\", Backspace: "⌫", Comma: ",", Enter: "↵", BracketLeft: "[", BracketRight: "]" };
 
 /** "⌥⇧⌘P"-style label, in the order macOS menus use. */
 export function formatKeys(k: Keys): string {
@@ -68,6 +69,13 @@ const buildCommands = (): Command[] => [
   })),
   { id: "new-folder", label: "New folder", keys: { code: "KeyN", meta: true, shift: true }, run: () => void useVault.getState().newFolder(activeDir()) },
   { id: "calendar", label: "Open calendar", run: () => openCalendar() },
+  {
+    id: "add-property",
+    label: "Add a property to this note",
+    keys: { code: "Semicolon", meta: true },
+    when: () => !!active()?.toLowerCase().endsWith(".md"),
+    run: () => void addProperty(active()!),
+  },
   { id: "daily-note", label: "Open today's daily note", keys: { code: "KeyD", meta: true, shift: true }, run: () => void openDailyNote() },
   {
     id: "export-html",

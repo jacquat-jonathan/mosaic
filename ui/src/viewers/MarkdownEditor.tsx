@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef } from "react";
+import { setNoteView } from "../editor/noteViews";
 import type { EditorView } from "@codemirror/view";
 import { CodeMirror } from "../editor/CodeMirror";
 import { markdownExtensions } from "../editor/setup";
@@ -115,6 +116,7 @@ export function MarkdownEditor({ buffer }: { buffer: Buffer }) {
         extensions={extensions}
         onView={(v) => {
           view.current = v;
+          setNoteView(path, v);
           // Start below the properties block so it opens rendered, like Obsidian.
           const fm = v && FRONTMATTER_RE.exec(v.state.doc.toString());
           if (v && fm) v.dispatch({ selection: { anchor: Math.min(fm[0].length + 1, v.state.doc.length) } });

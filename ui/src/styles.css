@@ -687,7 +687,8 @@ svg path.flow-on { stroke-dasharray: 9 6 !important; animation: edge-flow 0.7s l
 .props-actions { display: flex; gap: 12px; margin-top: 6px; }
 .props-link { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; color: var(--muted); padding: 2px 0; }
 .props-link:hover:not(:disabled) { color: var(--fg); }
-.props-add select { font: inherit; }
+.props-add select { font: inherit; flex: 0 1 auto; width: auto; min-width: 0; }
+.props-add .props-link { flex: none; white-space: nowrap; }
 
 /* Print preview of a note (export/note.ts › printNote). On screen it sits over the app; printed, only
    the page shows. */

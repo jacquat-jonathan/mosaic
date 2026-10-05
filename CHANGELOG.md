@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Add a property** (⌘; or the command palette): opens the properties panel's "Add property" form, also on a note that has no properties yet.
+- Numbered sublists: a nested item still written "3." (left by pressing Enter, then indenting) showed as 2.3 instead of 2.1.
 ## 0.10.0 — 2026-10-04
 
 - **Calendar** (the calendar icon in the left bar, or "Open calendar" in the command palette): each day's tasks, from its daily note and from tasks anywhere with a `📅 2026-10-04` date. The week view lists every task, with subtasks and their progress (2/3), and you tick them right there; the month view shows each day's open and done counts and first tasks. Click a day to open its note (or create it). Dated tasks still open after their day show as overdue.

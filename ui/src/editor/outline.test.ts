@@ -20,5 +20,7 @@ test("nested ordered lists number as an outline", () => {
 
 test("a list's first number counts, and bullets break the chain", () => {
   expect(numbers("4. Four\n   1. Sub\n")).toEqual([null, "4.1."]);
+  // A continued number left after indenting ("3." under "2.") still reads 2.1.
+  expect(numbers("1. A\n2. B\n   3. C\n   4. D\n")).toEqual([null, null, "2.1.", "2.2."]);
   expect(numbers("- Bullet\n  1. Sub\n  2. Sub\n")).toEqual([null, null]);
 });

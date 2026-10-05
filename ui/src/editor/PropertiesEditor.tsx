@@ -1,8 +1,9 @@
 // The frontmatter of a note as a form: lists as chips, checkboxes, dates, numbers and text. Each change
 // rewrites only that property in the YAML (see properties.ts).
 
-import { useState, type KeyboardEvent } from "react";
+import { useEffect, useState, type KeyboardEvent } from "react";
 import { Code, Plus, X } from "lucide-react";
+import { ADD_PROPERTY_EVENT, takeAddOnMount } from "./noteViews";
 import { emptyValue, readProps, removeProp, renameProp, setProp, type Prop, type PropKind } from "./properties";
 
 const KINDS: { kind: PropKind; label: string }[] = [
@@ -15,7 +16,16 @@ const KINDS: { kind: PropKind; label: string }[] = [
 
 export function PropertiesEditor({ yaml, onChange, onEditSource }: { yaml: string; onChange(yaml: string): void; onEditSource(): void }) {
   const [error, setError] = useState<string | null>(null);
-  const [adding, setAdding] = useState(false);
+  // "Add a property" (⌘;) opens the form, also on a panel it just created.
+  const [adding, setAdding] = useState(takeAddOnMount);
+  useEffect(() => {
+    const open = () => {
+      takeAddOnMount();
+      setAdding(true);
+    };
+    window.addEventListener(ADD_PROPERTY_EVENT, open);
+    return () => window.removeEventListener(ADD_PROPERTY_EVENT, open);
+  }, []);
   let props: Prop[] = [];
   try {
     props = readProps(yaml);

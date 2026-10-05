@@ -200,6 +200,20 @@ Done 2026-10-04. Decisions in the vault note `Architecture/Next steps.md` §4.
 - [x] Calendar view: month (counts, first tasks) and week (every task, tickable)
 - [x] CLI and MCP: tasks by day; carry-over for agents
 
+### M20 — Agents in the vault
+From the vault note `Architecture/Agentic.md`.
+- [ ] Core: agents from `Agents/` (`Name.md` or `Name/SKILL.md`): name, description, schedule, may-change, instructions
+- [ ] MCP: every agent as a prompt; `list_agents`; vault guide; CLI `mosaic agents`
+- [ ] Mirror agents into the vault's `.claude/skills/<name>/SKILL.md`
+
+### M21 — Chat panel
+- [ ] Tauri: run Claude Code headless in the vault (stream-json), continue the session, stop
+- [ ] Right panel chat: messages, Markdown answers, tool calls as linked lines, open note attached, agent picker and `/name`
+- [ ] Missing or logged-out Claude Code explained
+
+### M22 — Tessera (scheduled agents)
+- [ ] Schedules while the app is open, missed runs at start, run log, Run now, may-change enforced
+
 ## Working rules
 - `scripts/check.sh` green before each milestone commit.
 - Core logic gets Rust tests; UI logic gets Vitest; don't test third-party renderers beyond a smoke test.

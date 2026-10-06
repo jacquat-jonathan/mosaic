@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+## 0.13.0 — 2026-10-07
+
 - **Notes, Find, Plan and AI**: a new navigation rail keeps destinations separate from your open workspace. Notes, calendars, chats, workflows, runs and settings can share tabs and split panes, with context for the selected item on the right.
 - **Saved conversations**: chats stay in their vault, with titles, drafts, attachments, model choices and session history. Rename or delete a conversation from AI.
 - **Plan and workflows**: Today, Calendar, Tasks and saved task views live in Plan. Create manual or scheduled workflows, choose allowed folders, pause schedules and inspect run results and proposals in AI.

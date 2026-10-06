@@ -49,11 +49,46 @@ function taskCell(row: QueryRow): string {
   return `<td class="query-task status-${t.status}" style="padding-left:${t.depth * 18}px">${box}${mark}<span class="query-task-text">${esc(t.text) || "&nbsp;"}</span></td>`;
 }
 
-export function queryTable(r: QueryResult, tasks = r.rows.some((row) => row.task)): string {
+export interface QuerySort { column: string; descending: boolean }
+
+/** The first sort directive in a query, used to mark the active table header. */
+export function querySort(source: string): QuerySort | null {
+  for (const line of source.split("\n")) {
+    if (line.trim().startsWith("//")) continue;
+    const m = /(?:^|\s)sort:(-?)([^\s]+)/.exec(line);
+    if (m) return { column: m[2], descending: m[1] === "-" };
+  }
+  return null;
+}
+
+/** Click cycle for a header: ascending → descending → source order. Other sorts are replaced. */
+export function sortQuery(source: string, column: string): string {
+  const current = querySort(source);
+  const next = current?.column !== column ? column : current.descending ? null : `-${column}`;
+  const lines = source.split("\n").map((line) =>
+    line.trim().startsWith("//") ? line : line.replace(/(^|\s)sort:-?[^\s]+/g, "$1").replace(/[ \t]+$/g, ""),
+  );
+  if (next) {
+    let at = -1;
+    for (let i = lines.length - 1; i >= 0; i--) if (lines[i].trim() && !lines[i].trim().startsWith("//")) { at = i; break; }
+    if (at < 0) lines.unshift(`sort:${next}`);
+    else lines[at] = `${lines[at]} sort:${next}`.trim();
+  }
+  return lines.join("\n");
+}
+
+const sortHead = (label: string, column: string, sort: QuerySort | null) => {
+  const active = sort?.column === column;
+  const arrow = active ? (sort.descending ? " ↓" : " ↑") : "";
+  const next = !active ? "ascending" : sort.descending ? "source order" : "descending";
+  return `<th><button class="query-sort${active ? " active" : ""}" data-query-sort="${esc(column)}" aria-label="Sort by ${esc(label)}, ${next}">${esc(label)}${arrow}</button></th>`;
+};
+
+export function queryTable(r: QueryResult, tasks = r.rows.some((row) => row.task), sort: QuerySort | null = null): string {
   if (!r.rows.length) return `<div class="query-empty">${tasks ? "No matching tasks." : "No matching notes."}</div>`;
   const head = tasks
-    ? `<tr><th>Task</th><th>Note</th>${r.columns.map((c) => `<th>${esc(c)}</th>`).join("")}</tr>`
-    : `<tr><th>Note</th>${r.columns.map((c) => `<th>${esc(c)}</th>`).join("")}</tr>`;
+    ? `<tr>${sortHead("Task", "text", sort)}${sortHead("Note", "title", sort)}${r.columns.map((c) => sortHead(c, c, sort)).join("")}</tr>`
+    : `<tr>${sortHead("Note", "title", sort)}${r.columns.map((c) => sortHead(c, c, sort)).join("")}</tr>`;
   const body = r.rows
     .map((row) => {
       const cols = r.columns.map((c) => `<td>${esc(cell(row, c))}</td>`).join("");
@@ -65,11 +100,21 @@ export function queryTable(r: QueryResult, tasks = r.rows.some((row) => row.task
 }
 
 /** Renders the query into `el`, and again whenever files change while `el` is on screen. */
-export async function renderQuery(source: string, el: HTMLElement): Promise<void> {
-  const query = source.split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("//")).join(" ");
-  const tasks = isTaskQuery(query);
-  const draw = (r: QueryResult) => (el.innerHTML = queryTable(r, tasks));
-  draw(await api.query(query));
+export async function renderQuery(source: string, el: HTMLElement, replaceSource?: (source: string) => void): Promise<void> {
+  let current = source;
+  const queryText = () => current.split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("//")).join(" ");
+  const tasks = isTaskQuery(queryText());
+  const draw = (r: QueryResult) => (el.innerHTML = queryTable(r, tasks, querySort(current)));
+  draw(await api.query(queryText()));
+  el.addEventListener("click", (e) => {
+    const button = (e.target as HTMLElement).closest<HTMLElement>("[data-query-sort]");
+    if (!button) return;
+    e.preventDefault();
+    e.stopPropagation();
+    current = sortQuery(current, button.dataset.querySort!);
+    replaceSource?.(current);
+    void api.query(queryText()).then((r) => el.isConnected && draw(r));
+  });
   // Ticking a task writes its note; the vault change then redraws the table.
   el.addEventListener("change", (e) => {
     const box = e.target as HTMLInputElement;
@@ -79,7 +124,7 @@ export async function renderQuery(source: string, el: HTMLElement): Promise<void
       box.checked = !box.checked;
       const conflict = (err as { code?: string }).code === "conflict";
       box.title = conflict ? "The note changed: this task isn't on that line any more. The table refreshes in a moment." : errorMessage(err);
-      void api.query(query).then((r) => el.isConnected && draw(r), () => {});
+      void api.query(queryText()).then((r) => el.isConnected && draw(r), () => {});
     });
   });
   let off: (() => void) | undefined;
@@ -88,7 +133,7 @@ export async function renderQuery(source: string, el: HTMLElement): Promise<void
     if (!el.isConnected) return off?.();
     clearTimeout(pending);
     pending = setTimeout(() => {
-      api.query(query).then((r) => el.isConnected && draw(r), () => {});
+      api.query(queryText()).then((r) => el.isConnected && draw(r), () => {});
     }, 300);
   }).then((f) => (off = f));
 }

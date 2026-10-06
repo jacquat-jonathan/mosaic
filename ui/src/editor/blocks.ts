@@ -6,8 +6,13 @@ import { renderChart, renderGraphviz } from "../viewers/visuals";
 import { renderQuery } from "./queryBlock";
 import { errorMessage } from "../ipc/types";
 
-/** Renders `source` into `el`; `path` is the file it's in (charts load their data relative to it). */
-export type BlockRenderer = (source: string, el: HTMLElement, ctx: { path: string }) => void | Promise<void>;
+/** Renders `source` into `el`; `path` is the file it's in (charts load their data relative to it).
+ * `replaceSource` is present for an editable fenced block in the note editor. */
+export type BlockRenderer = (
+  source: string,
+  el: HTMLElement,
+  ctx: { path: string; replaceSource?: (source: string) => void },
+) => void | Promise<void>;
 export const blockRenderers = new Map<string, BlockRenderer>();
 
 export function registerBlockRenderer(langs: string[], r: BlockRenderer) {
@@ -69,7 +74,7 @@ registerBlockRenderer(["math", "latex", "tex"], (src, el) => {
 });
 registerBlockRenderer(["vega-lite", "vegalite", "chart"], (src, el, ctx) => renderChart(src, el, ctx.path));
 registerBlockRenderer(["dot", "graphviz"], (src, el) => renderGraphviz(src, el));
-registerBlockRenderer(["query"], (src, el) => renderQuery(src, el));
+registerBlockRenderer(["query"], (src, el, ctx) => renderQuery(src, el, ctx.replaceSource));
 
 export function showRenderError(el: HTMLElement, err: unknown) {
   el.classList.add("cm-render-error");

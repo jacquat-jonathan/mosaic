@@ -35,11 +35,13 @@ export class RenderedBlockWidget extends WidgetType {
     readonly dark = isDark(),
     /** Set while the block's source is being edited: this is the live preview under it. */
     readonly previewKey?: string,
+    /** Body range of a rendered fenced block; lets interactive renderers update their source. */
+    readonly sourceRange?: { from: number; to: number },
   ) {
     super();
   }
   eq(o: RenderedBlockWidget) {
-    return o.lang === this.lang && o.source === this.source && o.dark === this.dark && o.previewKey === this.previewKey;
+    return o.lang === this.lang && o.source === this.source && o.dark === this.dark && o.previewKey === this.previewKey && o.sourceRange?.from === this.sourceRange?.from && o.sourceRange?.to === this.sourceRange?.to;
   }
   toDOM(view: EditorView) {
     const el = document.createElement("div");
@@ -70,7 +72,10 @@ export class RenderedBlockWidget extends WidgetType {
       else this.addOpenAsDiagram(el);
     };
     try {
-      const out = r?.(this.source, el, this.ctx);
+      const replaceSource = this.sourceRange
+        ? (source: string) => view.dispatch({ changes: { from: this.sourceRange!.from, to: this.sourceRange!.to, insert: source } })
+        : undefined;
+      const out = r?.(this.source, el, { ...this.ctx, replaceSource });
       if (out instanceof Promise) out.then(succeeded, failed);
       else succeeded();
     } catch (e) {

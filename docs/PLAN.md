@@ -218,6 +218,13 @@ Done 2026-10-06.
 - [x] Runs panel: run log, changes and proposals, Run now, pause one or all
 - [x] `may-change` enforced per scheduled process; writes elsewhere become proposals
 
+### M23 — Workflow polish
+Done 2026-10-06, released as 0.12.1.
+- [x] Query tables sort by clicking a column header; the query block keeps the selected sort
+- [x] Chat can attach selected note text and choose the Claude model
+- [x] The caret stays stable when it crosses live-preview element boundaries
+- [ ] Review and rethink the overall UI now that more features share the sidebars, tab bars and editor actions
+
 ## Working rules
 - `scripts/check.sh` green before each milestone commit.
 - Core logic gets Rust tests; UI logic gets Vitest; don't test third-party renderers beyond a smoke test.

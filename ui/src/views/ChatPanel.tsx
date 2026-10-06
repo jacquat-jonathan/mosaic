@@ -4,7 +4,7 @@
 // start a message (pick one, or type /name).
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
-import { Bot, Eye, Paperclip, Pencil, Plus, Save, Square, X } from "lucide-react";
+import { Bot, Eye, Paperclip, Pencil, Plus, Save, Square, TextSelect, X } from "lucide-react";
 import { api } from "../ipc/api";
 import { errorMessage, type Agent, type ClaudeInfo } from "../ipc/types";
 import { renderMarkdown } from "../markdown";
@@ -15,6 +15,8 @@ import { useVault } from "../state/vault";
 import { useWorkspace } from "../state/workspace";
 import { isSpecialTab } from "./specialTabs";
 import { dayStamp } from "../daily";
+import { noteSelection } from "../editor/noteViews";
+import { useSettings } from "../state/settings";
 
 const noteName = (p: string) => (p.split("/").pop() ?? p).replace(/\.md$/i, "");
 
@@ -28,6 +30,9 @@ export function ChatPanel() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [agent, setAgent] = useState<string | null>(null);
   const [attached, setAttached] = useState<string[]>([]);
+  const [selection, setSelection] = useState<{ path: string; text: string } | null>(null);
+  const model = useSettings((s) => s.chatModel);
+  const setModel = useSettings((s) => s.set);
   // The open note is attached unless removed (for that note).
   const [skipped, setSkipped] = useState<string | null>(null);
   const [input, setInput] = useState("");
@@ -60,7 +65,8 @@ export function ChatPanel() {
     if (!text && !use) return;
     setError(null);
     setInput("");
-    void useChat.getState().send(text || "Go ahead.", context, activeNote, use);
+    void useChat.getState().send(text || "Go ahead.", context, activeNote, use, selection, model || null);
+    setSelection(null);
   };
   const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -76,6 +82,14 @@ export function ChatPanel() {
       hint: "↵ attach · esc cancel",
       onPick: (it) => setAttached((a) => [...a, it.id]),
     });
+  };
+  const attachSelection = () => {
+    if (!activeNote) return setError("Open a note and select some text first.");
+    const picked = noteSelection(activeNote);
+    if (!picked) return setError("Select some text in the open note first.");
+    if (picked.text.length > 20_000) return setError("That selection is too large to attach (maximum 20,000 characters).");
+    setSelection({ path: picked.path, text: picked.text });
+    setError(null);
   };
   const save = async () => {
     const first = items.find((i) => i.kind === "user") as Extract<ChatItem, { kind: "user" }> | undefined;
@@ -147,6 +161,15 @@ export function ChatPanel() {
               </button>
             </span>
           ))}
+          {selection && (
+            <span className="chat-chip selection" title={selection.text}>
+              <TextSelect size={11} /> Selection from {noteName(selection.path)}
+              <button aria-label="Detach selected text" onClick={() => setSelection(null)}><X size={10} /></button>
+            </span>
+          )}
+          <button className="chat-chip add" title="Attach selected text from the open note" onClick={attachSelection}>
+            <TextSelect size={11} />
+          </button>
           <button className="chat-chip add" title="Attach a note" onClick={attach}>
             <Paperclip size={11} />
           </button>
@@ -166,6 +189,14 @@ export function ChatPanel() {
             <Save size={14} />
           </button>
           {cost > 0 && <span className="chat-cost" title="What this chat has cost so far">${cost.toFixed(2)}</span>}
+          <label className="chat-model" title="Claude Code model for new answers">
+            <select aria-label="Chat model" value={model} onChange={(e) => setModel("chatModel", e.target.value as "" | "sonnet" | "opus" | "haiku")} disabled={run !== null}>
+              <option value="">Default model</option>
+              <option value="sonnet">Sonnet</option>
+              <option value="opus">Opus</option>
+              <option value="haiku">Haiku</option>
+            </select>
+          </label>
           <span className="spacer" />
           {run !== null ? (
             <button className="danger" onClick={() => useChat.getState().stop()}>
@@ -188,6 +219,7 @@ function Item({ item }: { item: ChatItem }) {
       return (
         <div className="chat-msg user">
           {item.agent && <div className="chat-agent"><Bot size={11} /> {item.agent}</div>}
+          {(item.selection || item.model) && <div className="chat-agent">{item.selection ? `Selection from ${noteName(item.selection.path)}` : ""}{item.selection && item.model ? " · " : ""}{item.model ?? ""}</div>}
           {item.text}
         </div>
       );

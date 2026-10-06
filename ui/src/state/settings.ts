@@ -25,6 +25,8 @@ export interface Prefs {
   dailyFolder: string;
   /** Note copied into each new daily note, with {{date}}, {{title}}, {{weekday}}, {{time}} filled in. */
   dailyTemplate: string;
+  /** Claude Code model alias for chat; empty lets Claude Code choose its default. */
+  chatModel: "" | "sonnet" | "opus" | "haiku";
   /** Shortcuts changed in Settings › Shortcuts: command id → keys, or null for "no shortcut". */
   shortcuts: Record<string, ShortcutKeys | null>;
 }
@@ -48,6 +50,7 @@ export const DEFAULT_PREFS: Prefs = {
   confirmTrash: true,
   dailyFolder: "Daily",
   dailyTemplate: "",
+  chatModel: "",
   shortcuts: {},
 };
 
@@ -70,6 +73,7 @@ export function sanitize(raw: unknown): Prefs {
     confirmTrash: pick("confirmTrash", (v) => typeof v === "boolean"),
     dailyFolder: pick("dailyFolder", (v) => typeof v === "string"),
     dailyTemplate: pick("dailyTemplate", (v) => typeof v === "string"),
+    chatModel: pick("chatModel", (v) => v === "" || v === "sonnet" || v === "opus" || v === "haiku"),
     shortcuts:
       r.shortcuts && typeof r.shortcuts === "object"
         ? Object.fromEntries(Object.entries(r.shortcuts as Record<string, unknown>).filter(([, v]) => v === null || isKeys(v))) as Prefs["shortcuts"]

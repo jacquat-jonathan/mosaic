@@ -624,7 +624,7 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
         { kind: "started", session_id: "mock-session", mosaic: true },
         { kind: "tool", id: "t1", summary: `Read ${target.replace(/\.md$/, "")}`, path: target, writes: false },
         { kind: "tool_done", id: "t1", error: null, review: null },
-        { kind: "text", text: a.agent ? `Running the **${a.agent}** agent.` : `You asked: *${String(a.message).slice(0, 80)}*.` },
+        { kind: "text", text: a.agent ? `Running the **${a.agent}** agent.` : `You asked: *${String(a.message).slice(0, 80)}*.${a.selectionText ? " I also received the selected text." : ""}${a.model ? ` Model: ${a.model}.` : ""}` },
         { kind: "tool", id: "t2", summary: "Edited Ideas", path: "Ideas.md", writes: true },
         { kind: "tool_done", id: "t2", error: null, review: null },
         { kind: "text", text: "Done: I added a line to [[Ideas]].\n\n- one\n- two" },

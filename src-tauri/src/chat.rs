@@ -114,6 +114,9 @@ pub fn chat_send(
     context: Vec<String>,
     active: Option<String>,
     agent: Option<String>,
+    selection_path: Option<String>,
+    selection_text: Option<String>,
+    model: Option<String>,
 ) -> CmdResult<u64> {
     let ws = state.get()?;
     let claude = find_claude().ok_or_else(|| {
@@ -150,11 +153,19 @@ pub fn chat_send(
     .arg("--mcp-config")
     .arg(mcp.to_string())
     .arg("--append-system-prompt")
-    .arg(system_prompt(&name, active.as_deref(), &context))
+    .arg(system_prompt(
+        &name,
+        active.as_deref(),
+        &context,
+        selection_path.as_deref().zip(selection_text.as_deref()),
+    ))
     .arg("--allowedTools")
     .args(ALLOWED_TOOLS.split(' '))
     .arg("--disallowedTools")
     .args(DISALLOWED_TOOLS.split(' '));
+    if let Some(model) = model.filter(|m| !m.trim().is_empty()) {
+        cmd.arg("--model").arg(model);
+    }
     if let Some(s) = session.filter(|s| !s.is_empty()) {
         cmd.arg("--resume").arg(s);
     }

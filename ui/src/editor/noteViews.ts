@@ -5,9 +5,26 @@ import { FRONTMATTER_RE } from "./livePreview";
 
 const views = new Map<string, EditorView>();
 
+export interface NoteSelection {
+  path: string;
+  text: string;
+  from: number;
+  to: number;
+}
+
 export function setNoteView(path: string, view: EditorView | null) {
   if (view) views.set(path, view);
   else views.delete(path);
+}
+
+/** The person's current non-empty selection in an open note. */
+export function noteSelection(path: string): NoteSelection | null {
+  const view = views.get(path);
+  if (!view) return null;
+  const range = view.state.selection.main;
+  if (range.empty) return null;
+  const text = view.state.sliceDoc(range.from, range.to);
+  return text.trim() ? { path, text, from: range.from, to: range.to } : null;
 }
 
 /** Asks the properties panel to open its "Add property" form (the panel mounting next, or one shown). */

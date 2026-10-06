@@ -714,7 +714,9 @@ svg path.flow-on { stroke-dasharray: 9 6 !important; animation: edge-flow 0.7s l
 
 /* ```query blocks in notes (editor/queryBlock.ts). */
 .query-table { border-collapse: collapse; width: 100%; font-size: 13px; margin: 4px 0; }
-.query-table th { text-align: left; font-weight: 600; color: var(--muted); border-bottom: 1px solid var(--border); padding: 4px 10px 4px 0; }
+.query-table th { text-align: left; font-weight: 600; color: var(--muted); border-bottom: 1px solid var(--border); padding: 0 10px 0 0; }
+.query-sort { appearance: none; border: 0; background: none; color: inherit; font: inherit; padding: 4px 0; cursor: pointer; white-space: nowrap; }
+.query-sort:hover, .query-sort.active { color: var(--accent); }
 .query-table td { border-bottom: 1px solid var(--border); padding: 4px 10px 4px 0; vertical-align: top; }
 .query-table .md-wikilink { color: var(--accent); cursor: pointer; }
 .query-empty, .query-more { color: var(--muted); font-size: 12px; padding: 4px 0; }
@@ -803,6 +805,7 @@ svg path.flow-on { stroke-dasharray: 9 6 !important; animation: edge-flow 0.7s l
 .chat-chips { display: flex; flex-wrap: wrap; gap: 4px; }
 .chat-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; padding: 1px 4px 1px 7px; border-radius: 10px; background: var(--bg); border: 1px solid var(--border); max-width: 100%; }
 .chat-chip.agent { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
+.chat-chip.selection { color: var(--accent); max-width: 220px; }
 .chat-chip button { padding: 1px; color: var(--muted); background: none; border: none; }
 .chat-chip.add { padding: 2px 7px; color: var(--muted); cursor: pointer; }
 .chat-compose textarea { font: inherit; font-size: 13px; resize: none; color: var(--fg); background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; }
@@ -811,6 +814,7 @@ svg path.flow-on { stroke-dasharray: 9 6 !important; animation: edge-flow 0.7s l
 .chat-actions .spacer { flex: 1; }
 .chat-actions button { display: inline-flex; align-items: center; gap: 4px; }
 .chat-cost { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.chat-model select { max-width: 112px; padding: 2px 5px; border: 1px solid var(--border); border-radius: 6px; color: var(--muted); background: var(--bg); font: inherit; font-size: 11px; }
 .tessera { flex: 1; min-height: 0; overflow: auto; padding: 8px 12px 16px; font-size: 12px; }
 .tessera-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 0 8px; border-bottom: 1px solid var(--border); }
 .tessera-head div { display: flex; flex-direction: column; gap: 2px; } .tessera-head span, .tessera-agent span { color: var(--muted); }

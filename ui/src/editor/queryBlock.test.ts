@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { cell, isTaskQuery, queryTable } from "./queryBlock";
+import { cell, isTaskQuery, querySort, queryTable, sortQuery } from "./queryBlock";
 import type { QueryRow } from "../ipc/types";
 
 const row: QueryRow = {
@@ -23,9 +23,19 @@ test("cells show fields as text", () => {
 test("the table links each note and says when results were cut", () => {
   const html = queryTable({ columns: ["status"], rows: [row], total: 3 });
   expect(html).toContain('data-target="Projects/Alpha"');
+  expect(html).toContain('data-query-sort="title"');
+  expect(html).toContain('data-query-sort="status"');
   expect(html).toContain("<td>active</td>");
   expect(html).toContain("1 of 3 shown");
   expect(queryTable({ columns: [], rows: [], total: 0 })).toContain("No matching notes");
+});
+
+test("clicking a query header cycles ascending, descending and source order", () => {
+  expect(sortQuery("tag:project", "status")).toBe("tag:project sort:status");
+  expect(sortQuery("tag:project sort:status", "status")).toBe("tag:project sort:-status");
+  expect(sortQuery("tag:project sort:-status", "status")).toBe("tag:project");
+  expect(sortQuery("tag:project sort:due\n// keep me", "title")).toBe("tag:project sort:title\n// keep me");
+  expect(querySort("tag:project sort:-modified")).toEqual({ column: "modified", descending: true });
 });
 
 test("task queries show tickable tasks, nested, with their note", () => {
@@ -34,7 +44,8 @@ test("task queries show tickable tasks, nested, with their note", () => {
     task: { line, status, mark: status === "done" ? "x" : status === "moved" ? ">" : " ", text, depth, parent: depth ? 2 : null, due: null },
   });
   const html = queryTable({ columns: [], rows: [task(2, "open", "Write <report>"), task(3, "done", "Outline", 1), task(4, "moved", "Old")], total: 3 });
-  expect(html).toContain("<th>Task</th>");
+  expect(html).toContain('data-query-sort="text"');
+  expect(html).toContain(">Task</button>");
   expect(html).toContain('data-line="2" data-text="Write &lt;report&gt;"');
   expect(html).toMatch(/checked[^>]*data-line="3"/);
   expect(html).toContain("padding-left:18px");

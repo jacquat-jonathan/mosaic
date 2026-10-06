@@ -249,7 +249,7 @@ fn spawn(
         .arg("--mcp-config")
         .arg(mcp.to_string())
         .arg("--append-system-prompt")
-        .arg(system_prompt(&vault_name, None, &[]))
+        .arg(system_prompt(&vault_name, None, &[], None))
         .arg("--allowedTools")
         .args(ALLOWED_TOOLS.split(' '))
         .arg("--disallowedTools")

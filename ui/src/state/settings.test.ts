@@ -9,8 +9,9 @@ describe("settings", () => {
   });
 
   it("keeps valid values and clamps the text size", () => {
-    const p = sanitize({ theme: "dark", noteSize: 99, noteWidth: "wide", confirmTrash: false, newNoteLocation: "root" });
-    expect(p).toMatchObject({ theme: "dark", noteSize: NOTE_SIZE_MAX, noteWidth: "wide", confirmTrash: false, newNoteLocation: "root" });
+    const p = sanitize({ theme: "dark", noteSize: 99, noteWidth: "wide", confirmTrash: false, newNoteLocation: "root", chatModel: "opus" });
+    expect(p).toMatchObject({ theme: "dark", noteSize: NOTE_SIZE_MAX, noteWidth: "wide", confirmTrash: false, newNoteLocation: "root", chatModel: "opus" });
+    expect(sanitize({ chatModel: "unknown" }).chatModel).toBe("");
   });
 
   it("turns the old on/off readable width into a note width", () => {

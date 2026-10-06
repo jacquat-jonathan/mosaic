@@ -47,8 +47,15 @@ export const api = {
   /** Whether Claude Code is installed (and where). */
   chatCheck: () => call<ClaudeInfo>("chat_check", {}),
   /** Sends a chat message (as `agent` from Agents/ if given); events arrive through `onChatEvent`. Returns the run id. */
-  chatSend: (message: string, session: string | null, context: string[], active: string | null, agent: string | null) =>
-    call<number>("chat_send", { message, session, context, active, agent }),
+  chatSend: (
+    message: string,
+    session: string | null,
+    context: string[],
+    active: string | null,
+    agent: string | null,
+    selection: { path: string; text: string } | null,
+    model: string | null,
+  ) => call<number>("chat_send", { message, session, context, active, agent, selectionPath: selection?.path ?? null, selectionText: selection?.text ?? null, model }),
   chatStop: (run: number) => call<void>("chat_stop", { run }),
   /** The agents in the vault's Agents/ folder. */
   agents: () => call<Agent[]>("agents", {}),

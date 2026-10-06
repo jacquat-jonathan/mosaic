@@ -4,6 +4,10 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Faster note-to-chat work**: attach the selected text from the open note to a message, and choose Claude's default, Sonnet, Opus or Haiku model before sending.
+- **Sortable query tables**: click a query result header to sort ascending, descending, then return to the query's original order; the chosen sort is written into the query block.
+- Fixed the editing cursor sometimes appearing to jump when clicking or moving with the arrow keys at the boundary between live-preview elements.
+
 ## 0.12.0 — 2026-10-06
 
 - **Tessera scheduled agents**: add `schedule: daily 08:00`, `weekdays 08:00`, `fri 17:00`, `every 2h` or `every 30m` to an agent. It runs while Mosaic is open and catches up once after a missed run. The new Runs tab has Run now, pause controls, results, changed files, failures and proposals. A scheduled agent writes directly only inside its `may-change` folders; other changes wait in AI activity for review.

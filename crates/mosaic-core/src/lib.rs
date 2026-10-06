@@ -14,6 +14,7 @@ pub mod query;
 pub mod render;
 pub mod review;
 pub mod route;
+pub mod schedule;
 pub mod settings;
 pub mod timing;
 pub mod validate;

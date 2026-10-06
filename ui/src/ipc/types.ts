@@ -121,6 +121,26 @@ export interface Agent {
   instructions: string;
 }
 
+export interface AgentRun {
+  id: number;
+  agent: string;
+  title: string;
+  started: number;
+  finished: number | null;
+  late: boolean;
+  status: "running" | "done" | "failed";
+  answer: string;
+  error: string | null;
+  proposals: number;
+  changes: string[];
+}
+
+export interface TesseraStatus {
+  paused: boolean;
+  agents: { name: string; title: string; schedule: string; paused: boolean; running: boolean; error: string | null }[];
+  runs: AgentRun[];
+}
+
 /** A task on a day of the calendar (crates/mosaic-core/src/days.rs). */
 export interface DayTask {
   path: string;

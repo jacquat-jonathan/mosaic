@@ -2477,6 +2477,7 @@ dependencies = [
 name = "mosaic-app"
 version = "0.11.1"
 dependencies = [
+ "chrono",
  "mosaic-core",
  "objc2-foundation",
  "serde",

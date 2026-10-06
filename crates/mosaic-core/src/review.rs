@@ -213,7 +213,9 @@ impl Workspace {
     /// Whether this workspace's changes to `norm` become proposals (agents and the CLI, in a
     /// folder under review).
     pub(crate) fn in_review(&self, norm: &str) -> bool {
-        self.source() != Source::App && access_for(&self.rules(), norm) == Some(Access::Review)
+        self.source() != Source::App
+            && (!self.change_allowed(norm)
+                || access_for(&self.rules(), norm) == Some(Access::Review))
     }
 
     /// Refuses an operation that can't be proposed (moves, binary files, folders) under review.
@@ -627,6 +629,41 @@ mod tests {
         // Outside the review folder, agents write directly.
         assert_eq!(
             agent.write("Free.md", "changed\n", None).unwrap().review,
+            None
+        );
+    }
+
+    #[test]
+    fn scheduled_agent_only_writes_directly_in_its_allowlist() {
+        let (dir, _app, agent) = setup();
+        let agent = agent.with_change_allowlist(vec!["Reviewed".into()]);
+        // The allowlist does not weaken the person's existing Review rule.
+        assert!(
+            agent
+                .write("Reviewed/Plan.md", "changed\n", None)
+                .unwrap()
+                .review
+                .is_some()
+        );
+        // A path outside may-change is proposed too, even though it is normally free.
+        assert!(
+            agent
+                .write("Free.md", "changed\n", None)
+                .unwrap()
+                .review
+                .is_some()
+        );
+        assert_eq!(disk(&dir, "Free.md").as_deref(), Some("free\n"));
+
+        let direct = Workspace::new(
+            Vault::open(dir.path()).unwrap(),
+            Index::in_memory().unwrap(),
+        )
+        .with_source(Source::Agent)
+        .with_change_allowlist(vec!["Allowed".into()]);
+        std::fs::create_dir_all(dir.path().join("Allowed")).unwrap();
+        assert_eq!(
+            direct.create("Allowed/New.md", "ok\n").unwrap().review,
             None
         );
     }

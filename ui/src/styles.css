@@ -811,3 +811,12 @@ svg path.flow-on { stroke-dasharray: 9 6 !important; animation: edge-flow 0.7s l
 .chat-actions .spacer { flex: 1; }
 .chat-actions button { display: inline-flex; align-items: center; gap: 4px; }
 .chat-cost { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.tessera { flex: 1; min-height: 0; overflow: auto; padding: 8px 12px 16px; font-size: 12px; }
+.tessera-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 0 8px; border-bottom: 1px solid var(--border); }
+.tessera-head div { display: flex; flex-direction: column; gap: 2px; } .tessera-head span, .tessera-agent span { color: var(--muted); }
+.tessera-agent { display: flex; align-items: center; gap: 7px; padding: 7px 0; border-bottom: 1px solid var(--border); }
+.tessera-agent > div { flex: 1; min-width: 0; display: flex; flex-direction: column; } .tessera-agent.paused { opacity: .55; }
+.tessera-agent button, .tessera-head button { padding: 4px; display: inline-flex; }
+.tessera-run { border-bottom: 1px solid var(--border); padding: 6px 0; } .tessera-run summary { cursor: pointer; display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; }
+.tessera-run time, .tessera-run em { color: var(--muted); font-size: 10.5px; font-style: normal; } .tessera-run em { grid-column: 1 / -1; }
+.tessera-run.failed em { color: var(--danger); } .tessera-answer { white-space: pre-wrap; margin-top: 7px; line-height: 1.45; }

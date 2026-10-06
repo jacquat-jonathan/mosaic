@@ -28,6 +28,8 @@ pub struct Workspace {
     actor: Mutex<Option<String>>,
     /// Folder rules for agents given directly instead of read from the settings (tests).
     fixed_rules: Option<Vec<AgentRule>>,
+    /// Direct-write paths for one scheduled run; other writes become proposals.
+    change_allowlist: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -126,6 +128,7 @@ impl Workspace {
             source: Source::App,
             actor: Mutex::new(None),
             fixed_rules: None,
+            change_allowlist: None,
         }
     }
 
@@ -148,6 +151,25 @@ impl Workspace {
     pub fn with_agent_rules(mut self, rules: Vec<AgentRule>) -> Self {
         self.fixed_rules = Some(rules);
         self
+    }
+
+    /// Restricts this agent workspace to direct writes below these vault-relative paths.
+    pub fn with_change_allowlist(mut self, paths: Vec<String>) -> Self {
+        self.change_allowlist = Some(
+            paths
+                .into_iter()
+                .filter_map(|p| normalize(p.trim_matches('/')).ok())
+                .collect(),
+        );
+        self
+    }
+
+    pub(crate) fn change_allowed(&self, path: &str) -> bool {
+        self.change_allowlist.as_ref().is_none_or(|allowed| {
+            allowed
+                .iter()
+                .any(|p| p.is_empty() || path == p || path.starts_with(&format!("{p}/")))
+        })
     }
 
     /// Opens a vault with its index and history in the default cache location (in memory if that fails).

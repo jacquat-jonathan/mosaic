@@ -29,6 +29,10 @@ struct Cli {
     /// Print machine-readable JSON.
     #[arg(long, global = true)]
     json: bool,
+    /// Restrict direct writes to these vault paths; writes elsewhere become review proposals.
+    /// Used by Mosaic for scheduled agents.
+    #[arg(long, global = true, hide = true)]
+    may_change: Vec<String>,
     #[command(subcommand)]
     cmd: Cmd,
 }
@@ -332,10 +336,13 @@ fn run(cli: Cli) -> Result<()> {
     } else {
         Source::Cli
     };
-    let ws = Workspace::open(&root)
+    let mut ws = Workspace::open(&root)
         .with_context(|| format!("opening vault {}", root.display()))?
         .validating()
         .with_source(source);
+    if !cli.may_change.is_empty() {
+        ws = ws.with_change_allowlist(cli.may_change.clone());
+    }
     let json = cli.json;
     // The index is shared with the app (WAL); an incremental sync is fast and keeps results current.
     let needs_index = matches!(

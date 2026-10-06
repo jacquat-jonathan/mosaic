@@ -20,6 +20,8 @@ let updateBuilt = false;
 let updateRunning = false;
 let updateTimers: ReturnType<typeof setTimeout>[] = [];
 let agentRules: { path: string; access: string }[] = [];
+let tesseraPaused = false;
+const tesseraPausedAgents: string[] = [];
 const proposals: (Proposal & { content: string | null })[] = [];
 
 /** Browser testing: what an agent's change in a folder under review leaves behind. */
@@ -635,6 +637,16 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
       return null;
     case "mirror_agents":
       return { written: [], removed: [], skipped: [] };
+    case "tessera_status":
+      return { paused: tesseraPaused, agents: [], runs: [] };
+    case "tessera_pause_all":
+      tesseraPaused = Boolean(a.paused); return null;
+    case "tessera_pause_agent": {
+      const name = String(a.name); const i = tesseraPausedAgents.indexOf(name);
+      if (i >= 0) tesseraPausedAgents.splice(i, 1); if (a.paused) tesseraPausedAgents.push(name); return null;
+    }
+    case "tessera_run":
+      return ++chatRuns;
     case "days":
       return mockDays(a.from as string, a.to as string, a.today as string);
     case "carry_over":

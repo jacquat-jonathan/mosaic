@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Tessera scheduled agents**: add `schedule: daily 08:00`, `weekdays 08:00`, `fri 17:00`, `every 2h` or `every 30m` to an agent. It runs while Mosaic is open and catches up once after a missed run. The new Runs tab has Run now, pause controls, results, changed files, failures and proposals. A scheduled agent writes directly only inside its `may-change` folders; other changes wait in AI activity for review.
+
 ## 0.11.1 — 2026-10-06
 
 - Chat: Claude now knows which note you have open, and a change you ask for without naming a note goes to that note (it edited another one before); if it means to change a different note, it says which first.

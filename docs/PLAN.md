@@ -213,7 +213,10 @@ Done 2026-10-06.
 - [x] Missing or logged-out Claude Code explained
 
 ### M22 — Tessera (scheduled agents)
-- [ ] Schedules while the app is open, missed runs at start, run log, Run now, may-change enforced
+Done 2026-10-06.
+- [x] Schedules while the app is open (`daily`, `weekdays`, weekdays, intervals), one missed run at start
+- [x] Runs panel: run log, changes and proposals, Run now, pause one or all
+- [x] `may-change` enforced per scheduled process; writes elsewhere become proposals
 
 ## Working rules
 - `scripts/check.sh` green before each milestone commit.

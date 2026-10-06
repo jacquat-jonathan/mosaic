@@ -1,7 +1,7 @@
 // Typed access to the backend. Inside Tauri this goes through `invoke`; in a plain browser (UI
 // development and tests) it falls back to an in-memory mock vault.
 
-import type { Backlink, CliInfo, Entry, FileContent, IndexProgress, RecentVault, Renamed, SearchHit, TagCount, UpdateCheck, UpdateDone, UpdateStatus, Version, VaultInfo, Written, AgentRule, Mention, QueryResult, Proposal, Days, CarryOver, Agent, ChatEvent, ClaudeInfo } from "./types";
+import type { Backlink, CliInfo, Entry, FileContent, IndexProgress, RecentVault, Renamed, SearchHit, TagCount, UpdateCheck, UpdateDone, UpdateStatus, Version, VaultInfo, Written, AgentRule, Mention, QueryResult, Proposal, Days, CarryOver, Agent, ChatEvent, ClaudeInfo, TesseraStatus } from "./types";
 import { mockInvoke } from "./mock";
 
 export const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -54,6 +54,10 @@ export const api = {
   agents: () => call<Agent[]>("agents", {}),
   /** Mirrors the agents into the vault's .claude/skills/ for Claude Code. */
   mirrorAgents: () => call<unknown>("mirror_agents", {}),
+  tesseraStatus: () => call<TesseraStatus>("tessera_status", {}),
+  tesseraRun: (name: string) => call<number>("tessera_run", { name }),
+  tesseraPauseAll: (paused: boolean) => call<void>("tessera_pause_all", { paused }),
+  tesseraPauseAgent: (name: string, paused: boolean) => call<void>("tessera_pause_agent", { name, paused }),
   /** Each day's tasks from `from` to `to` (2026-10-04; at most 62 days), and overdue dated tasks. */
   days: (from: string, to: string, today: string) => call<Days>("days", { from, to, today }),
   /** Moves the open tasks of the last daily note before `day` into `path` (created with `newNote`). */
@@ -162,6 +166,8 @@ export async function onChatEvent(cb: (run: number, event: ChatEvent) => void): 
   const { listen } = await import("@tauri-apps/api/event");
   return listen<{ run: number; event: ChatEvent }>("chat-event", (e) => cb(e.payload.run, e.payload.event));
 }
+
+export const onTesseraChanged = (cb: () => void) => listenTo<void>("tessera-changed", cb);
 
 /** Subscribes to changes of the app's settings file (e.g. an agent added a bookmark). */
 export async function onSettingsChanged(cb: () => void): Promise<() => void> {

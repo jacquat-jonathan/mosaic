@@ -18,9 +18,37 @@ pub struct Settings {
     pub update_source: Option<PathBuf>,
     /// Folders agents (MCP, CLI) may only read, or can't see at all, per vault root.
     pub agent_rules: BTreeMap<PathBuf, Vec<AgentRule>>,
+    /// Scheduler state and run history, per vault; kept outside the vault like other app state.
+    pub tessera: BTreeMap<PathBuf, TesseraSettings>,
     /// Settings a newer Mosaic wrote that this version doesn't know: kept so saving doesn't drop them.
     #[serde(flatten)]
     pub other: BTreeMap<String, serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct TesseraSettings {
+    pub paused: bool,
+    pub paused_agents: Vec<String>,
+    /// Last scheduler check, Unix seconds. Used to run one missed occurrence on startup.
+    pub last_checked: i64,
+    pub runs: Vec<AgentRun>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentRun {
+    pub id: u64,
+    pub agent: String,
+    pub title: String,
+    pub started: i64,
+    pub finished: Option<i64>,
+    pub late: bool,
+    pub status: String,
+    pub answer: String,
+    pub error: Option<String>,
+    pub proposals: usize,
+    #[serde(default)]
+    pub changes: Vec<String>,
 }
 
 /// What agents may do in a folder (and everything inside it).
@@ -166,6 +194,14 @@ impl Settings {
         } else {
             self.agent_rules.insert(root.to_path_buf(), rules);
         }
+    }
+
+    pub fn tessera(&self, root: &Path) -> TesseraSettings {
+        self.tessera.get(root).cloned().unwrap_or_default()
+    }
+
+    pub fn set_tessera(&mut self, root: &Path, value: TesseraSettings) {
+        self.tessera.insert(root.to_path_buf(), value);
     }
 
     pub fn bookmarks(&self, root: &Path) -> Vec<String> {

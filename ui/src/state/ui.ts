@@ -52,7 +52,7 @@ export type SettingsSection = "appearance" | "editor" | "vault" | "ai" | "shortc
 
 export type SidebarTab = "files" | "search" | "tags" | "bookmarks" | "activity";
 
-export type RightTab = "links" | "chat";
+export type RightTab = "links" | "chat" | "runs";
 
 export const SIDEBAR_DEFAULT = 260;
 export const RIGHT_DEFAULT = 280;

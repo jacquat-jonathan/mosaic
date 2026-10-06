@@ -7,6 +7,7 @@ import { useWorkspace } from "../state/workspace";
 import { parse as parseMarkdownHeadings } from "./outline";
 import { useUi } from "../state/ui";
 import { ChatPanel } from "./ChatPanel";
+import { TesseraPanel } from "./TesseraPanel";
 
 /** The right panel: backlinks and outline of the active note, or the chat with Claude. */
 export function RightPanel() {
@@ -20,8 +21,11 @@ export function RightPanel() {
         <button role="tab" aria-selected={tab === "chat"} className={tab === "chat" ? "active" : ""} onClick={() => useUi.getState().setRightTab("chat")}>
           Chat
         </button>
+        <button role="tab" aria-selected={tab === "runs"} className={tab === "runs" ? "active" : ""} onClick={() => useUi.getState().setRightTab("runs")}>
+          Runs
+        </button>
       </div>
-      {tab === "chat" ? <ChatPanel /> : <LinksPanel />}
+      {tab === "chat" ? <ChatPanel /> : tab === "runs" ? <TesseraPanel /> : <LinksPanel />}
     </aside>
   );
 }

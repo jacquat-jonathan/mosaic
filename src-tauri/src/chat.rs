@@ -42,7 +42,7 @@ fn home() -> PathBuf {
 }
 
 /// The PATH Claude Code and its tools should see: the app starts with a minimal one.
-fn path_env() -> String {
+pub(crate) fn path_env() -> String {
     let h = home();
     format!(
         "{}/.local/bin:{}/.claude/local:/opt/homebrew/bin:/usr/local/bin:{}",
@@ -53,7 +53,7 @@ fn path_env() -> String {
 }
 
 /// Finds the `claude` command: the usual install places, then the login shell's PATH.
-fn find_claude() -> Option<PathBuf> {
+pub(crate) fn find_claude() -> Option<PathBuf> {
     let h = home();
     for p in [
         h.join(".local/bin/claude"),
@@ -75,7 +75,7 @@ fn find_claude() -> Option<PathBuf> {
 
 /// The `mosaic` command for Claude Code's MCP config: the one bundled with the app, else the
 /// installed one.
-fn mosaic_cli() -> Option<PathBuf> {
+pub(crate) fn mosaic_cli() -> Option<PathBuf> {
     bundled_cli().or_else(|| {
         let p = home().join(".local/bin/mosaic");
         p.is_file().then_some(p)

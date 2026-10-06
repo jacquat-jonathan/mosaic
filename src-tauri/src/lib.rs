@@ -1,6 +1,7 @@
 //! Tauri front end: every command is a thin mapping onto `mosaic_core::Workspace`.
 
 mod chat;
+mod tessera;
 mod update;
 
 use mosaic_core::api::{Mention, Outline, Renamed};
@@ -86,6 +87,7 @@ fn activate(app: AppHandle, state: &AppState, ws: Workspace) -> CmdResult<VaultI
     let _ = settings.save();
     let out = info(&ws);
     *state.ws.write().expect("workspace lock poisoned") = Some(ws.clone());
+    tessera::start_scheduler(app.clone());
 
     // External changes (AI, CLI, other editors) are pushed to the UI as they happen.
     let events = app.clone();
@@ -505,6 +507,7 @@ pub fn run() {
         .manage(AppState::default())
         .manage(update::UpdateState::default())
         .manage(chat::ChatState::default())
+        .manage(tessera::TesseraState::default())
         .setup(|app| {
             // Agents change bookmarks through the CLI/MCP, which write settings.json directly.
             let handle = app.handle().clone();
@@ -529,6 +532,10 @@ pub fn run() {
             chat::chat_check,
             chat::chat_send,
             chat::chat_stop,
+            tessera::tessera_status,
+            tessera::tessera_run,
+            tessera::tessera_pause_all,
+            tessera::tessera_pause_agent,
             proposals,
             proposal_content,
             proposal_base,

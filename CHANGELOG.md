@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+## 0.12.1 — 2026-10-06
+
 - **Faster note-to-chat work**: attach the selected text from the open note to a message, and choose Claude's default, Sonnet, Opus or Haiku model before sending.
 - **Sortable query tables**: click a query result header to sort ascending, descending, then return to the query's original order; the chosen sort is written into the query block.
 - Fixed the editing cursor sometimes appearing to jump when clicking or moving with the arrow keys at the boundary between live-preview elements.

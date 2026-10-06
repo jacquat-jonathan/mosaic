@@ -2475,7 +2475,7 @@ dependencies = [
 
 [[package]]
 name = "mosaic-app"
-version = "0.12.0"
+version = "0.12.1"
 dependencies = [
  "chrono",
  "mosaic-core",
@@ -2491,7 +2491,7 @@ dependencies = [
 
 [[package]]
 name = "mosaic-cli"
-version = "0.12.0"
+version = "0.12.1"
 dependencies = [
  "anyhow",
  "base64 0.23.1",
@@ -2508,7 +2508,7 @@ dependencies = [
 
 [[package]]
 name = "mosaic-core"
-version = "0.12.0"
+version = "0.12.1"
 dependencies = [
  "chrono",
  "notify",

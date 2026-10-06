@@ -133,6 +133,8 @@ export interface AgentRun {
   error: string | null;
   proposals: number;
   changes: string[];
+  changed_paths?: string[];
+  proposal_ids?: number[];
 }
 
 export interface TesseraStatus {

@@ -5,7 +5,7 @@ import { useUi } from "./state/ui";
 import { addProperty } from "./editor/noteViews";
 import { parentOf, useVault } from "./state/vault";
 import { useWorkspace } from "./state/workspace";
-import { createVault, deletePath, NEW_KINDS, newNote, newNoteDir, newOfKind, openCalendar, openDailyNote, openVaultFolder, revealInTree } from "./actions";
+import { createVault, deletePath, pickFolderAndMove, NEW_KINDS, newNote, newNoteDir, newOfKind, openCalendar, openDailyNote, openVaultFolder, revealInTree } from "./actions";
 import { isSpecialTab } from "./views/specialTabs";
 import { prefs } from "./state/settings";
 
@@ -108,13 +108,17 @@ const buildCommands = (): Command[] => [
     id: "close-tab",
     label: "Close current tab",
     keys: { code: "KeyW", meta: true },
-    when: hasActive,
-    run: () => useWorkspace.getState().closeTab(useWorkspace.getState().focused, active()!),
+    when: () => !!useWorkspace.getState().activePath(),
+    run: () => useWorkspace.getState().closeTab(useWorkspace.getState().focused, useWorkspace.getState().activePath()!),
   },
   { id: "split-right", label: "Split right", keys: { code: "Backslash", meta: true }, run: () => useWorkspace.getState().split("row") },
   { id: "split-down", label: "Split down", keys: { code: "Backslash", meta: true, shift: true }, run: () => useWorkspace.getState().split("column") },
   { id: "toggle-left", label: "Toggle left sidebar", keys: { code: "KeyL", meta: true, alt: true }, run: () => useUi.getState().toggleLeftSidebar() },
-  { id: "toggle-right", label: "Toggle right panel (backlinks, outline)", keys: { code: "KeyB", meta: true, alt: true }, run: () => useUi.getState().toggleRightPanel() },
+  { id: "toggle-right", label: "Toggle right context panel", keys: { code: "KeyB", meta: true, alt: true }, run: () => useUi.getState().toggleRightPanel() },
+  ...(["notes", "find", "plan", "ai"] as const).map((destination, i) => ({ id: `destination-${destination}`, label: `Go to ${destination}`, keys: { code: `Digit${i+1}`, meta: true }, run: () => useUi.getState().selectDestination(destination) })),
+  ...["chats", "agents", "workflows", "runs", "activity", "connections", "tasks", "today", "week", "overdue"].map(kind => ({ id: `open-${kind}`, label: `Open ${kind}`, run: () => useUi.getState().openView(kind) })),
+  { id: "create-workflow", label: "Create workflow", run: () => useUi.getState().openView("new-workflow") },
+  { id: "move-file", label: "Move current file…", when: hasActive, run: () => pickFolderAndMove([active()!]) },
   { id: "show-files", label: "Show files", run: () => useUi.getState().setSidebarTab("files") },
   { id: "show-bookmarks", label: "Show bookmarks", run: () => useUi.getState().setSidebarTab("bookmarks") },
   { id: "show-tags", label: "Show tags", run: () => useUi.getState().setSidebarTab("tags") },

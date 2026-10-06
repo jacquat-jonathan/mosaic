@@ -49,6 +49,10 @@ pub struct AgentRun {
     pub proposals: usize,
     #[serde(default)]
     pub changes: Vec<String>,
+    #[serde(default)]
+    pub changed_paths: Vec<String>,
+    #[serde(default)]
+    pub proposal_ids: Vec<i64>,
 }
 
 /// What agents may do in a folder (and everything inside it).
@@ -249,6 +253,14 @@ impl Settings {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn old_run_history_gains_empty_detail_fields() {
+        let run: super::AgentRun = serde_json::from_str(r#"{"id":1,"agent":"review","title":"Review","started":1,"finished":2,"late":false,"status":"done","answer":"OK","error":null,"proposals":1,"changes":["Edited note"]}"#).unwrap();
+        assert!(run.proposal_ids.is_empty());
+        assert!(run.changed_paths.is_empty());
+        assert_eq!(run.changes, vec!["Edited note"]);
+    }
+
     use super::*;
 
     #[test]

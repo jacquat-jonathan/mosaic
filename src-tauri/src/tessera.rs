@@ -284,6 +284,8 @@ fn spawn(
             error: None,
             proposals: 0,
             changes: Vec::new(),
+            changed_paths: Vec::new(),
+            proposal_ids: Vec::new(),
         },
     );
     cfg.runs.truncate(100);
@@ -301,38 +303,18 @@ fn spawn(
             }
             s
         });
-        let mut answer = String::new();
-        let mut error = None;
-        let mut proposals = 0;
-        let mut changes = Vec::new();
+        let mut output = RunOutput::default();
         if let Some(out) = stdout {
             for line in BufReader::new(out).lines().map_while(Result::ok) {
                 for event in parse_line(&line) {
-                    match event {
-                        ChatEvent::Text { text } => {
-                            if !answer.is_empty() {
-                                answer.push('\n');
-                            }
-                            answer.push_str(&text);
-                        }
-                        ChatEvent::ToolDone {
-                            review: Some(_), ..
-                        } => proposals += 1,
-                        ChatEvent::Tool {
-                            summary,
-                            writes: true,
-                            ..
-                        } => changes.push(summary),
-                        ChatEvent::Done { error: e, .. } => error = e,
-                        _ => {}
-                    }
+                    output.apply(event);
                 }
             }
         }
         let status = child.wait();
         let stderr = err_tail.join().unwrap_or_default();
-        if error.is_none() && !status.is_ok_and(|s| s.success()) {
-            error = Some(
+        if output.error.is_none() && !status.is_ok_and(|s| s.success()) {
+            output.error = Some(
                 stderr
                     .trim()
                     .lines()
@@ -348,11 +330,18 @@ fn spawn(
         let mut cfg = Settings::load().tessera(&root);
         if let Some(run) = cfg.runs.iter_mut().find(|r| r.id == id) {
             run.finished = Some(Local::now().timestamp());
-            run.status = if error.is_some() { "failed" } else { "done" }.into();
-            run.answer = answer;
-            run.error = error;
-            run.proposals = proposals;
-            run.changes = changes;
+            run.status = if output.error.is_some() {
+                "failed"
+            } else {
+                "done"
+            }
+            .into();
+            run.answer = output.answer;
+            run.error = output.error;
+            run.proposals = output.proposals;
+            run.changes = output.changes;
+            run.changed_paths = output.changed_paths;
+            run.proposal_ids = output.proposal_ids;
         }
         let _ = save(&root, cfg);
         handle
@@ -364,4 +353,89 @@ fn spawn(
         let _ = handle.emit("tessera-changed", ());
     });
     Ok(id)
+}
+
+#[derive(Default)]
+struct RunOutput {
+    answer: String,
+    error: Option<String>,
+    proposals: usize,
+    changes: Vec<String>,
+    changed_paths: Vec<String>,
+    proposal_ids: Vec<i64>,
+    write_tools: std::collections::HashMap<String, (String, Option<String>)>,
+}
+impl RunOutput {
+    fn apply(&mut self, event: ChatEvent) {
+        match event {
+            ChatEvent::Text { text } => {
+                if !self.answer.is_empty() {
+                    self.answer.push('\n');
+                }
+                self.answer.push_str(&text);
+            }
+            ChatEvent::ToolDone { id, error, review } => {
+                if let Some(proposal) = review {
+                    self.proposals += 1;
+                    if !self.proposal_ids.contains(&proposal) {
+                        self.proposal_ids.push(proposal);
+                    }
+                }
+                if let Some((summary, path)) = self.write_tools.remove(&id) {
+                    if error.is_none() {
+                        self.changes.push(summary);
+                        if review.is_none() {
+                            if let Some(path) = path {
+                                if !self.changed_paths.contains(&path) {
+                                    self.changed_paths.push(path);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            ChatEvent::Tool {
+                id,
+                summary,
+                path,
+                writes: true,
+                ..
+            } => {
+                self.write_tools.insert(id, (summary, path));
+            }
+            ChatEvent::Done { error: e, .. } => self.error = e,
+            _ => {}
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn run_details_distinguish_direct_changes_proposals_and_failures() {
+        let mut out = RunOutput::default();
+        for (id, path, error, review) in [
+            ("a", "Changed.md", None, None),
+            ("b", "Proposed.md", None, Some(24)),
+            ("c", "Failed.md", Some("denied".to_string()), None),
+        ] {
+            out.apply(ChatEvent::Tool {
+                id: id.into(),
+                summary: format!("Edit {path}"),
+                path: Some(path.into()),
+                writes: true,
+            });
+            out.apply(ChatEvent::ToolDone {
+                id: id.into(),
+                error,
+                review,
+            });
+        }
+        assert_eq!(out.changed_paths, vec!["Changed.md"]);
+        assert_eq!(out.proposal_ids, vec![24]);
+        assert_eq!(out.proposals, 1);
+        assert_eq!(out.changes.len(), 2);
+        assert!(!out.changes.iter().any(|s| s.contains("Failed")));
+    }
 }

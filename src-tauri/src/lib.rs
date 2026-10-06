@@ -3,6 +3,7 @@
 mod chat;
 mod tessera;
 mod update;
+mod window_state;
 
 use mosaic_core::api::{Mention, Outline, Renamed};
 use mosaic_core::history::Version;
@@ -508,7 +509,20 @@ pub fn run() {
         .manage(update::UpdateState::default())
         .manage(chat::ChatState::default())
         .manage(tessera::TesseraState::default())
+        .on_window_event(|window, event| {
+            if matches!(
+                event,
+                tauri::WindowEvent::CloseRequested { .. }
+                    | tauri::WindowEvent::Moved(_)
+                    | tauri::WindowEvent::Resized(_)
+            ) {
+                window_state::save(window);
+            }
+        })
         .setup(|app| {
+            if let Some(window) = app.get_webview_window("main") {
+                window_state::restore(&window);
+            }
             // Agents change bookmarks through the CLI/MCP, which write settings.json directly.
             let handle = app.handle().clone();
             let watcher = mosaic_core::watch::watch_settings(move || {

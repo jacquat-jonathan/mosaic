@@ -8,11 +8,12 @@ import { api, onVaultChanged } from "../ipc/api";
 import { errorMessage, type Day, type DayTask, type Days } from "../ipc/types";
 import { dayStamp } from "../daily";
 import { openDailyNote } from "../actions";
+import { usePlanning } from "../state/planning";
 import { useWorkspace } from "../state/workspace";
 import { Segmented, Toolbar } from "../viewers/Toolbar";
 import { addDays, atNoon, counts, monthGrid, progress, weekRange } from "./calendar";
 
-type Mode = "month" | "week";
+type Mode = "month" | "week" | "day";
 const MODE_KEY = "mosaic:calendar-mode";
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -29,13 +30,14 @@ function storedMode(): Mode {
   }
 }
 
-export function CalendarView() {
-  const [mode, setModeState] = useState<Mode>(storedMode);
+export function CalendarView({ initialMode }: { initialMode?: Mode }) {
+  const [mode, setModeState] = useState<Mode>(initialMode ?? storedMode);
+  const selectedDay = usePlanning(s => s.selectedDay);
   const [anchor, setAnchor] = useState(() => atNoon(new Date()));
   const [data, setData] = useState<Days | null>(null);
   const [error, setError] = useState<string | null>(null);
   const today = dayStamp();
-  const range = useMemo(() => (mode === "month" ? monthGrid(anchor) : weekRange(anchor)), [mode, anchor]);
+  const range = useMemo(() => (mode === "month" ? monthGrid(anchor) : mode === "day" ? { from: anchor, to: anchor } : weekRange(anchor)), [mode, anchor]);
   const from = dayStamp(range.from);
   const to = dayStamp(range.to);
 
@@ -74,7 +76,7 @@ export function CalendarView() {
     };
   }, [load]);
 
-  const step = (n: number) => setAnchor((a) => (mode === "month" ? atNoon(new Date(a.getFullYear(), a.getMonth() + n, 1)) : addDays(a, 7 * n)));
+  const step = (n: number) => setAnchor((a) => (mode === "month" ? atNoon(new Date(a.getFullYear(), a.getMonth() + n, 1)) : addDays(a, (mode === "day" ? 1 : 7) * n)));
   const title =
     mode === "month"
       ? anchor.toLocaleDateString(undefined, { month: "long", year: "numeric" })
@@ -85,20 +87,19 @@ export function CalendarView() {
       setError((e as { code?: string }).code === "conflict" ? "That note changed meanwhile; the calendar is refreshed." : errorMessage(e));
       load();
     });
-  const openDay = (date: string, note: string | null) =>
-    note ? void useWorkspace.getState().open(note, { newTab: true }) : void openDailyNote(parseDay(date), { newTab: true });
+  const openDay = (date: string) => usePlanning.setState({ selectedDay: date });
 
   const showOverdue = !!data?.overdue.length && today >= from && today <= to;
   return (
     <div className="calendar">
       <Toolbar>
-        <button className="icon" aria-label={mode === "month" ? "Previous month" : "Previous week"} onClick={() => step(-1)}>
+        <button className="icon" aria-label={mode === "month" ? "Previous month" : mode === "day" ? "Previous day" : "Previous week"} onClick={() => step(-1)}>
           <ChevronLeft size={16} />
         </button>
-        <button className="icon" aria-label={mode === "month" ? "Next month" : "Next week"} onClick={() => step(1)}>
+        <button className="icon" aria-label={mode === "month" ? "Next month" : mode === "day" ? "Next day" : "Next week"} onClick={() => step(1)}>
           <ChevronRight size={16} />
         </button>
-        <button onClick={() => setAnchor(atNoon(new Date()))}>Today</button>
+        <button onClick={() => { setAnchor(atNoon(new Date())); usePlanning.setState({ selectedDay: dayStamp() }); }}>Today</button>
         <h2 className="calendar-title">{title}</h2>
         <span className="spacer" />
         <Segmented<Mode>
@@ -106,10 +107,12 @@ export function CalendarView() {
           options={[
             { value: "month", label: "Month" },
             { value: "week", label: "Week" },
+            { value: "day", label: "Day" },
           ]}
           onChange={setMode}
         />
       </Toolbar>
+      <div className="calendar-selection"><span>Selected: {selectedDay}</span><button onClick={() => void openDailyNote(parseDay(selectedDay), { newTab: true })}>Open daily note</button></div>
       {error && <p className="error-text calendar-error">{error}</p>}
       {showOverdue && (
         <section className="calendar-overdue" aria-label="Overdue">
@@ -120,15 +123,15 @@ export function CalendarView() {
       {!data ? (
         <div className="panel-meta">Loading…</div>
       ) : mode === "month" ? (
-        <Month days={data.days} month={anchor.getMonth()} today={today} onOpen={openDay} />
+        <Month days={data.days} month={anchor.getMonth()} today={today} selected={selectedDay} onOpen={openDay} />
       ) : (
-        <Week days={data.days} today={today} onOpen={openDay} onTick={tick} />
+        <Week days={data.days} today={today} selected={selectedDay} onOpen={openDay} onTick={tick} />
       )}
     </div>
   );
 }
 
-function Month({ days, month, today, onOpen }: { days: Day[]; month: number; today: string; onOpen(date: string, note: string | null): void }) {
+function Month({ days, month, today, selected, onOpen }: { days: Day[]; month: number; today: string; selected: string; onOpen(date: string, note: string | null): void }) {
   return (
     <div className="calendar-month" role="grid">
       {WEEKDAYS.map((w) => (
@@ -144,8 +147,9 @@ function Month({ days, month, today, onOpen }: { days: Day[]; month: number; tod
           <button
             key={d.date}
             role="gridcell"
-            className={`calendar-cell ${date.getMonth() !== month ? "other-month" : ""} ${d.date === today ? "today" : ""} ${d.note ? "has-note" : ""}`}
-            title={d.note ? `Open ${noteName(d.note)}` : `Create the daily note for ${d.date}`}
+            className={`calendar-cell ${d.date === selected ? "selected" : ""} ${date.getMonth() !== month ? "other-month" : ""} ${d.date === today ? "today" : ""} ${d.note ? "has-note" : ""}`}
+            aria-selected={d.date === selected}
+            title={d.note ? `Select ${d.date} · ${noteName(d.note)}` : `Select ${d.date}`}
             onClick={() => onOpen(d.date, d.note)}
           >
             <span className="calendar-date">{date.getDate()}</span>
@@ -168,15 +172,15 @@ function Month({ days, month, today, onOpen }: { days: Day[]; month: number; tod
   );
 }
 
-function Week({ days, today, onOpen, onTick }: { days: Day[]; today: string; onOpen(date: string, note: string | null): void; onTick(t: DayTask, done: boolean): void }) {
+function Week({ days, today, selected, onOpen, onTick }: { days: Day[]; today: string; selected: string; onOpen(date: string, note: string | null): void; onTick(t: DayTask, done: boolean): void }) {
   return (
     <div className="calendar-week">
-      {days.map((d, i) => {
+      {days.map((d) => {
         const date = parseDay(d.date);
         return (
-          <section key={d.date} className={`calendar-day ${d.date === today ? "today" : ""}`} aria-label={d.date}>
-            <button className="calendar-day-head" title={d.note ? `Open ${noteName(d.note)}` : `Create the daily note for ${d.date}`} onClick={() => onOpen(d.date, d.note)}>
-              <span className="calendar-weekday">{WEEKDAYS[i % 7]}</span> <span className="calendar-date">{date.getDate()}</span>
+          <section key={d.date} className={`calendar-day ${d.date === selected ? "selected" : ""} ${d.date === today ? "today" : ""}`} aria-label={d.date}>
+            <button aria-pressed={d.date === selected} className="calendar-day-head" title={d.note ? `Select ${d.date} · ${noteName(d.note)}` : `Select ${d.date}`} onClick={() => onOpen(d.date, d.note)}>
+              <span className="calendar-weekday">{WEEKDAYS[(date.getDay() + 6) % 7]}</span> <span className="calendar-date">{date.getDate()}</span>
             </button>
             {d.tasks.length ? <TaskList tasks={d.tasks} onTick={onTick} /> : <p className="calendar-empty">{d.note ? "No tasks" : ""}</p>}
           </section>
@@ -186,7 +190,7 @@ function Week({ days, today, onOpen, onTick }: { days: Day[]; today: string; onO
   );
 }
 
-function TaskList({ tasks, onTick, showNote = false }: { tasks: DayTask[]; onTick(t: DayTask, done: boolean): void; showNote?: boolean }) {
+export function TaskList({ tasks, onTick, showNote = false }: { tasks: DayTask[]; onTick(t: DayTask, done: boolean): void; showNote?: boolean }) {
   const prog = useMemo(() => progress(tasks), [tasks]);
   return (
     <ul className="calendar-tasks">

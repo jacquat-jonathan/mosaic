@@ -52,6 +52,7 @@ interface WorkspaceState {
   closePane(paneId: string): void;
   moveTab(path: string, from: string, to: string, index?: number): void;
   edit(path: string, content: string): void;
+  replaceContent(path: string, content: string): void;
   save(path: string): Promise<void>;
   reload(path: string): Promise<void>;
   /** Loads a file's buffer if it isn't loaded yet (a restored tab shown for the first time). */
@@ -65,6 +66,19 @@ interface WorkspaceState {
   resize(index: number, delta: number): void;
   /** Restores the tabs and splits last used with this vault. */
   restoreLayout(root: string): Promise<void>;
+}
+
+/** Accept the original string-tab layout and sanitize it before using it as workspace state. */
+export function migrateLayout(value: unknown): { panes: Pane[]; direction: SplitDirection; focused: string } | null {
+  if (!value || typeof value !== "object") return null;
+  const saved = value as { panes?: unknown; direction?: unknown; focused?: unknown };
+  if (!Array.isArray(saved.panes)) return null;
+  const panes: Pane[] = saved.panes.filter(p => p && Array.isArray(p.tabs)).map((p, i) => {
+    const tabs: string[] = [...new Set<string>(p.tabs.filter((t: unknown): t is string => typeof t === "string" && !!t))];
+    return { id: typeof p.id === "string" ? p.id : `restored-${i}`, tabs, active: tabs.includes(p.active) ? p.active : tabs[0] ?? null, size: typeof p.size === "number" && Number.isFinite(p.size) && p.size > 0 ? p.size : 1 };
+  });
+  if (!panes.length) return null;
+  return { panes, direction: saved.direction === "column" ? "column" : "row", focused: panes.some(p => p.id === saved.focused) ? saved.focused as string : panes[0].id };
 }
 
 let paneSeq = 1;
@@ -243,6 +257,12 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
       saveTimers.set(path, setTimeout(() => void get().save(path), AUTOSAVE_MS));
     },
 
+    replaceContent(path, content) {
+      get().edit(path, content);
+      const b = get().buffers[path];
+      if (b) updateBuffer(path, { version: b.version + 1 });
+    },
+
     async save(path) {
       clearTimeout(saveTimers.get(path));
       const b = get().buffers[path];
@@ -365,7 +385,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
       layoutRoot = root;
       let saved: Pick<WorkspaceState, "panes" | "direction" | "focused"> | null = null;
       try {
-        saved = JSON.parse(localStorage.getItem(`mosaic:layout:${root}`) ?? "null");
+        saved = migrateLayout(JSON.parse(localStorage.getItem(`mosaic:layout:${root}`) ?? "null"));
       } catch {
         saved = null;
       }
@@ -395,7 +415,7 @@ useWorkspace.subscribe((s, prev) => {
   try {
     localStorage.setItem(
       `mosaic:layout:${layoutRoot}`,
-      JSON.stringify({ panes: s.panes, direction: s.direction, focused: s.focused }),
+      JSON.stringify({ version: 2, panes: s.panes, direction: s.direction, focused: s.focused }),
     );
   } catch {
     // Storage unavailable: layout just isn't remembered.

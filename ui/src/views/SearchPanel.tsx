@@ -61,6 +61,7 @@ export function SearchPanel() {
       <label className="search-box">
         <Search size={14} />
         <input
+          aria-label="Search notes"
           ref={input}
           placeholder="Search notes…  (tag:x  path:folder  “exact phrase”)"
           value={query}

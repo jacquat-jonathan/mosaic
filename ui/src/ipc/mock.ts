@@ -2,7 +2,7 @@
 // It mirrors the core's semantics closely enough for UI work; it is not a second implementation to keep in sync
 // feature-for-feature.
 
-import type { Backlink, CoreError, Entry, FileContent, Proposal, QueryResult, QueryRow, SearchHit, Version } from "./types";
+import type { Agent, AgentRun, Backlink, CoreError, Entry, FileContent, Proposal, QueryResult, QueryRow, SearchHit, Version } from "./types";
 import { kindOf } from "./kinds";
 import { parse as parseYaml } from "yaml";
 
@@ -22,6 +22,7 @@ let updateTimers: ReturnType<typeof setTimeout>[] = [];
 let agentRules: { path: string; access: string }[] = [];
 let tesseraPaused = false;
 const tesseraPausedAgents: string[] = [];
+const tesseraRuns: AgentRun[] = [];
 const proposals: (Proposal & { content: string | null })[] = [];
 
 /** Browser testing: what an agent's change in a folder under review leaves behind. */
@@ -147,6 +148,17 @@ function mockDays(from: string, to: string, today: string) {
     }
   }
   return { days, overdue };
+}
+
+function mockAgents(): Agent[] {
+  return [...files.entries()].filter(([p])=>/^Agents\/[^/]+\.md$/.test(p) || /^Agents\/[^/]+\/SKILL\.md$/i.test(p)).map(([path,f])=>{
+    const skill=/\/SKILL\.md$/i.test(path); const title=skill ? path.split("/")[1] : path.split("/").pop()!.replace(/\.md$/i, "");
+    const fm=/^---\n([\s\S]*?)\n---/.exec(f.content);
+    let props: Record<string, unknown> = {}; try { props=parseYaml(fm?.[1] ?? "") ?? {}; } catch { /* Invalid frontmatter. */ }
+    const body=f.content.slice(fm?.[0].length ?? 0).trim();
+    const allowed=props["may-change"] ?? props.may_change;
+    return {name:String(props.name ?? title).toLowerCase().replace(/[^\p{L}\p{N}]+/gu,"-").replace(/^-|-$/g,""),title,path,skill_folder:skill,description:String(props.description ?? body.split("\n").find(l=>l.trim()) ?? title),schedule:typeof props.schedule === "string" ? props.schedule : null,may_change:Array.isArray(allowed) ? allowed.map(String) : typeof allowed === "string" ? [allowed] : [],instructions:body};
+  });
 }
 
 function seed() {
@@ -605,15 +617,7 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
       return { path: a.path, hash: hash(f.content) };
     }
     case "agents":
-      return [...files.entries()]
-        .filter(([p]) => /^Agents\/[^/]+\.md$/.test(p) || /^Agents\/[^/]+\/SKILL\.md$/i.test(p))
-        .map(([p, f]) => {
-          const skill = /\/SKILL\.md$/i.test(p);
-          const title = skill ? p.split("/")[1] : p.slice(7, -3);
-          const body = f.content.replace(/^---[\s\S]*?\n---\n?/, "").trim();
-          const desc = /\ndescription:\s*(.+)/.exec(f.content)?.[1] ?? body.split("\n").find((l) => l.trim())?.replace(/^#+\s*/, "") ?? title;
-          return { name: title.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-|-$/g, ""), title, description: desc, path: p, skill_folder: skill, schedule: null, may_change: [], instructions: body };
-        });
+      return mockAgents();
     case "chat_check":
       return { path: "/mock/claude", version: "mock" };
     case "chat_send": {
@@ -638,15 +642,20 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
     case "mirror_agents":
       return { written: [], removed: [], skipped: [] };
     case "tessera_status":
-      return { paused: tesseraPaused, agents: [], runs: [] };
+      return { paused: tesseraPaused, agents: mockAgents().filter(a=>a.schedule).map(a=>({name:a.name,title:a.title,schedule:a.schedule,paused:tesseraPausedAgents.includes(a.name),running:tesseraRuns.some(r=>r.agent===a.name&&r.status==="running"),error:null})), runs: tesseraRuns };
     case "tessera_pause_all":
       tesseraPaused = Boolean(a.paused); return null;
     case "tessera_pause_agent": {
       const name = String(a.name); const i = tesseraPausedAgents.indexOf(name);
       if (i >= 0) tesseraPausedAgents.splice(i, 1); if (a.paused) tesseraPausedAgents.push(name); return null;
     }
-    case "tessera_run":
-      return ++chatRuns;
+    case "tessera_run": {
+      const agent=mockAgents().find(agent=>agent.name === a.name);
+      if (!agent) throw err("not_found", "Agent not found");
+      const id=++chatRuns;
+      tesseraRuns.unshift({id,agent:agent.name,title:agent.title,started:Math.floor(Date.now()/1000),finished:Math.floor(Date.now()/1000),late:false,status:"done",answer:"Mock run completed. No files were changed.",error:null,proposals:0,changes:[],changed_paths:[],proposal_ids:[]});
+      emit("tessera-changed",{}); return id;
+    }
     case "days":
       return mockDays(a.from as string, a.to as string, a.today as string);
     case "carry_over":

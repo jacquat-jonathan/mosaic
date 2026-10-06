@@ -27,8 +27,12 @@ of its own source when you click **Check for updates** or **Update** in Settings
   (`.excalidraw`), charts (`.vl.json`) and graphs (`.dot`).
 - **Other files:** sandboxed HTML preview and source editing, a PDF viewer, an editable CSV/TSV
   table, and a syntax-highlighted editor for JSON, YAML, code and text.
-- **Navigation:** full-text search (`tag:`, `path:`, `"phrases"`), backlinks, outline, tags,
-  bookmarks, the ⌘O quick switcher, the ⌘P command palette, tabs, split panes and resizable sidebars.
+- **Navigation:** Notes, Find, Plan and AI destinations; full-text search (`tag:`, `path:`,
+  `"phrases"`), bookmarks, tags, the ⌘O quick switcher and the ⌘P command palette. Notes and feature
+  views share tabs and split panes; resizable context panels follow the active item.
+- **Plan:** Today, month/week/day calendars, tasks and saved task views.
+- **AI workspace:** automatically saved chats per vault, model choices and attachments; manual or
+  scheduled workflows with a guided setup, allowed folders, pause controls and run details.
 - **File tree:** drag and drop to move (links follow), ⌘/⇧-click multi-selection, and a right-click
   menu to duplicate, move, copy links or paths and reveal in Finder. Click the vault name to switch
   between recent vaults or create a new one.
@@ -65,7 +69,7 @@ refuse to open it the first time. Right-click the app, choose **Open**, then con
 
 ## Connect AI
 
-In the app, open **Settings › AI** (or click the robot icon in the sidebar). It installs the CLI and
+In the app, open **AI › Connections**. It installs the CLI and
 shows the exact commands for your vault. Or set it up by hand:
 
 **Claude Code**

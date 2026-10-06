@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { create } from "zustand";
-import { Bot, Download, FolderOpen, Info, Keyboard, Palette, PenLine, RefreshCw, X } from "lucide-react";
+import { Download, FolderOpen, Info, Keyboard, Palette, PenLine, RefreshCw, X } from "lucide-react";
 import { useUi, type SettingsSection } from "../state/ui";
 import { NOTE_SIZE_MAX, NOTE_SIZE_MIN, useSettings, type NoteWidth, type Theme } from "../state/settings";
 import { useVault } from "../state/vault";
@@ -15,25 +15,21 @@ const SECTIONS: { id: SettingsSection; label: string; icon: typeof Palette }[] =
   { id: "appearance", label: "Appearance", icon: Palette },
   { id: "editor", label: "Editor & files", icon: PenLine },
   { id: "vault", label: "Vault", icon: FolderOpen },
-  { id: "ai", label: "AI", icon: Bot },
   { id: "shortcuts", label: "Shortcuts", icon: Keyboard },
   { id: "about", label: "About & updates", icon: Info },
 ];
 
 export function Settings() {
-  const section = useUi((s) => s.settings);
-  if (!section) return null;
-  const close = () => useUi.getState().closeSettings();
+  const section = useUi((s) => s.settings) ?? "appearance";
+  const close = () => { const ws = useWorkspace.getState(); ws.closeTab(ws.focused, "mosaic:settings"); };
   const current = SECTIONS.find((s) => s.id === section) ?? SECTIONS[0];
   return (
-    <div className="modal-backdrop" onMouseDown={close}>
+    <div className="settings-workspace">
       <div
         className="settings"
-        role="dialog"
-        aria-modal="true"
+        role="region"
         aria-label="Settings"
         onMouseDown={(e) => e.stopPropagation()}
-        onKeyDown={(e) => e.key === "Escape" && close()}
       >
         <nav className="settings-nav" aria-label="Settings sections">
           <h2>Settings</h2>
@@ -46,7 +42,7 @@ export function Settings() {
         <section className="settings-body">
           <header className="settings-head">
             <h2>{current.label}</h2>
-            <button aria-label="Close settings" title="Close (esc)" onClick={close} autoFocus>
+            <button aria-label="Close settings" title="Close settings" onClick={close}>
               <X size={16} />
             </button>
           </header>

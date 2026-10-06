@@ -1,4 +1,6 @@
 import { create } from "zustand";
+import { usePlanning } from "./planning";
+import { useChat, listenToChat } from "./chat";
 import { api } from "../ipc/api";
 import { errorMessage, type Entry, type VaultInfo } from "../ipc/types";
 import { useWorkspace } from "./workspace";
@@ -121,6 +123,9 @@ export const useVault = create<VaultState>((set, get) => {
         await get().refresh();
         set({ bookmarks: await api.bookmarks().catch(() => []) });
         void api.mirrorAgents().catch(() => {});
+        useChat.getState().restore(vault.root);
+        usePlanning.getState().restore(vault.root);
+        listenToChat();
         await useWorkspace.getState().restoreLayout(vault.root);
       } catch (e) {
         fail(e);

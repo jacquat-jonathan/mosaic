@@ -1,25 +1,26 @@
 import { useEffect, useState } from "react";
-import { FilePlus, FolderPlus, FolderOpen, Files, Search, Hash, Shapes, Bot, Bookmark, ChevronDown, ChevronsDownUp, PanelLeftClose, Settings as Gear, Activity, CalendarDays, CalendarRange, MessageSquare } from "lucide-react";
+import { FilePlus, FolderPlus, FolderOpen, Files, Search, Shapes, Bot, ChevronDown, ChevronsDownUp, PanelLeftClose, Settings as Gear, CalendarDays } from "lucide-react";
 import { api, onIndexProgress, pickFolder, revealInFinder } from "./ipc/api";
 import { useVault } from "./state/vault";
 import { FileTree } from "./views/FileTree";
 import { Workspace } from "./views/Workspace";
 import { ConfirmDialog, ContextMenu, ErrorToast, PromptDialog } from "./views/Overlays";
-import { createVault, newNote, newNoteDir, NEW_KINDS, newOfKind, openCalendar, openDailyNote, openVaultFolder } from "./actions";
+import { createVault, newNote, newNoteDir, NEW_KINDS, newOfKind, openDailyNote, openVaultFolder } from "./actions";
 import { useShortcuts } from "./shortcuts";
-import { RIGHT_DEFAULT, SIDEBAR_DEFAULT, useUi, type MenuItem, type SidebarTab } from "./state/ui";
-import { SearchPanel } from "./views/SearchPanel";
-import { TagsPanel } from "./views/TagsPanel";
+import { RIGHT_DEFAULT, SIDEBAR_DEFAULT, useUi, type MenuItem, type Destination } from "./state/ui";
 import { RightPanel } from "./views/RightPanel";
 import { QuickSwitcher } from "./views/QuickSwitcher";
 import { startBookmarkSync, startVaultSync } from "./sync";
-import { Settings, startUpdateListeners } from "./views/Settings";
+import { startUpdateListeners } from "./views/Settings";
 import "./state/settings";
 import { Picker } from "./views/Picker";
-import { BookmarksPanel } from "./views/BookmarksPanel";
 import { Resizer } from "./views/Resizer";
 import { HistoryModal } from "./views/HistoryModal";
-import { ActivityPanel } from "./views/ActivityPanel";
+import { AreaSidebar } from "./views/AreaSidebar";
+import { useWorkspace } from "./state/workspace";
+import { contextKind } from "./views/specialTabs";
+import { useChat } from "./state/chat";
+import { useAttention, startAttention } from "./state/attention";
 import { useReview } from "./state/review";
 import { shortcutOf } from "./commands";
 
@@ -68,7 +69,6 @@ export function App() {
       <PromptDialog />
       <QuickSwitcher />
       <Picker />
-      <Settings />
       <HistoryModal />
       <ErrorToast />
     </>
@@ -99,12 +99,11 @@ function Welcome() {
   );
 }
 
-const TABS: { id: SidebarTab; label: string; icon: typeof Files }[] = [
-  { id: "files", label: "Files", icon: Files },
-  { id: "search", label: "Search (⇧⌘F)", icon: Search },
-  { id: "bookmarks", label: "Bookmarks", icon: Bookmark },
-  { id: "tags", label: "Tags", icon: Hash },
-  { id: "activity", label: "AI activity: changes by agents, with undo", icon: Activity },
+const TABS: { id: Destination; label: string; icon: typeof Files }[] = [
+  { id: "notes", label: "Notes", icon: Files },
+  { id: "find", label: "Find", icon: Search },
+  { id: "plan", label: "Plan", icon: CalendarDays },
+  { id: "ai", label: "AI", icon: Bot },
 ];
 
 /** Dropdown under the vault name: recent vaults, open or create another, reveal in Finder. */
@@ -139,7 +138,7 @@ async function showVaultMenu(anchor: DOMRect) {
 
 function Main() {
   const vault = useVault((s) => s.vault)!;
-  const tab = useUi((s) => s.sidebarTab);
+  const tab = useUi((s) => s.destination);
   const right = useUi((s) => s.rightPanel);
   const left = useUi((s) => s.leftSidebar);
   const sidebarWidth = useUi((s) => s.sidebarWidth);
@@ -147,51 +146,60 @@ function Main() {
   const indexing = useVault((s) => s.indexing);
   const offline = useVault((s) => s.offline);
   const pendingReviews = useReview((s) => s.pending.length);
+  const chatAttention = useChat(s => Object.values(s.chats).filter(c => c.run === null && (c.items.at(-1)?.kind === "error" || c.noMosaic)).length);
+  const attention = useAttention((s) => s.count);
+  const active = useWorkspace((s) => s.panes.find(p => p.id === s.focused)?.active ?? null);
+  useEffect(() => startAttention(), [vault.root]);
   const ui = useUi.getState;
+  useEffect(() => {
+    const context = window.matchMedia("(max-width: 1100px)");
+    const area = window.matchMedia("(max-width: 800px)");
+    const collapseContext = () => { if (context.matches) useUi.setState({ rightPanel: false }); };
+    const collapseArea = () => { if (area.matches) useUi.setState({ leftSidebar: false }); };
+    collapseContext(); collapseArea();
+    context.addEventListener("change", collapseContext); area.addEventListener("change", collapseArea);
+    return () => { context.removeEventListener("change", collapseContext); area.removeEventListener("change", collapseArea); };
+  }, []);
+  useEffect(() => {
+    if (window.matchMedia("(max-width: 800px)").matches) useUi.setState({ leftSidebar: false });
+  }, [active]);
   // Agents' proposals arrive from another process: check for them while this vault is open.
   useEffect(() => useReview.getState().watch(), [vault.root]);
   return (
     <div className={`shell ${left ? "" : "no-left"}`}>
-      <nav className="icon-bar" aria-label="Panels">
-        <div className="icon-bar-drag" data-tauri-drag-region />
+      <header className="window-chrome" data-tauri-drag-region><span data-tauri-drag-region>Mosaic — {vault.name}</span></header>
+      <div className="shell-body">
+      <nav className="icon-bar" aria-label="Destinations" data-focus-region tabIndex={-1}>
         <div role="tablist" aria-orientation="vertical" className="icon-bar-group">
           {TABS.map((t) => (
             <button
               key={t.id}
               role="tab"
-              aria-selected={left && tab === t.id}
+              aria-selected={tab === t.id}
+              tabIndex={tab === t.id ? 0 : -1}
+              onKeyDown={e => {
+                if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) return;
+                e.preventDefault(); const i = TABS.indexOf(t); const at = e.key === "Home" ? 0 : e.key === "End" ? TABS.length - 1 : (i + (e.key === "ArrowDown" ? 1 : -1) + TABS.length) % TABS.length;
+                useUi.setState({ destination: TABS[at].id, leftSidebar: true }); (e.currentTarget.parentElement?.children[at] as HTMLElement)?.focus();
+              }}
               aria-label={t.label}
               title={left && tab === t.id ? `${t.label} — click to hide the sidebar` : t.label}
-              className={left && tab === t.id ? "active" : ""}
-              onClick={() => {
-                // The open panel's icon hides the sidebar; any other icon shows its panel.
-                if (left && tab === t.id) ui().toggleLeftSidebar();
-                else if (t.id === "search") ui().showSearch();
-                else ui().setSidebarTab(t.id);
-              }}
+              className={tab === t.id ? "active" : ""}
+              onClick={() => ui().selectDestination(t.id)}
             >
               <t.icon size={18} />
-              {t.id === "activity" && pendingReviews > 0 && <span className="tab-badge" aria-label={`${pendingReviews} waiting for review`}>{pendingReviews}</span>}
+              {t.id === "ai" && pendingReviews + attention + chatAttention > 0 && <span className="tab-badge" aria-label={`${pendingReviews + attention + chatAttention} need attention`}>{pendingReviews + attention + chatAttention}</span>}
             </button>
           ))}
         </div>
-        <button aria-label="Calendar" title="Calendar: each day's tasks" onClick={() => openCalendar()}>
-          <CalendarRange size={18} />
-        </button>
-        <button aria-label="Chat with Claude" title={`Chat with Claude (${shortcutOf("chat")})`} onClick={() => ui().showChat()}>
-          <MessageSquare size={18} />
-        </button>
         <span className="spacer" />
-        <button title="Connect AI (MCP / CLI)" aria-label="Connect AI" onClick={() => ui().openSettings("ai")}>
-          <Bot size={18} />
-        </button>
         <button title={`Settings (${shortcutOf("settings")})`} aria-label="Settings" onClick={() => ui().openSettings()}>
           <Gear size={18} />
         </button>
       </nav>
       {left && (
-        <aside className="sidebar" style={{ width: sidebarWidth }}>
-          <div className="sidebar-head" data-tauri-drag-region>
+        <aside className="sidebar" style={{ width: sidebarWidth }} aria-label={`${tab} sidebar`} data-focus-region tabIndex={-1}>
+          <div className="sidebar-head">
             <button
               className="vault-name"
               title={`${vault.root}\nSwitch, open or create a vault`}
@@ -205,7 +213,7 @@ function Main() {
               <PanelLeftClose size={16} />
             </button>
           </div>
-          {tab === "files" && (
+          {tab === "notes" && (
             <>
               <div className="tree-toolbar">
                 <button aria-label="New note" title={`New note (${shortcutOf("new-note")})`} onClick={() => void newNote(newNoteDir())}>
@@ -235,10 +243,7 @@ function Main() {
               <FileTree />
             </>
           )}
-          {tab === "search" && <SearchPanel />}
-          {tab === "bookmarks" && <BookmarksPanel />}
-          {tab === "tags" && <TagsPanel />}
-          {tab === "activity" && <ActivityPanel />}
+          {tab !== "notes" && <AreaSidebar destination={tab} />}
           {indexing && (
             <div className="status">
               Indexing {indexing.done.toLocaleString()} / {indexing.total.toLocaleString()}
@@ -262,7 +267,7 @@ function Main() {
         )}
         <Workspace />
       </main>
-      {right && (
+      {right && contextKind(active) && (
         <div className="right-wrap" style={{ width: rightWidth }}>
           <Resizer
             side="left"
@@ -271,9 +276,10 @@ function Main() {
             onResize={(w) => ui().setRightWidth(w)}
             onReset={() => ui().setRightWidth(RIGHT_DEFAULT)}
           />
-          <RightPanel />
+          <RightPanel key={active} />
         </div>
       )}
+      </div>
     </div>
   );
 }

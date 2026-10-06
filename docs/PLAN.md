@@ -223,7 +223,18 @@ Done 2026-10-06, released as 0.12.1.
 - [x] Query tables sort by clicking a column header; the query block keeps the selected sort
 - [x] Chat can attach selected note text and choose the Claude model
 - [x] The caret stays stable when it crosses live-preview element boundaries
-- [ ] Review and rethink the overall UI now that more features share the sidebars, tab bars and editor actions
+- [x] Review and rethink the overall UI now that more features share the sidebars, tab bars and editor actions (M24)
+
+### M24 — UI architecture cleanup
+Implemented 2026-10-07, release 0.13.0. Details and remaining manual acceptance checks are in the vault note `Architecture/M24 UI architecture cleanup.md`; completed work is in `Architecture/Done.md`.
+- [x] Shared macOS title strip; Notes, Find, Plan and AI rail with independent destination/sidebar state
+- [x] Mixed workspace tabs and split panes for notes, search, calendar, chats, workflows, runs, activity, connections and settings
+- [x] Persisted layouts with migration; contextual note/chat/workflow/run/calendar panels and action menus
+- [x] Automatically saved per-vault chats, grouping, titles, rename/delete, drafts, context, models and sessions
+- [x] Workflow cards, guided agent/trigger/folder creation, source-preserving edits and detailed run/proposal associations
+- [x] Today, Calendar, Tasks and saved task views; compact layouts, keyboard focus and accessible status labels
+- [x] UI/Rust coverage, production build and representative browser/native checks
+- [ ] Complete remaining manual native dragging/geometry, visual-matrix and accessibility acceptance checks
 
 ## Working rules
 - `scripts/check.sh` green before each milestone commit.

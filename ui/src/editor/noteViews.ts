@@ -59,3 +59,11 @@ export function addProperty(path: string): boolean {
   view.focus();
   return true;
 }
+
+/** Reveal source at an offset, used by workspace context actions. */
+export function revealNotePosition(path: string, position: number): void {
+  const view = views.get(path);
+  if (!view) return;
+  view.dispatch({ selection: { anchor: Math.min(position, view.state.doc.length) }, scrollIntoView: true });
+  view.focus();
+}

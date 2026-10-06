@@ -1,4 +1,4 @@
-// The chat with Claude, in the right panel. Claude Code runs headless in the vault (src-tauri/src/chat.rs)
+// A persistent workspace chat with Claude. Claude Code runs headless in the vault (src-tauri/src/chat.rs)
 // and changes notes only through Mosaic's tools, so every change is in AI activity with Undo, and in
 // reviewed folders becomes a proposal. The open note is attached as context; agents from Agents/
 // start a message (pick one, or type /name).
@@ -16,26 +16,27 @@ import { useWorkspace } from "../state/workspace";
 import { isSpecialTab } from "./specialTabs";
 import { dayStamp } from "../daily";
 import { noteSelection } from "../editor/noteViews";
-import { useSettings } from "../state/settings";
 
 const noteName = (p: string) => (p.split("/").pop() ?? p).replace(/\.md$/i, "");
 
-export function ChatPanel() {
-  const items = useChat((s) => s.items);
-  const run = useChat((s) => s.run);
-  const cost = useChat((s) => s.cost);
-  const noMosaic = useChat((s) => s.noMosaic);
-  const active = useWorkspace((s) => s.panes.find((p) => p.id === s.focused)?.active ?? null);
+export function ChatPanel({ id }: { id: string }) {
+  const chat = useChat((s) => s.chats[id]);
+  if (!chat) return <div className="empty"><p>This chat is no longer available.</p><button onClick={() => useUi.getState().showChat()}>New chat</button></div>;
+  return <ConversationView key={id} id={id} />;
+}
+function ConversationView({ id }: { id: string }) {
+  const chat = useChat((s) => s.chats[id]);
+  const { items, run, cost, noMosaic, attached, selection, agent, draft: input, model } = chat;
+  const storageError = useChat((s) => s.storageError);
+  const update = (patch: Partial<typeof chat>) => useChat.getState().update(id, patch);
+  const setAgent = (agent: string | null) => update({ agent });
+  const setAttached = (f: (a: string[]) => string[]) => update({ attached: f(attached) });
+  const setSelection = (selection: typeof chat.selection) => update({ selection });
+  const setInput = (draft: string) => update({ draft });
+  const active = useWorkspace((s) => s.panes.map(p => p.active).find(p => p && !isSpecialTab(p)) ?? null);
   const [claude, setClaude] = useState<ClaudeInfo | null>(null);
   const [agents, setAgents] = useState<Agent[]>([]);
-  const [agent, setAgent] = useState<string | null>(null);
-  const [attached, setAttached] = useState<string[]>([]);
-  const [selection, setSelection] = useState<{ path: string; text: string } | null>(null);
-  const model = useSettings((s) => s.chatModel);
-  const setModel = useSettings((s) => s.set);
-  // The open note is attached unless removed (for that note).
   const [skipped, setSkipped] = useState<string | null>(null);
-  const [input, setInput] = useState("");
   const [error, setError] = useState<string | null>(null);
   const list = useRef<HTMLDivElement>(null);
 
@@ -48,7 +49,8 @@ export function ChatPanel() {
     list.current?.scrollTo({ top: list.current.scrollHeight });
   }, [items, run]);
 
-  const activeNote = active && !isSpecialTab(active) && active !== skipped ? active : null;
+  const candidate = active && !isSpecialTab(active) ? active : attached[0] ?? null;
+  const activeNote = candidate !== skipped ? candidate : null;
   const context = useMemo(() => [...new Set([...(activeNote ? [activeNote] : []), ...attached])], [activeNote, attached]);
 
   const send = () => {
@@ -65,7 +67,7 @@ export function ChatPanel() {
     if (!text && !use) return;
     setError(null);
     setInput("");
-    void useChat.getState().send(text || "Go ahead.", context, activeNote, use, selection, model || null);
+    void useChat.getState().send(id, text || "Go ahead.", context, activeNote, use, selection, model || null);
     setSelection(null);
   };
   const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -120,6 +122,8 @@ export function ChatPanel() {
 
   return (
     <div className="chat">
+      <header className="workspace-heading"><div><h2>{chat.title}</h2><span>Claude Code · {model || "Default model"}</span></div><button onClick={async () => { const title = await useUi.getState().askText({ title: "Rename chat", value: chat.title }); if (title?.trim()) update({ title: title.trim() }); }}>Rename</button></header>
+      {storageError && <p className="error-text">{storageError}</p>}
       <div className="chat-list" ref={list} onClick={(e) => openLink(e)}>
         {items.length === 0 && (
           <div className="chat-empty">
@@ -175,6 +179,7 @@ export function ChatPanel() {
           </button>
         </div>
         <textarea
+          aria-label="Message to Claude"
           value={input}
           rows={3}
           placeholder={agent ? "Anything to add for this agent? (↵ to run)" : agents.length ? "Ask Claude… (↵ to send, /agent to run one)" : "Ask Claude… (↵ to send)"}
@@ -182,7 +187,7 @@ export function ChatPanel() {
           onKeyDown={onKey}
         />
         <div className="chat-actions">
-          <button title="New chat" aria-label="New chat" onClick={() => useChat.getState().clear()} disabled={!items.length}>
+          <button title="New chat" aria-label="New chat" onClick={() => useUi.getState().showChat()} disabled={!items.length}>
             <Plus size={14} />
           </button>
           <button title="Save this chat as a note in Agents/Chats" aria-label="Save as note" onClick={() => void save()} disabled={!items.length || run !== null}>
@@ -190,7 +195,7 @@ export function ChatPanel() {
           </button>
           {cost > 0 && <span className="chat-cost" title="What this chat has cost so far">${cost.toFixed(2)}</span>}
           <label className="chat-model" title="Claude Code model for new answers">
-            <select aria-label="Chat model" value={model} onChange={(e) => setModel("chatModel", e.target.value as "" | "sonnet" | "opus" | "haiku")} disabled={run !== null}>
+            <select aria-label="Chat model" value={model} onChange={(e) => update({ model: e.target.value })} disabled={run !== null}>
               <option value="">Default model</option>
               <option value="sonnet">Sonnet</option>
               <option value="opus">Opus</option>
@@ -199,7 +204,7 @@ export function ChatPanel() {
           </label>
           <span className="spacer" />
           {run !== null ? (
-            <button className="danger" onClick={() => useChat.getState().stop()}>
+            <button className="danger" onClick={() => useChat.getState().stop(id)}>
               <Square size={12} /> Stop
             </button>
           ) : (

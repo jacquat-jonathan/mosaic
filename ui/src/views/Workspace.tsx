@@ -1,13 +1,15 @@
 import { Fragment, useState, type DragEvent } from "react";
-import { CalendarDays, Columns2, PanelLeftOpen, PanelRight, X } from "lucide-react";
-import { isSpecialTab, specialTabName } from "./specialTabs";
+import { CalendarDays, Columns2, PanelLeftOpen, PanelRight, MoreHorizontal, X } from "lucide-react";
+import { isSpecialTab, specialTabName, parseView, contextKind } from "./specialTabs";
 import { useWorkspace, type Pane, type SplitDirection } from "../state/workspace";
 import { useVault } from "../state/vault";
 import { useUi } from "../state/ui";
 import { FileView } from "../viewers/FileView";
 import { displayName, kindIcon } from "./FileTree";
 import { kindOf } from "../ipc/kinds";
-import { shortcutOf } from "../commands";
+import { commands, shortcutOf } from "../commands";
+
+import { useChat } from "../state/chat";
 
 const TAB_DRAG = "application/x-mosaic-tab";
 
@@ -85,6 +87,8 @@ function PaneView({ pane, topLeft, topRight }: { pane: Pane; topLeft: boolean; t
     <section
       className={`pane ${focused && multi ? "focused" : ""} ${dropping ? "drop" : ""} ${topLeft ? "top-left" : ""}`}
       style={{ flexGrow: pane.size ?? 1 }}
+      aria-label="Workspace pane" data-focus-region tabIndex={-1}
+      onFocusCapture={() => useWorkspace.getState().focus(pane.id)}
       onMouseDownCapture={() => useWorkspace.getState().focus(pane.id)}
       onDragOver={(ev) => {
         if (ev.dataTransfer.types.includes(TAB_DRAG)) {
@@ -95,13 +99,13 @@ function PaneView({ pane, topLeft, topRight }: { pane: Pane; topLeft: boolean; t
       onDragLeave={() => setDropping(false)}
       onDrop={(ev) => onDrop(ev)}
     >
-      <div className="tabbar" data-tauri-drag-region>
+      <div className="tabbar">
         {topLeft && !left && (
           <button className="bar-toggle" aria-label="Show sidebar" title={`Show sidebar (${shortcutOf("toggle-left")})`} onClick={() => useUi.getState().toggleLeftSidebar()}>
             <PanelLeftOpen size={16} />
           </button>
         )}
-        <div className="tabs" data-tauri-drag-region>
+        <div className="tabs" role="tablist" aria-label="Workspace tabs">
           {pane.tabs.map((path, i) => (
             <Tab key={path} pane={pane} path={path} active={pane.active === path} onDropAt={(ev) => onDrop(ev, i)} />
           ))}
@@ -117,12 +121,18 @@ function PaneView({ pane, topLeft, topRight }: { pane: Pane; topLeft: boolean; t
         >
           <Columns2 size={16} />
         </button>
-        {topRight && (
+        <button className="bar-toggle" aria-label="More workspace actions" aria-haspopup="menu" onClick={e => {
+          const r = e.currentTarget.getBoundingClientRect();
+          useWorkspace.getState().focus(pane.id);
+          const ids = ["add-property", "file-history", "export-html", "export-pdf", "move-file", "rename", "bookmark", "delete", "split-down"];
+          useUi.getState().showMenu(r.right - 220, r.bottom, commands().filter(c => ids.includes(c.id) && (c.when?.() ?? true)).map(c => ({ label: c.label, action: c.run, danger: c.id === "delete" })));
+        }}><MoreHorizontal size={16} /></button>
+        {topRight && contextKind(pane.active) && (
           <button
             className={`bar-toggle ${right ? "active" : ""}`}
             aria-label={right ? "Hide right panel" : "Show right panel"}
             aria-pressed={right}
-            title={`${right ? "Hide" : "Show"} backlinks and outline (${shortcutOf("toggle-right")})`}
+            title={`${right ? "Hide" : "Show"} context panel (${shortcutOf("toggle-right")})`}
             onClick={() => useUi.getState().toggleRightPanel()}
           >
             <PanelRight size={16} />
@@ -162,11 +172,20 @@ function Tab({ pane, path, active, onDropAt }: { pane: Pane; path: string; activ
   const dirty = useWorkspace((s) => s.buffers[path]?.dirty ?? false);
   const kind = useWorkspace((s) => s.buffers[path]?.kind) ?? kindOf(path);
   const special = isSpecialTab(path);
-  const name = special ? specialTabName(path) : displayName({ name: path.split("/").pop() ?? path, kind });
+  const chatTitle = useChat(s => s.chats[parseView(path).id]?.title);
+  const name = special && parseView(path).kind === "chat" && chatTitle ? chatTitle : special ? specialTabName(path) : displayName({ name: path.split("/").pop() ?? path, kind });
   const ws = useWorkspace.getState;
   return (
     <div
       className={`tab ${active ? "active" : ""}`}
+      role="tab" aria-selected={active} tabIndex={active ? 0 : -1}
+      onKeyDown={e => {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); ws().activate(pane.id, path); }
+        if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) {
+          e.preventDefault(); const i = pane.tabs.indexOf(path); const at = e.key === "Home" ? 0 : e.key === "End" ? pane.tabs.length - 1 : (i + (e.key === "ArrowRight" ? 1 : -1) + pane.tabs.length) % pane.tabs.length;
+          ws().activate(pane.id, pane.tabs[at]); (e.currentTarget.parentElement?.children[at] as HTMLElement)?.focus();
+        }
+      }}
       title={special ? specialTabName(path) : path}
       draggable
       onDragStart={(ev) => ev.dataTransfer.setData(TAB_DRAG, JSON.stringify({ path, from: pane.id }))}

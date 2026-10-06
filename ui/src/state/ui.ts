@@ -2,6 +2,10 @@
 // the webview.
 
 import { create } from "zustand";
+import { useWorkspace } from "./workspace";
+import { useChat } from "./chat";
+import { noteSelection } from "../editor/noteViews";
+import { isSpecialTab, viewPath } from "../views/specialTabs";
 
 export interface MenuItem {
   label: string;
@@ -52,7 +56,7 @@ export type SettingsSection = "appearance" | "editor" | "vault" | "ai" | "shortc
 
 export type SidebarTab = "files" | "search" | "tags" | "bookmarks" | "activity";
 
-export type RightTab = "links" | "chat" | "runs";
+export type Destination = "notes" | "find" | "plan" | "ai";
 
 export const SIDEBAR_DEFAULT = 260;
 export const RIGHT_DEFAULT = 280;
@@ -61,6 +65,7 @@ export const PANEL_MAX = 560;
 const PREFS_KEY = "mosaic:ui";
 
 interface Prefs {
+  destination: Destination;
   sidebarWidth: number;
   rightWidth: number;
   leftSidebar: boolean;
@@ -70,11 +75,12 @@ interface Prefs {
 export const clampPanel = (w: number) => Math.round(Math.max(PANEL_MIN, Math.min(PANEL_MAX, w)));
 
 function loadPrefs(): Prefs {
-  const d: Prefs = { sidebarWidth: SIDEBAR_DEFAULT, rightWidth: RIGHT_DEFAULT, leftSidebar: true, rightPanel: true };
+  const d: Prefs = { destination: "notes", sidebarWidth: SIDEBAR_DEFAULT, rightWidth: RIGHT_DEFAULT, leftSidebar: true, rightPanel: true };
   try {
     const saved = JSON.parse(localStorage.getItem(PREFS_KEY) ?? "null") as Partial<Prefs> | null;
     if (!saved) return d;
     return {
+      destination: ["notes", "find", "plan", "ai"].includes(saved.destination ?? "") ? saved.destination! : d.destination,
       sidebarWidth: typeof saved.sidebarWidth === "number" ? clampPanel(saved.sidebarWidth) : d.sidebarWidth,
       rightWidth: typeof saved.rightWidth === "number" ? clampPanel(saved.rightWidth) : d.rightWidth,
       leftSidebar: saved.leftSidebar ?? d.leftSidebar,
@@ -86,6 +92,9 @@ function loadPrefs(): Prefs {
 }
 
 interface UiState {
+  destination: Destination;
+  selectDestination(destination: Destination): void;
+  openView(kind: string, id?: string): void;
   sidebarTab: SidebarTab;
   searchQuery: string;
   /** Bumped to focus the search box. */
@@ -99,10 +108,7 @@ interface UiState {
   history: { path: string; focus?: number } | null;
   openHistory(path: string, focus?: number): void;
   closeHistory(): void;
-  /** What the right panel shows: backlinks and outline, or the chat with Claude. */
-  rightTab: RightTab;
   showChat(): void;
-  setRightTab(tab: RightTab): void;
   rightPanel: boolean;
   leftSidebar: boolean;
   sidebarWidth: number;
@@ -132,20 +138,21 @@ interface UiState {
 const prefs = loadPrefs();
 
 export const useUi = create<UiState>((set, get) => ({
+  destination: prefs.destination,
+  selectDestination: (destination) => set((s) => ({ destination, leftSidebar: s.destination === destination ? !s.leftSidebar : true })),
+  openView: (kind, id) => { void useWorkspace.getState().open(viewPath(kind, id), { newTab: true }); },
   sidebarTab: "files",
   searchQuery: "",
   searchFocus: 0,
   switcher: false,
   settings: null,
-  openSettings: (section = "appearance") => set({ settings: section, menu: null, picker: null }),
+  openSettings: (section = "appearance") => { set({ settings: section, menu: null, picker: null, ...(section === "ai" ? { destination: "ai" as const, leftSidebar: true } : {}) }); get().openView(section === "ai" ? "connections" : "settings"); },
   closeSettings: () => set({ settings: null }),
   history: null,
   openHistory: (path, focus) => set({ history: { path, focus }, menu: null, picker: null }),
   closeHistory: () => set({ history: null }),
   rightPanel: prefs.rightPanel,
-  rightTab: "links",
-  showChat: () => set({ rightPanel: true, rightTab: "chat" }),
-  setRightTab: (rightTab) => set({ rightTab }),
+  showChat: () => { set({ destination: "ai", leftSidebar: true }); const active = useWorkspace.getState().activePath(); const note = active && !isSpecialTab(active) ? active : null; const id = useChat.getState().create(note ? [note] : []); const selected = note ? noteSelection(note) : null; if (selected && selected.text.length <= 20000) useChat.getState().update(id, { selection: { path: selected.path, text: selected.text } }); get().openView("chat", id); },
   leftSidebar: prefs.leftSidebar,
   sidebarWidth: prefs.sidebarWidth,
   rightWidth: prefs.rightWidth,
@@ -155,10 +162,10 @@ export const useUi = create<UiState>((set, get) => ({
   picker: null,
   openPicker: (picker) => set({ picker, menu: null }),
   closePicker: () => set({ picker: null }),
-  setSidebarTab: (sidebarTab) => set({ sidebarTab, leftSidebar: true }),
+  setSidebarTab: (sidebarTab) => { set({ sidebarTab, destination: sidebarTab === "files" ? "notes" : sidebarTab === "activity" ? "ai" : "find", leftSidebar: true }); if (sidebarTab === "activity") get().openView("activity"); },
   setSearchQuery: (searchQuery) => set({ searchQuery }),
   showSearch: (q) =>
-    set((s) => ({ sidebarTab: "search", leftSidebar: true, searchQuery: q ?? s.searchQuery, searchFocus: s.searchFocus + 1 })),
+    set((s) => ({ destination: "find", sidebarTab: "search", leftSidebar: true, searchQuery: q ?? s.searchQuery, searchFocus: s.searchFocus + 1 })),
   setSwitcher: (switcher) => set({ switcher }),
   toggleRightPanel: () => set((s) => ({ rightPanel: !s.rightPanel })),
   menu: null,
@@ -181,6 +188,7 @@ export const useUi = create<UiState>((set, get) => ({
 // Panel sizes and visibility are app preferences (the app's own storage, never the vault).
 useUi.subscribe((s, prev) => {
   if (
+    s.destination === prev.destination &&
     s.sidebarWidth === prev.sidebarWidth &&
     s.rightWidth === prev.rightWidth &&
     s.leftSidebar === prev.leftSidebar &&
@@ -188,7 +196,7 @@ useUi.subscribe((s, prev) => {
   )
     return;
   try {
-    const p: Prefs = { sidebarWidth: s.sidebarWidth, rightWidth: s.rightWidth, leftSidebar: s.leftSidebar, rightPanel: s.rightPanel };
+    const p: Prefs = { destination: s.destination, sidebarWidth: s.sidebarWidth, rightWidth: s.rightWidth, leftSidebar: s.leftSidebar, rightPanel: s.rightPanel };
     localStorage.setItem(PREFS_KEY, JSON.stringify(p));
   } catch {
     // Storage unavailable: sizes just aren't remembered.

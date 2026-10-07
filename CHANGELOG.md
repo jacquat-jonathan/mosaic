@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+## 0.16.0 — 2026-10-08
+
 - **What's new:** release notes in Settings render bold, emphasis, code and links as Markdown.
 - **Editor helpers:** type `/` on an empty line to choose a heading, table, list, quote, code block, diagram or query. Resize table columns by dragging their boundaries or using the arrow keys; widths stay in app storage per vault, note and table.
 - **Task board:** open Plan › Task board to drag cards between New, Blocked, In progress, In QA and Done. Subtasks are grouped under their parent, with progress, search, folder filtering and a keyboard-accessible state menu. Workflow states travel with the Markdown note; existing calendars, queries, history and conflict checks still apply.

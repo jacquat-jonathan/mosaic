@@ -28,7 +28,9 @@ export function slashCompletion(ctx: CompletionContext): CompletionResult | null
   if (doc.startsWith("---\n") || doc.startsWith("---\r\n")) {
     const end = /^---\s*$/gm; end.lastIndex = 4;
     const close = end.exec(doc);
-    if (!close || ctx.pos <= close.index + close[0].length) return null;
+    if (close && ctx.pos <= close.index + close[0].length) return null;
+    // A leading divider is also `---`; only unfinished YAML with properties blocks the menu.
+    if (!close && /^[\w-]+\s*:/m.test(doc.slice(4, ctx.pos))) return null;
   }
   for (let node = syntaxTree(ctx.state).resolveInner(ctx.pos, -1); node; node = node.parent!) {
     if (["FencedCode", "CodeBlock", "HTMLBlock", "CommentBlock"].includes(node.name)) return null;

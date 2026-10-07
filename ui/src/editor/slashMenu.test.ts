@@ -12,6 +12,7 @@ function completion(doc: string, pos = doc.length, readOnly = false) {
 test("slash menu only opens in an empty Markdown block", () => {
   expect(completion("# Note\n\n/")?.options.map(o => o.label)).toContain("Table");
   expect(completion("  /heading")?.from).toBe(3);
+  expect(completion("---\n\n/table")?.options.map(o => o.label)).toContain("Table");
   for (const doc of ["https://", "Words /table", "```js\n/table", "---\nname: x\n/table", "<!--\n/table"]) expect(completion(doc)).toBeNull();
   expect(completion("/table remaining", 6)).toBeNull();
   expect(completion("/table", 6, true)).toBeNull();

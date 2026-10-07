@@ -2,7 +2,7 @@
 
 Roadmap source of truth: the Mosaic vault's `Ideation/Next steps.md`; shipped work and decisions are in
 `Ideation/Done.md`, with individual milestone notes alongside them. This file is the repository's ordered,
-checkable implementation record through M26. Current release: **0.15.0** (`v0.15.0`, 2026-10-07).
+checkable implementation record through M27. Current release: **0.16.0** (`v0.16.0`, 2026-10-08).
 
 ## Fixed decisions
 
@@ -256,6 +256,14 @@ Released 2026-10-07 as 0.15.0.
 - [x] Existing `may-change` and folder rules govern events; event cause, note and chain appear in run details
 - [x] Per-workflow model choice for manual, scheduled and event runs; transient failures retry at most twice before requiring attention
 - [x] Guided event setup, combined schedule/event display, pause controls, failure attention and daily-note-summary acceptance case
+
+### M27 — Editing helpers and visual task board
+Released 2026-10-08 as 0.16.0. Implemented in the roadmap's order.
+- [x] Sanitized Markdown formatting in Settings' release notes, with external links opened on click
+- [x] Searchable `/` insertion menu for common blocks; arrow navigation and Enter/Tab to insert; excludes code, frontmatter and read-only notes
+- [x] Resizable table columns, pointer and keyboard controls, reset widths and per-vault/note/table app-storage persistence; Markdown stays unchanged on resize
+- [x] Plan task board with five states, draggable cards and state menus, parent groups and subtask progress, text/folder filters, loading/error/overflow states
+- [x] Portable workflow comments, checkbox completion, query `workflow` fields and filters, clean task labels, history and conflict-aware writes
 
 ## Working rules
 - `scripts/check.sh` green before each milestone commit.

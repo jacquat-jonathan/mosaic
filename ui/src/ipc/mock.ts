@@ -5,6 +5,7 @@
 import type { Agent, AgentRun, Backlink, CoreError, Entry, FileContent, Proposal, QueryResult, QueryRow, SearchHit, Version } from "./types";
 import { kindOf } from "./kinds";
 import { parse as parseYaml } from "yaml";
+import { annotatedTask, taskLabel, type WorkflowState, WORKFLOW_STATES } from "../views/taskBoardModel";
 
 interface MockFile {
   content: string;
@@ -131,6 +132,11 @@ function mockTasks(path: string, content: string) {
   return out;
 }
 
+const mockWorkflow = (text: string, mark: string): WorkflowState => {
+  if (mark === "x" || mark === "X") return "done";
+  const annotation = /<!--\s*mosaic:state=([\w-]+)\s*-->/.exec(text)?.[1];
+  return WORKFLOW_STATES.some(s => s.id === annotation && s.id !== "done") ? annotation as WorkflowState : "new";
+};
 const taskStatus = (mark: string) => (mark === "x" || mark === "X" ? "done" : mark === ">" ? "moved" : mark === "-" ? "cancelled" : "open");
 
 function mockDays(from: string, to: string, today: string) {
@@ -145,7 +151,7 @@ function mockDays(from: string, to: string, today: string) {
     if (!path.endsWith(".md")) continue;
     for (const t of mockTasks(path, f.content)) {
       const daily = dailyOf(path);
-      const task = { ...t, status: taskStatus(t.mark), daily: !!daily };
+      const task = { ...t, text: taskLabel(t.text), status: taskStatus(t.mark), daily: !!daily };
       const on = daily ?? t.due;
       if (!daily && t.due && task.status === "open" && t.due < today) overdue.push(task);
       days.find((x) => x.date === on)?.tasks.push(task);
@@ -408,7 +414,7 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
             version: "0.2.0",
             date: "2026-10-01",
             notes: [
-              "The window can be moved again by dragging the sidebar header, the tab bar or the welcome screen.",
+              "**Movable window:** drag the sidebar header, tab bar or welcome screen. Updates show the current `version` and *release notes*.",
               "A running update can be cancelled; the installed app stays as it was.",
             ],
           },
@@ -615,12 +621,26 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
       const lines = f.content.split("\n");
       const i = (a.line as number) - 1;
       const m = /^(\s*(?:[-*+]|\d+[.)])\s+\[)(.)(\].*)$/.exec(lines[i] ?? "");
-      if (!m) throw err("conflict", String(a.path));
-      lines[i] = `${m[1]}${a.done ? "x" : " "}${m[3]}`;
+      if (!m || taskLabel(m[3].slice(1).trim()) !== a.text) throw err("conflict", String(a.path));
+      lines[i] = `${m[1]}${a.done ? "x" : " "}${a.done ? m[3] : m[3].replace(/\s*<!--\s*mosaic:state=done\s*-->/g, "")}`;
       f.content = lines.join("\n");
       f.mtime = Date.now();
       emit("vault-changed", { paths: [a.path] });
       return { path: a.path, hash: hash(f.content) };
+    }
+    case "set_task_workflow": {
+      const f = files.get(a.path as string);
+      if (!f) throw err("not_found", String(a.path));
+      if (!WORKFLOW_STATES.some(s => s.id === a.next)) throw err("invalid", "Unknown workflow state");
+      const lines = f.content.split("\n");
+      const i = Number(a.line) - 1;
+      const m = /^(\s*(?:[-*+]|\d+[.)])\s+\[)([ xX])(\]\s*)(.*)$/.exec(lines[i] ?? "");
+      const state = m && mockWorkflow(m[4], m[2]);
+      if (!m || taskLabel(m[4]) !== a.text || state !== a.expectedState) throw err("conflict", String(a.path));
+      lines[i] = `${m[1]}${a.next === "done" ? "x" : " "}${m[3]}${annotatedTask(m[4], a.next as WorkflowState)}`;
+      write(String(a.path), lines.join("\n")); track(String(a.path), "edited", lines.join("\n"));
+      emit("vault-changed", { paths: [a.path] });
+      return { path: a.path, hash: hash(files.get(String(a.path))!.content) };
     }
     case "agents":
       return mockAgents();
@@ -727,10 +747,16 @@ function mockQuery(q: string): QueryResult {
   const columns: string[] = [];
   const sort: [string, boolean][] = [];
   let limit = 100;
-  const value = (r: QueryRow, f: string) => (f === "title" ? r.title : f === "path" ? r.path : r.props[f]);
+  const taskToken = tokens.find(t => t.startsWith("task:"));
+  if (taskToken) {
+    const wanted = taskToken.slice(5).split("|");
+    rows = rows.flatMap(r => mockTasks(r.path, files.get(r.path)!.content).filter(t => wanted.includes("all") || wanted.includes(taskStatus(t.mark))).map(t => ({ ...r, task: { ...t, status: taskStatus(t.mark), text: taskLabel(t.text), workflow: mockWorkflow(t.text, t.mark) } })));
+  }
+  const value = (r: QueryRow, f: string) => (f === "title" ? r.title : f === "path" ? r.path : r.task && f in r.task ? r.task[f as keyof typeof r.task] : r.props[f]);
   for (const tok of tokens) {
     const t = tok.replace(/"/g, "");
     let m: RegExpExecArray | null;
+    if (t.startsWith("task:")) continue;
     if ((m = /^(-?)tag:(.+)$/.exec(t))) {
       const want = m[2].split("|");
       rows = rows.filter((r) => r.tags.some((x) => want.some((w) => x === w || x.startsWith(`${w}/`))) !== (m![1] === "-"));
@@ -746,7 +772,7 @@ function mockQuery(q: string): QueryResult {
         const y = v.toLowerCase();
         return op === "=" ? x === y : op === "!=" ? x !== y : op === ">" ? x > y : op === "<" ? x < y && x !== "" : x.includes(y);
       });
-    } else rows = rows.filter((r) => files.get(r.path)!.content.toLowerCase().includes(t.toLowerCase()));
+    } else rows = rows.filter((r) => (r.task?.text ?? files.get(r.path)!.content).toLowerCase().includes(t.toLowerCase()));
   }
   for (const [f, desc] of sort.reverse()) rows.sort((a, b) => String(value(a, f) ?? "").localeCompare(String(value(b, f) ?? "")) * (desc ? -1 : 1));
   return { columns, rows: rows.slice(0, limit), total: rows.length };

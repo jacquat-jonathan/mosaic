@@ -420,6 +420,20 @@ fn set_task(
 }
 
 #[tauri::command]
+fn set_task_workflow(
+    state: State<AppState>,
+    path: String,
+    line: usize,
+    text: String,
+    expected_state: String,
+    next: String,
+) -> CmdResult<Written> {
+    state
+        .get()?
+        .set_task_workflow(&path, line, &text, &expected_state, &next)
+}
+
+#[tauri::command]
 fn query_notes(
     state: State<AppState>,
     query: String,
@@ -549,6 +563,7 @@ pub fn run() {
             open_vault,
             query_notes,
             set_task,
+            set_task_workflow,
             days,
             carry_over,
             agents,

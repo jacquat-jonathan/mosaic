@@ -15,6 +15,7 @@ import { ConnectAiSection } from "./ConnectAi";
 import { Settings } from "./Settings";
 import { SearchPanel } from "./SearchPanel";
 import { cell } from "../editor/queryBlock";
+import { TaskBoard } from "./TaskBoard";
 
 export function SpecialView({ path }: { path: string }) {
   const { kind, id } = parseView(path);
@@ -34,6 +35,7 @@ export function SpecialView({ path }: { path: string }) {
     case "connections": return <div className="workspace-page"><h1>Connections</h1><ConnectAiSection /></div>;
     case "settings": return <Settings />;
     case "search": return <SearchPanel />;
+    case "board": return <TaskBoard />;
     case "tasks": case "overdue": case "projects": case "planning": case "query": return <TaskView kind={kind} id={id} />;
     default: return <div className="empty">This workspace view is no longer available.</div>;
   }

@@ -16,6 +16,7 @@ export function cell(row: QueryRow, column: string): string {
   if (t) {
     if (column === "text") return t.text;
     if (column === "status") return t.status;
+    if (column === "workflow") return t.status === "done" ? "done" : t.workflow ?? "new";
     if (column === "line") return String(t.line);
     if (column === "due" && t.due) return t.due;
   }

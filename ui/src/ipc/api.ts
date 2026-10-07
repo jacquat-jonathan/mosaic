@@ -73,6 +73,7 @@ export const api = {
   carryOver: (day: string, path: string | null, newNote: string | null) => call<CarryOver>("carry_over", { day, path, newNote }),
   /** Ticks or unticks the task on `line` of a note; `conflict` when that line changed. */
   setTask: (path: string, line: number, text: string, done: boolean) => call<Written>("set_task", { path, line, text, done }),
+  setTaskWorkflow: (path: string, line: number, text: string, expectedState: string, next: string) => call<Written>("set_task_workflow", { path, line, text, expectedState, next }),
   /** Agents' proposals in folders under review: pending first, then recent decisions. */
   proposals: (includeDecided = false) => call<Proposal[]>("proposals", { includeDecided }),
   /** The proposed content (null for a deletion). */

@@ -1,8 +1,8 @@
-import { Compartment, EditorSelection, EditorState, type Extension, type SelectionRange } from "@codemirror/state";
+import { Compartment, EditorSelection, EditorState, Prec, type Extension, type SelectionRange } from "@codemirror/state";
 import { EditorView, ViewPlugin, type ViewUpdate, drawSelection, dropCursor, keymap, highlightSpecialChars, rectangularSelection } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { bracketMatching, indentOnInput, syntaxHighlighting, HighlightStyle, type LanguageSupport } from "@codemirror/language";
-import { closeBrackets, closeBracketsKeymap, autocompletion, completionKeymap, type CompletionContext, type CompletionResult } from "@codemirror/autocomplete";
+import { closeBrackets, closeBracketsKeymap, autocompletion, completionKeymap, acceptCompletion, type CompletionContext, type CompletionResult } from "@codemirror/autocomplete";
 import { highlightSelectionMatches, search, searchKeymap } from "@codemirror/search";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { languages } from "@codemirror/language-data";
@@ -11,6 +11,7 @@ import { editorContext, type EditorContext } from "./context";
 import { livePreview } from "./livePreview";
 import "./blocks"; // registers the diagram renderers used by code blocks
 import { prefs, useSettings } from "../state/settings";
+import { slashCompletion } from "./slashMenu";
 
 
 const highlight = HighlightStyle.define([
@@ -185,7 +186,8 @@ export function markdownExtensions(ctx: EditorContext, onChange: (text: string) 
     editorContext.of(ctx),
     EditorView.lineWrapping,
     markdown({ base: markdownLanguage, codeLanguages: languages }),
-    autocompletion({ override: [wikiCompletion], icons: false }),
+    autocompletion({ override: [wikiCompletion, slashCompletion], icons: false }),
+    Prec.highest(keymap.of([...completionKeymap, { key: "Tab", run: acceptCompletion }])),
     livePreview(),
     finderDrop,
     spellcheck.of(spellcheckAttrs(prefs().spellcheck)),

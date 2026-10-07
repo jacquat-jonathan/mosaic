@@ -97,7 +97,7 @@ fn day_task(t: TaskMeta, daily: bool) -> DayTask {
         path: t.path,
         line: t.line,
         mark: t.mark,
-        text: t.text,
+        text: crate::task_board::label(&t.text),
         depth: t.depth,
         parent: t.parent,
         due: t.due,

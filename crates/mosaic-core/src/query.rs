@@ -105,6 +105,7 @@ pub fn task_status(mark: char) -> &'static str {
 /// A task row's own fields.
 #[derive(Debug, Clone, Serialize)]
 pub struct TaskRow {
+    pub workflow: String,
     /// 1-based line in the note.
     pub line: usize,
     /// "open", "done", "moved" or "cancelled".
@@ -487,7 +488,10 @@ fn compare(vals: &[Scalar], op: Op, targets: &[String]) -> bool {
 /// A field of a task: its own (`text`, `status`, `line`, `due` when it has one), else its note's.
 fn task_field(n: &NoteMeta, t: &TaskMeta, name: &str) -> Vec<Scalar> {
     match name {
-        "text" => vec![Scalar::Text(t.text.clone())],
+        "text" => vec![Scalar::Text(crate::task_board::label(&t.text))],
+        "workflow" => vec![Scalar::Text(
+            crate::task_board::state(&t.text, t.mark).into(),
+        )],
         "status" => vec![Scalar::Text(task_status(t.mark).into())],
         "line" => vec![Scalar::Num(t.line as f64)],
         "due" if t.due.is_some() => vec![Scalar::Text(t.due.clone().unwrap_or_default())],
@@ -695,7 +699,7 @@ impl Query {
             .filter_map(|t| Some((by_path.get(&t.path)?, t)))
             .filter(|(_, t)| statuses.iter().any(|s| s == task_status(t.mark)))
             .filter(|(n, t)| {
-                let text = t.text.to_lowercase();
+                let text = crate::task_board::label(&t.text).to_lowercase();
                 group_keeps.iter().zip(&words).any(|(keeps, words)| {
                     keeps.iter().all(|(k, neg)| k(n, Some(t)) != *neg)
                         && words.iter().all(|w| text.contains(w.as_str()))
@@ -762,7 +766,8 @@ fn row_of(n: NoteMeta, t: Option<TaskMeta>) -> QueryRow {
             line: t.line,
             status: task_status(t.mark),
             mark: t.mark,
-            text: t.text,
+            workflow: crate::task_board::state(&t.text, t.mark).into(),
+            text: crate::task_board::label(&t.text),
             depth: t.depth,
             parent: t.parent,
             due: t.due,

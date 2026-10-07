@@ -21,7 +21,7 @@ export function AreaSidebar({ destination }: { destination: Destination }) {
     {tab === "tags" ? <TagsPanel /> : tab === "bookmarks" ? <BookmarksPanel /> : <SearchPanel />}
   </>;
   if (destination === "plan") return <nav className="area-nav" aria-label="Plan views">
-    {[["today", "Today"], ["calendar", "Calendar"], ["tasks", "Tasks"]].map(([id, title]) => <button key={id} onClick={() => open(id)}>{title}</button>)}
+    {[["today", "Today"], ["calendar", "Calendar"], ["tasks", "Tasks"], ["board", "Task board"]].map(([id, title]) => <button key={id} onClick={() => open(id)}>{title}</button>)}
     <h3>Saved views</h3>
     {[["week", "My week"], ["overdue", "Overdue"], ["projects", "Project tasks"]].map(([id, title]) => <button key={id} onClick={() => open(id)}>{title}</button>)}
     {saved.map(v => <button key={v.id} onClick={() => open("planning", v.id)}>{v.title}</button>)}

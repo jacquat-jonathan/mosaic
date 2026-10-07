@@ -315,7 +315,11 @@ function buildInline(state: EditorState, blocks: Blocks, rangeFrom: number, rang
         case "Table":
           lines(from, to, "cm-table-src");
           return false;
-        case "HTMLBlock": case "Comment": case "CommentBlock": case "HTMLTag":
+        case "Comment":
+          if (/^<!--\s*mosaic:state=(new|blocked|in-progress|in-qa|done)\s*-->$/.test(doc.sliceString(from, to)) && !lineTouches(state, from)) out.push(hide.range(from, to));
+          code.push({ from, to });
+          return false;
+        case "HTMLBlock": case "CommentBlock": case "HTMLTag":
           code.push({ from, to });
           return false;
       }

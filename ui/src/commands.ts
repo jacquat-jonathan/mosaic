@@ -119,7 +119,7 @@ const buildCommands = (): Command[] => [
   { id: "toggle-left", label: "Toggle left sidebar", keys: { code: "KeyL", meta: true, alt: true }, run: () => useUi.getState().toggleLeftSidebar() },
   { id: "toggle-right", label: "Toggle right context panel", keys: { code: "KeyB", meta: true, alt: true }, run: () => useUi.getState().toggleRightPanel() },
   ...(["notes", "find", "plan", "ai"] as const).map((destination, i) => ({ id: `destination-${destination}`, label: `Go to ${destination}`, keys: { code: `Digit${i+1}`, meta: true }, run: () => useUi.getState().selectDestination(destination) })),
-  ...["chats", "agents", "workflows", "runs", "activity", "connections", "tasks", "today", "week", "overdue"].map(kind => ({ id: `open-${kind}`, label: `Open ${kind}`, run: () => useUi.getState().openView(kind) })),
+  ...["chats", "agents", "workflows", "runs", "activity", "connections", "board", "tasks", "today", "week", "overdue"].map(kind => ({ id: `open-${kind}`, label: kind === "board" ? "Open task board" : `Open ${kind}`, run: () => useUi.getState().openView(kind) })),
   { id: "create-workflow", label: "Create workflow", run: () => useUi.getState().openView("new-workflow") },
   { id: "move-file", label: "Move current file…", when: hasActive, run: () => pickFolderAndMove([active()!]) },
   { id: "show-files", label: "Show files", run: () => useUi.getState().setSidebarTab("files") },

@@ -81,6 +81,7 @@ export interface SearchHit {
 
 /** A checkbox task, in task queries (`task:open`). */
 export interface TaskRow {
+  workflow?: "new" | "blocked" | "in-progress" | "in-qa" | "done";
   /** 1-based line in the note. */
   line: number;
   status: "open" | "done" | "moved" | "cancelled";

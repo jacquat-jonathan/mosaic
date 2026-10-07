@@ -10,6 +10,8 @@ import { errorMessage, type UpdateCheck, type UpdateStatus } from "../ipc/types"
 import { commands, formatKeys, keysFor, rebind, shortcutOf, type Keys } from "../commands";
 import { createVault, openVaultFolder } from "../actions";
 import { ConnectAiSection } from "./ConnectAi";
+import { renderInlineMarkdown } from "../markdown";
+import { openExternal } from "../ipc/api";
 
 const SECTIONS: { id: SettingsSection; label: string; icon: typeof Palette }[] = [
   { id: "appearance", label: "Appearance", icon: Palette },
@@ -490,7 +492,10 @@ function About() {
                     </p>
                     <ul>
                       {r.notes.map((n, i) => (
-                        <li key={i}>{n}</li>
+                        <li key={i} dangerouslySetInnerHTML={{ __html: renderInlineMarkdown(n) }} onClick={e => {
+                          const link = (e.target as HTMLElement).closest("a");
+                          if (link) { e.preventDefault(); void openExternal(link.href); }
+                        }} />
                       ))}
                     </ul>
                   </div>

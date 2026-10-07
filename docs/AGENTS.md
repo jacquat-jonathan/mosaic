@@ -81,7 +81,12 @@ write shows up in the app within a second.
 - Embeds: `![[image.png]]`, `![[image.png|300]]` (width), `![[Other note]]`, `![[file.pdf]]`.
 - Tags: `#tag`, nested `#area/work`.
 - Block ids: end a line with ` ^my-id` to make it linkable.
-- Tasks: `- [ ] todo`, `- [x] done`.
+- Tasks: `- [ ] todo`, `- [x] done`. The task board uses New by default and Done for a checked
+  box. Other workflow states are portable comments on the task line:
+  `- [ ] Review <!-- mosaic:state=blocked -->` (also `in-progress` and `in-qa`). Keep the
+  comment before a trailing `^block-id`. Queries expose `workflow`, e.g.
+  `task:open workflow=blocked show:workflow,due`. Calendar and query task labels omit the comment.
+  Changing a card's state keeps its parent/nesting; completing a parent doesn't complete its subtasks.
 - Math: `$inline$` and `$$` blocks (KaTeX).
 - Diagrams and charts inside notes, as fenced code blocks:
   - ` ```mermaid ` — flowcharts, sequence, class, ER, state, Gantt, mindmaps…

@@ -4,7 +4,10 @@ import { createRoot, type Root } from "react-dom/client";
 import { renderMath } from "./render";
 import { PropertiesEditor } from "./PropertiesEditor";
 import { isDark } from "../theme";
-import type { EditorContext } from "./context";
+import { editorContext, type EditorContext } from "./context";
+import { syntaxTree } from "@codemirror/language";
+import { useVault } from "../state/vault";
+import { columnWidth, loadTableWidths, saveTableWidths, tableWidthKey } from "./tableWidths";
 
 import { blockRenderers, showRenderError as showError } from "./blocks";
 import { errorMessage } from "../ipc/types";
@@ -385,6 +388,7 @@ let tableFocus: { from: number; row: number; col: number; caret?: "start" | "end
  * column. Edits are written back to the Markdown, with aligned pipes, when you leave a cell.
  */
 export class TableWidget extends WidgetType {
+  private cleanups = new WeakMap<HTMLElement, () => void>();
   constructor(readonly source: string) {
     super();
   }
@@ -404,7 +408,7 @@ export class TableWidget extends WidgetType {
         const td = document.createElement(row < 0 ? "th" : "td");
         td.dataset.source = text;
         td.innerHTML = renderInlineMarkdown(text);
-        td.contentEditable = "plaintext-only";
+        td.contentEditable = view.state.readOnly ? "false" : "plaintext-only";
         td.spellcheck = false;
         td.dataset.row = String(row);
         td.dataset.col = String(col);
@@ -421,6 +425,7 @@ export class TableWidget extends WidgetType {
     model.rows.forEach((r, i) => addRow(tbody, r, i));
     table.append(thead, tbody);
     const editCell = (cell: HTMLElement) => {
+      if (view.state.readOnly) return;
       if (cell.dataset.editing === "true") return;
       cell.dataset.editing = "true";
       cell.textContent = cell.dataset.source ?? "";
@@ -455,6 +460,70 @@ export class TableWidget extends WidgetType {
     wrap.append(inner);
 
     const from = () => view.posAtDOM(wrap);
+    let widths: number[] | null = null;
+    let widthKey = "";
+    const colgroup = document.createElement("colgroup");
+    model.header.forEach(() => colgroup.append(document.createElement("col")));
+    table.prepend(colgroup);
+    const handles: HTMLButtonElement[] = [];
+    const positionHandles = () => {
+      const bounds = inner.getBoundingClientRect();
+      cellEls[0].forEach((cell, i) => {
+        const rect = cell.getBoundingClientRect();
+        if (handles[i]) { handles[i].style.left = `${rect.right - bounds.left - 5}px`; handles[i].style.height = `${rect.height}px`; }
+      });
+    };
+    const applyWidths = () => {
+      table.classList.toggle("resized", !!widths);
+      table.style.width = widths ? `${widths.reduce((a, b) => a + b, 0)}px` : "";
+      [...colgroup.children].forEach((col, i) => { (col as HTMLElement).style.width = widths ? `${widths[i]}px` : ""; });
+      handles.forEach((handle, i) => handle.setAttribute("aria-valuenow", String(widths?.[i] ?? Math.round(cellEls[0][i].getBoundingClientRect().width))));
+      positionHandles();
+    };
+    if (!view.state.readOnly) model.header.forEach((_, col) => {
+      const handle = document.createElement("button");
+      handle.className = "table-resize";
+      handle.setAttribute("aria-label", `Resize column ${col + 1}`);
+      handle.title = "Drag to resize · Arrow keys adjust · Double-click to reset widths";
+      handle.setAttribute("role", "separator");
+      handle.setAttribute("aria-orientation", "vertical");
+      handle.setAttribute("aria-valuemin", "64");
+      handle.setAttribute("aria-valuemax", "1200");
+      let startX = 0, startWidth = 0, dragging = false;
+      const ensureWidths = () => { widths ??= cellEls[0].map(cell => columnWidth(cell.getBoundingClientRect().width)); };
+      handle.addEventListener("pointerdown", e => {
+        if (e.button !== 0) return;
+        e.preventDefault(); e.stopPropagation(); ensureWidths();
+        startX = e.clientX; startWidth = widths![col]; dragging = true; handle.setPointerCapture(e.pointerId);
+      });
+      handle.addEventListener("pointermove", e => {
+        if (!dragging) return;
+        widths![col] = columnWidth(startWidth + e.clientX - startX); applyWidths();
+      });
+      const finish = () => { if (dragging) { dragging = false; saveTableWidths(widthKey, widths); } };
+      handle.addEventListener("pointerup", finish);
+      handle.addEventListener("pointercancel", finish);
+      handle.addEventListener("lostpointercapture", finish);
+      handle.addEventListener("dblclick", () => { widths = null; saveTableWidths(widthKey, null); applyWidths(); });
+      handle.addEventListener("keydown", e => {
+        if (!["ArrowLeft", "ArrowRight", "Home"].includes(e.key)) return;
+        e.preventDefault(); e.stopPropagation();
+        if (e.key === "Home") widths = null;
+        else { ensureWidths(); widths![col] = columnWidth(widths![col] + (e.key === "ArrowRight" ? 1 : -1) * (e.shiftKey ? 40 : 10)); }
+        saveTableWidths(widthKey, widths); applyWidths();
+      });
+      handles.push(handle); inner.append(handle);
+    });
+    const observer = new ResizeObserver(positionHandles);
+    observer.observe(table);
+    this.cleanups.set(wrap, () => observer.disconnect());
+    queueMicrotask(() => {
+      if (!wrap.isConnected) return;
+      let ordinal = 0;
+      syntaxTree(view.state).iterate({ to: from(), enter(node) { if (node.name === "Table" && node.from < from()) ordinal++; } });
+      widthKey = tableWidthKey(useVault.getState().vault?.root ?? "", view.state.facet(editorContext).path, ordinal);
+      widths = loadTableWidths(widthKey, model.header.length); applyWidths();
+    });
     const cellAt = (row: number, col: number) => cellEls[row + 1]?.[col];
     const posOf = (el: Element) => ({ row: Number((el as HTMLElement).dataset.row), col: Number((el as HTMLElement).dataset.col) });
     // The table as typed so far (cells hold plain text).
@@ -473,12 +542,17 @@ export class TableWidget extends WidgetType {
       sel?.removeAllRanges();
       sel?.addRange(range);
     };
+    const resizeColumns = (at: number, insert: boolean) => {
+      if (!widths) return;
+      if (insert) widths.splice(at, 0, 160); else widths.splice(at, 1);
+      saveTableWidths(widthKey, widths);
+    };
     const unchanged = (t: TableModel) => JSON.stringify(t) === JSON.stringify(model);
     // Once an edit is written, the editor draws a new table; this one is done.
     let replaced = false;
     /** Writes `next` to the note (unless nothing changed); the redrawn table puts the caret in `focus`. */
     const commit = (next: TableModel, focus?: { row: number; col: number }) => {
-      if (replaced || !wrap.isConnected) return;
+      if (view.state.readOnly || replaced || !wrap.isConnected) return;
       if (unchanged(next)) {
         if (focus) focusCell(cellAt(focus.row, focus.col));
         return;
@@ -541,9 +615,9 @@ export class TableWidget extends WidgetType {
         { label: "Insert row below", action: () => commit(insertRow(t(), row + 1), at({ row: row + 1, col })) },
         { label: "Delete row", disabled: row < 0, danger: true, action: () => commit(deleteRow(t(), row)) },
         { label: "", separator: true },
-        { label: "Insert column left", action: () => commit(insertColumn(t(), col), at({ row, col })) },
-        { label: "Insert column right", action: () => commit(insertColumn(t(), col + 1), at({ row, col: col + 1 })) },
-        { label: "Delete column", disabled: model.header.length <= 1, danger: true, action: () => commit(deleteColumn(t(), col)) },
+        { label: "Insert column left", action: () => { resizeColumns(col, true); commit(insertColumn(t(), col), at({ row, col })); } },
+        { label: "Insert column right", action: () => { resizeColumns(col + 1, true); commit(insertColumn(t(), col + 1), at({ row, col: col + 1 })); } },
+        { label: "Delete column", disabled: model.header.length <= 1, danger: true, action: () => { resizeColumns(col, false); commit(deleteColumn(t(), col)); } },
         { label: "", separator: true },
         {
           label: "Align column",
@@ -553,10 +627,12 @@ export class TableWidget extends WidgetType {
             action: () => commit(setAlign(t(), col, a === "left" ? null : a)),
           })),
         },
+        { label: "Reset column widths", action: () => { widths = null; saveTableWidths(widthKey, null); applyWidths(); } },
         { label: "Edit as Markdown", action: () => (view.dispatch({ selection: { anchor: from() } }), view.focus()) },
       ];
     };
     wrap.addEventListener("contextmenu", (e) => {
+      if (view.state.readOnly) return;
       const cell = (e.target as HTMLElement).closest<HTMLElement>("th, td");
       if (!cell) return;
       e.preventDefault();
@@ -568,9 +644,11 @@ export class TableWidget extends WidgetType {
       const t = typed();
       commit(insertRow(t, t.rows.length), { row: t.rows.length, col: 0 });
     });
+    if (view.state.readOnly) { addRowButton.hidden = true; addColButton.hidden = true; }
     addColButton.addEventListener("mousedown", (e) => {
       e.preventDefault();
       const t = typed();
+      resizeColumns(t.header.length, true);
       commit(insertColumn(t, t.header.length), { row: -1, col: t.header.length });
     });
     // Clicking beside the cells shows the Markdown source.
@@ -594,6 +672,7 @@ export class TableWidget extends WidgetType {
   ignoreEvent() {
     return true;
   }
+  destroy(dom: HTMLElement) { this.cleanups.get(dom)?.(); }
 }
 
 

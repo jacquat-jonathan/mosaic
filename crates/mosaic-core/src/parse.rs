@@ -199,11 +199,23 @@ pub fn frontmatter_span(text: &str) -> Option<(usize, String)> {
 /// `line` with its checkbox set to `mark`, if it's a task line whose text is `text`.
 pub fn with_task_mark(line: &str, text: &str, mark: char) -> Option<String> {
     let c = TASK.captures(line)?;
-    if c.get(3).map_or("", |m| m.as_str()).trim() != text.trim() {
+    let raw = c.get(3).map_or("", |m| m.as_str()).trim();
+    if raw != text.trim() && crate::task_board::label(raw) != text.trim() {
         return None;
     }
     let m = c.get(2)?;
     Some(format!("{}{mark}{}", &line[..m.start()], &line[m.end()..]))
+}
+
+/// Replace only a task's text, retaining the exact marker, spacing and trailing whitespace.
+pub fn with_task_text(line: &str, text: &str) -> Option<String> {
+    let c = TASK.captures(line)?;
+    if let Some(body) = c.get(3) {
+        let end = body.start() + body.as_str().trim_end().len();
+        Some(format!("{}{}{}", &line[..body.start()], text, &line[end..]))
+    } else {
+        Some(format!("{line} {text}"))
+    }
 }
 
 /// The #tags in one line of text (e.g. a task's).

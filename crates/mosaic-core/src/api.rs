@@ -424,6 +424,54 @@ impl Workspace {
         self.write(&norm, &lines.concat(), Some(&hash))
     }
 
+    /// Change one task's workflow, preserving its list marker, nesting, dates and links.
+    /// Both label and previous state must still match the task shown by the board.
+    pub fn set_task_workflow(
+        &self,
+        path: &str,
+        line: usize,
+        text: &str,
+        expected_state: &str,
+        next: &str,
+    ) -> Result<Written> {
+        if !crate::task_board::STATES.contains(&next) {
+            return Err(Error::Invalid(format!(
+                "Unknown task workflow state: {next}"
+            )));
+        }
+        self.check_read(path)?;
+        let norm = normalize(path)?;
+        let (content, hash) = self
+            .text_of(&norm)
+            .ok_or_else(|| Error::NotFound(norm.clone()))?;
+        let conflict = || Error::Conflict {
+            path: norm.clone(),
+            current_hash: hash.clone(),
+        };
+        let task = crate::parse::parse(&content)
+            .tasks
+            .into_iter()
+            .find(|t| t.line == line)
+            .ok_or_else(conflict)?;
+        if !matches!(task.mark, ' ' | 'x' | 'X')
+            || crate::task_board::label(&task.text) != text
+            || crate::task_board::state(&task.text, task.mark) != expected_state
+        {
+            return Err(conflict());
+        }
+        let mut lines: Vec<&str> = content.split_inclusive('\n').collect();
+        let raw = lines[line - 1];
+        let body = raw.trim_end_matches(['\n', '\r']);
+        let marked =
+            crate::parse::with_task_mark(body, &task.text, if next == "done" { 'x' } else { ' ' })
+                .ok_or_else(conflict)?;
+        let annotated = crate::task_board::annotate(&task.text, next);
+        let updated = crate::parse::with_task_text(&marked, &annotated).ok_or_else(conflict)?;
+        let new_line = format!("{updated}{}", &raw[body.len()..]);
+        lines[line - 1] = &new_line;
+        self.write(&norm, &lines.concat(), Some(&hash))
+    }
+
     pub fn patch(
         &self,
         path: &str,
@@ -1179,6 +1227,74 @@ mod tests {
 
     fn text(w: &Workspace, p: &str) -> String {
         w.read(p).unwrap().content.unwrap()
+    }
+
+    #[test]
+    fn board_states_preserve_tasks_and_reject_stale_cards() {
+        let (_d, w) = ws();
+        w.create("Board.md", "# Board\r\n1. [ ] Ship [[Plan]] 📅 2026-10-10 ^ship\r\n\t- [ ] Review #urgent  \r\n- [>] Moved\r\n```\n- [ ] Fake\n```\n").unwrap();
+        w.set_task_workflow(
+            "Board.md",
+            2,
+            "Ship [[Plan]] 📅 2026-10-10 ^ship",
+            "new",
+            "in-progress",
+        )
+        .unwrap();
+        assert!(text(&w, "Board.md").contains(
+            "1. [ ] Ship [[Plan]] 📅 2026-10-10 <!-- mosaic:state=in-progress --> ^ship\r\n"
+        ));
+        assert!(matches!(
+            w.set_task_workflow(
+                "Board.md",
+                2,
+                "Ship [[Plan]] 📅 2026-10-10 ^ship",
+                "new",
+                "blocked"
+            ),
+            Err(Error::Conflict { .. })
+        ));
+        w.set_task_workflow("Board.md", 3, "Review #urgent", "new", "done")
+            .unwrap();
+        assert!(text(&w, "Board.md").contains("\t- [x] Review #urgent  \r\n"));
+        let result = w.query("task:all workflow=done").unwrap();
+        assert_eq!(result.rows.len(), 1);
+        let task = result.rows[0].task.as_ref().unwrap();
+        assert_eq!(task.text, "Review #urgent");
+        assert_eq!(task.parent, Some(2));
+        w.set_task("Board.md", 3, "Review #urgent", false).unwrap();
+        assert!(text(&w, "Board.md").contains("\t- [ ] Review #urgent  \r\n"));
+        assert!(
+            w.set_task_workflow("Board.md", 4, "Moved", "new", "blocked")
+                .is_err()
+        );
+        assert!(
+            w.set_task_workflow("Board.md", 6, "Fake", "new", "blocked")
+                .is_err()
+        );
+        assert!(
+            w.set_task_workflow("Board.md", 2, "Changed label", "in-progress", "done")
+                .is_err()
+        );
+        assert!(
+            w.set_task_workflow(
+                "Board.md",
+                2,
+                "Ship [[Plan]] 📅 2026-10-10 ^ship",
+                "in-progress",
+                "unknown"
+            )
+            .is_err()
+        );
+        w.set_task_workflow(
+            "Board.md",
+            2,
+            "Ship [[Plan]] 📅 2026-10-10 ^ship",
+            "in-progress",
+            "new",
+        )
+        .unwrap();
+        assert!(!text(&w, "Board.md").contains("mosaic:state="));
     }
 
     #[test]

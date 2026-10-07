@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+## 0.14.0 — 2026-10-07
+
 - Markdown emphasis and other inline formatting now render inside editable table cells; focusing a cell reveals its Markdown source.
 - Structured queries support uppercase `OR` between groups, and queries can be saved and run from Bookmarks.
 - Review changes hunk by hunk, and review proposed file renames and binary additions. Mosaic requests attention when a proposal arrives while it is in the background.

@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+## 0.13.1 — 2026-10-07
+
 - **Workflow cleanup:** delete a workflow from its actions menu. Its agent file or skill folder moves to the macOS Trash, future scheduled runs stop, and existing run history stays available.
 - **Cleaner note editing:** Properties now live only in the right context panel, while Edit as YAML remains available. Up/Down no longer skips blank lines or headings in live preview, and spellcheck no longer triggers macOS automatic corrections.
 - **Faster daily notes:** double-click any calendar day to open or create its daily note; opening today keeps the existing task carry-over behavior.

@@ -63,8 +63,10 @@ export const api = {
   mirrorAgents: () => call<unknown>("mirror_agents", {}),
   tesseraStatus: () => call<TesseraStatus>("tessera_status", {}),
   tesseraRun: (name: string) => call<number>("tessera_run", { name }),
+  tesseraTestEvent: (name: string, path: string) => call<number>("tessera_test_event", { name, path }),
   tesseraPauseAll: (paused: boolean) => call<void>("tessera_pause_all", { paused }),
   tesseraPauseAgent: (name: string, paused: boolean) => call<void>("tessera_pause_agent", { name, paused }),
+  tesseraSetMaxChainDepth: (depth: number) => call<void>("tessera_set_max_chain_depth", { depth }),
   /** Each day's tasks from `from` to `to` (2026-10-04; at most 62 days), and overdue dated tasks. */
   days: (from: string, to: string, today: string) => call<Days>("days", { from, to, today }),
   /** Moves the open tasks of the last daily note before `day` into `path` (created with `newNote`). */

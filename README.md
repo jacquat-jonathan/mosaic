@@ -31,8 +31,9 @@ of its own source when you click **Check for updates** or **Update** in Settings
   `"phrases"`), bookmarks, tags, the ⌘O quick switcher and the ⌘P command palette. Notes and feature
   views share tabs and split panes; resizable context panels follow the active item.
 - **Plan:** Today, month/week/day calendars, tasks and saved task views.
-- **AI workspace:** automatically saved chats per vault, model choices and attachments; manual or
-  scheduled workflows with a guided setup, allowed folders, pause controls and run details.
+- **AI workspace:** automatically saved chats per vault, model choices and attachments; manual,
+  scheduled or note-created-event workflows with a guided setup, per-workflow models, allowed
+  folders, pause controls, safe event chains and run details.
 - **File tree:** drag and drop to move (links follow), ⌘/⇧-click multi-selection, and a right-click
   menu to duplicate, move, copy links or paths and reveal in Finder. Click the vault name to switch
   between recent vaults or create a new one.

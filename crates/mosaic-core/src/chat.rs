@@ -92,9 +92,15 @@ fn note(p: &str) -> String {
 
 /// A person-readable line for a tool call, the vault path it's about, and whether it writes.
 pub fn summarize_tool(name: &str, input: &Value) -> (String, Option<String>, bool) {
-    let path = s(input, "path").map(str::to_string);
-    let p = path.as_deref().map(note).unwrap_or_default();
     let tool = name.strip_prefix("mcp__mosaic__").unwrap_or(name);
+    // For operations with distinct source and destination paths, the changed/created path is the
+    // destination. Tessera also uses it to attribute event-triggered workflow chains.
+    let path = match tool {
+        "copy_file" | "rename" => s(input, "to"),
+        _ => s(input, "path"),
+    }
+    .map(str::to_string);
+    let p = path.as_deref().map(note).unwrap_or_default();
     let (text, writes) = match tool {
         "read_file" | "outline" => (format!("Read {p}"), false),
         "create_file" => (format!("Created {p}"), true),

@@ -4,6 +4,10 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Event-triggered workflows:** run an agent when a Markdown note is created in a selected folder, including imports and copies. Event runs are queued, explain what triggered them, can be tested against an existing note, and may safely trigger other workflows within a configurable chain-depth limit.
+- **Workflow controls:** choose Claude's default, Sonnet, Opus or Haiku per workflow; combine schedules with one or more folder events; pause all automatic runs or one workflow; transient failures retry up to twice before asking for attention.
+- Run details now show their trigger, note, model, retry attempts and workflow-chain depth. Existing `may-change`, review, read-only and hidden-folder rules continue to govern every automatic run.
+
 ## 0.14.0 — 2026-10-07
 
 - Markdown emphasis and other inline formatting now render inside editable table cells; focusing a cell reveals its Markdown source.

@@ -33,8 +33,10 @@ write shows up in the app within a second.
   the person what you proposed and why, since they decide.
 - **Files in `Agents/` are agents, not documents.** A note `Agents/Name.md` or a skill folder
   `Agents/Name/SKILL.md` defines an agent the person made: its frontmatter has `name`, `description`
-  and, for Mosaic, `schedule` (when it runs on its own) and `may-change` (folders it may write without
-  review); the body is its instructions. When the person points you at one, or names an agent, **act
+  and, for Mosaic, `schedule`, `on` (for example `created in Daily/`), `model`, and `may-change`
+  (folders it may write without review); the body is its instructions. `on` can be one event or a
+  list and may coexist with `schedule`; automatic workflows run only while Mosaic is open. When the
+  person points you at one, or names an agent, **act
   as that agent**: follow its instructions for this task. `list_agents` lists them; each is also an MCP
   prompt (in Claude Code: `/mosaic:<name>`), and Mosaic mirrors them into the vault's
   `.claude/skills/`, so Claude Code started in the vault has them as skills. Edit an agent in `Agents/`,

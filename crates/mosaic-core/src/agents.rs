@@ -5,7 +5,8 @@
 //! `Agents/Weekly review/SKILL.md` (which may hold other files the skill uses). Both have the same
 //! shape: `name` and `description` in the frontmatter (the name defaults to the file or folder name,
 //! the description to the first line of text), the instructions below. Mosaic's own fields:
-//! `schedule` (when it runs on its own) and `may-change` (folders it may write without review).
+//! `schedule` / `on` (when it runs on its own), `model`, and `may-change` (folders it may write
+//! without review).
 //!
 //! So Claude treats them as agents rather than documents, they're published as MCP prompts (slash
 //! commands in Claude Code) and mirrored into the vault's `.claude/skills/`, where Claude Code
@@ -35,6 +36,10 @@ pub struct Agent {
     /// True for a skill folder (`Agents/X/SKILL.md`).
     pub skill_folder: bool,
     pub schedule: Option<String>,
+    /// Event triggers such as `created in Daily/`.
+    pub on: Vec<String>,
+    /// Claude Code model alias; absent lets Claude Code choose its default.
+    pub model: Option<String>,
     /// Folders it may change without review.
     pub may_change: Vec<String>,
     /// The body: what the agent does.
@@ -71,8 +76,54 @@ struct Front {
     name: Option<String>,
     description: Option<String>,
     schedule: Option<String>,
+    on: Option<serde_norway::Value>,
+    model: Option<String>,
     #[serde(rename = "may-change", alias = "may_change")]
     may_change: Option<serde_norway::Value>,
+}
+
+/// A validated event trigger from an agent's `on:` frontmatter.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EventTrigger {
+    /// A Markdown note appeared in this folder or one of its subfolders. Empty means vault root.
+    Created { folder: String },
+}
+
+impl EventTrigger {
+    pub fn parse(text: &str) -> std::result::Result<Self, String> {
+        let trimmed = text.trim();
+        let prefix = "created in ";
+        if !trimmed.to_ascii_lowercase().starts_with(prefix) {
+            return Err(format!(
+                "unsupported event trigger {trimmed:?}; expected ‘created in Folder/’"
+            ));
+        }
+        let written = trimmed[prefix.len()..].trim();
+        let folder = if written == "/" {
+            String::new()
+        } else {
+            written.trim_matches('/').to_string()
+        };
+        if written.is_empty()
+            || (!folder.is_empty()
+                && folder
+                    .split('/')
+                    .any(|part| part.is_empty() || part == "." || part == ".."))
+        {
+            return Err(format!("invalid event folder in {trimmed:?}"));
+        }
+        Ok(Self::Created { folder })
+    }
+
+    pub fn matches_created(&self, path: &str) -> bool {
+        if !path.to_ascii_lowercase().ends_with(".md") {
+            return false;
+        }
+        match self {
+            Self::Created { folder } if folder.is_empty() => true,
+            Self::Created { folder } => path.starts_with(&format!("{folder}/")),
+        }
+    }
 }
 
 fn strings(v: &serde_norway::Value) -> Vec<String> {
@@ -114,6 +165,15 @@ pub fn parse_agent(path: &str, title: &str, skill_folder: bool, text: &str) -> A
         path: path.to_string(),
         skill_folder,
         schedule: front.schedule.filter(|s| !s.trim().is_empty()),
+        on: front
+            .on
+            .as_ref()
+            .map(strings)
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|s| !s.trim().is_empty())
+            .collect(),
+        model: front.model.filter(|s| !s.trim().is_empty()),
         may_change: front
             .may_change
             .as_ref()
@@ -296,11 +356,11 @@ mod tests {
         let (_d, w) = ws(&[
             (
                 "Agents/Weekly review.md",
-                "---\ndescription: Sum up the week\nschedule: fri 17:00\nmay-change: [Daily/, Reviews]\n---\n# Weekly review\n\nRead this week's daily notes.\n",
+                "---\ndescription: Sum up the week\nschedule: fri 17:00\non: [created in Daily/, created in Projects/]\nmodel: sonnet\nmay-change: [Daily/, Reviews]\n---\n# Weekly review\n\nRead this week's daily notes.\n",
             ),
             (
                 "Agents/Inbox triage/SKILL.md",
-                "---\nname: triage\n---\nSort meeting notes into projects.\n",
+                "---\nname: triage\non: created in Inbox/\n---\nSort meeting notes into projects.\n",
             ),
             ("Agents/Inbox triage/reference.md", "Not an agent"),
             ("Agents/Deep/Nested/x.md", "Not an agent"),
@@ -316,12 +376,21 @@ mod tests {
                 wr.title.as_str(),
                 wr.description.as_str(),
                 wr.schedule.as_deref(),
+                wr.model.as_deref(),
                 wr.skill_folder
             ),
-            ("Weekly review", "Sum up the week", Some("fri 17:00"), false)
+            (
+                "Weekly review",
+                "Sum up the week",
+                Some("fri 17:00"),
+                Some("sonnet"),
+                false
+            )
         );
+        assert_eq!(wr.on, ["created in Daily/", "created in Projects/"]);
         assert_eq!(wr.may_change, ["Daily", "Reviews"]);
         assert_eq!(a[0].description, "Sort meeting notes into projects.");
+        assert_eq!(a[0].on, ["created in Inbox/"]);
         assert!(a[0].skill_folder);
         assert_eq!(
             w.agent("Weekly Review").unwrap().path,
@@ -338,6 +407,28 @@ mod tests {
         // No Agents folder: no agents.
         let (_e, empty) = ws(&[("A.md", "")]);
         assert!(empty.agents().unwrap().is_empty());
+    }
+
+    #[test]
+    fn event_triggers_validate_and_match_created_notes_recursively() {
+        let t = EventTrigger::parse("created in Daily/").unwrap();
+        assert_eq!(
+            t,
+            EventTrigger::Created {
+                folder: "Daily".into()
+            }
+        );
+        assert!(t.matches_created("Daily/2026-10-07.md"));
+        assert!(t.matches_created("Daily/Archive/2026-10-06.md"));
+        assert!(!t.matches_created("Other/2026-10-07.md"));
+        assert!(!t.matches_created("Daily/image.png"));
+        assert!(
+            EventTrigger::parse("created in /")
+                .unwrap()
+                .matches_created("Anywhere/Note.md")
+        );
+        assert!(EventTrigger::parse("changed in Daily/").is_err());
+        assert!(EventTrigger::parse("created in ../Private").is_err());
     }
 
     #[test]

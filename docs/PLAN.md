@@ -2,7 +2,7 @@
 
 Roadmap source of truth: the Mosaic vault's `Ideation/Next steps.md`; shipped work and decisions are in
 `Ideation/Done.md`, with individual milestone notes alongside them. This file is the repository's ordered,
-checkable implementation record through M25. Current release: **0.14.0** (`v0.14.0`, 2026-10-07).
+checkable implementation record through M26. Current release: **0.15.0** (`v0.15.0`, 2026-10-07).
 
 ## Fixed decisions
 
@@ -247,6 +247,15 @@ Released 2026-10-07 as 0.14.0.
 - [x] Query `OR` groups and saved structured queries in Bookmarks
 - [x] Review text changes hunk by hunk; propose and accept file renames and binary additions
 - [x] Request native attention when a new proposal arrives while Mosaic is in the background
+
+### M26 — Event-triggered workflows
+Released 2026-10-07 as 0.15.0.
+- [x] `on: created in Folder/` in agent frontmatter, one event or a list alongside `schedule:`; recursive Markdown creation from the app, imports, copies and external tools while Mosaic is open
+- [x] Debounced per-workflow queues, duplicate coalescing, visible overflow, one active run per workflow and a test trigger against an existing note
+- [x] Agent-to-agent chains with IDs, configurable maximum depth (default 3), repeated workflow/event/path suppression and a hard run ceiling
+- [x] Existing `may-change` and folder rules govern events; event cause, note and chain appear in run details
+- [x] Per-workflow model choice for manual, scheduled and event runs; transient failures retry at most twice before requiring attention
+- [x] Guided event setup, combined schedule/event display, pause controls, failure attention and daily-note-summary acceptance case
 
 ## Working rules
 - `scripts/check.sh` green before each milestone commit.

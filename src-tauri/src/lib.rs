@@ -88,11 +88,14 @@ fn activate(app: AppHandle, state: &AppState, ws: Workspace) -> CmdResult<VaultI
     let _ = settings.save();
     let out = info(&ws);
     *state.ws.write().expect("workspace lock poisoned") = Some(ws.clone());
+    tessera::reset_events(&app, &ws);
     tessera::start_scheduler(app.clone());
 
     // External changes (AI, CLI, other editors) are pushed to the UI as they happen.
     let events = app.clone();
+    let event_ws = ws.clone();
     let watcher = mosaic_core::watch::watch(ws.clone(), move |changes| {
+        tessera::vault_changed(&events, &event_ws, &changes.paths);
         let _ = events.emit("vault-changed", changes);
     })
     .ok();
@@ -555,8 +558,10 @@ pub fn run() {
             chat::chat_stop,
             tessera::tessera_status,
             tessera::tessera_run,
+            tessera::tessera_test_event,
             tessera::tessera_pause_all,
             tessera::tessera_pause_agent,
+            tessera::tessera_set_max_chain_depth,
             proposals,
             proposal_content,
             proposal_base,

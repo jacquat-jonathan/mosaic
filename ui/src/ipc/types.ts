@@ -117,6 +117,8 @@ export interface Agent {
   path: string;
   skill_folder: boolean;
   schedule: string | null;
+  on: string[];
+  model: string | null;
   may_change: string[];
   instructions: string;
 }
@@ -128,7 +130,13 @@ export interface AgentRun {
   started: number;
   finished: number | null;
   late: boolean;
-  status: "running" | "done" | "failed";
+  status: "running" | "done" | "failed" | "skipped";
+  trigger?: string | null;
+  trigger_path?: string | null;
+  chain_id?: string | null;
+  chain_depth?: number | null;
+  model?: string | null;
+  attempts?: number;
   answer: string;
   error: string | null;
   proposals: number;
@@ -139,7 +147,8 @@ export interface AgentRun {
 
 export interface TesseraStatus {
   paused: boolean;
-  agents: { name: string; title: string; schedule: string; paused: boolean; running: boolean; error: string | null }[];
+  max_chain_depth: number;
+  agents: { name: string; title: string; schedule: string | null; on: string[]; model: string | null; paused: boolean; running: boolean; queued: number; error: string | null }[];
   runs: AgentRun[];
 }
 

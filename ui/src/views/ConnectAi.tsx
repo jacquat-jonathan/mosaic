@@ -87,8 +87,23 @@ export function ConnectAiSection() {
 
       <h3>4 · Folder rules for agents</h3>
       <AgentRules />
+
+      <h3>5 · Workflow chains</h3>
+      <WorkflowChainSettings />
     </div>
   );
+}
+
+function WorkflowChainSettings() {
+  const [depth, setDepth] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => { api.tesseraStatus().then(s => setDepth(s.max_chain_depth), e => setError(errorMessage(e))); }, []);
+  if (depth === null) return error ? <p className="error-text">{error}</p> : null;
+  return <div className="agent-rules">
+    <p className="settings-note">An event workflow may create a note that triggers another workflow. Mosaic tracks the chain, prevents repeated workflow/event/note cycles, and stops after this depth. Use 0 to prevent agent-originated chains.</p>
+    <div className="agent-rule"><span>Maximum agent-generated depth</span><span className="spacer" /><select aria-label="Maximum workflow chain depth" value={depth} onChange={e => { const next=Number(e.target.value); setDepth(next); setError(null); api.tesseraSetMaxChainDepth(next).catch(err=>setError(errorMessage(err))); }}>{Array.from({length:11},(_,i)=><option key={i} value={i}>{i}</option>)}</select></div>
+    {error && <p className="error-text">{error}</p>}
+  </div>;
 }
 
 /** Folders where agents (MCP, CLI) must have changes reviewed, may only read, or can't see at all. Enforced in the core, not by the agent. */

@@ -21,6 +21,7 @@ let updateRunning = false;
 let updateTimers: ReturnType<typeof setTimeout>[] = [];
 let agentRules: { path: string; access: string }[] = [];
 let tesseraPaused = false;
+let tesseraMaxDepth = 3;
 const tesseraPausedAgents: string[] = [];
 const tesseraRuns: AgentRun[] = [];
 const proposals: (Proposal & { content: string | null })[] = [];
@@ -160,7 +161,8 @@ function mockAgents(): Agent[] {
     let props: Record<string, unknown> = {}; try { props=parseYaml(fm?.[1] ?? "") ?? {}; } catch { /* Invalid frontmatter. */ }
     const body=f.content.slice(fm?.[0].length ?? 0).trim();
     const allowed=props["may-change"] ?? props.may_change;
-    return {name:String(props.name ?? title).toLowerCase().replace(/[^\p{L}\p{N}]+/gu,"-").replace(/^-|-$/g,""),title,path,skill_folder:skill,description:String(props.description ?? body.split("\n").find(l=>l.trim()) ?? title),schedule:typeof props.schedule === "string" ? props.schedule : null,may_change:Array.isArray(allowed) ? allowed.map(String) : typeof allowed === "string" ? [allowed] : [],instructions:body};
+    const events=props.on;
+    return {name:String(props.name ?? title).toLowerCase().replace(/[^\p{L}\p{N}]+/gu,"-").replace(/^-|-$/g,""),title,path,skill_folder:skill,description:String(props.description ?? body.split("\n").find(l=>l.trim()) ?? title),schedule:typeof props.schedule === "string" ? props.schedule : null,on:Array.isArray(events) ? events.map(String) : typeof events === "string" ? [events] : [],model:typeof props.model === "string" ? props.model : null,may_change:Array.isArray(allowed) ? allowed.map(String) : typeof allowed === "string" ? [allowed] : [],instructions:body};
   });
 }
 
@@ -236,7 +238,7 @@ function seed() {
   };
   add(`Daily/${day(-1)}.md`, `# ${day(-1)}\n\n- [x] Standup\n- [>] Write the release notes\n- [-] Gym\n`);
   add(`Daily/${day(0)}.md`, `# ${day(0)}\n\n- [ ] Write the release notes\n    - [x] Outline\n    - [ ] Draft\n    - [ ] Proofread\n- [ ] Call Anna\n- [x] Inbox zero\n`);
-  add("Agents/Weekly review.md", "---\ndescription: Sum up the week's tasks into Friday's daily note\nschedule: fri 17:00\n---\nRead this week's daily notes and write a short summary.\n");
+  add("Agents/Weekly review.md", "---\ndescription: Sum up the week's tasks into Friday's daily note\nschedule: fri 17:00\non: created in Daily/\nmodel: sonnet\n---\nRead this week's daily notes and write a short summary.\n");
   add("Agents/Inbox triage.md", "---\ndescription: Sort meeting notes into their projects\n---\nMove each note in Inbox/ to its project folder.\n");
   add("Projects/Mosaic/Tasks.md", `# Tasks\n\n- [ ] Ship the calendar 📅 ${day(2)}\n- [ ] Overdue review 📅 ${day(-3)}\n`);
   add("Projects/Data.csv", 'name,value,note\nalpha,1,"quoted, with comma"\nbeta,2,"multi\nline"\ngamma,3,\n');
@@ -646,18 +648,26 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
     case "mirror_agents":
       return { written: [], removed: [], skipped: [] };
     case "tessera_status":
-      return { paused: tesseraPaused, agents: mockAgents().filter(a=>a.schedule).map(a=>({name:a.name,title:a.title,schedule:a.schedule,paused:tesseraPausedAgents.includes(a.name),running:tesseraRuns.some(r=>r.agent===a.name&&r.status==="running"),error:null})), runs: tesseraRuns };
+      return { paused: tesseraPaused, max_chain_depth: tesseraMaxDepth, agents: mockAgents().map(a=>({name:a.name,title:a.title,schedule:a.schedule,on:a.on,model:a.model,paused:tesseraPausedAgents.includes(a.name),running:tesseraRuns.some(r=>r.agent===a.name&&r.status==="running"),queued:0,error:null})), runs: tesseraRuns };
     case "tessera_pause_all":
       tesseraPaused = Boolean(a.paused); return null;
     case "tessera_pause_agent": {
       const name = String(a.name); const i = tesseraPausedAgents.indexOf(name);
       if (i >= 0) tesseraPausedAgents.splice(i, 1); if (a.paused) tesseraPausedAgents.push(name); return null;
     }
+    case "tessera_set_max_chain_depth": tesseraMaxDepth=Number(a.depth); return null;
     case "tessera_run": {
       const agent=mockAgents().find(agent=>agent.name === a.name);
       if (!agent) throw err("not_found", "Agent not found");
       const id=++chatRuns;
       tesseraRuns.unshift({id,agent:agent.name,title:agent.title,started:Math.floor(Date.now()/1000),finished:Math.floor(Date.now()/1000),late:false,status:"done",answer:"Mock run completed. No files were changed.",error:null,proposals:0,changes:[],changed_paths:[],proposal_ids:[]});
+      emit("tessera-changed",{}); return id;
+    }
+    case "tessera_test_event": {
+      const agent=mockAgents().find(agent=>agent.name === a.name);
+      if (!agent) throw err("not_found", "Agent not found");
+      const id=++chatRuns;
+      tesseraRuns.unshift({id,agent:agent.name,title:agent.title,started:Math.floor(Date.now()/1000),finished:Math.floor(Date.now()/1000),late:false,status:"done",trigger:`Test · ${a.path}`,trigger_path:String(a.path),chain_id:`test-${id}`,chain_depth:0,model:agent.model,attempts:1,answer:"Mock event run completed.",error:null,proposals:0,changes:[],changed_paths:[],proposal_ids:[]});
       emit("tessera-changed",{}); return id;
     }
     case "days":

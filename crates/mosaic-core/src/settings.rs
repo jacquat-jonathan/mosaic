@@ -25,14 +25,28 @@ pub struct Settings {
     pub other: BTreeMap<String, serde_json::Value>,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct TesseraSettings {
     pub paused: bool,
     pub paused_agents: Vec<String>,
+    /// Maximum number of agent-to-agent event steps after the root event.
+    pub max_chain_depth: u8,
     /// Last scheduler check, Unix seconds. Used to run one missed occurrence on startup.
     pub last_checked: i64,
     pub runs: Vec<AgentRun>,
+}
+
+impl Default for TesseraSettings {
+    fn default() -> Self {
+        Self {
+            paused: false,
+            paused_agents: Vec::new(),
+            max_chain_depth: 3,
+            last_checked: 0,
+            runs: Vec::new(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -43,6 +57,23 @@ pub struct AgentRun {
     pub started: i64,
     pub finished: Option<i64>,
     pub late: bool,
+    /// Human-readable cause: Manual, a schedule, or an event.
+    #[serde(default)]
+    pub trigger: Option<String>,
+    /// Note that caused an event run.
+    #[serde(default)]
+    pub trigger_path: Option<String>,
+    /// Shared by all runs caused by one root event.
+    #[serde(default)]
+    pub chain_id: Option<String>,
+    #[serde(default)]
+    pub chain_depth: Option<u8>,
+    /// Claude model actually requested; absent means Claude Code's default.
+    #[serde(default)]
+    pub model: Option<String>,
+    /// Process attempts made for this run (one plus automatic retries).
+    #[serde(default = "one_attempt")]
+    pub attempts: u8,
     pub status: String,
     pub answer: String,
     pub error: Option<String>,
@@ -53,6 +84,10 @@ pub struct AgentRun {
     pub changed_paths: Vec<String>,
     #[serde(default)]
     pub proposal_ids: Vec<i64>,
+}
+
+fn one_attempt() -> u8 {
+    1
 }
 
 /// What agents may do in a folder (and everything inside it).
@@ -259,6 +294,9 @@ mod tests {
         assert!(run.proposal_ids.is_empty());
         assert!(run.changed_paths.is_empty());
         assert_eq!(run.changes, vec!["Edited note"]);
+        assert_eq!(run.attempts, 1);
+        assert_eq!(run.trigger, None);
+        assert_eq!(TesseraSettings::default().max_chain_depth, 3);
     }
 
     use super::*;

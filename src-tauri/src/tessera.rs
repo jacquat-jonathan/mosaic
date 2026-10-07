@@ -381,16 +381,15 @@ impl RunOutput {
                         self.proposal_ids.push(proposal);
                     }
                 }
-                if let Some((summary, path)) = self.write_tools.remove(&id) {
-                    if error.is_none() {
-                        self.changes.push(summary);
-                        if review.is_none() {
-                            if let Some(path) = path {
-                                if !self.changed_paths.contains(&path) {
-                                    self.changed_paths.push(path);
-                                }
-                            }
-                        }
+                if let Some((summary, path)) = self.write_tools.remove(&id)
+                    && error.is_none()
+                {
+                    self.changes.push(summary);
+                    if review.is_none()
+                        && let Some(path) = path
+                        && !self.changed_paths.contains(&path)
+                    {
+                        self.changed_paths.push(path);
                     }
                 }
             }

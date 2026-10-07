@@ -75,7 +75,10 @@ const buildCommands = (): Command[] => [
     label: "Add a property to this note",
     keys: { code: "Semicolon", meta: true },
     when: () => !!active()?.toLowerCase().endsWith(".md"),
-    run: () => void addProperty(active()!),
+    run: () => {
+      useUi.setState({ rightPanel: true });
+      void addProperty(active()!);
+    },
   },
   { id: "daily-note", label: "Open today's daily note", keys: { code: "KeyD", meta: true, shift: true }, run: () => void openDailyNote() },
   {

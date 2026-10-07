@@ -21,7 +21,6 @@ import {
   LinkWidget,
   MathWidget,
   NoteEmbedWidget,
-  PropertiesWidget,
   RenderedBlockWidget,
   RuleWidget,
   TableWidget,
@@ -100,7 +99,9 @@ function buildBlocks(state: EditorState): Blocks {
     bodyStart = end;
     code.push({ from: 0, to: end });
     if (!selectionTouches(state, 0, end)) {
-      out.push(Decoration.replace({ widget: new PropertiesWidget(fm[1], end), block: true }).range(0, end));
+      // Properties live in the workspace context panel. Keep their source out of the note until
+      // "Edit as YAML" deliberately places the caret inside it.
+      out.push(Decoration.replace({ block: true }).range(0, end));
       blocked.push({ from: 0, to: end });
     }
   }

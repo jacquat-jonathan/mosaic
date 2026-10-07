@@ -77,17 +77,16 @@ pub fn save(window: &Window) {
         maximized,
         fullscreen,
     };
-    if maximized || fullscreen {
-        if let Some(previous) = std::fs::read(&path)
+    if (maximized || fullscreen)
+        && let Some(previous) = std::fs::read(&path)
             .ok()
             .and_then(|b| serde_json::from_slice::<Geometry>(&b).ok())
-        {
-            saved = Geometry {
-                maximized,
-                fullscreen,
-                ..previous
-            };
-        }
+    {
+        saved = Geometry {
+            maximized,
+            fullscreen,
+            ..previous
+        };
     }
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);

@@ -1,4 +1,4 @@
-import { Compartment, EditorState, type Extension } from "@codemirror/state";
+import { Compartment, EditorSelection, EditorState, type Extension, type SelectionRange } from "@codemirror/state";
 import { EditorView, ViewPlugin, type ViewUpdate, drawSelection, dropCursor, keymap, highlightSpecialChars, rectangularSelection } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { bracketMatching, indentOnInput, syntaxHighlighting, HighlightStyle, type LanguageSupport } from "@codemirror/language";
@@ -29,6 +29,43 @@ const highlight = HighlightStyle.define([
   { tag: t.url, class: "tok-url" },
   { tag: t.processingInstruction, class: "tok-meta" },
 ]);
+
+/**
+ * Live-preview decorations can change a line's height or replace a block as the caret moves. When
+ * CodeMirror calculates Up/Down from screen coordinates during that change it may land several
+ * Markdown lines away. One key press must never cross more than one logical line; wrapped text still
+ * uses CodeMirror's normal visual movement whenever it stays on this or the adjacent line.
+ */
+export function clampVerticalTarget(state: EditorState, start: SelectionRange, moved: SelectionRange, forward: boolean): SelectionRange {
+  const from = state.doc.lineAt(start.head);
+  const to = state.doc.lineAt(moved.head);
+  if (Math.abs(to.number - from.number) <= 1) return moved;
+  const target = state.doc.line(from.number + (forward ? 1 : -1));
+  const head = target.from + Math.min(start.head - from.from, target.length);
+  return EditorSelection.cursor(head, forward ? -1 : 1, moved.bidiLevel ?? undefined, moved.goalColumn ?? undefined);
+}
+
+function moveLine(view: EditorView, forward: boolean, extend: boolean): boolean {
+  const selection = EditorSelection.create(view.state.selection.ranges.map((original) => {
+    if (!extend && !original.empty) return EditorSelection.cursor(forward ? original.to : original.from);
+    let range = original;
+    if (extend && range.undirectional && (range.head >= range.anchor) !== forward) range = EditorSelection.range(range.head, range.anchor);
+    const moved = clampVerticalTarget(view.state, range, view.moveVertically(range, forward), forward);
+    return extend
+      ? EditorSelection.range(range.anchor, moved.head, moved.goalColumn ?? undefined, moved.bidiLevel ?? undefined, moved.assoc)
+      : moved;
+  }), view.state.selection.mainIndex);
+  if (selection.eq(view.state.selection, true)) return false;
+  view.dispatch({ selection, scrollIntoView: true, userEvent: "select" });
+  return true;
+}
+
+const stableVerticalKeys = [
+  { key: "ArrowUp", run: (view: EditorView) => moveLine(view, false, false) },
+  { key: "ArrowDown", run: (view: EditorView) => moveLine(view, true, false) },
+  { key: "Shift-ArrowUp", run: (view: EditorView) => moveLine(view, false, true) },
+  { key: "Shift-ArrowDown", run: (view: EditorView) => moveLine(view, true, true) },
+];
 
 /**
  * Reports the document to the store shortly after typing pauses (serialising a large note on every
@@ -71,7 +108,7 @@ function base(onChange: (text: string) => void): Extension {
     search({ top: true }),
     EditorState.allowMultipleSelections.of(true),
     syntaxHighlighting(highlight),
-    keymap.of([...closeBracketsKeymap, ...defaultKeymap, ...searchKeymap, ...historyKeymap, ...completionKeymap, indentWithTab]),
+    keymap.of([...stableVerticalKeys, ...closeBracketsKeymap, ...defaultKeymap, ...searchKeymap, ...historyKeymap, ...completionKeymap, indentWithTab]),
     changeReporter(onChange),
   ];
 }
@@ -95,7 +132,8 @@ function wikiCompletion(ctx: CompletionContext): CompletionResult | null {
 }
 
 const spellcheck = new Compartment();
-const spellcheckAttrs = (on: boolean) => EditorView.contentAttributes.of({ spellcheck: on ? "true" : "false", autocorrect: on ? "on" : "off" });
+export const spellcheckAttributes = (on: boolean) => ({ spellcheck: on ? "true" : "false", autocorrect: "off", autocapitalize: "off" });
+const spellcheckAttrs = (on: boolean) => EditorView.contentAttributes.of(spellcheckAttributes(on));
 
 /** Applies the Spellcheck setting to editors that are already open. */
 const spellcheckFollower = ViewPlugin.define((view) => {

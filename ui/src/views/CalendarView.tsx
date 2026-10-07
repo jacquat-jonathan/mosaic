@@ -88,6 +88,7 @@ export function CalendarView({ initialMode }: { initialMode?: Mode }) {
       load();
     });
   const openDay = (date: string) => usePlanning.setState({ selectedDay: date });
+  const activateDay = (date: string) => void openDailyNote(parseDay(date), { newTab: true });
 
   const showOverdue = !!data?.overdue.length && today >= from && today <= to;
   return (
@@ -123,15 +124,15 @@ export function CalendarView({ initialMode }: { initialMode?: Mode }) {
       {!data ? (
         <div className="panel-meta">Loading…</div>
       ) : mode === "month" ? (
-        <Month days={data.days} month={anchor.getMonth()} today={today} selected={selectedDay} onOpen={openDay} />
+        <Month days={data.days} month={anchor.getMonth()} today={today} selected={selectedDay} onOpen={openDay} onActivate={activateDay} />
       ) : (
-        <Week days={data.days} today={today} selected={selectedDay} onOpen={openDay} onTick={tick} />
+        <Week days={data.days} today={today} selected={selectedDay} onOpen={openDay} onActivate={activateDay} onTick={tick} />
       )}
     </div>
   );
 }
 
-function Month({ days, month, today, selected, onOpen }: { days: Day[]; month: number; today: string; selected: string; onOpen(date: string, note: string | null): void }) {
+function Month({ days, month, today, selected, onOpen, onActivate }: { days: Day[]; month: number; today: string; selected: string; onOpen(date: string, note: string | null): void; onActivate(date: string): void }) {
   return (
     <div className="calendar-month" role="grid">
       {WEEKDAYS.map((w) => (
@@ -149,8 +150,9 @@ function Month({ days, month, today, selected, onOpen }: { days: Day[]; month: n
             role="gridcell"
             className={`calendar-cell ${d.date === selected ? "selected" : ""} ${date.getMonth() !== month ? "other-month" : ""} ${d.date === today ? "today" : ""} ${d.note ? "has-note" : ""}`}
             aria-selected={d.date === selected}
-            title={d.note ? `Select ${d.date} · ${noteName(d.note)}` : `Select ${d.date}`}
+            title={d.note ? `Select ${d.date} · double-click to open ${noteName(d.note)}` : `Select ${d.date} · double-click to create its daily note`}
             onClick={() => onOpen(d.date, d.note)}
+            onDoubleClick={() => onActivate(d.date)}
           >
             <span className="calendar-date">{date.getDate()}</span>
             {(c.open > 0 || c.done > 0) && (
@@ -172,14 +174,14 @@ function Month({ days, month, today, selected, onOpen }: { days: Day[]; month: n
   );
 }
 
-function Week({ days, today, selected, onOpen, onTick }: { days: Day[]; today: string; selected: string; onOpen(date: string, note: string | null): void; onTick(t: DayTask, done: boolean): void }) {
+function Week({ days, today, selected, onOpen, onActivate, onTick }: { days: Day[]; today: string; selected: string; onOpen(date: string, note: string | null): void; onActivate(date: string): void; onTick(t: DayTask, done: boolean): void }) {
   return (
     <div className="calendar-week">
       {days.map((d) => {
         const date = parseDay(d.date);
         return (
           <section key={d.date} className={`calendar-day ${d.date === selected ? "selected" : ""} ${d.date === today ? "today" : ""}`} aria-label={d.date}>
-            <button aria-pressed={d.date === selected} className="calendar-day-head" title={d.note ? `Select ${d.date} · ${noteName(d.note)}` : `Select ${d.date}`} onClick={() => onOpen(d.date, d.note)}>
+            <button aria-pressed={d.date === selected} className="calendar-day-head" title={d.note ? `Select ${d.date} · double-click to open ${noteName(d.note)}` : `Select ${d.date} · double-click to create its daily note`} onClick={() => onOpen(d.date, d.note)} onDoubleClick={() => onActivate(d.date)}>
               <span className="calendar-weekday">{WEEKDAYS[(date.getDay() + 6) % 7]}</span> <span className="calendar-date">{date.getDate()}</span>
             </button>
             {d.tasks.length ? <TaskList tasks={d.tasks} onTick={onTick} /> : <p className="calendar-empty">{d.note ? "No tasks" : ""}</p>}

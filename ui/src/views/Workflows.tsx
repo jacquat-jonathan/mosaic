@@ -5,9 +5,10 @@ import { errorMessage, type Agent, type AgentRun, type Proposal } from "../ipc/t
 import { useAttention } from "../state/attention";
 import { useReview } from "../state/review";
 import { useUi } from "../state/ui";
-import { useVault, uniquePath } from "../state/vault";
+import { parentOf, useVault, uniquePath } from "../state/vault";
 import { useWorkspace } from "../state/workspace";
 import { FRONTMATTER_RE } from "../editor/livePreview";
+import { viewPath } from "./specialTabs";
 
 export function pendingForRun(run: AgentRun | undefined, pending: Proposal[]) {
   if (!run) return [];
@@ -16,6 +17,7 @@ export function pendingForRun(run: AgentRun | undefined, pending: Proposal[]) {
 export function runState(run: AgentRun, needsReview = false) {
   return run.status === "running" ? "Running" : run.status === "failed" ? "Failed" : needsReview ? "Needs review" : "Successful";
 }
+export const workflowDeleteTarget = (agent: Agent) => agent.skill_folder ? parentOf(agent.path) : agent.path;
 export function RunDetail({ id, compact = false }: { id: string; compact?: boolean }) {
   const run = useAttention(s => s.status?.runs.find(r => String(r.id) === id));
   const pending = useReview(s => s.pending);
@@ -50,6 +52,29 @@ export function Workflows({ name, runsOnly = false, agentsOnly = false }: { name
   const [busy, setBusy] = useState<string | null>(null);
   const selected = agents.find(a => a.name === name);
   const act = async (id: string, work: () => Promise<unknown>) => { setBusy(id); setProblem(null); try { await work(); await refresh(); } catch(e) { setProblem(errorMessage(e)); } finally { setBusy(null); } };
+  const removeWorkflow = async (agent: Agent) => {
+    const target = workflowDeleteTarget(agent);
+    const ok = await useUi.getState().ask({
+      title: `Delete “${agent.title}”?`,
+      body: `${agent.skill_folder ? "Its agent folder" : "Its agent file"} will be moved to the macOS Trash and future scheduled runs will stop. Existing run history will be kept.`,
+      confirmLabel: "Delete workflow",
+      danger: true,
+    });
+    if (!ok) return;
+    setBusy(agent.name); setProblem(null);
+    try {
+      if (!(await useVault.getState().remove(target))) return;
+      await api.mirrorAgents();
+      await refresh();
+      const tab = viewPath("workflow", agent.name);
+      const ws = useWorkspace.getState();
+      for (const pane of ws.panes) if (pane.tabs.includes(tab)) ws.closeTab(pane.id, tab);
+    } catch (e) {
+      setProblem(errorMessage(e));
+    } finally {
+      setBusy(null);
+    }
+  };
   if (editing && selected) return <WorkflowForm agent={selected} onDone={() => { setEditing(false); void refresh(); }} />;
   const shown = name ? agents.filter(a => a.name === name) : agents;
   const runs = (status?.runs ?? []).filter(r => !name || r.agent === name);
@@ -73,7 +98,7 @@ export function Workflows({ name, runsOnly = false, agentsOnly = false }: { name
         {latest && <button onClick={() => useUi.getState().openView("run", String(latest.id))}>Last run: {runState(latest, needsReview)} · {new Date(latest.started * 1000).toLocaleString()}</button>}
         <footer><button className="primary" disabled={running || !!busy || !!schedule?.error} onClick={() => void act(a.name, async () => { const id = await api.tesseraRun(a.name); useUi.getState().openView("run", String(id)); })}>Run now</button>
           {a.schedule && <button disabled={!!busy} onClick={() => void act(a.name, () => api.tesseraPauseAgent(a.name, !schedule?.paused))}>{schedule?.paused ? "Resume" : "Pause"}</button>}
-          <button aria-label={`More actions for ${a.title}`} onClick={e => { const r = e.currentTarget.getBoundingClientRect(); useUi.getState().showMenu(r.left,r.bottom,[{label:"Edit workflow",action:()=>{useUi.getState().openView("workflow",a.name); if(name === a.name) setEditing(true);}},{label:"Edit agent source",action:()=>void useWorkspace.getState().open(a.path,{newTab:true})}]); }}>⋯</button>
+          <button aria-label={`More actions for ${a.title}`} onClick={e => { const r = e.currentTarget.getBoundingClientRect(); useUi.getState().showMenu(r.left,r.bottom,[{label:"Edit workflow",action:()=>{useUi.getState().openView("workflow",a.name); if(name === a.name) setEditing(true);}},{label:"Edit agent source",action:()=>void useWorkspace.getState().open(a.path,{newTab:true})},{separator:true,label:""},{label:"Delete workflow…",danger:true,disabled:!!running,detail:running ? "Wait for the current run to finish" : undefined,action:()=>void removeWorkflow(a)}]); }}>⋯</button>
         </footer>
       </article>;
     })}</div>}

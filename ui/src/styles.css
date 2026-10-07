@@ -317,6 +317,7 @@ button.secondary { border: 1px solid var(--border); padding: 7px 14px; }
 .search-box { display: flex; align-items: center; gap: 6px; margin: 8px 8px 0; padding: 5px 8px; border-radius: 6px; background: var(--bg); border: 1px solid var(--border); color: var(--muted); }
 .search-box:focus-within { border-color: var(--accent); }
 .search-box input { flex: 1; min-width: 0; border: 0; outline: none; background: none; color: var(--fg); }
+.search-box input:focus-visible { outline: none; }
 .results, .tag-list { flex: 1; overflow: auto; padding: 0 6px 16px; }
 .result { display: flex; flex-direction: column; align-items: stretch; gap: 2px; width: 100%; text-align: left; padding: 7px 8px; }
 .result-title { font-weight: 600; }

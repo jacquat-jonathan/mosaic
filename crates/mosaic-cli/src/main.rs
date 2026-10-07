@@ -58,7 +58,7 @@ enum Cmd {
     /// Notes matching a structured query, e.g. `tag:project status=active due<today+7 sort:due`.
     /// Filters: tag:, folder:, kind:, links-to:, linked-from:, has: (prefix - to negate); field=value,
     /// != > >= < <= ~ (contains) on frontmatter fields, title, name, folder, tags, modified; a|b for
-    /// either; today, today-7 as dates. Also sort:field / sort:-field, limit:N, show:a,b, and words
+    /// either; today, today-7 as dates. Uppercase OR separates alternative groups. Also sort:field / sort:-field, limit:N, show:a,b, and words
     /// for full-text search. `task:open` (done, moved, cancelled, all) lists checkbox tasks instead,
     /// with their own fields text, status, due (📅 date) and line, e.g. `task:open folder:Daily`.
     Query { query: Vec<String> },
@@ -550,6 +550,12 @@ fn run(cli: Cli) -> Result<()> {
         } => {
             let r = ws.rename(&from, &to, !no_update_links)?;
             print(json, &r, |r| {
+                if let Some(id) = r.review {
+                    return format!(
+                        "proposed renaming {from} to {}: waiting for review (proposal {id})",
+                        r.path
+                    );
+                }
                 let mut s = format!("renamed to {}", r.path);
                 if !r.updated_links_in.is_empty() {
                     s.push_str(&format!(

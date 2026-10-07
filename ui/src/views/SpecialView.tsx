@@ -14,6 +14,7 @@ import { ActivityPanel } from "./ActivityPanel";
 import { ConnectAiSection } from "./ConnectAi";
 import { Settings } from "./Settings";
 import { SearchPanel } from "./SearchPanel";
+import { cell } from "../editor/queryBlock";
 
 export function SpecialView({ path }: { path: string }) {
   const { kind, id } = parseView(path);
@@ -33,7 +34,7 @@ export function SpecialView({ path }: { path: string }) {
     case "connections": return <div className="workspace-page"><h1>Connections</h1><ConnectAiSection /></div>;
     case "settings": return <Settings />;
     case "search": return <SearchPanel />;
-    case "tasks": case "overdue": case "projects": case "planning": return <TaskView kind={kind} id={id} />;
+    case "tasks": case "overdue": case "projects": case "planning": case "query": return <TaskView kind={kind} id={id} />;
     default: return <div className="empty">This workspace view is no longer available.</div>;
   }
 }
@@ -43,15 +44,17 @@ function TaskView({ kind, id }: { kind: string; id: string }) {
   const [result, setResult] = useState<QueryResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
-  const query = kind === "planning" ? saved?.query : kind === "overdue" ? "task:open due<today sort:due limit:1000" : kind === "projects" ? "task:open tag:project sort:due limit:1000" : "task:open sort:due limit:1000";
+  const query = kind === "query" ? id : kind === "planning" ? saved?.query : kind === "overdue" ? "task:open due<today sort:due limit:1000" : kind === "projects" ? "task:open tag:project sort:due limit:1000" : "task:open sort:due limit:1000";
   useEffect(() => { let live=true; setResult(null); if(query) void api.query(query).then(r=>{if(live){setResult(r);setError(null);}},e=>live&&setError(errorMessage(e))); return()=>{live=false;}; },[query,revision,tick]);
-  return <div className="workspace-page"><h1>{saved?.title ?? (kind === "overdue" ? "Overdue" : kind === "projects" ? "Project tasks" : "Tasks")}</h1>
+  return <div className="workspace-page"><h1>{saved?.title ?? (kind === "query" ? "Query" : kind === "overdue" ? "Overdue" : kind === "projects" ? "Project tasks" : "Tasks")}</h1>
+    {kind === "query" && <p className="settings-note"><code>{query}</code></p>}
     {error && <p className="error-text">{error}</p>}{!query && <p>This saved view is unavailable.</p>}
     {result && <p className="panel-meta">{result.total} results{result.total > result.rows.length ? ` · showing ${result.rows.length}` : ""}</p>}
     {result?.rows.map((r,i)=><div className="task-row" key={`${r.path}:${r.task?.line ?? i}`}>
       {r.task && <input type="checkbox" aria-label={r.task.text} checked={r.task.status === "done"} disabled={!["open","done"].includes(r.task.status)} onChange={e=>void api.setTask(r.path,r.task!.line,r.task!.text,e.target.checked).then(()=>setTick(t=>t+1),e=>setError(errorMessage(e)))} />}
       <span>{r.task?.text ?? r.title}</span><button onClick={()=>void useWorkspace.getState().open(r.path,{newTab:true})}>{r.title}</button>
+      {result.columns.map(column => <span className="panel-meta" key={column}>{column}: {cell(r,column)}</span>)}
     </div>)}
-    {result?.total === 0 && <p>No tasks match this view.</p>}
+    {result?.total === 0 && <p>No {query?.includes("task:") ? "tasks" : "notes"} match this view.</p>}
   </div>;
 }

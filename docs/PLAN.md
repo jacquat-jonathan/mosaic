@@ -1,12 +1,13 @@
 # Mosaic — implementation plan
 
-Source of truth: `~/Documents/Vaults/Perso/Work/_active/mobsidian/spec.html` (approved 2026-09-30).
-This file turns the spec into ordered, checkable work. Tick boxes as work lands; each milestone ends with a commit.
+Roadmap source of truth: the Mosaic vault's `Ideation/Next steps.md`; shipped work and decisions are in
+`Ideation/Done.md`, with individual milestone notes alongside them. This file is the repository's ordered,
+checkable implementation record through M25. Current release: **0.14.0** (`v0.14.0`, 2026-10-07).
 
 ## Fixed decisions
 
-- Product **Mosaic**, bundle id `dev.jona.mosaic`, binary `mosaic` (`mosaic mcp` = stdio MCP server), core crate `mosaic-core`. Repo folder stays `mobsidian`.
-- Tauri 2 · Rust (stable) · React 18 + TypeScript + Vite · pnpm · CodeMirror 6.
+- Product **Mosaic**, bundle id `dev.jona.mosaic`, binary `mosaic` (`mosaic mcp` = stdio MCP server), core crate `mosaic-core`. Repo folder is `mosaic`.
+- Tauri 2 · Rust (stable) · React 19 + TypeScript + Vite · pnpm · CodeMirror 6.
 - Index: SQLite FTS5 via `rusqlite` (bundled), in `~/Library/Caches/mosaic/<vault-hash>/index.db`, WAL mode. Never write inside the vault except user content.
 - Ad-hoc signing only. macOS 12+. Universal2 at release.
 - Offline: CSP `default-src 'self'`, no telemetry, every renderer bundled. No automatic updater: the only network access is `git fetch`/`git pull` of the source checkout when the user clicks Check for updates / Update in Settings (decided 2026-10-01).
@@ -23,15 +24,18 @@ ui/                        React app (Vite)
   src/state/               workspace store (tabs, panes, buffers)
   src/editor/              CodeMirror live preview + widgets
   src/viewers/             one component per file kind
-  src/views/               sidebar, tree, search, backlinks, prompts
+  src/views/               destinations, tree, search, planning, workflows, settings
 fixtures/vault/            Obsidian-style test vault (with .obsidian/)
 docs/                      PLAN.md, AI guide (AGENTS.md), MCP setup
 scripts/                   gen-vault (5k files), install.sh
 ```
 
-## The one contract: `mosaic_core::api`
+## The core contract: `mosaic_core::api`
 
-All three front ends (Tauri, CLI, MCP) map 1:1 onto these. Paths are always vault-relative, `/`-separated, validated (no `..`, no absolute, symlinks must resolve inside root, `.obsidian/` hidden).
+The app, CLI and MCP share this core rather than reimplementing vault behavior. The table captures the
+foundational file operations; later milestones added copy/import, tasks and days, queries, history/undo,
+bookmarks, agents, review proposals and rendering. Paths are always vault-relative, `/`-separated and
+validated (no `..`, no absolute paths, symlinks must resolve inside the root, `.obsidian/` hidden).
 
 | Op | Input | Output |
 |---|---|---|
@@ -48,7 +52,7 @@ All three front ends (Tauri, CLI, MCP) map 1:1 onto these. Paths are always vaul
 | `tags` | — | `[{tag, count}]` |
 | `outline` | `path` | frontmatter + headings + links (cheap AI overview) |
 
-Errors: `NotFound`, `AlreadyExists`, `Conflict{current_hash}`, `InvalidPath`, `NotText`, `Io`.
+Errors: `NotFound`, `AlreadyExists`, `Conflict{current_hash}`, `InvalidPath`, `NotText`, `Invalid`, `Denied`, `Io`.
 
 ## Milestones
 
@@ -71,7 +75,7 @@ Errors: `NotFound`, `AlreadyExists`, `Conflict{current_hash}`, `InvalidPath`, `N
 
 ### M2 — Markdown live preview (ac-3)
 - [x] CodeMirror 6 with markdown language, hide syntax on inactive lines (headings, emphasis, links, lists, code, quotes)
-- [x] Frontmatter block rendered as a properties widget; edited as text
+- [x] Frontmatter initially rendered as a properties widget; superseded in 0.13.1 by right-context-only Properties with **Edit as YAML** for source editing
 - [x] Wikilinks `[[a|b]]`, `[[a#h]]`, `[[a^id]]` rendered and clickable (Cmd-click opens); unresolved styled distinctly
 - [x] Embeds `![[note]]`, `![[img.png]]`, `![[x.pdf]]`
 - [x] Tags `#tag` / nested `#a/b`
@@ -122,7 +126,7 @@ Errors: `NotFound`, `AlreadyExists`, `Conflict{current_hash}`, `InvalidPath`, `N
 - [x] README: prerequisites, build/install, Gatekeeper first launch, MCP setup for Claude Code + Desktop
 
 ### M9 — UI foundations
-Tracked in detail in the Mosaic vault note `UI Foundations.md`.
+Completed details are consolidated in the Mosaic vault note `Ideation/Done.md`.
 - [x] Resizable left bar and right panel (remembered); toggles moved to the main area's top corners
 - [x] Tree drag and drop works in the app (`dragDropEnabled: false`), multi-item moves, open folder on hover
 - [x] Vault switcher: recent vaults, open, create (`Vault::create_new`), remove from list, reveal in Finder
@@ -131,23 +135,23 @@ Tracked in detail in the Mosaic vault note `UI Foundations.md`.
 - [x] Tree multi-selection and a richer right-click menu (duplicate via `Workspace::copy`, move to…, copy link/path)
 
 ### M10 — Settings and in-app updates
-Tracked in the Mosaic vault note `Settings and Updates.md`.
+Completed details are consolidated in the Mosaic vault note `Ideation/Done.md`.
 - [x] Settings panel (⌘,): Appearance (theme, note size, line width), Editor & files, Vault, AI (was the Connect AI dialog), Shortcuts, About & updates
 - [x] Theme override: `data-theme` on `<html>`, native window theme, one `isDark()` for renderers
 - [x] Updates by pull and rebuild: `src-tauri/src/update.rs`, `scripts/install.sh --build-only`, build commit and source folder baked in by `build.rs`
 - [x] New build swapped in by a detached helper after the app quits, then reopened
 
 ### M11 — Ready to share
-Done 2026-10-01, released as 0.2.0. Details in the Mosaic vault note `Architecture/Done.md`.
+Done 2026-10-01, released as 0.2.0. Details in the Mosaic vault note `Ideation/Done.md`.
 - [x] Movable window: grant `core:window:allow-start-dragging`; tab-bar buttons don't swallow drags
 - [x] Semantic versions (workspace `Cargo.toml` + `tauri.conf.json`), a git tag per release, `CHANGELOG.md`; About shows "0.2.0 (commit)", "Check for updates" lists versions
 - [x] Cancel a running update build
-- [x] Real-app checks from `UI Foundations.md` and `Settings and Updates.md`, including a full Check → Update → Restart cycle
+- [x] Real-app checks for UI foundations and settings/updates, including a full Check → Update → Restart cycle
 - [x] Publish 0.2.0 (`scripts/release.sh 0.2.0`, `git push --follow-tags`)
 - [x] README section for coworkers: install, update from the app, connect an agent, Gatekeeper
 
 ### M12 — Trust (search, links, validation)
-Done 2026-10-01. Details in the vault note `Architecture/Done.md`.
+Done 2026-10-01. Details in the vault note `Ideation/Done.md`.
 - [x] Index Excalidraw by the text of its text elements, not raw JSON
 - [x] Canvas backlinks carry context (card text or "file card")
 - [x] `.vl.json` `data.url` indexed as an embed
@@ -155,7 +159,7 @@ Done 2026-10-01. Details in the vault note `Architecture/Done.md`.
 - [x] Link-resolution cases in one shared JSON fixture read by both Rust and Vitest tests
 
 ### M13 — Diagram tool
-Done 2026-10-02, released as 0.5.0. Details in the vault note `Architecture/Done.md`; format in `crates/mosaic-core/src/diagram_format.json` and `docs/AGENTS.md`.
+Done 2026-10-02, released as 0.5.0. Details in the vault note `Ideation/Done.md`; format in `crates/mosaic-core/src/diagram_format.json` and `docs/AGENTS.md`.
 - [x] Step 1: diagrams rendered inside canvas cards; `New › Diagram` with templates
 - [x] Step 2: 25 shapes, connection styles (UML arrowheads, end labels, thickness), connection points, auto-layout, alignment guides, hover flow
 - [x] Step 3: UML stencils, a template for each of the 14 types, lifelines/frames for sequences, 4+1 and C4 templates, network/cloud icons
@@ -163,31 +167,31 @@ Done 2026-10-02, released as 0.5.0. Details in the vault note `Architecture/Done
 - [x] MCP follows the vault open in the app unless `--vault` pins one
 
 ### M14 — Safety for agent writes
-Done 2026-10-02. Details in the vault note `Architecture/Done.md`.
+Done 2026-10-02. Details in the vault note `Ideation/Done.md`.
 - [x] File history (`history.rs`): versions with who and what, restore; app, CLI and MCP
 - [x] AI activity log with undo (sidebar tab; CLI `activity` / `undo`)
 - [x] Render tool for agents (`render.rs`, MCP `render`, `mosaic render`), drawing data shared with the editor
 
 ### M15 — Agent gaps, robustness, quick wins
-Done 2026-10-02, released as 0.7.0. Details in the vault note `Architecture/Done.md`.
+Done 2026-10-02, released as 0.7.0. Details in the vault note `Ideation/Done.md`.
 - [x] Folder permissions for agents (read-only / hidden), `move_files`, `import_file`, MCP resources
 - [x] Read-only index connection for queries; safe concurrent indexing (bench scenario); CLI-process and updater tests; ⇧-arrow tree selection
 - [x] Paste images, daily notes, unlinked mentions, canvas from selection, saved searches
 
 ### M16 — Editing comfort, diagram follow-ups
-Done 2026-10-02, released as 0.8.0. Details in the vault note `Architecture/Done.md`.
+Done 2026-10-02, released as 0.8.0. Details in the vault note `Ideation/Done.md`.
 - [x] Properties editor, custom shortcuts, note export (HTML, PDF via print)
 - [x] Connections routed around cards (`route.ts` / `route.rs`), crowded labels on hover
 - [x] Timing shape with state lanes (`timing.ts` / `timing.rs`), shape palette with drag and drop
 - [x] Copy as Mermaid for sequence and class diagrams; Open as diagram for class diagrams
 
 ### M17 — Agent review mode, queries
-Done 2026-10-02, released as 0.9.0. Details in the vault note `Architecture/Done.md`.
+Done 2026-10-02, released as 0.9.0. Details in the vault note `Ideation/Done.md`.
 - [x] Review mode: folder rule "review", proposals in `history.db` (`review.rs`), inbox with diff / accept / reject in the app, `list_proposals` / `withdraw_proposal`
 - [x] Queries: frontmatter in the index, query language (`query.rs`), MCP `query`, `mosaic query`, ```query blocks
 
 ### M18 — UI comfort
-Done 2026-10-04. From the vault note `Architecture/Ideas.md` (UI).
+Done 2026-10-04. From the vault note `Ideation/Ideas.md` (UI).
 - [x] Note width setting (narrow / medium / wide / full)
 - [x] Numbered sublists shown as 2.1, 2.2 (display only)
 - [x] Fixed icon bar on the left (sidebar panels, settings)
@@ -195,21 +199,21 @@ Done 2026-10-04. From the vault note `Architecture/Ideas.md` (UI).
 - [x] Table editing in place: cells, Tab / Enter, add or remove rows and columns
 
 ### M19 — Calendar view and carry-over
-Done 2026-10-04. Decisions in the vault note `Architecture/Next steps.md` §4.
+Done 2026-10-04. Decisions are recorded in `Ideation/Done.md`; remaining calendar ideas are in `Ideation/Next steps.md`.
 - [x] Core: tasks per day (daily note tasks plus `📅` tasks), carry-over (move, leave `[>]`, unfinished subtasks only)
 - [x] Calendar view: month (counts, first tasks) and week (every task, tickable)
 - [x] CLI and MCP: tasks by day; carry-over for agents
 
 ### M20 — Agents in the vault
-Done 2026-10-05. From the vault note `Architecture/Agentic.md`.
+Done 2026-10-05. From the archived vault note `Ideation/Archive/Agentic.md`.
 - [x] Core: agents from `Agents/` (`Name.md` or `Name/SKILL.md`): name, description, schedule, may-change, instructions
 - [x] MCP: every agent as a prompt; `list_agents`; vault guide; CLI `mosaic agents`
 - [x] Mirror agents into the vault's `.claude/skills/<name>/SKILL.md`
 
-### M21 — Chat panel
+### M21 — Chat
 Done 2026-10-06.
 - [x] Tauri: run Claude Code headless in the vault (stream-json), continue the session, stop
-- [x] Right panel chat: messages, Markdown answers, tool calls as linked lines, open note attached, agent picker and `/name`
+- [x] Chat workspace view (moved from the original right panel in M24): messages, Markdown answers, tool calls as linked lines, open note attached, agent picker and `/name`
 - [x] Missing or logged-out Claude Code explained
 
 ### M22 — Tessera (scheduled agents)
@@ -226,15 +230,23 @@ Done 2026-10-06, released as 0.12.1.
 - [x] Review and rethink the overall UI now that more features share the sidebars, tab bars and editor actions (M24)
 
 ### M24 — UI architecture cleanup
-Implemented 2026-10-07, release 0.13.0. Details and remaining manual acceptance checks are in the vault note `Architecture/M24 UI architecture cleanup.md`; completed work is in `Architecture/Done.md`.
+Released 2026-10-07 as 0.13.0, with the tested post-release polish in 0.13.1. Details are in the archived vault note `Ideation/Archive/M24 UI architecture cleanup.md`; completed work is in `Ideation/Done.md`.
 - [x] Shared macOS title strip; Notes, Find, Plan and AI rail with independent destination/sidebar state
 - [x] Mixed workspace tabs and split panes for notes, search, calendar, chats, workflows, runs, activity, connections and settings
 - [x] Persisted layouts with migration; contextual note/chat/workflow/run/calendar panels and action menus
 - [x] Automatically saved per-vault chats, grouping, titles, rename/delete, drafts, context, models and sessions
 - [x] Workflow cards, guided agent/trigger/folder creation, source-preserving edits and detailed run/proposal associations
 - [x] Today, Calendar, Tasks and saved task views; compact layouts, keyboard focus and accessible status labels
-- [x] UI/Rust coverage, production build and representative browser/native checks
-- [ ] Complete remaining manual native dragging/geometry, visual-matrix and accessibility acceptance checks
+- [x] Manual native dragging/geometry, visual matrix, zoom, reduced-motion, screen-reader and keyboard-focus acceptance checks
+- [x] 0.13.1 polish: delete workflows safely; right-context-only Properties; stable Up/Down navigation; calendar double-click; spellcheck without automatic correction/capitalization; one Search focus indicator
+- [x] Full `scripts/check.sh`, production UI and native builds, 105 Rust tests and 133 UI tests; installed 0.13.1 native macOS smoke test passed
+
+### M25 — Tables, queries and review follow-ups
+Released 2026-10-07 as 0.14.0.
+- [x] Render inline Markdown formatting inside editable table cells while preserving Markdown source on edit
+- [x] Query `OR` groups and saved structured queries in Bookmarks
+- [x] Review text changes hunk by hunk; propose and accept file renames and binary additions
+- [x] Request native attention when a new proposal arrives while Mosaic is in the background
 
 ## Working rules
 - `scripts/check.sh` green before each milestone commit.

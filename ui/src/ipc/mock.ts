@@ -44,6 +44,9 @@ export function mockPropose(path: string, content: string | null, actor = "claud
     hash: content === null ? null : hash(content),
     stale: false,
     overwrote: false,
+    binary: false,
+    to_path: null,
+    update_links: true,
     content,
   };
   proposals.push(p);
@@ -557,7 +560,7 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
       for (const d of [...dirs]) if (under(d)) { dirs.delete(d); dirs.add(move(d)); }
       addParents(to);
       track(to, "renamed", null, { from_path: from });
-      return { path: to, updated_links_in: [] };
+      return { path: to, updated_links_in: [], review: null };
     }
     case "delete_path": {
       const p = norm(a.path);
@@ -595,9 +598,10 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
       if (cmd === "accept_proposal") {
         const current = files.has(p.path) ? hash(files.get(p.path)!.content) : null;
         if (current !== p.base_hash && !a.force) throw err("conflict", `file changed since it was read: ${p.path}`);
-        if (p.content === null) files.delete(p.path);
-        else write(p.path, p.content);
-        track(p.path, p.action, p.content, { source: "agent", actor: p.actor });
+        const accepted = typeof a.content === "string" ? a.content : p.content;
+        if (accepted === null) files.delete(p.path);
+        else write(p.path, accepted);
+        track(p.path, p.action, accepted, { source: "agent", actor: p.actor });
         emit("vault-changed", { paths: [p.path] });
       }
       Object.assign(p, { status: cmd === "accept_proposal" ? "accepted" : "rejected", reason: (a.reason as string | null) ?? null, decided: Date.now() });

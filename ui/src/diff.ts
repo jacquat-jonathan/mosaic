@@ -1,4 +1,5 @@
 export type DiffLine = { op: "same" | "add" | "del"; text: string };
+export type ReviewDiffLine = DiffLine & { hunk: number | null };
 
 /** Line diff (LCS). Fine for notes; falls back to a whole replace for very large inputs. */
 export function diffLines(a: string, b: string): DiffLine[] {
@@ -29,4 +30,28 @@ export function diffLines(a: string, b: string): DiffLine[] {
   while (i < n) out.push({ op: "del", text: x[i++] });
   while (j < m) out.push({ op: "add", text: y[j++] });
   return out;
+}
+
+/** Labels each contiguous changed region so review can accept changes hunk by hunk. */
+export function reviewHunks(a: string, b: string): ReviewDiffLine[] {
+  let hunk = -1;
+  let changing = false;
+  return diffLines(a, b).map((line) => {
+    if (line.op === "same") {
+      changing = false;
+      return { ...line, hunk: null };
+    }
+    if (!changing) hunk++;
+    changing = true;
+    return { ...line, hunk };
+  });
+}
+
+/** Applies only the selected proposed hunks; unselected hunks keep the current text. */
+export function acceptHunks(current: string, proposed: string, selected: Set<number>): string {
+  const out: string[] = [];
+  for (const line of reviewHunks(current, proposed)) {
+    if (line.op === "same" || (line.op === "add" && selected.has(line.hunk!)) || (line.op === "del" && !selected.has(line.hunk!))) out.push(line.text);
+  }
+  return out.join("\n");
 }

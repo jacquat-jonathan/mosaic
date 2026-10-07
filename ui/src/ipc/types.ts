@@ -212,6 +212,7 @@ export interface TagCount {
 export interface Renamed {
   path: string;
   updated_links_in: string[];
+  review?: number;
 }
 
 export interface IndexProgress {
@@ -281,7 +282,7 @@ export interface AgentRule {
 export interface Proposal {
   id: number;
   path: string;
-  action: "created" | "edited" | "deleted";
+  action: "created" | "edited" | "deleted" | "renamed";
   status: "pending" | "accepted" | "rejected" | "withdrawn" | "undone";
   source: string;
   actor: string | null;
@@ -295,6 +296,9 @@ export interface Proposal {
   stale: boolean;
   /** Accepted anyway after the file changed: the person's changes since were replaced. */
   overwrote: boolean;
+  binary: boolean;
+  to_path: string | null;
+  update_links: boolean;
 }
 
 /** One version of a file kept by Mosaic (see crates/mosaic-core/src/history.rs). */

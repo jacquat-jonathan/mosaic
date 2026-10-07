@@ -4,6 +4,10 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- Markdown emphasis and other inline formatting now render inside editable table cells; focusing a cell reveals its Markdown source.
+- Structured queries support uppercase `OR` between groups, and queries can be saved and run from Bookmarks.
+- Review changes hunk by hunk, and review proposed file renames and binary additions. Mosaic requests attention when a proposal arrives while it is in the background.
+
 ## 0.13.1 — 2026-10-07
 
 - **Workflow cleanup:** delete a workflow from its actions menu. Its agent file or skill folder moves to the macOS Trash, future scheduled runs stop, and existing run history stays available.

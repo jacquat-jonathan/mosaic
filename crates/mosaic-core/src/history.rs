@@ -159,6 +159,9 @@ impl History {
         for (col, ty) in [
             ("overwrote", "INTEGER NOT NULL DEFAULT 0"),
             ("version_id", "INTEGER"),
+            ("binary", "INTEGER NOT NULL DEFAULT 0"),
+            ("to_path", "TEXT"),
+            ("update_links", "INTEGER NOT NULL DEFAULT 1"),
         ] {
             let has: bool = conn
                 .query_row(
@@ -297,14 +300,15 @@ impl History {
         to: &str,
         source: &Source,
         actor: Option<&str>,
-    ) -> Result<()> {
+    ) -> Result<i64> {
         self.conn
             .execute(
                 "UPDATE versions SET path = ?2 || substr(path, length(?1) + 1) WHERE path = ?1 OR path LIKE ?3 ESCAPE '\\'",
                 params![from, to, format!("{}/%", from.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_"))],
             )
             .map_err(sql_err)?;
-        self.insert(to, None, "", source, actor, Action::Renamed, Some(from))
+        self.insert(to, None, "", source, actor, Action::Renamed, Some(from))?;
+        Ok(self.conn.last_insert_rowid())
     }
 
     /// Versions of `path`, newest first.

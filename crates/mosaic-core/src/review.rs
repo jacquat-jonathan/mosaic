@@ -10,7 +10,7 @@ use crate::error::{Error, Result};
 use crate::history::{Action, History, Source, now_ms};
 use crate::kind::FileKind;
 use crate::settings::{Access, access_for};
-use crate::vault::{FileContent, Written, hash_bytes, normalize, replace_once};
+use crate::vault::{FileContent, Written, hash_bytes, replace_once};
 use rusqlite::{OptionalExtension, params};
 use serde::Serialize;
 use std::path::Path;
@@ -20,7 +20,7 @@ use std::path::Path;
 pub struct Proposal {
     pub id: i64,
     pub path: String,
-    /// "created", "edited" or "deleted".
+    /// "created", "edited", "deleted" or "renamed".
     pub action: String,
     /// "pending", "accepted", "rejected", "withdrawn", or "undone" (accepted, then undone by the person).
     pub status: String,
@@ -44,9 +44,18 @@ pub struct Proposal {
     /// since the proposal were replaced (they're kept in the file's history).
     #[serde(default)]
     pub overwrote: bool,
+    /// Binary proposals have bytes rather than a text diff.
+    #[serde(default)]
+    pub binary: bool,
+    /// Destination for a rename proposal.
+    #[serde(default)]
+    pub to_path: Option<String>,
+    /// Whether accepting a rename updates links.
+    #[serde(default)]
+    pub update_links: bool,
 }
 
-const COLUMNS: &str = "id, path, action, status, source, actor, created, updated, decided, reason, base_hash, hash, overwrote";
+const COLUMNS: &str = "id, path, action, status, source, actor, created, updated, decided, reason, base_hash, hash, overwrote, binary, to_path, update_links";
 
 fn sql_err(e: rusqlite::Error) -> Error {
     Error::Io {
@@ -71,6 +80,9 @@ fn row(r: &rusqlite::Row) -> rusqlite::Result<Proposal> {
         hash: r.get(11)?,
         stale: false,
         overwrote: r.get(12)?,
+        binary: r.get(13)?,
+        to_path: r.get(14)?,
+        update_links: r.get(15)?,
     })
 }
 
@@ -107,13 +119,33 @@ impl History {
     }
 
     pub fn proposal_content(&self, id: i64) -> Result<Option<String>> {
+        let (bytes, binary) = self.proposal_data(id)?;
+        if binary {
+            return Ok(None);
+        }
+        bytes
+            .map(|b| String::from_utf8(b).map_err(|_| Error::NotText(format!("proposal {id}"))))
+            .transpose()
+    }
+
+    pub fn proposal_data(&self, id: i64) -> Result<(Option<Vec<u8>>, bool)> {
         self.conn
-            .query_row("SELECT content FROM proposals WHERE id = ?1", [id], |r| {
-                r.get(0)
-            })
+            .query_row(
+                "SELECT content, binary FROM proposals WHERE id = ?1",
+                [id],
+                |r| {
+                    use rusqlite::types::ValueRef;
+                    let bytes = match r.get_ref(0)? {
+                        ValueRef::Null => None,
+                        ValueRef::Text(v) | ValueRef::Blob(v) => Some(v.to_vec()),
+                        _ => None,
+                    };
+                    Ok((bytes, r.get(1)?))
+                },
+            )
             .optional()
-            .map_err(sql_err)
-            .map(Option::flatten)
+            .map_err(sql_err)?
+            .ok_or_else(|| Error::NotFound(format!("proposal {id}")))
     }
 
     /// Records a proposal, or updates the pending one for the same file. Returns its id.
@@ -123,25 +155,28 @@ impl History {
         path: &str,
         action: Action,
         base_hash: Option<&str>,
-        content: Option<&str>,
+        content: Option<&[u8]>,
+        binary: bool,
+        to_path: Option<&str>,
+        update_links: bool,
         source: &Source,
         actor: Option<&str>,
     ) -> Result<i64> {
         let now = now_ms();
-        let hash = content.map(|c| hash_bytes(c.as_bytes()));
+        let hash = content.map(hash_bytes);
         if let Some((p, _)) = self.pending_for(path)? {
             self.conn
                 .execute(
-                    "UPDATE proposals SET action = ?1, content = ?2, hash = ?3, actor = ?4, updated = ?5 WHERE id = ?6",
-                    params![action_str(action), content, hash, actor, now, p.id],
+                    "UPDATE proposals SET action = ?1, content = ?2, hash = ?3, actor = ?4, updated = ?5, binary = ?6, to_path = ?7, update_links = ?8 WHERE id = ?9",
+                    params![action_str(action), content, hash, actor, now, binary, to_path, update_links, p.id],
                 )
                 .map_err(sql_err)?;
             return Ok(p.id);
         }
         self.conn
             .execute(
-                "INSERT INTO proposals (path, action, base_hash, content, hash, source, actor, created, updated, status) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8, 'pending')",
-                params![path, action_str(action), base_hash, content, hash, source.as_str(), actor, now],
+                "INSERT INTO proposals (path, action, base_hash, content, hash, source, actor, created, updated, status, binary, to_path, update_links) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8, 'pending', ?9, ?10, ?11)",
+                params![path, action_str(action), base_hash, content, hash, source.as_str(), actor, now, binary, to_path, update_links],
             )
             .map_err(sql_err)?;
         Ok(self.conn.last_insert_rowid())
@@ -199,6 +234,7 @@ fn action_str(a: Action) -> &'static str {
     match a {
         Action::Created => "created",
         Action::Deleted => "deleted",
+        Action::Renamed => "renamed",
         _ => "edited",
     }
 }
@@ -218,16 +254,6 @@ impl Workspace {
                 || access_for(&self.rules(), norm) == Some(Access::Review))
     }
 
-    /// Refuses an operation that can't be proposed (moves, binary files, folders) under review.
-    pub(crate) fn refuse_in_review(&self, path: &str, what: &str) -> Result<()> {
-        let norm = normalize(path)?;
-        if self.in_review(&norm) {
-            Err(not_reviewable(&norm, what))
-        } else {
-            Ok(())
-        }
-    }
-
     /// The file as the agent should see it: its pending proposal if there is one, else the disk.
     /// `None` when it doesn't exist (or its deletion is proposed).
     fn effective(&self, norm: &str) -> Result<Option<(String, String, Option<i64>)>> {
@@ -245,6 +271,22 @@ impl Workspace {
         let Some((p, content)) = self.hist().pending_for(norm)? else {
             return Ok(None);
         };
+        if p.binary {
+            let bytes = self
+                .hist()
+                .proposal_data(p.id)?
+                .0
+                .ok_or_else(|| Error::NotFound(format!("{norm} (you proposed deleting it)")))?;
+            return Ok(Some(FileContent {
+                path: norm.to_string(),
+                kind: FileKind::of(Path::new(norm)),
+                size: bytes.len() as u64,
+                mtime: p.updated as u64,
+                hash: hash_bytes(&bytes),
+                content: None,
+                review: Some(p.id),
+            }));
+        }
         let content =
             content.ok_or_else(|| Error::NotFound(format!("{norm} (you proposed deleting it)")))?;
         Ok(Some(FileContent {
@@ -315,13 +357,76 @@ impl Workspace {
             norm,
             action,
             base.as_deref(),
-            Some(content),
+            Some(content.as_bytes()),
+            false,
+            None,
+            true,
             &self.source(),
             self.actor().as_deref(),
         )?;
         Ok(Written {
             path: norm.to_string(),
             hash,
+            review: Some(id),
+        })
+    }
+
+    /// Proposes adding a binary file. Binary proposals are creation-only, matching `import_file`.
+    pub(crate) fn propose_binary_create(&self, norm: &str, bytes: &[u8]) -> Result<Written> {
+        if self.vault.stat(norm).is_ok() || self.hist().pending_for(norm)?.is_some() {
+            return Err(Error::AlreadyExists(norm.to_string()));
+        }
+        let hash = hash_bytes(bytes);
+        let id = self.hist().propose(
+            norm,
+            Action::Created,
+            None,
+            Some(bytes),
+            true,
+            None,
+            true,
+            &self.source(),
+            self.actor().as_deref(),
+        )?;
+        Ok(Written {
+            path: norm.to_string(),
+            hash,
+            review: Some(id),
+        })
+    }
+
+    pub(crate) fn propose_rename(
+        &self,
+        from: &str,
+        to: &str,
+        update_links: bool,
+    ) -> Result<crate::api::Renamed> {
+        let entry = self.vault.stat(from)?;
+        if entry.is_dir {
+            return Err(not_reviewable(from, "moving a folder"));
+        }
+        if self.vault.stat(to).is_ok() || self.hist().pending_for(to)?.is_some() {
+            return Err(Error::AlreadyExists(to.to_string()));
+        }
+        let base = self
+            .vault
+            .hash_of(from)?
+            .ok_or_else(|| Error::NotFound(from.to_string()))?;
+        let binary = !FileKind::of(Path::new(from)).is_text();
+        let id = self.hist().propose(
+            from,
+            Action::Renamed,
+            Some(&base),
+            None,
+            binary,
+            Some(to),
+            update_links,
+            &self.source(),
+            self.actor().as_deref(),
+        )?;
+        Ok(crate::api::Renamed {
+            path: to.to_string(),
+            updated_links_in: vec![],
             review: Some(id),
         })
     }
@@ -371,27 +476,32 @@ impl Workspace {
         if self.vault.stat(norm).is_ok_and(|e| e.is_dir) {
             return Err(not_reviewable(norm, "deleting a folder"));
         }
-        if self.effective(norm)?.is_none() {
+        let exists = self.vault.stat(norm).is_ok();
+        let pending = self.hist().pending_for(norm)?;
+        if !exists && pending.is_none() {
             return Err(Error::NotFound(norm.to_string()));
         }
         let disk = self.text_of(norm);
-        let pending = self.hist().pending_for(norm)?;
-        match (&disk, pending) {
+        match (exists, &disk, pending) {
             // Deleting a file only proposed so far: drop the proposal.
-            (None, Some((p, _))) => self.hist().decide(p.id, "withdrawn", None).map(|_| None),
-            (_, pending) => {
+            (false, _, Some((p, _))) => self.hist().decide(p.id, "withdrawn", None).map(|_| None),
+            (_, _, pending) => {
                 let base = match &pending {
                     Some((p, _)) => p.base_hash.clone(),
                     None => {
                         self.keep_before(norm);
-                        disk.as_ref().map(|(_, h)| h.clone())
+                        self.vault.hash_of(norm)?
                     }
                 };
+                let binary = !FileKind::of(Path::new(norm)).is_text();
                 let id = self.hist().propose(
                     norm,
                     Action::Deleted,
                     base.as_deref(),
                     None,
+                    binary,
+                    None,
+                    true,
                     &self.source(),
                     self.actor().as_deref(),
                 )?;
@@ -462,6 +572,16 @@ impl Workspace {
     /// since it was proposed, unless `force`. The change is logged as the agent's, so it shows in
     /// the AI activity and can be undone. Returns the file's path.
     pub fn accept_proposal(&self, id: i64, force: bool) -> Result<String> {
+        self.accept_proposal_content(id, force, None)
+    }
+
+    /// Accepts a proposal, optionally with a person-selected subset of its text changes.
+    pub fn accept_proposal_content(
+        &self,
+        id: i64,
+        force: bool,
+        selected_content: Option<&str>,
+    ) -> Result<String> {
         self.person_only("accept")?;
         let p = self.pending(id)?;
         let current = self.vault.hash_of(&p.path)?;
@@ -473,7 +593,36 @@ impl Workspace {
         }
         let source = Source::parse(&p.source);
         // Bound first: a guard in the match head would stay locked through the arms.
-        let content = self.hist().proposal_content(id)?;
+        if selected_content.is_some() && (p.action != "edited" || p.binary) {
+            return Err(Error::Invalid(
+                "only an edited text proposal can be accepted partially".into(),
+            ));
+        }
+        if p.action == "renamed" {
+            let to = p.to_path.clone().ok_or_else(|| {
+                Error::Invalid(format!("proposal {id} has no rename destination"))
+            })?;
+            let (out, version_id) =
+                self.rename_direct(&p.path, &to, p.update_links, &source, p.actor.as_deref())?;
+            self.hist()
+                .accepted(id, current != p.base_hash, version_id)?;
+            return Ok(out.path);
+        }
+        if p.binary && p.action == "created" {
+            let bytes = self
+                .hist()
+                .proposal_data(id)?
+                .0
+                .ok_or_else(|| Error::Invalid(format!("proposal {id} has no file data")))?;
+            self.vault.create_bytes(&p.path, &bytes)?;
+            self.hist().accepted(id, current != p.base_hash, None)?;
+            self.reindex(&p.path);
+            return Ok(p.path);
+        }
+        let content = selected_content
+            .map(str::to_string)
+            .map(Some)
+            .unwrap_or(self.hist().proposal_content(id)?);
         match content {
             Some(content) => {
                 let existed = self.keep_before(&p.path);
@@ -669,6 +818,21 @@ mod tests {
     }
 
     #[test]
+    fn person_can_accept_selected_text_hunks() {
+        let (dir, app, agent) = setup();
+        let w = agent
+            .write("Reviewed/Plan.md", "# Plan\n- changed\n- extra\n", None)
+            .unwrap();
+        app.accept_proposal_content(w.review.unwrap(), false, Some("# Plan\n- changed\n"))
+            .unwrap();
+        assert_eq!(
+            disk(&dir, "Reviewed/Plan.md").as_deref(),
+            Some("# Plan\n- changed\n")
+        );
+        assert_eq!(agent.proposals(true, 10).unwrap()[0].status, "accepted");
+    }
+
+    #[test]
     fn creations_deletions_conflicts_and_rejections() {
         let (dir, app, agent) = setup();
         let w = agent.create("Reviewed/New.md", "hello\n").unwrap();
@@ -718,19 +882,76 @@ mod tests {
             (forced.status.as_str(), forced.overwrote),
             ("accepted", true)
         );
-        // Moves and binary files can't be reviewed.
-        assert!(matches!(
-            agent.rename("Reviewed/Plan.md", "Plan.md", true),
-            Err(Error::Denied(_))
-        ));
-        assert!(matches!(
-            agent.rename("Free.md", "Reviewed/Free.md", true),
-            Err(Error::Denied(_))
-        ));
-        assert!(matches!(
-            agent.import("Reviewed/pic.png", b"png"),
-            Err(Error::Denied(_))
-        ));
+        // Renames and binary additions wait for review too.
+        app.write("Free.md", "See [[Reviewed/Plan]]\n", None)
+            .unwrap();
+        let rename = agent.rename("Reviewed/Plan.md", "Plan.md", true).unwrap();
+        let rename_id = rename.review.unwrap();
+        assert!(disk(&dir, "Reviewed/Plan.md").is_some());
+        let p = app
+            .proposals(false, 10)
+            .unwrap()
+            .into_iter()
+            .find(|p| p.id == rename_id)
+            .unwrap();
+        assert_eq!(
+            (p.action.as_str(), p.to_path.as_deref()),
+            ("renamed", Some("Plan.md"))
+        );
+        app.accept_proposal(rename_id, false).unwrap();
+        assert!(disk(&dir, "Reviewed/Plan.md").is_none());
+        assert!(disk(&dir, "Plan.md").is_some());
+        assert_eq!(disk(&dir, "Free.md").as_deref(), Some("See [[Plan]]\n"));
+        let activity = app.activity(10).unwrap();
+        let rename_change = activity
+            .iter()
+            .find(|v| v.action == "renamed" && v.path == "Plan.md")
+            .expect("accepted rename is attributed to the agent");
+        assert_eq!(
+            (
+                rename_change.source.as_str(),
+                rename_change.actor.as_deref()
+            ),
+            ("agent", Some("claude-code"))
+        );
+        let link_change = activity
+            .iter()
+            .find(|v| v.action == "edited" && v.path == "Free.md")
+            .expect("accepted link rewrite is attributed to the agent");
+        assert_eq!(
+            (link_change.source.as_str(), link_change.actor.as_deref()),
+            ("agent", Some("claude-code"))
+        );
+        app.undo(rename_change.id).unwrap();
+        assert!(disk(&dir, "Reviewed/Plan.md").is_some());
+        assert!(disk(&dir, "Plan.md").is_none());
+        // The shorter link still resolves after moving the note back, so it stays short.
+        assert_eq!(disk(&dir, "Free.md").as_deref(), Some("See [[Plan]]\n"));
+        assert_eq!(
+            agent
+                .proposals(true, 10)
+                .unwrap()
+                .into_iter()
+                .find(|p| p.id == rename_id)
+                .unwrap()
+                .status,
+            "undone"
+        );
+
+        let binary = agent.import("Reviewed/pic.png", b"png").unwrap();
+        let binary_id = binary.review.unwrap();
+        assert!(!dir.path().join("Reviewed/pic.png").exists());
+        assert!(
+            app.proposals(false, 10)
+                .unwrap()
+                .iter()
+                .any(|p| p.id == binary_id && p.binary)
+        );
+        app.accept_proposal(binary_id, false).unwrap();
+        assert_eq!(
+            std::fs::read(dir.path().join("Reviewed/pic.png")).unwrap(),
+            b"png"
+        );
         assert!(matches!(agent.delete("Reviewed"), Err(Error::Denied(_))));
     }
 }

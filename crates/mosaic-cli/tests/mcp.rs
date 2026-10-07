@@ -633,7 +633,7 @@ fn changes_in_a_reviewed_folder_become_proposals() {
     assert!(!err);
     let (_, list) = c.call("list_proposals", json!({}));
     assert_eq!(list[0]["status"], "withdrawn");
-    // A deletion is proposed too, and moves are refused.
+    // A deletion, rename and binary addition are proposed too.
     let (err, d) = c.call("delete_file", json!({ "path": "Drafts/Plan.md" }));
     assert!(!err && d["review"].is_i64(), "{d}");
     assert!(root.join("Drafts/Plan.md").exists());
@@ -641,8 +641,16 @@ fn changes_in_a_reviewed_folder_become_proposals() {
         "rename",
         json!({ "from": "Drafts/Plan.md", "to": "Plan.md" }),
     );
-    assert!(err);
-    assert_eq!(m["code"], "denied");
+    assert!(!err, "{m}");
+    assert!(m["review"].is_i64());
+    assert!(root.join("Drafts/Plan.md").exists());
+    let (err, image) = c.call(
+        "import_file",
+        json!({ "path": "Drafts/pic.png", "data": "cG5n" }),
+    );
+    assert!(!err, "{image}");
+    assert!(image["review"].is_i64());
+    assert!(!root.join("Drafts/pic.png").exists());
 }
 
 #[test]

@@ -6,7 +6,7 @@ export function parseView(path: string): { kind: string; id: string } {
   const [kind, ...rest] = path.slice(7).split("/");
   try { return { kind, id: decodeURIComponent(rest.join("/")) }; } catch { return { kind, id: "" }; }
 }
-const names: Record<string, string> = { calendar: "Calendar", today: "Today", tasks: "Tasks", week: "My week", overdue: "Overdue", projects: "Project tasks", search: "Search", chat: "Chat", chats: "Chats", agents: "Agents", workflows: "Workflows", workflow: "Workflow", "new-workflow": "Create workflow", run: "Run", runs: "Runs", activity: "AI activity", connections: "Connections", settings: "Settings", planning: "Planning view" };
+const names: Record<string, string> = { calendar: "Calendar", today: "Today", tasks: "Tasks", week: "My week", overdue: "Overdue", projects: "Project tasks", search: "Search", query: "Query", chat: "Chat", chats: "Chats", agents: "Agents", workflows: "Workflows", workflow: "Workflow", "new-workflow": "Create workflow", run: "Run", runs: "Runs", activity: "AI activity", connections: "Connections", settings: "Settings", planning: "Planning view" };
 export const specialTabName = (path: string) => { const { kind, id } = parseView(path); return `${names[kind] ?? kind}${id && ["workflow", "run", "planning"].includes(kind) ? ` · ${id}` : ""}`; };
 export function contextKind(path: string | null): "note" | "chat" | "workflow" | "run" | "calendar" | null {
   if (!path) return null;

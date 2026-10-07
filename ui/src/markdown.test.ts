@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { markdownToHtml } from "./markdown";
+import { inlineMarkdownToHtml, markdownToHtml } from "./markdown";
 
 test("inline and display math render with KaTeX, like in notes", () => {
   expect(markdownToHtml("Area: $\\pi r^2$")).toContain('class="katex"');
@@ -24,4 +24,8 @@ test("shape labels can keep single line breaks", () => {
 test("==highlights== render as marks, with formatting inside", () => {
   expect(markdownToHtml("a ==**bold** note== b")).toContain("<mark><strong>bold</strong> note</mark>");
   expect(markdownToHtml("a == b == c")).not.toContain("<mark>");
+});
+
+test("renders inline Markdown without a paragraph for table cells", () => {
+  expect(inlineMarkdownToHtml("*soft* and **strong**")).toBe("<em>soft</em> and <strong>strong</strong>");
 });

@@ -37,6 +37,9 @@ pub struct Renamed {
     pub path: String,
     /// Other files whose links were rewritten to follow the move.
     pub updated_links_in: Vec<String>,
+    /// Set when the rename is waiting for review rather than applied.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub review: Option<i64>,
 }
 
 /// A note that mentions another note's title or alias without linking to it.
@@ -285,16 +288,16 @@ impl Workspace {
 
     /// After a change: records the file's new content.
     fn record(&self, path: &str, action: Action) {
+        self.record_as(path, action, &self.source, self.actor().as_deref());
+    }
+
+    /// Records a change using the identity that caused it. Review acceptance uses this to retain
+    /// the proposing agent's attribution even though the app applies the change.
+    fn record_as(&self, path: &str, action: Action, source: &Source, actor: Option<&str>) {
         if let Some((text, hash)) = self.text_of(path) {
-            let _ = self.hist().record(
-                path,
-                Some(&text),
-                &hash,
-                &self.source,
-                self.actor().as_deref(),
-                action,
-                None,
-            );
+            let _ = self
+                .hist()
+                .record(path, Some(&text), &hash, source, actor, action, None);
         }
     }
 
@@ -445,12 +448,10 @@ impl Workspace {
         self.check_write(to)?;
         let to_n = normalize(to)?;
         if self.in_review(&to_n) {
-            let text = self.read(from)?.content.ok_or_else(|| {
-                Error::Denied(format!(
-                    "{to_n}: a binary file can't be proposed for review; ask the person to copy it"
-                ))
-            })?;
-            return self.propose_create(&to_n, &text);
+            return match self.read(from)?.content {
+                Some(text) => self.propose_create(&to_n, &text),
+                None => self.propose_binary_create(&to_n, &self.vault.read_bytes(from)?),
+            };
         }
         let w = self.vault.copy(from, to)?;
         self.record(&w.path, Action::Created);
@@ -462,7 +463,6 @@ impl Workspace {
     /// extension (like Finder), so nothing is ever overwritten.
     pub fn import(&self, path: &str, bytes: &[u8]) -> Result<Written> {
         self.check_write(path)?;
-        self.refuse_in_review(path, "adding a binary file")?;
         let name_start = path.rfind('/').map_or(0, |i| i + 1);
         let (stem, ext) = match path[name_start..].rfind('.') {
             Some(i) if i > 0 => path.split_at(name_start + i),
@@ -474,6 +474,12 @@ impl Workspace {
             } else {
                 format!("{stem} {n}{ext}")
             };
+            if self.in_review(&normalize(&candidate)?) {
+                match self.propose_binary_create(&candidate, bytes) {
+                    Err(Error::AlreadyExists(_)) => continue,
+                    r => return r,
+                }
+            }
             match self.vault.create_bytes(&candidate, bytes) {
                 Err(Error::AlreadyExists(_)) => continue,
                 r => {
@@ -865,24 +871,40 @@ impl Workspace {
     pub fn rename(&self, from: &str, to: &str, update_links: bool) -> Result<Renamed> {
         self.check_write(from)?;
         self.check_write(to)?;
-        self.refuse_in_review(from, "moving it")?;
-        self.refuse_in_review(to, "moving a file there")?;
         let from = normalize(from)?;
         let to_n = normalize(to)?;
-        let src_entry = self.vault.stat(&from)?;
+        if self.in_review(&from) || self.in_review(&to_n) {
+            return self.propose_rename(&from, &to_n, update_links);
+        }
+        let actor = self.actor();
+        self.rename_direct(&from, &to_n, update_links, &self.source, actor.as_deref())
+            .map(|(renamed, _)| renamed)
+    }
+
+    /// Applies an already-authorized rename. The returned history id is the rename marker used by
+    /// review mode to connect the accepted proposal to Undo.
+    pub(crate) fn rename_direct(
+        &self,
+        from: &str,
+        to_n: &str,
+        update_links: bool,
+        source: &Source,
+        actor: Option<&str>,
+    ) -> Result<(Renamed, Option<i64>)> {
+        let src_entry = self.vault.stat(from)?;
         let moved: Vec<String> = if src_entry.is_dir {
             self.vault
-                .list(&from, true)?
+                .list(from, true)?
                 .into_iter()
                 .filter(|e| !e.is_dir)
                 .map(|e| e.path)
                 .collect()
         } else {
-            vec![from.clone()]
+            vec![from.to_string()]
         };
         let map_path = |p: &str| -> String {
             if p == from {
-                to_n.clone()
+                to_n.to_string()
             } else if let Some(rest) = p.strip_prefix(&format!("{from}/")) {
                 format!("{to_n}/{rest}")
             } else {
@@ -937,10 +959,8 @@ impl Workspace {
             (None, BTreeSet::new(), vec![], vec![])
         };
 
-        let out = self.vault.rename(&from, &to_n)?;
-        let _ = self
-            .hist()
-            .renamed(&from, &out, &self.source, self.actor().as_deref());
+        let out = self.vault.rename(from, to_n)?;
+        let version_id = self.hist().renamed(from, &out, source, actor).ok();
         let mut updated = Vec::new();
 
         if let Some(old_set) = old_set {
@@ -961,24 +981,29 @@ impl Workspace {
                 let src_moved = moved_map.contains_key(old_src);
                 if self.rewrite_links(
                     &old_set, &new_set, old_src, &new_src, src_moved, &moved_map, &map_path,
+                    source, actor,
                 )? {
                     updated.push(new_src);
                 }
             }
         }
 
-        self.reindex(&from);
+        self.reindex(from);
         self.reindex(&out);
         for p in &updated {
             self.reindex(p);
         }
         // Bookmarks follow the move too. They are secondary: a failure here doesn't undo the rename.
         let root = self.vault.root();
-        let _ = Settings::update(|s| s.remap_bookmarks(root, &from, &out));
-        Ok(Renamed {
-            path: out,
-            updated_links_in: updated,
-        })
+        let _ = Settings::update(|s| s.remap_bookmarks(root, from, &out));
+        Ok((
+            Renamed {
+                path: out,
+                updated_links_in: updated,
+                review: None,
+            },
+            version_id,
+        ))
     }
 
     /// The vault's bookmarks, in the user's order. They live in the app's settings, not in the vault.
@@ -987,19 +1012,28 @@ impl Workspace {
             .bookmarks(self.vault.root())
             .into_iter()
             .map(|path| Bookmark {
-                // A saved search (`search:<query>`) always "exists".
-                exists: path.starts_with("search:") || self.vault.stat(&path).is_ok(),
+                // Saved searches and structured queries always "exist".
+                exists: path.starts_with("search:")
+                    || path.starts_with("query:")
+                    || self.vault.stat(&path).is_ok(),
                 path,
             })
             .collect()
     }
 
     /// Bookmarks an existing file or folder (at the end of the list; no-op if already there).
-    /// Bookmarks a file or folder, or a search when `path` is `search:<query>`.
+    /// Bookmarks a file or folder, a search (`search:<query>`) or structured query (`query:<query>`).
     pub fn add_bookmark(&self, path: &str) -> Result<Vec<Bookmark>> {
-        let path = match path.strip_prefix("search:") {
-            Some(q) if !q.trim().is_empty() => format!("search:{}", q.trim()),
-            _ => self.vault.stat(path)?.path,
+        let path = if let Some(q) = path
+            .strip_prefix("search:")
+            .filter(|q| !q.trim().is_empty())
+        {
+            format!("search:{}", q.trim())
+        } else if let Some(q) = path.strip_prefix("query:").filter(|q| !q.trim().is_empty()) {
+            crate::query::parse(q.trim())?;
+            format!("query:{}", q.trim())
+        } else {
+            self.vault.stat(path)?.path
         };
         if path.is_empty() {
             return Err(Error::InvalidPath("cannot bookmark the vault root".into()));
@@ -1049,6 +1083,8 @@ impl Workspace {
         src_moved: bool,
         moved: &HashMap<String, String>,
         map_path: &dyn Fn(&str) -> String,
+        source: &Source,
+        actor: Option<&str>,
     ) -> Result<bool> {
         let file = match self.vault.read(new_src) {
             Ok(f) => f,
@@ -1112,11 +1148,9 @@ impl Workspace {
             }
             _ => return Ok(false),
         };
-        let _ = self
-            .hist()
-            .keep_before(new_src, &text, &file.hash, &self.source);
+        let _ = self.hist().keep_before(new_src, &text, &file.hash, source);
         self.vault.write(new_src, &new_text, Some(&file.hash))?;
-        self.record(new_src, Action::Edited);
+        self.record_as(new_src, Action::Edited, source, actor);
         Ok(true)
     }
 }

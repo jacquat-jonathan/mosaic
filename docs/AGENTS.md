@@ -26,8 +26,8 @@ write shows up in the app within a second.
 - **Some folders are reviewed.** There, your create, edit, patch, append, restore and delete calls succeed
   but don't change the file: the result has a `review` id (a proposal) and a note saying so. The person
   sees the change as a diff in the app and accepts or rejects it. Until then, your reads of that file show
-  your proposal and your next edits build on it, so a multi-step change is reviewed as one. Moving files
-  and adding binary files there is refused. `list_proposals` shows what's pending and the person's
+  your proposal and your next edits build on it, so a multi-step change is reviewed as one. File renames
+  and binary additions become proposals too; folder moves are still refused. `list_proposals` shows what's pending and the person's
   decisions (a rejection may carry a reason: read it and adapt; `undone` means they accepted it, then
   undid it, so the file no longer has your change); `withdraw_proposal` takes one back. Tell
   the person what you proposed and why, since they decide.
@@ -176,7 +176,8 @@ and `path:Projects` (folder).
 
 ## Queries
 
-`query` (CLI: `mosaic query …`) finds notes by structure instead of words. Terms are combined with AND:
+`query` (CLI: `mosaic query …`) finds notes by structure instead of words. Terms are combined with AND;
+uppercase `OR` separates alternative groups (`tag:work status=active OR tag:idea priority>2`):
 
 | Term | Meaning |
 |---|---|
@@ -195,6 +196,8 @@ Values: `a|b` matches either; list fields (`tags: [a, b]`, `owners: […]`) matc
 `2026-10-02`, `today`, `today-7`, compared by day; numbers as numbers; other text ignoring case. Quote
 values with spaces: `status="in progress"`. The result lists each note's path, title, modified time, tags
 and full frontmatter, plus `columns` (the fields worth showing) and `total` (matches before `limit`).
+The person can save a query in Bookmarks; agents can do the same with `add_bookmark` and a
+`query:<query>` value.
 
 **Days.** `tasks_by_day` (CLI: `mosaic days [from] [to]`) gives the person's calendar: for each day, its
 daily note (any note named after its date, like `Daily/2026-10-04.md`) with that note's tasks, plus tasks in

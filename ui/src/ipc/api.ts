@@ -77,7 +77,7 @@ export const api = {
   proposalContent: (id: number) => call<string | null>("proposal_content", { id }),
   /** The file as it was when the agent proposed (to show what the person changed since). */
   proposalBase: (id: number) => call<string | null>("proposal_base", { id }),
-  acceptProposal: (id: number, force = false) => call<string>("accept_proposal", { id, force }),
+  acceptProposal: (id: number, force = false, content: string | null = null) => call<string>("accept_proposal", { id, force, content }),
   rejectProposal: (id: number, reason: string | null) => call<void>("reject_proposal", { id, reason }),
   backlinks: (path: string) => call<Backlink[]>("backlinks", { path }),
   tags: () => call<TagCount[]>("tags"),

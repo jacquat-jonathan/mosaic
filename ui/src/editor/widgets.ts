@@ -11,6 +11,7 @@ import { errorMessage } from "../ipc/types";
 import { diagramKind } from "../diagrams/mermaidToCanvas";
 import { useUi, type MenuItem } from "../state/ui";
 import { deleteColumn, deleteRow, formatTable, insertColumn, insertRow, parseTable, setAlign, type TableModel } from "./tableEdit";
+import { renderInlineMarkdown } from "../markdown";
 export { splitRow } from "./tableEdit";
 
 /** Moves the cursor to `pos` so the source is revealed for editing. */
@@ -401,7 +402,8 @@ export class TableWidget extends WidgetType {
       const els: HTMLElement[] = [];
       cells.forEach((text, col) => {
         const td = document.createElement(row < 0 ? "th" : "td");
-        td.textContent = text;
+        td.dataset.source = text;
+        td.innerHTML = renderInlineMarkdown(text);
         td.contentEditable = "plaintext-only";
         td.spellcheck = false;
         td.dataset.row = String(row);
@@ -418,6 +420,26 @@ export class TableWidget extends WidgetType {
     const tbody = document.createElement("tbody");
     model.rows.forEach((r, i) => addRow(tbody, r, i));
     table.append(thead, tbody);
+    const editCell = (cell: HTMLElement) => {
+      if (cell.dataset.editing === "true") return;
+      cell.dataset.editing = "true";
+      cell.textContent = cell.dataset.source ?? "";
+    };
+    const renderCell = (cell: HTMLElement) => {
+      cell.dataset.source = cell.textContent ?? cell.dataset.source ?? "";
+      cell.dataset.editing = "false";
+      cell.innerHTML = renderInlineMarkdown(cell.dataset.source);
+    };
+    // Render formatting at rest; reveal and edit the exact Markdown source on focus.
+    table.addEventListener("focusin", (e) => {
+      const cell = (e.target as HTMLElement).closest<HTMLElement>("th, td");
+      if (cell) editCell(cell);
+    });
+    table.addEventListener("mousedown", e => { const cell=(e.target as HTMLElement).closest<HTMLElement>("th, td"); if(cell) editCell(cell); });
+    table.addEventListener("input", (e) => {
+      const cell = (e.target as HTMLElement).closest<HTMLElement>("th, td");
+      if (cell) cell.dataset.source = cell.textContent ?? "";
+    });
 
     const addRowButton = document.createElement("button");
     addRowButton.className = "table-add row";
@@ -437,9 +459,9 @@ export class TableWidget extends WidgetType {
     const posOf = (el: Element) => ({ row: Number((el as HTMLElement).dataset.row), col: Number((el as HTMLElement).dataset.col) });
     // The table as typed so far (cells hold plain text).
     const typed = (): TableModel => ({
-      header: cellEls[0].map((c) => c.textContent ?? ""),
+      header: cellEls[0].map((c) => c.dataset.source ?? ""),
       align: [...model.align],
-      rows: cellEls.slice(1).map((r) => r.map((c) => c.textContent ?? "")),
+      rows: cellEls.slice(1).map((r) => r.map((c) => c.dataset.source ?? "")),
     });
     const focusCell = (el: HTMLElement | undefined, caret: "start" | "end" = "end") => {
       if (!el) return;
@@ -501,6 +523,8 @@ export class TableWidget extends WidgetType {
     });
     // Leaving a cell writes the table; moving to another cell of it keeps the caret there.
     wrap.addEventListener("focusout", (e) => {
+      const left = (e.target as HTMLElement).closest<HTMLElement>("th, td");
+      if (left) renderCell(left);
       const next = e.relatedTarget as HTMLElement | null;
       if (next && wrap.contains(next) && next.matches("th, td")) {
         const t = typed();

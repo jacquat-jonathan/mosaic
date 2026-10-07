@@ -388,7 +388,7 @@ impl MosaicMcp {
     }
 
     #[tool(
-        description = "Structured query over the vault's notes: by tag, folder, frontmatter field, date and links. More precise than search. Filters (prefix - to negate): tag:project (nested tags match; tag:a|b for either), folder:Projects, kind:markdown|canvas, links-to:Note (notes linking to it), linked-from:Note (notes it links to), has:field. Comparisons on frontmatter fields and on title, name, folder, tags, modified: status=active, status!=done, priority>2, due<=today+7, title~draft (contains); a|b matches either; list fields match if any item does; dates as 2026-10-02, today, today-7. Also sort:due or sort:-modified (descending), limit:N (default 100), show:a,b (columns), and plain words for full-text search. Quote values with spaces: status=\"in progress\". Returns matching notes with title, modified time, tags and frontmatter, the columns worth showing, and the total before limit. Tasks: task:open (or done, moved, cancelled, all; task:open|moved) returns checkbox tasks (`- [ ] text`) instead of notes, each row with a `task` (line, status, mark, text, depth, parent line, due). Filters then apply per task: its own text, status, due (from 📅 2026-10-05 on its line, else the note's due) and line, then its note's fields; tag: matches #tags in the task or the note's frontmatter tags; plain words must appear in the task text. E.g. task:open folder:Daily, task:open due<=today sort:due. Tick one with patch_file on that line."
+        description = "Structured query over the vault's notes: by tag, folder, frontmatter field, date and links. More precise than search. Filters (prefix - to negate): tag:project (nested tags match; tag:a|b for either), folder:Projects, kind:markdown|canvas, links-to:Note (notes linking to it), linked-from:Note (notes it links to), has:field. Comparisons on frontmatter fields and on title, name, folder, tags, modified: status=active, status!=done, priority>2, due<=today+7, title~draft (contains); a|b matches either; list fields match if any item does; dates as 2026-10-02, today, today-7. Uppercase OR separates alternative AND groups, e.g. `tag:work status=active OR tag:idea priority>2`. Also sort:due or sort:-modified (descending), limit:N (default 100), show:a,b (columns), and plain words for full-text search. Quote values with spaces: status=\"in progress\". Returns matching notes with title, modified time, tags and frontmatter, the columns worth showing, and the total before limit. Tasks: task:open (or done, moved, cancelled, all; task:open|moved) returns checkbox tasks (`- [ ] text`) instead of notes, each row with a `task` (line, status, mark, text, depth, parent line, due). Filters then apply per task: its own text, status, due (from 📅 2026-10-05 on its line, else the note's due) and line, then its note's fields; tag: matches #tags in the task or the note's frontmatter tags; plain words must appear in the task text. E.g. task:open folder:Daily, task:open due<=today sort:due. Tick one with patch_file on that line."
     )]
     async fn query(&self, Parameters(a): Parameters<QueryArgs>) -> ToolResult {
         self.fresh();
@@ -567,14 +567,14 @@ impl MosaicMcp {
     }
 
     #[tool(
-        description = "The human's bookmarked files and folders, in their order. `exists` is false for a bookmark whose file is gone."
+        description = "The human's bookmarked files, folders, searches (`search:…`) and structured queries (`query:…`), in their order. `exists` is false for a file bookmark whose file is gone."
     )]
     async fn list_bookmarks(&self) -> ToolResult {
         ok(self.ws().bookmarks())
     }
 
     #[tool(
-        description = "Bookmark a file or folder so the human finds it in the app's Bookmarks panel (added at the end). Returns the new list."
+        description = "Bookmark a file or folder, a full-text search as `search:<words>`, or a structured query as `query:<query>` so the human finds it in Bookmarks. Returns the new list."
     )]
     async fn add_bookmark(&self, Parameters(a): Parameters<PathArg>) -> ToolResult {
         self.ws().add_bookmark(&a.path).map_err(err).and_then(ok)

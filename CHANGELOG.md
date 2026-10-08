@@ -4,6 +4,9 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Note templates:** configure a Templates folder and inherited folder defaults in Settings. Every ordinary New note action lets you choose a template or Blank, preview its structure, and fill title/date values before creating it. Add editable Meeting, Retro, Project, Analysis and Brainstorm starters when you want them.
+- **Templates for AI:** agents and the CLI can discover folder defaults, render a report structure, or create a note scaffold with the same templates. Existing permissions, history and review still apply; imports and completed reports keep their content.
+
 ## 0.16.1 — 2026-10-08
 
 - **Table resizing:** dragging a column boundary now redistributes width between its two neighboring columns, keeping the table's total width steady. Keyboard resizing works the same way, and the first resize preserves the table's natural width.

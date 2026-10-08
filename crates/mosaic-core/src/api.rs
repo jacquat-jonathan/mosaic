@@ -230,7 +230,7 @@ impl Workspace {
     }
 
     /// A hidden path reads as "not found", so agents can't tell it exists.
-    fn check_read(&self, path: &str) -> Result<()> {
+    pub(crate) fn check_read(&self, path: &str) -> Result<()> {
         let norm = normalize(path)?;
         if Self::visible(&self.rules(), &norm) {
             Ok(())
@@ -361,6 +361,88 @@ impl Workspace {
         self.record(&w.path, Action::Created);
         self.reindex(&w.path);
         Ok(w)
+    }
+
+    pub fn template_config(&self) -> Result<crate::templates::TemplateConfig> {
+        let settings = Settings::load();
+        let config: crate::templates::TemplateConfig = match settings
+            .templates
+            .get(self.vault.root())
+        {
+            Some(raw) => serde_json::from_value(raw.clone()).map_err(|_| {
+                Error::Invalid("Invalid template settings; repair in Settings › Templates".into())
+            })?,
+            None => Default::default(),
+        };
+        config.validate()?;
+        Ok(config)
+    }
+
+    pub fn set_template_config(&self, config: crate::templates::TemplateConfig) -> Result<()> {
+        if self.source != Source::App {
+            return Err(Error::Denied(
+                "Template defaults are configured only in Settings".into(),
+            ));
+        }
+        config.validate()?;
+        let value = serde_json::to_value(config).map_err(|e| Error::Invalid(e.to_string()))?;
+        Settings::update(|s| {
+            s.templates.insert(self.vault.root().to_path_buf(), value);
+            true
+        })
+        .map_err(|e| Error::io("settings.json", e))
+    }
+
+    pub fn list_templates(&self, path: Option<&str>) -> Result<crate::templates::TemplateList> {
+        let config = self.template_config()?;
+        let default = match path {
+            Some(p) => {
+                let p = crate::templates::note_path(p)?;
+                self.check_read(&p)?;
+                config.resolve(&p)
+            }
+            None => Default::default(),
+        };
+        if let Some(t) = &default.template {
+            self.check_read(t)?;
+        }
+        let mut templates: Vec<_> = self
+            .list("", true)?
+            .into_iter()
+            .filter(|e| {
+                !e.is_dir
+                    && e.path.to_lowercase().ends_with(".md")
+                    && crate::templates::within(&e.path, &config.folder)
+            })
+            .map(|e| crate::templates::TemplateEntry {
+                path: e.path,
+                name: e.name,
+            })
+            .collect();
+        templates.sort_by(|a, b| a.path.cmp(&b.path));
+        Ok(crate::templates::TemplateList { templates, default })
+    }
+
+    pub fn render_template(
+        &self,
+        request: &crate::templates::TemplateRequest,
+    ) -> Result<crate::templates::TemplatePreview> {
+        self.check_read(&request.path)?;
+        crate::templates::render(self, &self.template_config()?, request)
+    }
+
+    pub fn create_note(
+        &self,
+        request: &crate::templates::TemplateRequest,
+    ) -> Result<crate::templates::CreatedNote> {
+        self.check_write(&request.path)?;
+        let preview = self.render_template(request)?;
+        let written = self.create(&preview.path, &preview.content)?;
+        Ok(crate::templates::CreatedNote {
+            written,
+            template: preview.template,
+            rule_folder: preview.rule_folder,
+        })
     }
 
     pub fn write(&self, path: &str, content: &str, expected_hash: Option<&str>) -> Result<Written> {
@@ -1043,7 +1125,21 @@ impl Workspace {
         }
         // Bookmarks follow the move too. They are secondary: a failure here doesn't undo the rename.
         let root = self.vault.root();
-        let _ = Settings::update(|s| s.remap_bookmarks(root, from, &out));
+        let _ = Settings::update(|s| {
+            let mut changed = s.remap_bookmarks(root, from, &out);
+            if let Some(raw) = s.templates.get_mut(root)
+                && let Ok(mut config) =
+                    serde_json::from_value::<crate::templates::TemplateConfig>(raw.clone())
+            {
+                let old = config.clone();
+                config.remap(from, &out);
+                if config != old {
+                    *raw = serde_json::to_value(config).expect("template configuration");
+                    changed = true;
+                }
+            }
+            changed
+        });
         Ok((
             Renamed {
                 path: out,

@@ -128,6 +128,68 @@ fn fixture() -> tempfile::TempDir {
 }
 
 #[test]
+fn templates_are_shared_with_agents_and_keep_review_and_hidden_access() {
+    let dir = fixture();
+    let root = std::fs::canonicalize(dir.path()).unwrap();
+    std::fs::create_dir_all(root.join("Templates")).unwrap();
+    std::fs::write(
+        root.join("Templates/Analysis.md"),
+        "# {{title}}\n\n## Evidence\n\n## Recommendation\n",
+    )
+    .unwrap();
+    std::fs::write(root.join("Templates/Secret.md"), "secret").unwrap();
+    let settings = root.join(".test-settings");
+    std::fs::create_dir_all(&settings).unwrap();
+    let config = json!({"templates":{root.to_str().unwrap():{"version":1,"folder":"Templates","rules":[{"folder":"Reports","template":"Templates/Analysis.md"}]}},"agent_rules":{root.to_str().unwrap():[{"path":"Reports","access":"review"},{"path":"Templates/Secret.md","access":"hidden"}]}});
+    std::fs::write(settings.join("settings.json"), config.to_string()).unwrap();
+    let mut c = Client::start(&root);
+    let (err, list) = c.call("list_templates", json!({"path":"Reports/Investigation.md"}));
+    assert!(!err, "{list}");
+    assert_eq!(list["templates"].as_array().unwrap().len(), 1);
+    assert_eq!(list["default"]["template"], "Templates/Analysis.md");
+    let (err, p) = c.call(
+        "render_template",
+        json!({"path":"Reports/Investigation.md","timestamp":"2026-10-08T10:00:00+02:00"}),
+    );
+    assert!(!err, "{p}");
+    assert!(
+        p["content"]
+            .as_str()
+            .unwrap()
+            .starts_with("# Investigation\n")
+    );
+    let (err,n)=c.call("create_note",json!({"path":"Reports/Investigation.md","timestamp":p["context"]["timestamp"],"expected_template_hash":p["template_hash"]}));
+    assert!(!err, "{n}");
+    assert!(n["review"].as_i64().is_some());
+    assert!(!root.join("Reports/Investigation.md").exists());
+    let (err, note) = c.call("read_file", json!({"path":"Reports/Investigation.md"}));
+    assert!(!err);
+    assert_eq!(note["content"], p["content"]);
+    let (err, _) = c.call(
+        "render_template",
+        json!({"path":"Reports/Other.md","template":"Templates/Secret.md"}),
+    );
+    assert!(err);
+    std::fs::write(root.join("Templates/Analysis.md"), "changed source").unwrap();
+    let (err, stale) = c.call(
+        "create_note",
+        json!({"path":"Reports/Stale.md","expected_template_hash":p["template_hash"]}),
+    );
+    assert!(err);
+    assert_eq!(stale["code"], "conflict");
+    let (err,report)=c.call("create_file",json!({"path":"Reports/Complete.md","content":"# Investigation\n\n## Evidence\nObserved behavior.\n\n## Recommendation\nProceed.\n"}));
+    assert!(!err, "{report}");
+    let (err, saved) = c.call("read_file", json!({"path":"Reports/Complete.md"}));
+    assert!(!err);
+    assert!(
+        saved["content"]
+            .as_str()
+            .unwrap()
+            .contains("Observed behavior.")
+    );
+}
+
+#[test]
 fn every_tool_works_end_to_end() {
     let dir = fixture();
     let mut c = Client::start(dir.path());

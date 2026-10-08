@@ -19,11 +19,9 @@ export function newNoteDir(): string {
   return active ? parentOf(active) : "";
 }
 
-export async function newNote(dir: string) {
-  const path = await useVault.getState().newFile(dir, "Untitled", "md");
-  if (!path) return;
-  await useWorkspace.getState().open(path, { newTab: true });
-  useVault.getState().setRenaming(path);
+export async function newNote(dir: string, name = "Untitled", newTab = true) {
+  const root = useVault.getState().vault?.root;
+  if (root) useUi.setState({ newNote: { dir, root, name, newTab }, menu: null, picker: null });
 }
 
 export async function newFileOfKind(dir: string, stem: string, ext: string, content: string) {

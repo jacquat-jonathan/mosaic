@@ -2,7 +2,7 @@
 
 Roadmap source of truth: the Mosaic vault's `Ideation/Next steps.md`; shipped work and decisions are in
 `Ideation/Done.md`, with individual milestone notes alongside them. This file is the repository's ordered,
-checkable implementation record through M28. Current release: **0.16.1** (`v0.16.1`, 2026-10-08).
+checkable implementation record through M29. Current release: **0.17.0** (`v0.17.0`, 2026-10-08).
 
 ## Fixed decisions
 
@@ -271,6 +271,16 @@ Released 2026-10-08 as 0.16.1.
 - [x] Capture natural widths without rounding or clamping jumps, persist exact widths, and respect column limits during resizing
 - [x] Remove the outer-edge resize handle; reset restores automatic widths
 - [x] Regression coverage for redistribution, limits, natural widths, storage and single-column tables
+
+### M29 — Note templates
+Design: the vault note `Ideation/Templates.md`; repository copy: [TEMPLATES.md](TEMPLATES.md).
+Accepted, implemented and released 2026-10-08 as 0.17.0.
+- [x] Shared per-vault template configuration, discovery, folder inheritance and title/date rendering
+- [x] Settings-only folder defaults, explicit Blank inheritance stops, source editing and opt-in starters
+- [x] Shared Name / Folder / Template creation dialog across ordinary New note entry points
+- [x] CLI/MCP template discovery, rendering and creation for AI report structures
+- [x] Permissions, review, history, rename consistency and complete-content workflow triggering
+- [x] Acceptance checks, full release gate and documentation/ideation updates
 
 ## Working rules
 - `scripts/check.sh` green before each milestone commit.

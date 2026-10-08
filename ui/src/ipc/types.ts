@@ -331,3 +331,8 @@ export interface UpdateDone {
   cancelled: boolean;
   error: string | null;
 }
+export interface TemplateRule { folder: string; template: string | null }
+export interface TemplateConfig { version: number; folder: string; rules: TemplateRule[] }
+export interface TemplateList { templates: { path: string; name: string }[]; default: { template: string | null; rule_folder: string | null } }
+export interface TemplateRequest { path: string; template?: string | null; blank?: boolean; timestamp?: string | null; expected_template_hash?: string | null }
+export interface TemplatePreview { path: string; content: string; template: string | null; template_hash: string | null; rule_folder: string | null; context: { title: string; date: string; time: string; weekday: string; timestamp: string } }

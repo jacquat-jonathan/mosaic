@@ -52,6 +52,21 @@ write shows up in the app within a second.
   next (e.g. a report you just wrote). They follow renames.
 - Keep files human-readable: short paragraphs, headings, lists. Don't reformat content you didn't change.
 
+## Note templates
+
+Templates are Markdown files in the vault's configured Templates folder. Folder defaults are
+managed by the person in Settings, inherited by subfolders, and shared with the CLI/MCP.
+For a new meeting/project note or AI report, call `list_templates` with its destination `path`
+to discover the default, then `render_template` to get its structure and filled title/date values.
+Honor a template or Blank choice specified by the person. Agent instructions determine how to
+investigate; the template determines the report's structure. Fill its sections and save the
+completed report with `create_file`; don't prepend another template to completed content.
+For an unfilled scaffold, `create_note` uses the folder default unless `template` or `blank` is
+specified. Reuse preview `context.timestamp` and `template_hash` as `expected_template_hash`
+to refuse changed source templates. Hidden/read-only/review rules and scheduled `may-change`
+still apply. Unknown placeholders are preserved; supported ones are `{{title}}`, `{{date}}`,
+`{{time}}` and `{{weekday}}`. Existing raw create operations preserve supplied content.
+
 ## File types
 
 | Kind | Extension | Notes |

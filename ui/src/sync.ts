@@ -31,6 +31,7 @@ export function startVaultSync(): Promise<() => void> {
 export function startBookmarkSync(): Promise<() => void> {
   return onSettingsChanged(async () => {
     if (!useVault.getState().vault) return;
+    useVault.getState().touched();
     const fresh = await api.bookmarks().catch(() => null);
     const cur = useVault.getState().bookmarks;
     if (fresh && (fresh.length !== cur.length || fresh.some((p, i) => p !== cur[i]))) useVault.setState({ bookmarks: fresh });

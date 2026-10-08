@@ -52,7 +52,7 @@ interface Confirm {
   resolve(ok: boolean): void;
 }
 
-export type SettingsSection = "appearance" | "editor" | "vault" | "ai" | "shortcuts" | "about";
+export type SettingsSection = "appearance" | "editor" | "vault" | "templates" | "ai" | "shortcuts" | "about";
 
 export type SidebarTab = "files" | "search" | "tags" | "bookmarks" | "activity";
 
@@ -92,6 +92,7 @@ function loadPrefs(): Prefs {
 }
 
 interface UiState {
+  newNote: { dir: string; root: string; name: string; newTab: boolean } | null;
   destination: Destination;
   selectDestination(destination: Destination): void;
   openView(kind: string, id?: string): void;
@@ -138,6 +139,7 @@ interface UiState {
 const prefs = loadPrefs();
 
 export const useUi = create<UiState>((set, get) => ({
+  newNote: null,
   destination: prefs.destination,
   selectDestination: (destination) => set((s) => ({ destination, leftSidebar: s.destination === destination ? !s.leftSidebar : true })),
   openView: (kind, id) => { void useWorkspace.getState().open(viewPath(kind, id), { newTab: true }); },

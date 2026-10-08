@@ -12,11 +12,13 @@ import { createVault, openVaultFolder } from "../actions";
 import { ConnectAiSection } from "./ConnectAi";
 import { renderInlineMarkdown } from "../markdown";
 import { openExternal } from "../ipc/api";
+import { TemplatesSettings } from "./TemplatesSettings";
 
 const SECTIONS: { id: SettingsSection; label: string; icon: typeof Palette }[] = [
   { id: "appearance", label: "Appearance", icon: Palette },
   { id: "editor", label: "Editor & files", icon: PenLine },
   { id: "vault", label: "Vault", icon: FolderOpen },
+  { id: "templates", label: "Templates", icon: PenLine },
   { id: "shortcuts", label: "Shortcuts", icon: Keyboard },
   { id: "about", label: "About & updates", icon: Info },
 ];
@@ -52,6 +54,7 @@ export function Settings() {
             {section === "appearance" && <Appearance />}
             {section === "editor" && <EditorFiles />}
             {section === "vault" && <VaultSection />}
+            {section === "templates" && <TemplatesSettings />}
             {section === "ai" && <ConnectAiSection />}
             {section === "shortcuts" && <Shortcuts />}
             {section === "about" && <About />}

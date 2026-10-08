@@ -3,6 +3,7 @@
 
 import type { Backlink, CliInfo, Entry, FileContent, IndexProgress, RecentVault, Renamed, SearchHit, TagCount, UpdateCheck, UpdateDone, UpdateStatus, Version, VaultInfo, Written, AgentRule, Mention, QueryResult, Proposal, Days, CarryOver, Agent, ChatEvent, ClaudeInfo, TesseraStatus } from "./types";
 import { mockInvoke } from "./mock";
+import type { TemplateConfig, TemplateList, TemplatePreview, TemplateRequest } from "./types";
 
 export const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
@@ -35,6 +36,12 @@ export const api = {
   list: (dir = "", recursive = false) => call<Entry[]>("list_dir", { dir, recursive }),
   read: (path: string) => call<FileContent>("read_file", { path }),
   create: (path: string, content = "") => call<Written>("create_file", { path, content }),
+  templateConfig: () => call<TemplateConfig>("template_config"),
+  setTemplateConfig: (config: TemplateConfig) => call<void>("set_template_config", { config }),
+  templates: (path: string | null = null) => call<TemplateList>("list_templates", { path }),
+  renderTemplate: (request: TemplateRequest) => call<TemplatePreview>("render_template", { request }),
+  createNote: (request: TemplateRequest) => call<Written & { template: string | null; rule_folder: string | null }>("create_note", { request }),
+  templateStarters: () => call<[string, string][]>("template_starters"),
   write: (path: string, content: string, expectedHash?: string | null) =>
     call<Written>("write_file", { path, content, expectedHash: expectedHash ?? null }),
   mkdir: (path: string) => call<void>("make_dir", { path }),

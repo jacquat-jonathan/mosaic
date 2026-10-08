@@ -6,6 +6,9 @@ import type { Agent, AgentRun, Backlink, CoreError, Entry, FileContent, Proposal
 import { kindOf } from "./kinds";
 import { parse as parseYaml } from "yaml";
 import { annotatedTask, taskLabel, type WorkflowState, WORKFLOW_STATES } from "../views/taskBoardModel";
+import { defaultTemplateConfig, inFolder, templateDefault } from "../templates";
+import type { TemplateConfig, TemplateRequest } from "./types";
+import { fillTemplate } from "../daily";
 
 interface MockFile {
   content: string;
@@ -15,6 +18,8 @@ interface MockFile {
 const files = new Map<string, MockFile>();
 const dirs = new Set<string>();
 let opened = false;
+let mockRoot = "/mock/vault";
+const templateConfigs = new Map<string, TemplateConfig>();
 let bookmarks: string[] = ["Welcome.md"];
 let updateSource: string | null = null;
 let updateBuilt = false;
@@ -380,11 +385,46 @@ function write(p: string, content: string) {
 
 export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promise<unknown> {
   switch (cmd) {
+    case "template_config": return templateConfigs.get(mockRoot) ?? defaultTemplateConfig();
+    case "set_template_config": {
+      const c = a.config as TemplateConfig;
+      if(c.version!==1 || !c.folder || c.folder.includes("..")) throw err("invalid", "Choose a valid Templates folder");
+      if(new Set(c.rules.map(r=>r.folder.toLowerCase())).size!==c.rules.length) throw err("invalid", "Each folder needs one template rule");
+      if(c.rules.some(r=>r.template && (!inFolder(r.template,c.folder) || !r.template.toLowerCase().endsWith(".md")))) throw err("invalid", "Defaults must reference Markdown files inside the Templates folder");
+      templateConfigs.set(mockRoot,structuredClone(c)); emit("settings-changed",{}); return null;
+    }
+    case "list_templates": {
+      const c = templateConfigs.get(mockRoot) ?? defaultTemplateConfig();
+      return { templates: [...files.keys()].filter(p=>p.endsWith(".md")&&inFolder(p,c.folder)).sort().map(path=>({path,name:path.split("/").pop()})), default: a.path ? templateDefault(c,String(a.path)) : {template:null,rule_folder:null} };
+    }
+    case "render_template": {
+      const r = a.request as TemplateRequest, c = templateConfigs.get(mockRoot) ?? defaultTemplateConfig();
+      const path = norm(r.path); if(!path.toLowerCase().endsWith(".md")) throw err("invalid_path", "A note needs a .md extension");
+      if(r.blank && r.template) throw err("invalid", "Choose a template or Blank");
+      const resolved = r.blank ? {template:null,rule_folder:null} : r.template ? {template:r.template,rule_folder:null} : templateDefault(c,path);
+      let source="", sourceHash: string | null=null;
+      if(resolved.template) {
+        if(!inFolder(resolved.template,c.folder)) throw err("invalid", "Choose a template inside the Templates folder");
+        const f=files.get(resolved.template); if(!f) throw err("not_found",`Template missing: ${resolved.template}`);
+        source=f.content; sourceHash=hash(source);
+        if(r.expected_template_hash && sourceHash!==r.expected_template_hash) throw err("conflict","Template changed; refresh the preview");
+      }
+      const d=new Date(r.timestamp ?? Date.now()), title=path.split("/").pop()!.slice(0,-3);
+      const context={ title,date:mockDay(d),time:`${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`,weekday:d.toLocaleDateString("en-US",{weekday:"long"}),timestamp:r.timestamp ?? d.toISOString() };
+      const content=fillTemplate(source.replace(/\{\{\s*title\s*\}\}/g,()=>title),d);
+      return { path,content,template:resolved.template,template_hash:sourceHash,rule_folder:resolved.rule_folder,context };
+    }
+    case "create_note": {
+      const p=await mockInvoke("render_template",a) as import("./types").TemplatePreview;
+      if(exists(p.path)) throw err("already_exists",`already exists: ${p.path}`);
+      const out=write(p.path,p.content); track(p.path,"created",p.content); return {...out,template:p.template,rule_folder:p.rule_folder};
+    }
+    case "template_starters": return Object.entries({Meeting:["Participants","Purpose","Agenda","Notes","Decisions","Actions"],Retro:["Context","What went well","What to improve","Themes","Agreed actions"],Project:["Purpose","Outcomes","Scope","Stakeholders","Milestones","Decisions","Risks","Next actions"],Analysis:["Question","Context","Evidence","Assumptions","Options","Recommendation","Open questions"],Brainstorm:["Prompt","Constraints","Ideas","Themes","Promising directions","Next experiments"]}).map(([name,sections])=>[`${name}.md`, `# {{title}}\n\nDate: {{date}}\n\n${sections.map(s=>`## ${s}\n`).join("\n")}\n`]);
     case "open_vault":
       opened = true;
-      return { root: "/mock/vault", name: "Mock vault" };
+      mockRoot=String(a.path ?? "/mock/vault"); return { root: mockRoot, name: "Mock vault" };
     case "current_vault":
-      return opened ? { root: "/mock/vault", name: "Mock vault" } : null;
+      return opened ? { root: mockRoot, name: "Mock vault" } : null;
     case "last_vault":
       return null;
     case "create_vault":
@@ -564,6 +604,8 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
       if (to.startsWith(`${from}/`)) throw err("invalid_path", `cannot move ${from} into itself`);
       const move = (p: string) => (p === from ? to : `${to}${p.slice(from.length)}`);
       const under = (p: string) => p === from || p.startsWith(`${from}/`);
+      const c=templateConfigs.get(mockRoot);
+      if(c) { if(under(c.folder)) c.folder=move(c.folder); for(const r of c.rules) { if(under(r.folder)) r.folder=move(r.folder); if(r.template&&under(r.template)) r.template=move(r.template); } }
       for (const [p, f] of [...files]) if (under(p)) { files.delete(p); files.set(move(p), f); }
       for (const d of [...dirs]) if (under(d)) { dirs.delete(d); dirs.add(move(d)); }
       addParents(to);

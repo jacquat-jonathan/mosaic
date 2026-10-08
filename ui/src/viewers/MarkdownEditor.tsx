@@ -10,8 +10,8 @@ import { useVault } from "../state/vault";
 import { api, fileUrl, openExternal } from "../ipc/api";
 import { errorMessage } from "../ipc/types";
 import { resolveLink, linkTextFor } from "../links";
-import { droppedItems, embedsFor, importDropped, isFinderDrag, newFileOfKind } from "../actions";
-import { parentOf } from "../state/vault";
+import { droppedItems, embedsFor, importDropped, isFinderDrag, newFileOfKind, newNote } from "../actions";
+import { parentOf, baseName } from "../state/vault";
 import { useUi } from "../state/ui";
 
 /** "Pasted image 2026-10-02 143005.png" (a second image in one paste gets " 2"). */
@@ -40,6 +40,10 @@ export function editorContextFor(path: string): EditorContext {
       }
       const name = target.split(/[#^|]/)[0].trim();
       if (!name) return;
+      if (!/\.[a-z0-9]+$/i.test(name) || name.toLowerCase().endsWith(".md")) {
+        await newNote(parentOf(name),baseName(name),newTab);
+        return;
+      }
       const created = await newFileOfKind("", name, /\.[a-z0-9]+$/i.test(name) ? "" : "md", "");
       if (!created) useVault.getState().setError(`Couldn't create “${name}”.`);
     },

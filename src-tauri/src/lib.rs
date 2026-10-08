@@ -244,6 +244,43 @@ fn create_file(state: State<AppState>, path: String, content: String) -> CmdResu
 }
 
 #[tauri::command]
+fn template_config(state: State<AppState>) -> CmdResult<mosaic_core::templates::TemplateConfig> {
+    state.get()?.template_config()
+}
+#[tauri::command]
+fn set_template_config(
+    state: State<AppState>,
+    config: mosaic_core::templates::TemplateConfig,
+) -> CmdResult<()> {
+    state.get()?.set_template_config(config)
+}
+#[tauri::command]
+fn list_templates(
+    state: State<AppState>,
+    path: Option<String>,
+) -> CmdResult<mosaic_core::templates::TemplateList> {
+    state.get()?.list_templates(path.as_deref())
+}
+#[tauri::command]
+fn render_template(
+    state: State<AppState>,
+    request: mosaic_core::templates::TemplateRequest,
+) -> CmdResult<mosaic_core::templates::TemplatePreview> {
+    state.get()?.render_template(&request)
+}
+#[tauri::command]
+fn create_note(
+    state: State<AppState>,
+    request: mosaic_core::templates::TemplateRequest,
+) -> CmdResult<mosaic_core::templates::CreatedNote> {
+    state.get()?.create_note(&request)
+}
+#[tauri::command]
+fn template_starters() -> Vec<(&'static str, &'static str)> {
+    mosaic_core::templates::STARTERS.to_vec()
+}
+
+#[tauri::command]
 fn write_file(
     state: State<AppState>,
     path: String,
@@ -594,6 +631,12 @@ pub fn run() {
             list_dir,
             read_file,
             create_file,
+            template_config,
+            set_template_config,
+            list_templates,
+            render_template,
+            create_note,
+            template_starters,
             write_file,
             make_dir,
             rename_path,

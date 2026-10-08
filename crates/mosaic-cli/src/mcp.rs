@@ -109,6 +109,36 @@ struct CreateArgs {
 }
 
 #[derive(Deserialize, JsonSchema)]
+struct TemplatesArgs {
+    path: Option<String>,
+}
+#[derive(Deserialize, JsonSchema)]
+struct NoteArgs {
+    /// Destination note path, including .md. Defaults resolve using its parent folder.
+    path: String,
+    /// Explicit template path inside the configured Templates folder. Omit to use folder defaults.
+    template: Option<String>,
+    /// Explicitly choose an empty note instead of the folder default.
+    #[serde(default)]
+    blank: bool,
+    /// RFC3339 with timezone offset. Reuse the preview context timestamp at creation.
+    timestamp: Option<String>,
+    /// Source hash from render_template; a changed template is refused.
+    expected_template_hash: Option<String>,
+}
+impl From<NoteArgs> for mosaic_core::templates::TemplateRequest {
+    fn from(a: NoteArgs) -> Self {
+        Self {
+            path: a.path,
+            template: a.template,
+            blank: a.blank,
+            timestamp: a.timestamp,
+            expected_template_hash: a.expected_template_hash,
+        }
+    }
+}
+
+#[derive(Deserialize, JsonSchema)]
 struct EditArgs {
     path: String,
     /// The complete new content of the file.
@@ -455,6 +485,40 @@ impl MosaicMcp {
             .create(&a.path, &a.content)
             .map_err(err)
             .and_then(written)
+    }
+
+    #[tool(
+        description = "Discover readable Markdown templates. Provide the destination note path to see its folder default and inherited rule. For a new report, render the chosen/default template, fill its sections using your investigation instructions, then create_file with the completed report."
+    )]
+    async fn list_templates(&self, Parameters(a): Parameters<TemplatesArgs>) -> ToolResult {
+        self.fresh();
+        self.ws()
+            .list_templates(a.path.as_deref())
+            .map_err(err)
+            .and_then(ok)
+    }
+    #[tool(
+        description = "Preview a new note using its folder default, an explicit template or Blank. Returns rendered Markdown, source hash, default provenance and title/date/time context; writes nothing. Use the same timestamp and expected_template_hash when creating a scaffold."
+    )]
+    async fn render_template(&self, Parameters(a): Parameters<NoteArgs>) -> ToolResult {
+        self.fresh();
+        self.ws()
+            .render_template(&a.into())
+            .map_err(err)
+            .and_then(ok)
+    }
+    #[tool(
+        description = "Create a new Markdown note scaffold using its folder default, explicit template or Blank. Never overwrites. Normal history, folder permissions and review apply. To save an AI report whose template sections you have filled, use create_file with the completed content instead."
+    )]
+    async fn create_note(&self, Parameters(a): Parameters<NoteArgs>) -> ToolResult {
+        self.fresh();
+        self.ws().create_note(&a.into()).map_err(err).and_then(|n| {
+            let mut v = serde_json::to_value(&n).map_err(|e| e.to_string())?;
+            if n.written.review.is_some() {
+                v["note"] = REVIEW_NOTE.into();
+            }
+            ok(v)
+        })
     }
 
     #[tool(

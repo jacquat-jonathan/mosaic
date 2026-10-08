@@ -1,9 +1,9 @@
 import { useMemo, useRef, useState, useEffect } from "react";
 import { useUi } from "../state/ui";
-import { useVault } from "../state/vault";
+import { useVault, parentOf, baseName } from "../state/vault";
 import { useWorkspace } from "../state/workspace";
 import { displayName, kindIcon } from "./FileTree";
-import { newFileOfKind } from "../actions";
+import { newNote } from "../actions";
 
 /** Subsequence match score: consecutive and word-start matches rank higher; -1 if no match. */
 export function fuzzyScore(query: string, text: string): number {
@@ -53,7 +53,7 @@ function SwitcherDialog() {
     const target = results[i];
     close();
     if (target) await useWorkspace.getState().open(target.path, { newTab });
-    else if (q.trim()) await newFileOfKind("", q.trim(), "md", "");
+    else if (q.trim()) await newNote(parentOf(q.trim()), baseName(q.trim()), newTab);
   };
 
   return (

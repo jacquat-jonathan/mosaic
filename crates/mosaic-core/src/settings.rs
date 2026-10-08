@@ -20,6 +20,8 @@ pub struct Settings {
     pub agent_rules: BTreeMap<PathBuf, Vec<AgentRule>>,
     /// Scheduler state and run history, per vault; kept outside the vault like other app state.
     pub tessera: BTreeMap<PathBuf, TesseraSettings>,
+    /// Raw values preserve invalid/newer configurations so they can be reported and repaired.
+    pub templates: BTreeMap<PathBuf, serde_json::Value>,
     /// Settings a newer Mosaic wrote that this version doesn't know: kept so saving doesn't drop them.
     #[serde(flatten)]
     pub other: BTreeMap<String, serde_json::Value>,

@@ -906,6 +906,15 @@ button:focus-visible, [tabindex]:focus-visible, input:focus-visible, select:focu
 .table-add[hidden] { display: none; }
 .table-resize { position: absolute; top: 0; width: 10px; padding: 0; border: 0; background: transparent; cursor: col-resize; touch-action: none; z-index: 2; }
 .table-resize:hover, .table-resize:focus-visible { background: var(--accent); opacity: .55; }
+.new-note-dialog { width: min(620px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow: auto; }
+.new-note-dialog label, .templates-settings > label { display: grid; gap: 6px; margin: 12px 0; }
+.new-note-dialog select, .template-rule select { width: 100%; min-width: 0; }
+.template-preview { max-height: 240px; overflow: auto; border: 1px solid var(--border); border-radius: 6px; padding: 12px; background: var(--bg-side); }
+.template-preview pre, pre.template-preview { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; font: 13px var(--font-mono); }
+.template-rule { display: flex; align-items: end; flex-wrap: wrap; gap: 10px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+.template-rule label { display: grid; gap: 6px; flex: 1 1 180px; min-width: 0; }
+.template-source { display: block; text-align: left; margin-bottom: 6px; overflow-wrap: anywhere; }
+.templates-settings .button-row { margin-top: 12px; flex-wrap: wrap; }
 .board-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
 .board-toolbar h1 { margin-right: auto; }
 .board-toolbar input { min-width: 160px; }

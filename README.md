@@ -44,6 +44,10 @@ of its own source when you click **Check for updates** or **Update** in Settings
   note or onto a canvas to copy them next to it and embed them. Nothing is ever overwritten.
 - **Everyday notes:** daily notes from a template (⌘⇧D), paste images straight into a note, unlinked
   mentions with a one-click link, saved searches and structured queries in Bookmarks, a canvas from selected notes.
+- **Note templates:** Settings › Templates manages a per-vault Templates folder and inherited folder
+  defaults. Every New note action offers Name, Folder and Template with a preview; choose a different
+  template or Blank for that note. Markdown starters for meetings, retros, projects, analysis and
+  brainstorming are opt-in. `{{title}}`, `{{date}}`, `{{time}}` and `{{weekday}}` are filled at creation.
 - **History and undo:** every change keeps a version (right-click › File history…), and the AI activity
   tab lists what agents changed, with Undo.
 - **Safe editing:** deletes go to the macOS Trash; renames update links everywhere. When a file
@@ -124,6 +128,9 @@ mosaic render Architecture.canvas -o map.png   # a canvas as a picture (or .svg)
 mosaic history Projects/Plan.md           # versions Mosaic kept; `mosaic restore <path> <id>` puts one back
 mosaic activity                           # what agents changed; `mosaic undo <id>` reverts one
 mosaic guide                              # conventions for AI agents (docs/AGENTS.md)
+mosaic templates --for Meetings/Retro.md   # templates and the inherited folder default
+mosaic template render Meetings/Retro.md  # preview without creating a file
+mosaic note create Meetings/Retro.md      # create using its default; --template <path> or --blank to override
 ```
 
 The vault is chosen by `--vault`, then `$MOSAIC_VAULT`, then the vault last opened in the app.

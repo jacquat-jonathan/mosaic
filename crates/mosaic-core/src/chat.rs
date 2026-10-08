@@ -103,7 +103,9 @@ pub fn summarize_tool(name: &str, input: &Value) -> (String, Option<String>, boo
     let p = path.as_deref().map(note).unwrap_or_default();
     let (text, writes) = match tool {
         "read_file" | "outline" => (format!("Read {p}"), false),
-        "create_file" => (format!("Created {p}"), true),
+        "create_file" | "create_note" => (format!("Created {p}"), true),
+        "list_templates" => ("Looked at note templates".into(), false),
+        "render_template" => (format!("Previewed the template for {p}"), false),
         "edit_file" | "patch_file" => (format!("Edited {p}"), true),
         "append_to_file" => (format!("Added to {p}"), true),
         "delete_file" => (format!("Deleted {p}"), true),
@@ -348,6 +350,12 @@ mod tests {
     #[test]
     fn tool_summaries() {
         let sum = |n: &str, i: Value| summarize_tool(n, &i).0;
+        assert!(summarize_tool("mcp__mosaic__create_note", &json!({"path":"A.md"})).2);
+        assert!(!summarize_tool("mcp__mosaic__render_template", &json!({"path":"A.md"})).2);
+        assert_eq!(
+            sum("mcp__mosaic__create_note", json!({"path":"A.md"})),
+            "Created A"
+        );
         assert_eq!(
             sum("mcp__mosaic__create_file", json!({"path":"A.md"})),
             "Created A"

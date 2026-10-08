@@ -39,6 +39,21 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Cmd {
+    /// Discover templates and the default for a destination note.
+    Templates {
+        #[arg(long = "for")]
+        path: Option<String>,
+    },
+    /// Preview a note template without writing.
+    Template {
+        #[command(subcommand)]
+        action: TemplateCmd,
+    },
+    /// Create a note using a folder default, chosen template or Blank.
+    Note {
+        #[command(subcommand)]
+        action: NoteCmd,
+    },
     /// List files and folders.
     List {
         #[arg(default_value = "")]
@@ -263,6 +278,39 @@ pub fn render_file(ws: &Workspace, path: &str, dark: bool) -> Result<String> {
     }
 }
 
+#[derive(clap::Args)]
+struct NoteArgs {
+    path: String,
+    #[arg(long, conflicts_with = "blank")]
+    template: Option<String>,
+    #[arg(long)]
+    blank: bool,
+    /// Reuse a preview's RFC3339 creation timestamp.
+    #[arg(long)]
+    timestamp: Option<String>,
+    #[arg(long)]
+    expected_template_hash: Option<String>,
+}
+impl From<NoteArgs> for mosaic_core::templates::TemplateRequest {
+    fn from(a: NoteArgs) -> Self {
+        Self {
+            path: a.path,
+            template: a.template,
+            blank: a.blank,
+            timestamp: a.timestamp,
+            expected_template_hash: a.expected_template_hash,
+        }
+    }
+}
+#[derive(Subcommand)]
+enum TemplateCmd {
+    Render(NoteArgs),
+}
+#[derive(Subcommand)]
+enum NoteCmd {
+    Create(NoteArgs),
+}
+
 fn content_arg(content: Option<String>) -> Result<String> {
     if let Some(c) = content {
         return Ok(c);
@@ -362,6 +410,24 @@ fn run(cli: Cli) -> Result<()> {
         ws.sync(|_, _| {})?;
     }
     match cli.cmd {
+        Cmd::Templates { path } => print(json, &ws.list_templates(path.as_deref())?, |v| {
+            let mut lines: Vec<String> = v.templates.iter().map(|t| t.path.clone()).collect();
+            if path.is_some() {
+                lines.push(format!(
+                    "Default: {}",
+                    v.default.template.as_deref().unwrap_or("Blank")
+                ));
+            }
+            lines.join("\n")
+        }),
+        Cmd::Template {
+            action: TemplateCmd::Render(a),
+        } => print(json, &ws.render_template(&a.into())?, |p| p.content.clone()),
+        Cmd::Note {
+            action: NoteCmd::Create(a),
+        } => print(json, &ws.create_note(&a.into())?, |n| {
+            done(&n.written, "created")
+        }),
         Cmd::List { dir, recursive } => print(json, &ws.list(&dir, recursive)?, |entries| {
             entries
                 .iter()

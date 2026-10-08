@@ -63,6 +63,87 @@ fn fixture() -> tempfile::TempDir {
 }
 
 #[test]
+fn templates_create_complete_notes_and_follow_renames_without_changing_raw_create() {
+    let dir = fixture();
+    let root = std::fs::canonicalize(dir.path()).unwrap();
+    let v = root.as_path();
+    json(
+        v,
+        &[
+            "create",
+            "Templates/Retro.md",
+            "--content",
+            "# {{title}}\nDate: {{date}}\n\n## Actions\n",
+        ],
+    );
+    let settings = v.join(".test-settings");
+    std::fs::create_dir_all(&settings).unwrap();
+    let config = serde_json::json!({"templates":{v.to_str().unwrap():{"version":1,"folder":"Templates","rules":[{"folder":"Notes","template":"Templates/Retro.md"}]}},"other_setting":true});
+    std::fs::write(settings.join("settings.json"), config.to_string()).unwrap();
+    let list = json(v, &["templates", "--for", "Notes/Retro.md"]);
+    assert_eq!(list["default"]["template"], "Templates/Retro.md");
+    let p = json(
+        v,
+        &[
+            "template",
+            "render",
+            "Notes/Retro.md",
+            "--timestamp",
+            "2026-10-08T23:59:00+02:00",
+        ],
+    );
+    assert_eq!(p["content"], "# Retro\nDate: 2026-10-08\n\n## Actions\n");
+    let n = json(
+        v,
+        &[
+            "note",
+            "create",
+            "Notes/Retro.md",
+            "--timestamp",
+            p["context"]["timestamp"].as_str().unwrap(),
+            "--expected-template-hash",
+            p["template_hash"].as_str().unwrap(),
+        ],
+    );
+    assert_eq!(n["template"], "Templates/Retro.md");
+    assert_eq!(
+        std::fs::read_to_string(v.join("Notes/Retro.md")).unwrap(),
+        p["content"]
+    );
+    assert_eq!(
+        json(v, &["history", "Notes/Retro.md"])
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    json(v, &["note", "create", "Notes/Blank.md", "--blank"]);
+    assert_eq!(
+        std::fs::read_to_string(v.join("Notes/Blank.md")).unwrap(),
+        ""
+    );
+    json(
+        v,
+        &["create", "Notes/Report.md", "--content", "Finished report"],
+    );
+    assert_eq!(
+        std::fs::read_to_string(v.join("Notes/Report.md")).unwrap(),
+        "Finished report"
+    );
+    json(v, &["rename", "Templates", "Formats"]);
+    assert_eq!(
+        json(v, &["templates", "--for", "Notes/Next.md"])["default"]["template"],
+        "Formats/Retro.md"
+    );
+    let saved: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(settings.join("settings.json")).unwrap())
+            .unwrap();
+    assert_eq!(saved["other_setting"], true);
+    let collision = mosaic(v, &["note", "create", "Notes/Retro.md"], None);
+    assert_eq!(collision.code, 1);
+}
+
+#[test]
 fn create_read_append_and_patch() {
     let dir = fixture();
     let v = dir.path();

@@ -14,6 +14,7 @@ import { startBookmarkSync, startVaultSync } from "./sync";
 import { startUpdateListeners } from "./views/Settings";
 import "./state/settings";
 import { Picker } from "./views/Picker";
+import { NewNoteDialog } from "./views/NewNoteDialog";
 import { Resizer } from "./views/Resizer";
 import { HistoryModal } from "./views/HistoryModal";
 import { AreaSidebar } from "./views/AreaSidebar";
@@ -69,6 +70,7 @@ export function App() {
       <PromptDialog />
       <QuickSwitcher />
       <Picker />
+      <NewNoteDialog />
       <HistoryModal />
       <ErrorToast />
     </>

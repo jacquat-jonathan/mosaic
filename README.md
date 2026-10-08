@@ -237,11 +237,12 @@ Layout:
 | `docs/AGENTS.md` | Guide for AI agents, also served by the MCP server |
 | `docs/PLAN.md` | Implementation plan and milestones |
 
-**Releasing.** Describe each change under `## Unreleased` in `CHANGELOG.md` as you go, written for
-someone using the app. To cut a release, run `scripts/release.sh 0.3.0` on a clean tree: it bumps the
-version (workspace `Cargo.toml` and `src-tauri/tauri.conf.json`), turns the Unreleased section into
-the release, commits and tags `v0.3.0`. Push with `git push --follow-tags`; coworkers then see it in
-**Check for updates**.
+**Releasing.** Describe changes under `## Unreleased` in `CHANGELOG.md`. On a clean tree,
+`scripts/release.sh <new-version>` bumps the shared version, dates the notes, commits and tags it.
+Push with `git push --follow-tags`. The release workflow needs the protected
+`MOSAIC_RELEASE_PRIVATE_KEY` Actions secret and publishes the complete signed assets after tests.
+A Git tag alone is not a downloadable release and will not appear in binary **Check for updates**.
+See [publishing from your personal computer](docs/PUBLISHING.md) for the 0.18.0 handoff.
 
 The search index lives in `~/Library/Caches/mosaic/` and is rebuilt automatically. Mosaic never
 writes anything into your vault except your own content.

@@ -2,7 +2,7 @@
 
 Roadmap source of truth: the Mosaic vault's `Ideation/Next steps.md`; shipped work and decisions are in
 `Ideation/Done.md`, with individual milestone notes alongside them. This file is the repository's ordered,
-checkable implementation record through M27. Current release: **0.16.0** (`v0.16.0`, 2026-10-08).
+checkable implementation record through M28. Current release: **0.16.1** (`v0.16.1`, 2026-10-08).
 
 ## Fixed decisions
 
@@ -264,6 +264,13 @@ Released 2026-10-08 as 0.16.0. Implemented in the roadmap's order.
 - [x] Resizable table columns, pointer and keyboard controls, reset widths and per-vault/note/table app-storage persistence; Markdown stays unchanged on resize
 - [x] Plan task board with five states, draggable cards and state menus, parent groups and subtask progress, text/folder filters, loading/error/overflow states
 - [x] Portable workflow comments, checkbox completion, query `workflow` fields and filters, clean task labels, history and conflict-aware writes
+
+### M28 — Stable table resizing
+Released 2026-10-08 as 0.16.1.
+- [x] Internal boundaries redistribute width between adjacent columns; pointer and keyboard resizing keep the total table width steady
+- [x] Capture natural widths without rounding or clamping jumps, persist exact widths, and respect column limits during resizing
+- [x] Remove the outer-edge resize handle; reset restores automatic widths
+- [x] Regression coverage for redistribution, limits, natural widths, storage and single-column tables
 
 ## Working rules
 - `scripts/check.sh` green before each milestone commit.

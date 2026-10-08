@@ -7,7 +7,7 @@ import { isDark } from "../theme";
 import { editorContext, type EditorContext } from "./context";
 import { syntaxTree } from "@codemirror/language";
 import { useVault } from "../state/vault";
-import { columnWidth, loadTableWidths, saveTableWidths, tableWidthKey } from "./tableWidths";
+import { resizeTableBoundary, loadTableWidths, saveTableWidths, tableWidthKey } from "./tableWidths";
 
 import { blockRenderers, showRenderError as showError } from "./blocks";
 import { errorMessage } from "../ipc/types";
@@ -477,28 +477,33 @@ export class TableWidget extends WidgetType {
       table.classList.toggle("resized", !!widths);
       table.style.width = widths ? `${widths.reduce((a, b) => a + b, 0)}px` : "";
       [...colgroup.children].forEach((col, i) => { (col as HTMLElement).style.width = widths ? `${widths[i]}px` : ""; });
-      handles.forEach((handle, i) => handle.setAttribute("aria-valuenow", String(widths?.[i] ?? Math.round(cellEls[0][i].getBoundingClientRect().width))));
+      const current = widths ?? cellEls[0].map(cell => cell.getBoundingClientRect().width);
+      handles.forEach((handle, i) => {
+        handle.setAttribute("aria-valuenow", String(Math.round(current[i])));
+        handle.setAttribute("aria-valuemin", String(Math.round(resizeTableBoundary(current, i, -Number.MAX_VALUE)[i])));
+        handle.setAttribute("aria-valuemax", String(Math.round(resizeTableBoundary(current, i, Number.MAX_VALUE)[i])));
+      });
       positionHandles();
     };
-    if (!view.state.readOnly) model.header.forEach((_, col) => {
+    if (!view.state.readOnly) model.header.slice(0, -1).forEach((_, col) => {
       const handle = document.createElement("button");
       handle.className = "table-resize";
-      handle.setAttribute("aria-label", `Resize column ${col + 1}`);
+      handle.setAttribute("aria-label", `Resize columns ${col + 1} and ${col + 2}`);
       handle.title = "Drag to resize · Arrow keys adjust · Double-click to reset widths";
       handle.setAttribute("role", "separator");
       handle.setAttribute("aria-orientation", "vertical");
       handle.setAttribute("aria-valuemin", "64");
       handle.setAttribute("aria-valuemax", "1200");
-      let startX = 0, startWidth = 0, dragging = false;
-      const ensureWidths = () => { widths ??= cellEls[0].map(cell => columnWidth(cell.getBoundingClientRect().width)); };
+      let startX = 0, startWidths: number[] = [], dragging = false;
+      const ensureWidths = () => { widths ??= cellEls[0].map(cell => cell.getBoundingClientRect().width); };
       handle.addEventListener("pointerdown", e => {
         if (e.button !== 0) return;
         e.preventDefault(); e.stopPropagation(); ensureWidths();
-        startX = e.clientX; startWidth = widths![col]; dragging = true; handle.setPointerCapture(e.pointerId);
+        startX = e.clientX; startWidths = [...widths!]; dragging = true; handle.setPointerCapture(e.pointerId);
       });
       handle.addEventListener("pointermove", e => {
         if (!dragging) return;
-        widths![col] = columnWidth(startWidth + e.clientX - startX); applyWidths();
+        widths = resizeTableBoundary(startWidths, col, e.clientX - startX); applyWidths();
       });
       const finish = () => { if (dragging) { dragging = false; saveTableWidths(widthKey, widths); } };
       handle.addEventListener("pointerup", finish);
@@ -509,7 +514,7 @@ export class TableWidget extends WidgetType {
         if (!["ArrowLeft", "ArrowRight", "Home"].includes(e.key)) return;
         e.preventDefault(); e.stopPropagation();
         if (e.key === "Home") widths = null;
-        else { ensureWidths(); widths![col] = columnWidth(widths![col] + (e.key === "ArrowRight" ? 1 : -1) * (e.shiftKey ? 40 : 10)); }
+        else { ensureWidths(); widths = resizeTableBoundary(widths!, col, (e.key === "ArrowRight" ? 1 : -1) * (e.shiftKey ? 40 : 10)); }
         saveTableWidths(widthKey, widths); applyWidths();
       });
       handles.push(handle); inner.append(handle);

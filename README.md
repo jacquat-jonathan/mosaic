@@ -23,7 +23,8 @@ of its own source when you click **Check for updates** or **Update** in Settings
 - **Markdown live preview:** formatting renders as you type; wikilinks `[[…]]`, embeds `![[…]]`,
   frontmatter properties, tags, tasks, tables, KaTeX math, and Mermaid, Graphviz and Vega-Lite
   blocks. Type `/` on an empty line to insert headings, lists, tables, code or diagrams.
-  Drag a table column boundary to resize it; widths are remembered in app storage.
+  Drag a table column boundary to resize neighboring columns while keeping the table width steady;
+  widths are remembered in app storage.
 - **Visuals:** JSON Canvas boards (`.canvas`, Obsidian's format), Excalidraw drawings
   (`.excalidraw`), charts (`.vl.json`) and graphs (`.dot`).
 - **Other files:** sandboxed HTML preview and source editing, a PDF viewer, an editable CSV/TSV

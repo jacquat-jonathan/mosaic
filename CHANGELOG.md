@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+## 0.18.1 — 2026-10-08
+
 - **Release builds:** clean checkouts now prepare the bundled command before compiling the app, so the GitHub release workflow can run without locally generated files.
 
 ## 0.18.0 — 2026-10-08

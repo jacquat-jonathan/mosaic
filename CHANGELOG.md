@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+## 0.16.1 — 2026-10-08
+
 - **Table resizing:** dragging a column boundary now redistributes width between its two neighboring columns, keeping the table's total width steady. Keyboard resizing works the same way, and the first resize preserves the table's natural width.
 
 ## 0.16.0 — 2026-10-08

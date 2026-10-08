@@ -9,6 +9,13 @@ test("workflow editing preserves unrelated frontmatter and the source body", () 
   const manual=workflowContent(edited,null,[],null,[]); expect(manual).not.toContain("schedule:"); expect(manual).not.toContain("on:"); expect(manual).not.toContain("model:"); expect(manual).toContain("may-change: []");
 });
 test("invalid YAML fails rather than silently replacing the agent", () => { expect(()=>workflowContent("---\nfield: [broken\n---\nBody",null,[],null,[])).toThrow(); });
+test("existing custom schedules, events, models and exact instruction whitespace survive", () => {
+  const source = "---\nname: identity\nretry: {future: true}\n# retain this comment\n---\n\n  Instructions\n\n";
+  const edited = workflowContent(source,"0 9 * * 1",["tagged #ready","created in Retro/"],"custom-model",["Retro"]);
+  expect(edited).toContain("retry: { future: true }"); expect(edited).toContain("# retain this comment");
+  expect(edited).toContain("name: identity"); expect(edited).toContain("custom-model"); expect(edited).toContain("tagged #ready");
+  expect(edited.slice(edited.indexOf("\n---") + 4)).toBe("\n\n  Instructions\n\n");
+});
 test("event trigger helpers handle root and recursive folders", () => {
   expect(eventFolder("created in Daily/")).toBe("Daily");
   expect(eventFolder("created in /")).toBe("");

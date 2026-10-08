@@ -2,6 +2,7 @@
 
 pub mod agents;
 pub mod api;
+pub mod app_install;
 pub mod chat;
 pub mod days;
 pub mod error;
@@ -10,6 +11,7 @@ pub mod index;
 pub mod kind;
 pub mod links;
 pub mod parse;
+pub mod preferences;
 pub mod query;
 pub mod render;
 pub mod review;

@@ -2,28 +2,33 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { create } from "zustand";
 import { Download, FolderOpen, Info, Keyboard, Palette, PenLine, RefreshCw, X } from "lucide-react";
 import { useUi, type SettingsSection } from "../state/ui";
-import { NOTE_SIZE_MAX, NOTE_SIZE_MIN, useSettings, type NoteWidth, type Theme } from "../state/settings";
+import { DEFAULT_PREFS, NOTE_SIZE_MAX, NOTE_SIZE_MIN, useSettings, type NoteWidth, type Theme, type Prefs } from "../state/settings";
 import { useVault } from "../state/vault";
 import { useWorkspace } from "../state/workspace";
+import { leaveAllDrafts } from "../state/drafts";
 import { api, onUpdateDone, onUpdateLog, pickFolder, revealInFinder } from "../ipc/api";
 import { errorMessage, type UpdateCheck, type UpdateStatus } from "../ipc/types";
-import { commands, formatKeys, keysFor, rebind, shortcutOf, type Keys } from "../commands";
+import { commands, formatKeys, keysFor, rebind, type Keys } from "../commands";
 import { createVault, openVaultFolder } from "../actions";
-import { ConnectAiSection } from "./ConnectAi";
 import { renderInlineMarkdown } from "../markdown";
 import { openExternal } from "../ipc/api";
 import { TemplatesSettings } from "./TemplatesSettings";
+import { AppearanceExtras, AppPreference, CalendarLinks, SectionReset, VaultFolders, WorkspacePreferences } from "./Personalization";
 
 const SECTIONS: { id: SettingsSection; label: string; icon: typeof Palette }[] = [
   { id: "appearance", label: "Appearance", icon: Palette },
   { id: "editor", label: "Editor & files", icon: PenLine },
-  { id: "vault", label: "Vault", icon: FolderOpen },
+  { id: "vault", label: "Vault folders", icon: FolderOpen },
   { id: "templates", label: "Templates", icon: PenLine },
+  { id: "calendar", label: "Calendar & links", icon: PenLine },
+  { id: "workspace", label: "Workspace", icon: FolderOpen },
+  { id: "ai", label: "Connections & safety", icon: PenLine },
   { id: "shortcuts", label: "Shortcuts", icon: Keyboard },
   { id: "about", label: "About & updates", icon: Info },
 ];
 
 export function Settings() {
+  const [query, setQuery] = useState("");
   const section = useUi((s) => s.settings) ?? "appearance";
   const close = () => { const ws = useWorkspace.getState(); ws.closeTab(ws.focused, "mosaic:settings"); };
   const current = SECTIONS.find((s) => s.id === section) ?? SECTIONS[0];
@@ -37,6 +42,8 @@ export function Settings() {
       >
         <nav className="settings-nav" aria-label="Settings sections">
           <h2>Settings</h2>
+          <input aria-label="Search settings" placeholder="Search settings…" value={query} onChange={e => setQuery(e.target.value)} />
+          {!!query && <div className="settings-search-results">{SECTIONS.filter(s => (`${s.label} ${SETTING_WORDS[s.id] ?? ""}`).toLowerCase().includes(query.toLowerCase())).map(s => <button key={s.id} onClick={() => { useUi.getState().openSettings(s.id); setQuery(""); }}>{s.label} →</button>)}{!SECTIONS.some(s => (`${s.label} ${SETTING_WORDS[s.id] ?? ""}`).toLowerCase().includes(query.toLowerCase())) && <p role="status">No matching settings.</p>}</div>}
           {SECTIONS.map((s) => (
             <button key={s.id} className={s.id === section ? "active" : ""} aria-current={s.id === section} onClick={() => useUi.getState().openSettings(s.id)}>
               <s.icon size={15} /> {s.label}
@@ -53,9 +60,11 @@ export function Settings() {
           <div className="settings-scroll">
             {section === "appearance" && <Appearance />}
             {section === "editor" && <EditorFiles />}
-            {section === "vault" && <VaultSection />}
+            {section === "vault" && <><VaultSection /><VaultFolders /></>}
             {section === "templates" && <TemplatesSettings />}
-            {section === "ai" && <ConnectAiSection />}
+            {section === "calendar" && <CalendarLinks />}
+            {section === "workspace" && <WorkspacePreferences />}
+            {section === "ai" && <><p className="settings-note">Connection setup and agent permissions live together in the AI workspace. Folder review rules always take precedence over workflow allowances.</p><button onClick={() => useUi.getState().openView("connections")}>Open Connections & safety</button></>}
             {section === "shortcuts" && <Shortcuts />}
             {section === "about" && <About />}
           </div>
@@ -64,15 +73,25 @@ export function Settings() {
     </div>
   );
 }
+const SETTING_WORDS: Partial<Record<SettingsSection, string>> = {
+  appearance: "theme system light dark note text size width font code font line spacing heading scale accent color interface scale density preview local fallback",
+  editor: "spellcheck source line numbers trash confirmation",
+  vault: "agents daily notes folder template new notes attachments folder colors creation discovery current root fixed missing create folder",
+  templates: "templates defaults folder assignments rules starters preview",
+  calendar: "week starts monday sunday daily file name format new link syntax wiki markdown open note links new tab",
+  workspace: "startup destination restore previous plan today specific note sidebar context panel visibility default width",
+  shortcuts: "keyboard shortcuts bindings", about: "version updates download installation CLI release source", ai: "connections permissions review safety Claude MCP",
+};
 
 function Row({ label, hint, children }: { label: string; hint?: ReactNode; children: ReactNode }) {
+  const key = ({ Theme:"theme", "Note text size":"noteSize", "Note width":"noteWidth", Spellcheck:"spellcheck", "Ask before moving to the Trash":"confirmTrash" } as Record<string, keyof Prefs>)[label];
   return (
     <div className="setting-row">
       <div className="setting-text">
         <div className="setting-label">{label}</div>
         {hint && <div className="setting-hint">{hint}</div>}
       </div>
-      <div className="setting-control">{children}</div>
+      <div className="setting-control">{children}{key && <button aria-label={`Reset ${label}`} title="Reset to default" onClick={() => useSettings.getState().set(key, DEFAULT_PREFS[key])}>↺</button>}</div>
     </div>
   );
 }
@@ -139,6 +158,7 @@ function Appearance() {
           onChange={(v) => s.set("noteWidth", v)}
         />
       </Row>
+      <AppearanceExtras />
     </>
   );
 }
@@ -150,34 +170,12 @@ function EditorFiles() {
       <Row label="Spellcheck" hint="Underline misspelled words in notes.">
         <Toggle label="Spellcheck" checked={s.spellcheck} onChange={(v) => s.set("spellcheck", v)} />
       </Row>
-      <Row label="New notes go in" hint="Where ⌘N and the “New note” button create notes.">
-        <Segmented
-          label="New notes go in"
-          value={s.newNoteLocation}
-          onChange={(v) => s.set("newNoteLocation", v)}
-          options={[
-            { value: "current", label: "Current file's folder" },
-            { value: "root", label: "Vault root" },
-          ]}
-        />
-      </Row>
+      <AppPreference name="sourceLineNumbers" label="Source line numbers" hint="Applies to source/code editors, not Markdown live preview." />
       <Row label="Ask before moving to the Trash" hint="Files always go to the macOS Trash, so they can be restored either way.">
         <Toggle label="Ask before moving to the Trash" checked={s.confirmTrash} onChange={(v) => s.set("confirmTrash", v)} />
       </Row>
-      <Row label="Daily notes folder" hint={`Where “Open today's note” (${shortcutOf("daily-note")}) keeps one note per day, named like 2026-10-02.`}>
-        <input className="text-input" aria-label="Daily notes folder" value={s.dailyFolder} placeholder="Vault root" onChange={(e) => s.set("dailyFolder", e.target.value.replace(/^\/+|\/+$/g, ""))} />
-      </Row>
-      <Row
-        label="Daily note template"
-        hint={
-          <>
-            A note to copy into each new daily note. <code>{"{{date}}"}</code>, <code>{"{{title}}"}</code>, <code>{"{{weekday}}"}</code> and{" "}
-            <code>{"{{time}}"}</code> are filled in.
-          </>
-        }
-      >
-        <input className="text-input" aria-label="Daily note template" value={s.dailyTemplate} placeholder="None (empty note)" onChange={(e) => s.set("dailyTemplate", e.target.value.trim())} />
-      </Row>
+      <p className="settings-note">Daily notes, new note destinations and attachments are configured per vault in Vault folders. Connections and agent safety are in the AI workspace.</p>
+      <SectionReset keys={["spellcheck", "sourceLineNumbers", "confirmTrash"]} label="Editor" />
     </>
   );
 }
@@ -404,6 +402,7 @@ function About() {
   };
 
   const restart = async () => {
+    if (!(await leaveAllDrafts())) return;
     if (!(await saveAll())) {
       setError("Some notes couldn't be saved. Resolve them first, then restart.");
       return;
@@ -417,6 +416,7 @@ function About() {
 
   if (!status) return error ? <p className="error-text">{error}</p> : <p className="settings-note">Loading…</p>;
   const dev = status.app_path === null;
+  const binary = status.mode === "binary";
   const canUpdate = !dev && !status.source_problem && flow.phase !== "running";
   const hasNews = !!check && (check.behind.length > 0 || check.installed_outdated);
 
@@ -428,7 +428,7 @@ function About() {
       {status.last_install_error && (
         <p className="warn-text">The last update was built but not installed: {status.last_install_error}</p>
       )}
-      <Row
+      <details className="settings-note"><summary>Developer option · source builds</summary><Row
         label="Source folder"
         hint={
           <>
@@ -441,16 +441,15 @@ function About() {
           <button className="secondary" onClick={() => void changeSource(false)}>
             Change…
           </button>
-          <button className="secondary" title="Use the folder this app was built from" onClick={() => void changeSource(true)}>
-            Reset
+          <button className="secondary" title="Use downloadable releases" onClick={() => void changeSource(true)}>
+            Use releases
           </button>
         </div>
-      </Row>
+      </Row></details>
 
       <div className="update-box">
         <p className="settings-note">
-          Mosaic updates from its source: it pulls new commits with git, rebuilds with <code>scripts/install.sh</code> and restarts.
-          This is the only time Mosaic uses the network, and only when you click.
+          {binary ? "Mosaic downloads signed universal packages from GitHub Releases. No git, Node or Rust is needed. Checks and downloads use HTTPS only when you click; there is no background polling or telemetry." : <>Developer mode: pulls source commits and rebuilds with <code>scripts/install.sh</code>, only when you click.</>}
         </p>
         {dev && <p className="warn-text">This is a development build (pnpm dev); it can't replace itself. Use scripts/install.sh.</p>}
         <div className="button-row">
@@ -465,11 +464,11 @@ function About() {
           {flow.phase !== "built" && flow.phase !== "running" && (
             <button
               className={hasNews ? "primary" : "secondary"}
-              disabled={!canUpdate}
+              disabled={!canUpdate || (binary && !hasNews)}
               title={check && !hasNews ? "Rebuild the current source anyway" : undefined}
               onClick={() => void update()}
             >
-              <Download size={14} /> {check && !hasNews ? "Rebuild anyway" : "Update"}
+              <Download size={14} /> {binary ? "Download update" : check && !hasNews ? "Rebuild anyway" : "Update"}
             </button>
           )}
           {flow.phase === "built" && (
@@ -505,7 +504,7 @@ function About() {
                 ))}
               </>
             )}
-            {check.behind.length > 0 ? (
+            {binary ? <p>{hasNews ? "The package is verified before installation. Your vault and settings are preserved." : check.latest_version ? "You're up to date with downloadable releases." : "No complete signed downloadable release is available yet."}</p> : check.behind.length > 0 ? (
               <details className="commit-details" open={check.releases.length === 0}>
                 <summary>
                   {check.behind.length} new {check.behind.length === 1 ? "commit" : "commits"} on <code>{check.upstream}</code>
@@ -538,13 +537,14 @@ function About() {
           </div>
         )}
 
-        {flow.phase === "running" && <p className="settings-note">Building… this takes a few minutes. You can keep working meanwhile.</p>}
-        {flow.phase === "built" && <p className="ok-text">The new version is built. Restart to switch to it; unsaved notes are saved first.</p>}
+        {flow.phase === "running" && <p className="settings-note">{binary ? "Downloading and verifying…" : "Building…"} You can keep working meanwhile.</p>}
+        {flow.phase === "built" && <p className="ok-text">The new version is ready. Restart to switch to it; unsaved notes are saved first. The previous app is retained for recovery.</p>}
+        {binary && <p className="settings-note">Mosaic is ad-hoc signed, not Apple-notarized. macOS may ask you to approve it in Privacy & Security. Mosaic never disables Gatekeeper or removes quarantine. Restart connected MCP clients after updating.</p>}
         {flow.phase === "failed" && flow.error && <p className="error-text">{flow.error}</p>}
         {flow.phase === "cancelled" && <p className="settings-note">Update cancelled. The installed app wasn't changed.</p>}
         {flow.log.length > 0 && (
           <details className="update-log" open={flow.phase !== "built"}>
-            <summary>Build log</summary>
+            <summary>Update log</summary>
             <pre ref={logRef}>{flow.log.join("\n")}</pre>
           </details>
         )}

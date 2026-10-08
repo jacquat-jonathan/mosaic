@@ -83,9 +83,10 @@ fn activate(app: AppHandle, state: &AppState, ws: Workspace) -> CmdResult<VaultI
     let _ = app
         .asset_protocol_scope()
         .allow_directory(ws.vault.root(), true);
-    let mut settings = Settings::load();
-    settings.remember_vault(ws.vault.root().to_path_buf());
-    let _ = settings.save();
+    let _ = Settings::update(|settings| {
+        settings.remember_vault(ws.vault.root().to_path_buf());
+        true
+    });
     let out = info(&ws);
     *state.ws.write().expect("workspace lock poisoned") = Some(ws.clone());
     tessera::reset_events(&app, &ws);
@@ -145,9 +146,11 @@ fn recent_vaults() -> Vec<RecentVault> {
 
 #[tauri::command]
 fn forget_vault(path: String) -> CmdResult<()> {
-    let mut settings = Settings::load();
-    settings.forget_vault(std::path::Path::new(&path));
-    settings.save().map_err(|e| Error::Io { path, source: e })
+    Settings::update(|settings| {
+        settings.forget_vault(std::path::Path::new(&path));
+        true
+    })
+    .map_err(|e| Error::Io { path, source: e })
 }
 
 #[tauri::command]
@@ -163,9 +166,11 @@ fn get_agent_rules(state: State<AppState>) -> CmdResult<Vec<AgentRule>> {
 #[tauri::command]
 fn set_agent_rules(state: State<AppState>, rules: Vec<AgentRule>) -> CmdResult<()> {
     let ws = state.get()?;
-    let mut settings = Settings::load();
-    settings.set_agent_rules(ws.vault.root(), rules);
-    settings.save().map_err(|e| Error::Io {
+    Settings::update(|settings| {
+        settings.set_agent_rules(ws.vault.root(), rules);
+        true
+    })
+    .map_err(|e| Error::Io {
         path: "settings.json".into(),
         source: e,
     })
@@ -174,9 +179,11 @@ fn set_agent_rules(state: State<AppState>, rules: Vec<AgentRule>) -> CmdResult<(
 #[tauri::command]
 fn set_bookmarks(state: State<AppState>, paths: Vec<String>) -> CmdResult<()> {
     let ws = state.get()?;
-    let mut settings = Settings::load();
-    settings.set_bookmarks(ws.vault.root(), paths);
-    settings.save().map_err(|e| Error::Io {
+    Settings::update(|settings| {
+        settings.set_bookmarks(ws.vault.root(), paths);
+        true
+    })
+    .map_err(|e| Error::Io {
         path: "settings.json".into(),
         source: e,
     })
@@ -239,13 +246,40 @@ fn read_file(state: State<AppState>, path: String) -> CmdResult<FileContent> {
 }
 
 #[tauri::command]
-fn create_file(state: State<AppState>, path: String, content: String) -> CmdResult<Written> {
-    state.get()?.create(&path, &content)
+fn create_file(
+    state: State<AppState>,
+    path: String,
+    content: String,
+    root: Option<String>,
+) -> CmdResult<Written> {
+    let ws = state.get()?;
+    if root.is_some_and(|root| ws.vault.root().to_string_lossy() != root) {
+        return Err(Error::Invalid("The vault changed. Reopen the form.".into()));
+    }
+    ws.create(&path, &content)
 }
 
 #[tauri::command]
 fn template_config(state: State<AppState>) -> CmdResult<mosaic_core::templates::TemplateConfig> {
     state.get()?.template_config()
+}
+#[tauri::command]
+fn vault_preferences(
+    state: State<AppState>,
+) -> CmdResult<mosaic_core::preferences::VaultPreferences> {
+    state.get()?.vault_preferences()
+}
+#[tauri::command]
+fn set_vault_preferences(
+    state: State<AppState>,
+    patch: serde_json::Value,
+    root: String,
+) -> CmdResult<()> {
+    let ws = state.get()?;
+    if ws.vault.root().to_string_lossy() != root {
+        return Err(Error::Invalid("The vault changed. Reopen Settings.".into()));
+    }
+    ws.set_vault_preferences(patch)
 }
 #[tauri::command]
 fn set_template_config(
@@ -286,10 +320,13 @@ fn write_file(
     path: String,
     content: String,
     expected_hash: Option<String>,
+    root: Option<String>,
 ) -> CmdResult<Written> {
-    state
-        .get()?
-        .write(&path, &content, expected_hash.as_deref())
+    let ws = state.get()?;
+    if root.is_some_and(|root| ws.vault.root().to_string_lossy() != root) {
+        return Err(Error::Invalid("The vault changed. Reopen the form.".into()));
+    }
+    ws.write(&path, &content, expected_hash.as_deref())
 }
 
 #[tauri::command]
@@ -632,6 +669,8 @@ pub fn run() {
             read_file,
             create_file,
             template_config,
+            vault_preferences,
+            set_vault_preferences,
             set_template_config,
             list_templates,
             render_template,

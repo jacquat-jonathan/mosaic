@@ -8,6 +8,10 @@ import { isSpecialTab } from "../views/specialTabs";
 import { api } from "../ipc/api";
 import { errorMessage, isCoreError, type FileKind } from "../ipc/types";
 import { useVault } from "./vault";
+import { vaultPrefs } from "./vaultPreferences";
+import { hasDraft, leaveDraft } from "./drafts";
+import { prefs } from "./settings";
+import { useUi } from "./ui";
 
 export interface Buffer {
   path: string;
@@ -155,6 +159,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
 
     async open(path, opts = {}) {
       const paneId = opts.pane ?? get().focused;
+      const previous = get().panes.find(p => p.id === paneId)?.active ?? null;
+      if (previous !== path && !(await leaveDraft(previous))) return;
       set((s) => ({
         focused: paneId,
         panes: s.panes.map((p) => {
@@ -174,6 +180,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
     },
 
     closeTab(paneId, path) {
+      if (hasDraft(path)) {
+        void leaveDraft(path).then(ok => { if (ok) get().closeTab(paneId, path); });
+        return;
+      }
       set((s) => ({
         panes: s.panes.map((p) => {
           if (p.id !== paneId) return p;
@@ -191,6 +201,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
     focus: (focused) => set({ focused }),
 
     activate(paneId, path) {
+      const previous = get().panes.find(p => p.id === paneId)?.active ?? null;
+      if (previous !== path && previous && hasDraft(previous)) {
+        void leaveDraft(previous).then(ok => { if (ok) set(s => ({ focused: paneId, panes: s.panes.map(p => p.id === paneId ? { ...p, active: path } : p) })); }); return;
+      }
       set((s) => ({ focused: paneId, panes: s.panes.map((p) => (p.id === paneId ? { ...p, active: path } : p)) }));
     },
 
@@ -221,6 +235,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
     },
 
     closePane(paneId) {
+      const drafts = get().panes.find(p => p.id === paneId)?.tabs.filter(hasDraft) ?? [];
+      if (drafts.length) {
+        void (async () => { for(const path of drafts) if(!(await leaveDraft(path))) return; get().closePane(paneId); })(); return;
+      }
       set((s) => {
         if (s.panes.length === 1) return s;
         const panes = s.panes.filter((p) => p.id !== paneId);
@@ -273,7 +291,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
         const w = await api.write(path, content, b.baseHash || null);
         const now = get().buffers[path];
         if (now) updateBuffer(path, { baseHash: w.hash, dirty: now.content !== content, error: null });
-        if (path.startsWith("Agents/")) mirrorAgentsSoon();
+        if (path.startsWith(`${vaultPrefs().agents_folder}/`)) mirrorAgentsSoon();
         useVault.getState().touched();
       } catch (e) {
         if (isCoreError(e) && e.code === "conflict") updateBuffer(path, { conflict: { diskHash: e.current_hash } });
@@ -391,6 +409,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
       }
       const id = newPaneId();
       if (!saved?.panes?.length) {
+        if (!localStorage.getItem("mosaic:ui")) {
+          const defaults = prefs();
+          useUi.setState({ sidebarWidth: defaults.sidebarWidth, rightWidth: defaults.contextWidth, leftSidebar: defaults.sidebarVisible, rightPanel: defaults.contextVisible });
+        }
         set({ panes: [{ id, tabs: [], active: null }], focused: id, buffers: {}, direction: "row" });
         return;
       }

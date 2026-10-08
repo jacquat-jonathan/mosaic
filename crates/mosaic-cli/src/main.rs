@@ -195,6 +195,10 @@ enum Cmd {
     },
     /// Print the guide for AI agents working with this vault.
     Guide,
+    /// Read this vault's shared preferences (configured by the person in Settings).
+    Preferences,
+    #[command(hide = true)]
+    SwapApps { staged: PathBuf, installed: PathBuf },
     /// Run as an MCP server over stdio (for Claude Code, Claude Desktop, …).
     Mcp,
 }
@@ -369,6 +373,10 @@ fn main() {
 }
 
 fn run(cli: Cli) -> Result<()> {
+    if let Cmd::SwapApps { staged, installed } = &cli.cmd {
+        mosaic_core::app_install::swap_apps(staged, installed)?;
+        return Ok(());
+    }
     if matches!(cli.cmd, Cmd::Guide) {
         print!("{AGENT_GUIDE}");
         return Ok(());
@@ -780,7 +788,11 @@ fn run(cli: Cli) -> Result<()> {
             let path = ws.undo(id)?;
             print(json, &path, |p| format!("undone: {p}"))
         }
+        Cmd::Preferences => print(json, &ws.vault_preferences()?, |p| {
+            serde_json::to_string_pretty(p).expect("preferences")
+        }),
         Cmd::Guide => unreachable!(),
+        Cmd::SwapApps { .. } => unreachable!(),
         Cmd::Mcp => {
             let rt = tokio::runtime::Builder::new_multi_thread()
                 .enable_all()

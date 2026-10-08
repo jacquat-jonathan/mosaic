@@ -12,18 +12,18 @@ export function addDays(d: Date, n: number): Date {
 }
 
 /** The Monday of `d`'s week. */
-export function startOfWeek(d: Date): Date {
-  return addDays(d, -((d.getDay() + 6) % 7));
+export function startOfWeek(d: Date, sunday = false): Date {
+  return addDays(d, -(sunday ? d.getDay() : (d.getDay() + 6) % 7));
 }
 
 /** The 6 weeks shown for `d`'s month: from the Monday on or before the 1st. */
-export function monthGrid(d: Date): { from: Date; to: Date } {
-  const from = startOfWeek(new Date(d.getFullYear(), d.getMonth(), 1, 12));
+export function monthGrid(d: Date, sunday = false): { from: Date; to: Date } {
+  const from = startOfWeek(new Date(d.getFullYear(), d.getMonth(), 1, 12), sunday);
   return { from, to: addDays(from, 41) };
 }
 
-export function weekRange(d: Date): { from: Date; to: Date } {
-  const from = startOfWeek(d);
+export function weekRange(d: Date, sunday = false): { from: Date; to: Date } {
+  const from = startOfWeek(d, sunday);
   return { from, to: addDays(from, 6) };
 }
 

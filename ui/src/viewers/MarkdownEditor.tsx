@@ -13,6 +13,8 @@ import { resolveLink, linkTextFor } from "../links";
 import { droppedItems, embedsFor, importDropped, isFinderDrag, newFileOfKind, newNote } from "../actions";
 import { parentOf, baseName } from "../state/vault";
 import { useUi } from "../state/ui";
+import { prefs } from "../state/settings";
+import { vaultPrefs } from "../state/vaultPreferences";
 
 /** "Pasted image 2026-10-02 143005.png" (a second image in one paste gets " 2"). */
 export function pastedName(file: { type: string }, index: number, now = new Date()): string {
@@ -33,6 +35,7 @@ export function editorContextFor(path: string): EditorContext {
     path,
     resolve,
     async openLink(target, newTab) {
+      newTab ||= prefs().openLinksNewTab;
       const resolved = resolve(target.split("#")[0].split("^")[0]);
       if (resolved) {
         await useWorkspace.getState().open(resolved, { newTab });
@@ -54,19 +57,19 @@ export function editorContextFor(path: string): EditorContext {
     importPaste(dt) {
       const images = [...dt.files].filter((f) => f.type.startsWith("image/"));
       if (!images.length) return null;
-      const dir = parentOf(path);
+      const dir = vaultPrefs().attachment_location === "folder" ? vaultPrefs().attachment_folder : parentOf(path);
       return Promise.all(
         images.map(async (f, i) => (await api.importFile(dir ? `${dir}/${pastedName(f, i)}` : pastedName(f, i), new Uint8Array(await f.arrayBuffer()))).path),
-      ).then(embedsFor, (e) => {
+      ).then(paths => embedsFor(paths, path), (e) => {
         useVault.getState().setError(`Couldn't save the pasted image: ${errorMessage(e)}`);
         return "";
       });
     },
     importDrop(dt) {
       if (!isFinderDrag(dt)) return null;
-      return importDropped(droppedItems(dt), parentOf(path)).then((paths) => {
+      return importDropped(droppedItems(dt), vaultPrefs().attachment_location === "folder" ? vaultPrefs().attachment_folder : parentOf(path)).then((paths) => {
         const dirs = new Set(entries().filter((e) => e.is_dir).map((e) => e.path));
-        return embedsFor(paths.filter((p) => !dirs.has(p)));
+        return embedsFor(paths.filter((p) => !dirs.has(p)), path);
       });
     },
     async openAsDiagram(source) {

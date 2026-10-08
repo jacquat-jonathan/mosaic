@@ -9,6 +9,7 @@ import { errorMessage, type Day, type DayTask, type Days } from "../ipc/types";
 import { dayStamp } from "../daily";
 import { openDailyNote } from "../actions";
 import { usePlanning } from "../state/planning";
+import { useSettings } from "../state/settings";
 import { useWorkspace } from "../state/workspace";
 import { Segmented, Toolbar } from "../viewers/Toolbar";
 import { addDays, atNoon, counts, monthGrid, progress, weekRange } from "./calendar";
@@ -31,13 +32,15 @@ function storedMode(): Mode {
 }
 
 export function CalendarView({ initialMode }: { initialMode?: Mode }) {
+  const sunday = useSettings(s => s.weekStart === "sunday");
+  const weekdays = sunday ? ["Sun", ...WEEKDAYS.slice(0, 6)] : WEEKDAYS;
   const [mode, setModeState] = useState<Mode>(initialMode ?? storedMode);
   const selectedDay = usePlanning(s => s.selectedDay);
   const [anchor, setAnchor] = useState(() => atNoon(new Date()));
   const [data, setData] = useState<Days | null>(null);
   const [error, setError] = useState<string | null>(null);
   const today = dayStamp();
-  const range = useMemo(() => (mode === "month" ? monthGrid(anchor) : mode === "day" ? { from: anchor, to: anchor } : weekRange(anchor)), [mode, anchor]);
+  const range = useMemo(() => (mode === "month" ? monthGrid(anchor, sunday) : mode === "day" ? { from: anchor, to: anchor } : weekRange(anchor, sunday)), [mode, anchor, sunday]);
   const from = dayStamp(range.from);
   const to = dayStamp(range.to);
 
@@ -124,7 +127,7 @@ export function CalendarView({ initialMode }: { initialMode?: Mode }) {
       {!data ? (
         <div className="panel-meta">Loading…</div>
       ) : mode === "month" ? (
-        <Month days={data.days} month={anchor.getMonth()} today={today} selected={selectedDay} onOpen={openDay} onActivate={activateDay} />
+        <Month weekdays={weekdays} days={data.days} month={anchor.getMonth()} today={today} selected={selectedDay} onOpen={openDay} onActivate={activateDay} />
       ) : (
         <Week days={data.days} today={today} selected={selectedDay} onOpen={openDay} onActivate={activateDay} onTick={tick} />
       )}
@@ -132,10 +135,10 @@ export function CalendarView({ initialMode }: { initialMode?: Mode }) {
   );
 }
 
-function Month({ days, month, today, selected, onOpen, onActivate }: { days: Day[]; month: number; today: string; selected: string; onOpen(date: string, note: string | null): void; onActivate(date: string): void }) {
+function Month({ weekdays, days, month, today, selected, onOpen, onActivate }: { weekdays: string[]; days: Day[]; month: number; today: string; selected: string; onOpen(date: string, note: string | null): void; onActivate(date: string): void }) {
   return (
     <div className="calendar-month" role="grid">
-      {WEEKDAYS.map((w) => (
+      {weekdays.map((w) => (
         <div key={w} className="calendar-weekday" role="columnheader">
           {w}
         </div>

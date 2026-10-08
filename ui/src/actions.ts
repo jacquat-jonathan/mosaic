@@ -8,13 +8,16 @@ import { api, pickFolder } from "./ipc/api";
 import { errorMessage } from "./ipc/types";
 import { displayName } from "./views/FileTree";
 import { prefs } from "./state/settings";
+import { vaultPrefs } from "./state/vaultPreferences";
 import { resolveLink } from "./links";
 import { dailyPath, dayStamp, fillTemplate } from "./daily";
 import { CALENDAR_TAB } from "./views/specialTabs";
 
 /** Folder for a new note, per Settings › "New notes go in". */
 export function newNoteDir(): string {
-  if (prefs().newNoteLocation === "root") return "";
+  const configured = vaultPrefs();
+  if (configured.new_note_location === "root") return "";
+  if (configured.new_note_location === "folder") return configured.new_note_folder;
   const active = useWorkspace.getState().activePath();
   return active ? parentOf(active) : "";
 }
@@ -111,7 +114,15 @@ export async function duplicatePath(path: string) {
 }
 
 /** The shortest `[[link]]` that resolves to `path`: the bare name unless another file shares it. */
-export function wikilinkFor(path: string): string {
+export function wikilinkFor(path: string, from = useWorkspace.getState().activePath() ?? ""): string {
+  if (vaultPrefs().link_style === "markdown") {
+    const parts = parentOf(from).split("/").filter(Boolean);
+    const target = path.split("/");
+    while(parts.length && target.length && parts[0] === target[0]) { parts.shift(); target.shift(); }
+    const relative = [...parts.map(() => ".."), ...target].map(segment => encodeURIComponent(segment).replaceAll("(", "%28").replaceAll(")", "%29")).join("/");
+    const label = baseName(path).replace(/\.md$/i, "").replace(/[\\[\]]/g, "\\$&");
+    return `[${label}](${relative})`;
+  }
   const name = baseName(path);
   const md = kindOf(path) === "markdown";
   const bare = md ? name.replace(/\.(md|markdown)$/i, "") : name;
@@ -242,8 +253,9 @@ export async function newOfKind(dir: string, kind: (typeof NEW_KINDS)[number]) {
  * the unfinished tasks of the last daily note move into it first (carry-over, crates/mosaic-core/src/days.rs).
  */
 export async function openDailyNote(d = new Date(), opts: { newTab?: boolean } = {}) {
-  const { dailyFolder, dailyTemplate } = prefs();
-  const path = dailyPath(dailyFolder, d);
+  const { daily_folder: dailyFolder, daily_template: dailyTemplate, daily_format } = vaultPrefs();
+  const existing = (await api.days(dayStamp(d), dayStamp(d), dayStamp())).days[0]?.note;
+  const path = existing ?? dailyPath(dailyFolder, d, daily_format);
   const vault = useVault.getState();
   const exists = () => useVault.getState().entries.some((e) => e.path === path);
   let content: string | null = null;
@@ -360,6 +372,6 @@ export async function importDropped(items: (FileSystemEntry | File)[], dir: stri
 }
 
 /** Text that embeds (images, PDFs) or links (anything else) each imported file in a note. */
-export function embedsFor(paths: string[]): string {
-  return paths.map((p) => (["image", "pdf"].includes(kindOf(p)) ? "!" : "") + wikilinkFor(p)).join("\n");
+export function embedsFor(paths: string[], from?: string): string {
+  return paths.map((p) => (["image", "pdf"].includes(kindOf(p)) ? "!" : "") + wikilinkFor(p, from)).join("\n");
 }

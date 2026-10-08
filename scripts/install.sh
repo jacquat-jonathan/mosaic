@@ -52,15 +52,26 @@ if [[ $build_only == 1 ]]; then
   exit 0
 fi
 
-# Quit a running copy, then replace it.
+# Stage before replacing, and retain the previous app for recovery.
+/usr/bin/codesign --verify --deep --strict "$app"
+stage="$(mktemp -d /Applications/.mosaic-install-XXXXXX)"
+ditto "$app" "$stage/Next.app"
+if [[ -e /Applications/Mosaic.app ]]; then
+  identifier="$(/usr/bin/plutil -extract CFBundleIdentifier raw -o - /Applications/Mosaic.app/Contents/Info.plist)"
+  [[ "$identifier" == "dev.jona.mosaic" ]] || { echo "Refusing to replace an unrelated app." >&2; exit 1; }
+fi
+# Quit a running copy, then swap only this application's bundle.
 osascript -e 'tell application "Mosaic" to quit' >/dev/null 2>&1 || true
-rm -rf /Applications/Mosaic.app
-ditto "$app" /Applications/Mosaic.app
-# Self-built apps carry no quarantine flag, but clear it in case the folder came from a download.
-xattr -dr com.apple.quarantine /Applications/Mosaic.app 2>/dev/null || true
+if [[ -e /Applications/Mosaic.app ]]; then mv /Applications/Mosaic.app "$stage/Previous.app"; fi
+if ! mv "$stage/Next.app" /Applications/Mosaic.app; then
+  if [[ -e "$stage/Previous.app" ]]; then mv "$stage/Previous.app" /Applications/Mosaic.app; fi
+  echo "Installation failed; the previous app was restored." >&2; exit 1
+fi
+# Never remove quarantine or bypass Gatekeeper. macOS may require app-specific approval.
 
 mkdir -p "$HOME/.local/bin"
 ln -sf /Applications/Mosaic.app/Contents/MacOS/mosaic "$HOME/.local/bin/mosaic"
 
 echo "Installed /Applications/Mosaic.app and ~/.local/bin/mosaic"
+echo "Previous app (if any) retained at $stage/Previous.app"
 case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) echo "Add ~/.local/bin to your PATH to use the mosaic command." ;; esac

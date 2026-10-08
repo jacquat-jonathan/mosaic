@@ -40,6 +40,7 @@ import {
 import { api, openInDefaultApp, revealInFinder } from "../ipc/api";
 import { shortcutOf } from "../commands";
 import { kindOf } from "../ipc/kinds";
+import { useVaultPreferences } from "../state/vaultPreferences";
 
 const DRAG_TYPE = "application/x-mosaic-path";
 
@@ -284,7 +285,7 @@ function multiMenu(paths: string[]): MenuItem[] {
       ? [{ label: `Open ${files.length === 1 ? "file" : `${files.length} files`} in new tabs`, action: () => void openAll(files) }]
       : []),
     { label: allBookmarked ? "Remove bookmarks" : "Bookmark all", action: () => void vault.toggleBookmarks(paths) },
-    ...(files.length ? [{ label: "Copy wikilinks", action: () => void copyText(files.map(wikilinkFor).join("\n")) }] : []),
+    ...(files.length ? [{ label: "Copy note links", action: () => void copyText(files.map(path => wikilinkFor(path)).join("\n")) }] : []),
     ...(files.length ? [{ label: "New canvas from selection", action: () => void canvasFromFiles(files) }] : []),
     { label: "", separator: true },
     { label: "Move to…", action: () => pickFolderAndMove(paths) },
@@ -314,6 +315,7 @@ function TreeRow({
   const renaming = useVault((s) => s.renaming === entry.path);
   const selected = useVault((s) => s.selected.has(entry.path));
   const bookmarked = useVault((s) => s.bookmarks.includes(entry.path));
+  const folderColor = useVaultPreferences(s => entry.is_dir ? s.value.folder_colors[entry.path] : undefined);
   const active = useWorkspace((s) => s.panes.find((p) => p.id === s.focused)?.active === entry.path);
 
   const onClick = (ev: MouseEvent) => {
@@ -342,6 +344,8 @@ function TreeRow({
       aria-selected={selected}
       aria-expanded={entry.is_dir ? open : undefined}
       data-path={entry.path}
+      data-folder-color={folderColor}
+      aria-label={folderColor ? `${entry.name}, ${folderColor} folder` : undefined}
       style={{ paddingLeft: 8 + depth * 14 }}
       draggable={!renaming}
       onDragStart={(ev) => {

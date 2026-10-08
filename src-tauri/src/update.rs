@@ -1,6 +1,6 @@
-//! Settings › About & updates. Mosaic is built from source, so it updates the same way: pull the source
-//! checkout it was built from, rebuild it with `scripts/install.sh --build-only`, then (after the app
-//! quits) swap the new bundle in and reopen it. The network is used only when the user clicks.
+//! Settings › About & updates. Signed public release packages are the default; developers can
+//! explicitly opt into rebuilding a source checkout. Installations exchange complete bundles after
+//! the app quits and retain the old app for recovery. Network requests require a user click.
 
 use mosaic_core::Error;
 use mosaic_core::settings::Settings;
@@ -14,10 +14,11 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 type CmdResult<T> = Result<T, Error>;
+mod binary;
 
 /// Short commit this app was built from (empty if git wasn't available at build time).
 const COMMIT: &str = env!("MOSAIC_COMMIT");
-/// The source checkout this app was built from: the default update source.
+/// The source checkout this app was built from: a suggestion for opt-in source updates.
 const BUILT_FROM: &str = env!("MOSAIC_SOURCE_DIR");
 /// GUI apps start with a minimal PATH; build tools usually live here.
 const EXTRA_PATH: &str = "/opt/homebrew/bin:/opt/homebrew/opt/rustup/bin:/usr/local/bin";
@@ -31,6 +32,8 @@ pub struct UpdateState {
     step: Mutex<Option<u32>>,
     /// A finished build waiting for "Restart to finish".
     built: Mutex<Option<PathBuf>>,
+    staging: Mutex<Option<tempfile::TempDir>>,
+    download_manifest: Mutex<Option<binary::Manifest>>,
 }
 
 fn invalid(msg: impl Into<String>) -> Error {
@@ -39,6 +42,7 @@ fn invalid(msg: impl Into<String>) -> Error {
 
 #[derive(Serialize)]
 pub struct UpdateStatus {
+    mode: &'static str,
     version: &'static str,
     commit: &'static str,
     source_dir: String,
@@ -228,9 +232,17 @@ fn git(dir: &Path, args: &[&str]) -> Result<String, String> {
 pub fn update_status(state: State<UpdateState>) -> UpdateStatus {
     let dir = source_dir();
     UpdateStatus {
+        mode: if Settings::load().update_source.is_some() {
+            "source"
+        } else {
+            "binary"
+        },
         version: env!("CARGO_PKG_VERSION"),
         commit: COMMIT,
-        source_problem: source_problem(&dir),
+        source_problem: Settings::load()
+            .update_source
+            .as_ref()
+            .and_then(|_| source_problem(&dir)),
         source_dir: dir.display().to_string(),
         app_path: running_bundle().map(|p| p.display().to_string()),
         running: state.running.load(Ordering::SeqCst),
@@ -259,9 +271,16 @@ pub fn set_update_source(
     state: State<UpdateState>,
     path: Option<String>,
 ) -> CmdResult<UpdateStatus> {
-    let mut settings = Settings::load();
-    settings.update_source = path.map(PathBuf::from);
-    settings.save().map_err(|e| Error::Io {
+    if state.running.load(Ordering::SeqCst) || state.built.lock().expect("update lock").is_some() {
+        return Err(invalid(
+            "Finish or cancel the current update before changing its source",
+        ));
+    }
+    Settings::update(|settings| {
+        settings.update_source = path.map(PathBuf::from);
+        true
+    })
+    .map_err(|e| Error::Io {
         path: "settings.json".into(),
         source: e,
     })?;
@@ -277,6 +296,9 @@ pub async fn check_updates() -> CmdResult<UpdateCheck> {
 }
 
 fn check() -> CmdResult<UpdateCheck> {
+    if Settings::load().update_source.is_none() {
+        return binary::check();
+    }
     check_in(&usable_source()?, COMMIT, env!("CARGO_PKG_VERSION"))
 }
 
@@ -355,15 +377,24 @@ pub fn start_update(app: AppHandle, state: State<UpdateState>) -> CmdResult<()> 
             "This is a development build; it can't replace itself. Use pnpm dev or scripts/install.sh.",
         ));
     }
-    let dir = usable_source()?;
+    let dir = if Settings::load().update_source.is_some() {
+        Some(usable_source()?)
+    } else {
+        None
+    };
     if state.running.swap(true, Ordering::SeqCst) {
         return Err(invalid("An update is already running."));
     }
     *state.built.lock().expect("update lock") = None;
+    *state.staging.lock().expect("update lock") = None;
+    *state.download_manifest.lock().expect("update lock") = None;
     state.cancelled.store(false, Ordering::SeqCst);
-    let universal = is_universal();
+    let universal = dir.is_some() && is_universal();
     std::thread::spawn(move || {
-        let result = run_update(&app, &dir, universal);
+        let result = match dir {
+            Some(dir) => run_update(&app, &dir, universal),
+            None => binary::download(&app),
+        };
         let st = app.state::<UpdateState>();
         let cancelled = st.cancelled.load(Ordering::SeqCst);
         let done = match result {
@@ -483,37 +514,87 @@ pub fn finish_update(app: AppHandle, state: State<UpdateState>) -> CmdResult<()>
         .clone()
         .ok_or_else(|| invalid("There's no finished build to install."))?;
     let dest = running_bundle().ok_or_else(|| invalid("This is a development build."))?;
+    if dest.starts_with("/Volumes") {
+        return Err(invalid(
+            "Drag Mosaic from the disk image to Applications before updating.",
+        ));
+    }
+    let parent = dest
+        .parent()
+        .ok_or_else(|| invalid("Invalid app location"))?;
+    if parent.file_name().is_none_or(|n| n != "Applications") {
+        return Err(invalid(
+            "Move Mosaic into /Applications or your own Applications folder before updating.",
+        ));
+    }
+    let stage = tempfile::Builder::new().prefix(".mosaic-install-").tempdir_in(parent).map_err(|_| invalid("Applications isn't writable. Move Mosaic to your own Applications folder or install the download manually."))?;
+    let staged = stage.path().join("Mosaic.app");
+    let result = Command::new("/usr/bin/ditto")
+        .arg(&built)
+        .arg(&staged)
+        .status()
+        .map_err(|e| invalid(e.to_string()))?;
+    if !result.success() {
+        return Err(invalid(
+            "Couldn't stage the app. The installed version is unchanged.",
+        ));
+    }
+    if let Some(manifest) = state
+        .download_manifest
+        .lock()
+        .expect("update lock")
+        .as_ref()
+    {
+        binary::validate_bundle(&staged, Some(&manifest.version)).map_err(invalid)?;
+    }
+    let backup = stage.path().join("Previous.app");
+    let helper = stage.path().join("mosaic-update-helper");
+    std::fs::copy(staged.join("Contents/MacOS/mosaic"), &helper).map_err(|source| Error::Io {
+        path: helper.display().to_string(),
+        source,
+    })?;
+    if !Command::new(&helper)
+        .args(["swap-apps", "--help"])
+        .output()
+        .map_err(|e| invalid(e.to_string()))?
+        .status
+        .success()
+    {
+        return Err(invalid(
+            "This package doesn't support safe application exchange; install it manually.",
+        ));
+    }
     let error_file = install_error_file().ok_or_else(|| invalid("HOME isn't set."))?;
-    // Copy first, then swap, so a failed step never leaves the user without an app: the old bundle
-    // is moved aside and put back if the new one can't take its place. Every step is logged.
-    let script = r#"pid=$1 src=$2 dest=$3 log=$4 err=$5
+    // An atomic exchange keeps the installed path present throughout. Retain the old bundle;
+    // restore it if LaunchServices refuses to open the replacement. Every step is logged.
+    let script = r#"pid=$1 src=$2 dest=$3 log=$4 err=$5 backup=$6 helper=$7
 mkdir -p "$(dirname "$log")" "$(dirname "$err")"
 exec >>"$log" 2>&1
 echo "== $(date): installing $src into $dest"
 while kill -0 "$pid" 2>/dev/null; do sleep 0.2; done
 fail() { echo "FAILED: $1"; printf '%s\n' "Couldn't install the new build ($1). Details in $log" >"$err"; }
-rm -rf "$dest.new" "$dest.old"
-if ! ditto "$src" "$dest.new"; then
-  fail "copying it next to the app"; rm -rf "$dest.new"
-elif ! mv "$dest" "$dest.old"; then
-  fail "moving the old app aside"; rm -rf "$dest.new"
-elif ! mv "$dest.new" "$dest"; then
-  fail "moving the new app in place"; mv "$dest.old" "$dest"
+if ! "$helper" swap-apps "$src" "$dest"; then
+  fail "exchanging the apps; installed app unchanged"
 else
-  rm -rf "$dest.old" "$err"
-  xattr -dr com.apple.quarantine "$dest" 2>/dev/null
-  echo "installed"
+  rm -f "$err"
+  if ! mv "$src" "$backup"; then backup=$src; fi
+  echo "installed; previous version retained at $backup"
 fi
-open "$dest""#;
+if ! open "$dest"; then
+  fail "launching the update; restoring the previous app"
+  if [ -d "$backup" ]; then "$helper" swap-apps "$backup" "$dest" && open "$dest"; fi
+fi"#;
     Command::new("/bin/sh")
         .arg("-c")
         .arg(script)
         .arg("mosaic-update")
         .arg(std::process::id().to_string())
-        .arg(&built)
+        .arg(&staged)
         .arg(&dest)
         .arg(install_log_file())
         .arg(&error_file)
+        .arg(&backup)
+        .arg(&helper)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -523,6 +604,8 @@ open "$dest""#;
             path: dest.display().to_string(),
             source: e,
         })?;
+    // The helper owns this unique directory after the app exits; retain the old bundle for recovery.
+    let _ = stage.keep();
     app.exit(0);
     Ok(())
 }

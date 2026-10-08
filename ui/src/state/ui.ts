@@ -6,6 +6,7 @@ import { useWorkspace } from "./workspace";
 import { useChat } from "./chat";
 import { noteSelection } from "../editor/noteViews";
 import { isSpecialTab, viewPath } from "../views/specialTabs";
+import { prefs as appPrefs } from "./settings";
 
 export interface MenuItem {
   label: string;
@@ -52,7 +53,7 @@ interface Confirm {
   resolve(ok: boolean): void;
 }
 
-export type SettingsSection = "appearance" | "editor" | "vault" | "templates" | "ai" | "shortcuts" | "about";
+export type SettingsSection = "appearance" | "editor" | "vault" | "templates" | "calendar" | "workspace" | "ai" | "shortcuts" | "about";
 
 export type SidebarTab = "files" | "search" | "tags" | "bookmarks" | "activity";
 
@@ -75,7 +76,8 @@ interface Prefs {
 export const clampPanel = (w: number) => Math.round(Math.max(PANEL_MIN, Math.min(PANEL_MAX, w)));
 
 function loadPrefs(): Prefs {
-  const d: Prefs = { destination: "notes", sidebarWidth: SIDEBAR_DEFAULT, rightWidth: RIGHT_DEFAULT, leftSidebar: true, rightPanel: true };
+  const defaults = appPrefs();
+  const d: Prefs = { destination: "notes", sidebarWidth: defaults.sidebarWidth, rightWidth: defaults.contextWidth, leftSidebar: defaults.sidebarVisible, rightPanel: defaults.contextVisible };
   try {
     const saved = JSON.parse(localStorage.getItem(PREFS_KEY) ?? "null") as Partial<Prefs> | null;
     if (!saved) return d;

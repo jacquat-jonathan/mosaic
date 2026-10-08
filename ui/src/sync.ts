@@ -3,6 +3,7 @@
 import { api, onSettingsChanged, onVaultChanged } from "./ipc/api";
 import { useVault } from "./state/vault";
 import { useWorkspace } from "./state/workspace";
+import { loadVaultPreferences, vaultPrefs } from "./state/vaultPreferences";
 
 let treeTimer: ReturnType<typeof setTimeout> | undefined;
 let agentTimer: ReturnType<typeof setTimeout> | undefined;
@@ -19,7 +20,7 @@ export function startVaultSync(): Promise<() => void> {
     if (root_missing) return;
     clearTimeout(treeTimer);
     treeTimer = setTimeout(() => void useVault.getState().refresh(), 50);
-    if (paths.some((p) => p === "Agents" || p.startsWith("Agents/"))) mirrorAgentsSoon();
+    if (paths.some((p) => p === vaultPrefs().agents_folder || p.startsWith(`${vaultPrefs().agents_folder}/`))) mirrorAgentsSoon();
     const ws = useWorkspace.getState();
     for (const open of Object.keys(ws.buffers)) {
       if (paths.some((p) => open === p || open.startsWith(`${p}/`))) void ws.externalChange(open);
@@ -32,6 +33,8 @@ export function startBookmarkSync(): Promise<() => void> {
   return onSettingsChanged(async () => {
     if (!useVault.getState().vault) return;
     useVault.getState().touched();
+    const root = useVault.getState().vault?.root;
+    if (root) await loadVaultPreferences(root).catch(() => {});
     const fresh = await api.bookmarks().catch(() => null);
     const cur = useVault.getState().bookmarks;
     if (fresh && (fresh.length !== cur.length || fresh.some((p, i) => p !== cur[i]))) useVault.setState({ bookmarks: fresh });

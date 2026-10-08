@@ -31,7 +31,7 @@ write shows up in the app within a second.
   decisions (a rejection may carry a reason: read it and adapt; `undone` means they accepted it, then
   undid it, so the file no longer has your change); `withdraw_proposal` takes one back. Tell
   the person what you proposed and why, since they decide.
-- **Files in `Agents/` are agents, not documents.** A note `Agents/Name.md` or a skill folder
+- **Files in the configured agents folder (default `Agents/`) are agents, not documents.** A note `Agents/Name.md` or a skill folder
   `Agents/Name/SKILL.md` defines an agent the person made: its frontmatter has `name`, `description`
   and, for Mosaic, `schedule`, `on` (for example `created in Daily/`), `model`, and `may-change`
   (folders it may write without review); the body is its instructions. `on` can be one event or a
@@ -41,6 +41,11 @@ write shows up in the app within a second.
   prompt (in Claude Code: `/mosaic:<name>`), and Mosaic mirrors them into the vault's
   `.claude/skills/`, so Claude Code started in the vault has them as skills. Edit an agent in `Agents/`,
   never its mirror.
+- **Vault preferences are shared with CLI/MCP.** Read `get_vault_preferences` (CLI: `mosaic preferences`). Settings may change the agents folder, daily-note
+  folder and file-name format without moving files. Discover agents with `list_agents`, not a
+  hard-coded `Agents/` listing. Daily formats are `YYYY-MM-DD`, `DD-MM-YYYY` or `YYYYMMDD`; legacy
+  ISO daily names remain recognized, while due dates and date placeholders always use ISO. Two
+  notes representing the same date are an error to repair, never a reason to overwrite either.
 - **Find notes by their properties with `query`** rather than reading many files: see "Queries" below.
 - **Several files at once:** `move_files` moves a list into one folder in a single call; `import_file`
   adds an image or other binary file from base64 (never overwrites).

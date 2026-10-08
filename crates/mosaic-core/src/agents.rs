@@ -210,12 +210,13 @@ pub fn agent_prompt(a: &Agent, request: Option<&str>) -> String {
 impl Workspace {
     /// The vault's agents, by name. Two with the same name: the first (by path) wins.
     pub fn agents(&self) -> Result<Vec<Agent>> {
-        let entries = match self.list(AGENTS_DIR, true) {
+        let directory = self.vault_preferences()?.agents_folder;
+        let entries = match self.list(&directory, true) {
             Ok(e) => e,
             Err(Error::NotFound(_)) => return Ok(Vec::new()),
             Err(e) => return Err(e),
         };
-        let prefix = format!("{AGENTS_DIR}/");
+        let prefix = format!("{directory}/");
         let mut found = Vec::new();
         for e in entries.iter().filter(|e| !e.is_dir) {
             let rest = &e.path[prefix.len()..];
@@ -246,7 +247,11 @@ impl Workspace {
         self.agents()?
             .into_iter()
             .find(|a| a.name == want)
-            .ok_or_else(|| Error::NotFound(format!("no agent named {name:?} in {AGENTS_DIR}/")))
+            .ok_or_else(|| {
+                Error::NotFound(format!(
+                    "no agent named {name:?} in the configured agents folder"
+                ))
+            })
     }
 
     /// Writes the agents into the vault's `.claude/skills/` (and removes the ones Mosaic made for

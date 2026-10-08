@@ -203,6 +203,7 @@ fn every_tool_works_end_to_end() {
         .collect();
     for expected in [
         "vault_guide",
+        "get_vault_preferences",
         "list_files",
         "read_file",
         "outline",
@@ -229,6 +230,8 @@ fn every_tool_works_end_to_end() {
 
     let (_, guide) = c.call("vault_guide", json!({}));
     assert!(guide.as_str().unwrap().contains("JSON Canvas"));
+    let (_, preferences) = c.call("get_vault_preferences", json!({}));
+    assert_eq!(preferences["agents_folder"], "Agents");
 
     let (_, files) = c.call("list_files", json!({ "recursive": true }));
     assert!(

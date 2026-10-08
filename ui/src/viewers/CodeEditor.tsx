@@ -5,6 +5,8 @@ import { CodeMirror } from "../editor/CodeMirror";
 import { codeExtensions } from "../editor/setup";
 import { useWorkspace, type Buffer } from "../state/workspace";
 import { LARGE_FILE_BYTES } from "./MarkdownEditor";
+import { lineNumbers } from "@codemirror/view";
+import { useSettings } from "../state/settings";
 
 /** Loads the CodeMirror language for a file name (bundled locally, loaded on demand). */
 function useLanguage(path: string): LanguageSupport | null | undefined {
@@ -27,9 +29,10 @@ export function CodeEditor({ buffer, wrap }: { buffer: Buffer; wrap?: boolean })
   const path = buffer.path;
   const lang = useLanguage(path);
   const readOnly = (buffer.content?.length ?? 0) > LARGE_FILE_BYTES;
+  const numbers = useSettings(s => s.sourceLineNumbers);
   const extensions = useMemo(
-    () => (lang === undefined ? null : codeExtensions(lang, (t) => useWorkspace.getState().edit(path, t), readOnly, wrap)),
-    [lang, path, readOnly, wrap],
+    () => (lang === undefined ? null : [codeExtensions(lang, (t) => useWorkspace.getState().edit(path, t), readOnly, wrap), numbers ? lineNumbers() : []]),
+    [lang, path, readOnly, wrap, numbers],
   );
   if (!extensions) return null;
   return (

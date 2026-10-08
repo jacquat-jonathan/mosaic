@@ -4,6 +4,12 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Downloadable Mac app:** universal Intel/Apple Silicon DMG installation, signed release packages and a download/verify/restart updater without development tools. Ad-hoc Apple signing remains free; first-launch approval and recovery are documented.
+- **One-page workflows:** a focused create/edit workspace with simultaneous schedules and events, searchable folder chips, visible review safety, draft-discard prompts and source-preserving saves.
+- **Personalization:** local fonts, typography, accents, interface scale/density, source line numbers, per-vault folders and attachment destinations, daily formats, link syntax, week start, startup choices, folder colors, settings search and scoped resets. Shared preferences preserve unknown settings and follow renames without moving files.
+
+- **MCP setup:** the recommended Claude Code connection is available across all your projects and follows the vault selected in Mosaic. Setup uses the bundled absolute command path and explains vault switching and older project-specific registrations.
+
 ## 0.17.0 — 2026-10-08
 
 - **Note templates:** configure a Templates folder and inherited folder defaults in Settings. Every ordinary New note action lets you choose a template or Blank, preview its structure, and fill title/date values before creating it. Add editable Meeting, Retro, Project, Analysis and Brainstorm starters when you want them.

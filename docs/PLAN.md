@@ -2,7 +2,7 @@
 
 Roadmap source of truth: the Mosaic vault's `Ideation/Next steps.md`; shipped work and decisions are in
 `Ideation/Done.md`, with individual milestone notes alongside them. This file is the repository's ordered,
-checkable implementation record through M29. Current release: **0.17.0** (`v0.17.0`, 2026-10-08).
+checkable implementation record through M30. Current release: **0.17.0** (`v0.17.0`, 2026-10-08).
 
 ## Fixed decisions
 
@@ -10,7 +10,7 @@ checkable implementation record through M29. Current release: **0.17.0** (`v0.17
 - Tauri 2 · Rust (stable) · React 19 + TypeScript + Vite · pnpm · CodeMirror 6.
 - Index: SQLite FTS5 via `rusqlite` (bundled), in `~/Library/Caches/mosaic/<vault-hash>/index.db`, WAL mode. Never write inside the vault except user content.
 - Ad-hoc signing only. macOS 12+. Universal2 at release.
-- Offline: CSP `default-src 'self'`, no telemetry, every renderer bundled. No automatic updater: the only network access is `git fetch`/`git pull` of the source checkout when the user clicks Check for updates / Update in Settings (decided 2026-10-01).
+- Local-first: CSP `default-src 'self'`, no telemetry, every renderer bundled. M31 permits public GitHub Releases HTTPS metadata/package downloads only on explicit Check / Download clicks; no background polling, automatic installs or vault uploads. Pull/rebuild remains an explicit developer option. Release authenticity uses a free Ed25519 key independent of ad-hoc Apple signing.
 
 ## Repo layout
 
@@ -281,6 +281,40 @@ Accepted, implemented and released 2026-10-08 as 0.17.0.
 - [x] CLI/MCP template discovery, rendering and creation for AI report structures
 - [x] Permissions, review, history, rename consistency and complete-content workflow triggering
 - [x] Acceptance checks, full release gate and documentation/ideation updates
+
+### M30 — Cross-project MCP setup (implemented, unreleased)
+Decision: available privately to the user in every Claude Code project; follow the app-selected vault.
+- [x] Recommend `claude mcp add --scope user` with the absolute bundled executable and no pinned vault
+- [x] Explain live vault switching, last-selected vault when closed, and local/project override precedence
+- [x] Preserve manual project-only and pinned-vault setup options; no registration is silently removed
+- [x] Register the user's installation at user scope; verified connected from `~/migrosonline/migrosapp`
+- [x] Command/quoting regression tests, existing MCP live-switch test, full gate and production UI build
+- [x] Update Connections, README, changelog and Ideation; no new release created for this follow-up
+
+### M31 — Downloadable macOS releases and binary updates
+Implemented for 0.18.0. Public publishing requires the repository owner's GitHub API credential.
+- [x] Universal, ad-hoc-signed DMG and updater archive; signed manifest, SHA-256 checksums and release notes
+- [x] Explicit public HTTPS update checks/downloads, signature and bundle validation, progress and cancellation
+- [x] Installed-app restart with saved notes, draft confirmation, atomic application exchange and retained rollback bundle
+- [x] Release CI and download-first installation/Gatekeeper documentation; source updates remain an explicit developer option
+- [x] Signature rejection, archive boundaries, universal binary and atomic exchange/rollback tests
+- [ ] Clean-Mac Gatekeeper first launch and published version-to-version update acceptance
+
+### M32 — One-page workflow editor
+Implemented for 0.18.0.
+- [x] Shared create/edit form with prominent instructions, searchable folder chips, combined triggers and visible safety
+- [x] Advanced/custom values and unknown YAML/comments preserved; save never runs or unpauses a workflow
+- [x] Dirty-draft navigation confirmation, hash-conflict protection and root-bound saves across vault switches
+- [x] Browser create/edit, discard cancellation and no-run smoke checks; YAML preservation regression coverage
+
+### M33 — Settings and personalization
+Implemented for 0.18.0.
+- [x] Local fonts, sizing, spacing, headings, accent, density, live preview and source-only line numbers
+- [x] Validated per-vault folders, note/attachment destinations, folder colors, startup and shared CLI/MCP preferences
+- [x] Calendar week/date formats, legacy ISO recognition, duplicate-date refusal and generated link styles
+- [x] Grouped searchable settings, scoped resets, missing-reference repair and preservation of unknown settings
+- [x] Two-vault persistence/migration, rename consistency, custom daily dates and shared agent discovery tests
+- [x] Full gate: 120 Rust tests and 156 UI tests; universal macOS build
 
 ## Working rules
 - `scripts/check.sh` green before each milestone commit.

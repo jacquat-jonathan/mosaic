@@ -3,6 +3,7 @@
 
 import type { Backlink, CliInfo, Entry, FileContent, IndexProgress, RecentVault, Renamed, SearchHit, TagCount, UpdateCheck, UpdateDone, UpdateStatus, Version, VaultInfo, Written, AgentRule, Mention, QueryResult, Proposal, Days, CarryOver, Agent, ChatEvent, ClaudeInfo, TesseraStatus } from "./types";
 import { mockInvoke } from "./mock";
+import type { VaultPreferences } from "../state/vaultPreferences";
 import type { TemplateConfig, TemplateList, TemplatePreview, TemplateRequest } from "./types";
 
 export const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -35,15 +36,17 @@ export const api = {
   importFile,
   list: (dir = "", recursive = false) => call<Entry[]>("list_dir", { dir, recursive }),
   read: (path: string) => call<FileContent>("read_file", { path }),
-  create: (path: string, content = "") => call<Written>("create_file", { path, content }),
+  create: (path: string, content = "", root?: string) => call<Written>("create_file", { path, content, root: root ?? null }),
   templateConfig: () => call<TemplateConfig>("template_config"),
+  vaultPreferences: () => call<VaultPreferences>("vault_preferences"),
+  setVaultPreferences: (root: string, patch: Partial<VaultPreferences>) => call<void>("set_vault_preferences", { root, patch }),
   setTemplateConfig: (config: TemplateConfig) => call<void>("set_template_config", { config }),
   templates: (path: string | null = null) => call<TemplateList>("list_templates", { path }),
   renderTemplate: (request: TemplateRequest) => call<TemplatePreview>("render_template", { request }),
   createNote: (request: TemplateRequest) => call<Written & { template: string | null; rule_folder: string | null }>("create_note", { request }),
   templateStarters: () => call<[string, string][]>("template_starters"),
-  write: (path: string, content: string, expectedHash?: string | null) =>
-    call<Written>("write_file", { path, content, expectedHash: expectedHash ?? null }),
+  write: (path: string, content: string, expectedHash?: string | null, root?: string) =>
+    call<Written>("write_file", { path, content, expectedHash: expectedHash ?? null, root: root ?? null }),
   mkdir: (path: string) => call<void>("make_dir", { path }),
   rename: (from: string, to: string) => call<Renamed>("rename_path", { from, to }),
   remove: (path: string) => call<void>("delete_path", { path }),

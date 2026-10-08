@@ -363,6 +363,58 @@ impl Workspace {
         Ok(w)
     }
 
+    pub fn vault_preferences(&self) -> Result<crate::preferences::VaultPreferences> {
+        let raw = Settings::try_load()
+            .map_err(|e| Error::io("settings.json", e))?
+            .vault_preferences
+            .get(self.vault.root())
+            .cloned();
+        let configured = raw.is_some();
+        let mut preferences: crate::preferences::VaultPreferences = match raw {
+            Some(raw) => serde_json::from_value(raw).map_err(|e| {
+                Error::Invalid(format!("Repair vault preferences in Settings: {e}"))
+            })?,
+            None => Default::default(),
+        };
+        preferences.validate()?;
+        preferences
+            .other
+            .entry("legacy_migrated".into())
+            .or_insert(serde_json::Value::Bool(configured));
+        Ok(preferences)
+    }
+
+    /// A partial update preserves both unrelated and unknown settings.
+    pub fn set_vault_preferences(&self, patch: serde_json::Value) -> Result<()> {
+        if self.source != Source::App {
+            return Err(Error::Denied(
+                "Vault preferences are configured only in Settings".into(),
+            ));
+        }
+        let patch = patch
+            .as_object()
+            .ok_or_else(|| Error::Invalid("Expected a preferences object".into()))?;
+        let mut failure = None;
+        Settings::update(|s| {
+            match crate::preferences::VaultPreferences::patched(
+                s.vault_preferences.get(self.vault.root()),
+                patch,
+            ) {
+                Ok(value) => {
+                    s.vault_preferences
+                        .insert(self.vault.root().to_path_buf(), value);
+                    true
+                }
+                Err(error) => {
+                    failure = Some(error);
+                    false
+                }
+            }
+        })
+        .map_err(|e| Error::io("settings.json", e))?;
+        failure.map_or(Ok(()), Err)
+    }
+
     pub fn template_config(&self) -> Result<crate::templates::TemplateConfig> {
         let settings = Settings::load();
         let config: crate::templates::TemplateConfig = match settings
@@ -1127,6 +1179,17 @@ impl Workspace {
         let root = self.vault.root();
         let _ = Settings::update(|s| {
             let mut changed = s.remap_bookmarks(root, from, &out);
+            if let Some(raw) = s.vault_preferences.get_mut(root)
+                && let Ok(mut config) =
+                    serde_json::from_value::<crate::preferences::VaultPreferences>(raw.clone())
+            {
+                let old = config.clone();
+                config.remap(from, &out);
+                if config != old {
+                    *raw = serde_json::to_value(config).expect("preferences");
+                    changed = true;
+                }
+            }
             if let Some(raw) = s.templates.get_mut(root)
                 && let Ok(mut config) =
                     serde_json::from_value::<crate::templates::TemplateConfig>(raw.clone())

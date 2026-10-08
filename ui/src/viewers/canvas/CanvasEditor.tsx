@@ -26,6 +26,7 @@ import { Ellipsis, ExternalLink, FileText, Maximize, Network, Plus, Shapes, Squa
 import { useWorkspace, type Buffer } from "../../state/workspace";
 import { parentOf, useVault } from "../../state/vault";
 import { droppedItems, importDropped, isFinderDrag } from "../../actions";
+import { vaultPrefs } from "../../state/vaultPreferences";
 import { useUi, type MenuItem } from "../../state/ui";
 import { api, fileUrl, openExternal } from "../../ipc/api";
 import { kindOf } from "../../ipc/kinds";
@@ -587,7 +588,7 @@ function CanvasFlow({ path, doc: initial, toolsHost }: { path: string; doc: Canv
       // Copied next to the canvas, then one file card each, fanned out from the drop point.
       e.preventDefault();
       const pos = flow.screenToFlowPosition({ x: e.clientX, y: e.clientY });
-      void importDropped(droppedItems(e.dataTransfer), parentOf(path)).then((paths) => {
+      void importDropped(droppedItems(e.dataTransfer), vaultPrefs().attachment_location === "folder" ? vaultPrefs().attachment_folder : parentOf(path)).then((paths) => {
         const dirs = new Set(useVault.getState().entries.filter((x) => x.is_dir).map((x) => x.path));
         paths.filter((p) => !dirs.has(p)).forEach((p, i) => addNode({ type: "file", file: p }, { x: pos.x + i * 40, y: pos.y + i * 40 }));
       });

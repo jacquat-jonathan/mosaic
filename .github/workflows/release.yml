@@ -1,0 +1,45 @@
+name: Universal macOS release
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  package:
+    runs-on: macos-15
+    env:
+      MACOSX_DEPLOYMENT_TARGET: '12.0'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - uses: pnpm/action-setup@v6
+        with:
+          version: '12'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+          components: clippy,rustfmt
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Test before publishing
+        run: bash scripts/check.sh
+      - name: Build universal app
+        run: bash scripts/install.sh --universal --build-only
+      - name: Package and sign update manifest
+        env:
+          MOSAIC_RELEASE_PRIVATE_KEY: ${{ secrets.MOSAIC_RELEASE_PRIVATE_KEY }}
+        run: node scripts/package-release.mjs
+      - name: Publish only complete release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(node -p 'JSON.parse(require("fs").readFileSync("src-tauri/tauri.conf.json")).version')
+          test "$GITHUB_REF_NAME" = "v$version"
+          gh release create "v$version" --verify-tag --draft --title "Mosaic $version" --notes-file "target/releases/v$version/release-notes.md" "target/releases/v$version/"*.dmg "target/releases/v$version/"*.tar.gz "target/releases/v$version/manifest.json" "target/releases/v$version/manifest.sig" "target/releases/v$version/SHA256SUMS"
+          gh release edit "v$version" --draft=false

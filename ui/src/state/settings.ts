@@ -11,6 +11,21 @@ export type NoteWidth = "narrow" | "medium" | "wide" | "full";
 export const NOTE_WIDTHS: Record<NoteWidth, string> = { narrow: "640px", medium: "760px", wide: "1040px", full: "none" };
 
 export interface Prefs {
+  noteFont: string;
+  codeFont: string;
+  lineSpacing: number;
+  headingScale: number;
+  accent: "blue" | "green" | "violet" | "amber";
+  uiScale: number;
+  density: "comfortable" | "compact";
+  sourceLineNumbers: boolean;
+  weekStart: "monday" | "sunday";
+  openLinksNewTab: boolean;
+  startup: "restore" | "today" | "note";
+  sidebarVisible: boolean;
+  sidebarWidth: number;
+  contextVisible: boolean;
+  contextWidth: number;
   theme: Theme;
   /** Note text size in px. */
   noteSize: number;
@@ -42,6 +57,10 @@ export interface ShortcutKeys {
 const isKeys = (v: unknown): v is ShortcutKeys => !!v && typeof v === "object" && typeof (v as ShortcutKeys).code === "string";
 
 export const DEFAULT_PREFS: Prefs = {
+  noteFont: "system", codeFont: "system", lineSpacing: 1.7, headingScale: 1,
+  accent: "blue", uiScale: 1, density: "comfortable", sourceLineNumbers: false,
+  weekStart: "monday", openLinksNewTab: false, startup: "restore",
+  sidebarVisible: true, sidebarWidth: 260, contextVisible: true, contextWidth: 280,
   theme: "system",
   noteSize: 16,
   noteWidth: "medium",
@@ -64,6 +83,21 @@ export function sanitize(raw: unknown): Prefs {
   const pick = <K extends keyof Prefs>(k: K, ok: (v: unknown) => boolean): Prefs[K] => (ok(r[k]) ? (r[k] as Prefs[K]) : DEFAULT_PREFS[k]);
   const size = typeof r.noteSize === "number" ? Math.round(Math.min(NOTE_SIZE_MAX, Math.max(NOTE_SIZE_MIN, r.noteSize))) : DEFAULT_PREFS.noteSize;
   return {
+    noteFont: pick("noteFont", v => typeof v === "string" && v.length > 0 && v.length <= 100),
+    codeFont: pick("codeFont", v => typeof v === "string" && v.length > 0 && v.length <= 100),
+    lineSpacing: pick("lineSpacing", v => typeof v === "number" && v >= 1.3 && v <= 2.2),
+    headingScale: pick("headingScale", v => typeof v === "number" && v >= 0.85 && v <= 1.3),
+    accent: pick("accent", v => ["blue", "green", "violet", "amber"].includes(String(v))),
+    uiScale: pick("uiScale", v => typeof v === "number" && v >= 0.85 && v <= 1.3),
+    density: pick("density", v => v === "comfortable" || v === "compact"),
+    sourceLineNumbers: pick("sourceLineNumbers", v => typeof v === "boolean"),
+    weekStart: pick("weekStart", v => v === "monday" || v === "sunday"),
+    openLinksNewTab: pick("openLinksNewTab", v => typeof v === "boolean"),
+    startup: pick("startup", v => ["restore", "today", "note"].includes(String(v))),
+    sidebarVisible: pick("sidebarVisible", v => typeof v === "boolean"),
+    contextVisible: pick("contextVisible", v => typeof v === "boolean"),
+    sidebarWidth: pick("sidebarWidth", v => typeof v === "number" && v >= 180 && v <= 600),
+    contextWidth: pick("contextWidth", v => typeof v === "number" && v >= 180 && v <= 600),
     theme: pick("theme", (v) => v === "system" || v === "light" || v === "dark"),
     noteSize: size,
     // Before 0.9.2 this was an on/off "readable line width": off means full width.
@@ -94,10 +128,13 @@ interface SettingsState extends Prefs {
   reset(): void;
 }
 
+function persistPatch(patch: Partial<Prefs>) {
+  try { const existing = JSON.parse(localStorage.getItem(KEY) ?? "{}"); localStorage.setItem(KEY, JSON.stringify({ ...existing, ...patch })); } catch { /* Storage unavailable; live preferences still apply. */ }
+}
 export const useSettings = create<SettingsState>((set) => ({
   ...load(),
-  set: (key, value) => set({ [key]: value } as Partial<Prefs>),
-  reset: () => set(DEFAULT_PREFS),
+  set: (key, value) => { persistPatch({ [key]: value }); set({ [key]: value } as Partial<Prefs>); },
+  reset: () => { persistPatch(DEFAULT_PREFS); set(DEFAULT_PREFS); },
 }));
 
 export function prefs(): Prefs {
@@ -112,6 +149,13 @@ export function applyPrefs(p: Prefs) {
   else root.dataset.theme = p.theme;
   root.style.setProperty("--note-size", `${p.noteSize}px`);
   root.style.setProperty("--note-width", NOTE_WIDTHS[p.noteWidth]);
+  root.style.setProperty("--font-text", p.noteFont === "system" ? ' -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif' : `${JSON.stringify(p.noteFont)}, -apple-system, sans-serif`);
+  root.style.setProperty("--font-mono", p.codeFont === "system" ? '"SF Mono", ui-monospace, Menlo, monospace' : `${JSON.stringify(p.codeFont)}, ui-monospace, Menlo, monospace`);
+  root.style.setProperty("--note-leading", String(p.lineSpacing));
+  root.style.setProperty("--heading-scale", String(p.headingScale));
+  root.style.zoom = String(p.uiScale);
+  root.dataset.density = p.density;
+  root.dataset.accent = p.accent;
   if (inTauri) {
     void import("@tauri-apps/api/window").then(({ getCurrentWindow }) =>
       getCurrentWindow()
@@ -123,11 +167,12 @@ export function applyPrefs(p: Prefs) {
 }
 
 applyPrefs(prefs());
-useSettings.subscribe((s) => {
+useSettings.subscribe((s, previous) => {
   const p = sanitize(s);
   applyPrefs(p);
   try {
-    localStorage.setItem(KEY, JSON.stringify(p));
+    const patch = Object.fromEntries(Object.entries(p).filter(([key, value]) => JSON.stringify(previous[key as keyof Prefs]) !== JSON.stringify(value)));
+    persistPatch(patch);
   } catch {
     // Storage unavailable: preferences last until the app quits.
   }

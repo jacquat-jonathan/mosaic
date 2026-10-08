@@ -16,6 +16,7 @@ import { useWorkspace } from "../state/workspace";
 import { isSpecialTab } from "./specialTabs";
 import { dayStamp } from "../daily";
 import { noteSelection } from "../editor/noteViews";
+import { vaultPrefs } from "../state/vaultPreferences";
 
 const noteName = (p: string) => (p.split("/").pop() ?? p).replace(/\.md$/i, "");
 
@@ -60,7 +61,7 @@ function ConversationView({ id }: { id: string }) {
     const slash = /^\/([\p{L}\p{N}-]+)\s*([\s\S]*)$/u.exec(text);
     if (slash) {
       const found = agents.find((a) => a.name === slash[1].toLowerCase());
-      if (!found) return setError(`No agent named “${slash[1]}” in Agents/.`);
+      if (!found) return setError(`No agent named “${slash[1]}” in ${vaultPrefs().agents_folder}/.`);
       use = found.name;
       text = slash[2];
     }
@@ -97,7 +98,7 @@ function ConversationView({ id }: { id: string }) {
     const first = items.find((i) => i.kind === "user") as Extract<ChatItem, { kind: "user" }> | undefined;
     const words = (first?.text ?? "Chat").replace(/[\\/:*?"<>|#^[\]]/g, "").split(/\s+/).slice(0, 6).join(" ");
     const time = new Date().toTimeString().slice(0, 5).replace(":", "");
-    const path = `Agents/Chats/${dayStamp()} ${time} ${words}.md`.replace(/\s+\.md$/, ".md");
+    const path = `${vaultPrefs().agents_folder}/Chats/${dayStamp()} ${time} ${words}.md`.replace(/\s+\.md$/, ".md");
     try {
       await api.create(path, `# ${words}\n\n${chatAsMarkdown(items)}\n`);
       void useWorkspace.getState().open(path, { newTab: true });

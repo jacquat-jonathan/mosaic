@@ -106,16 +106,21 @@ fn day_task(t: TaskMeta, daily: bool) -> DayTask {
 }
 
 impl Workspace {
-    /// Daily notes the caller may see, by date (the first path when two share a date).
+    /// Daily notes the caller may see; ambiguous dates are never silently overwritten.
     fn daily_notes(&self) -> Result<BTreeMap<NaiveDate, String>> {
         let rules = self.rules();
         let mut out = BTreeMap::new();
+        let preferences = self.vault_preferences()?;
         for n in self.reading().notes_meta()? {
             if n.kind == "markdown"
                 && Self::visible(&rules, &n.path)
-                && let Some(d) = daily_date(&n.path)
+                && let Some(d) = preferences.daily_date(&n.path)
+                && let Some(previous) = out.insert(d, n.path.clone())
             {
-                out.entry(d).or_insert(n.path);
+                return Err(Error::Invalid(format!(
+                    "Two daily notes represent {d}: {previous} and {}. Rename one before continuing.",
+                    n.path
+                )));
             }
         }
         Ok(out)
@@ -132,6 +137,7 @@ impl Workspace {
         }
         let rules = self.rules();
         let notes = self.daily_notes()?;
+        let preferences = self.vault_preferences()?;
         let mut days: BTreeMap<NaiveDate, Day> = BTreeMap::new();
         let mut d = from;
         while d <= to {
@@ -153,7 +159,7 @@ impl Workspace {
             if !Self::visible(&rules, &t.path) {
                 continue;
             }
-            match daily_date(&t.path) {
+            match preferences.daily_date(&t.path) {
                 Some(day) => {
                     if let Some(entry) = days.get_mut(&day) {
                         entry.tasks.push(day_task(t, true));
@@ -191,14 +197,25 @@ impl Workspace {
         let day = date(day)?;
         let notes = self.daily_notes()?;
         let prev = notes.range(..day).next_back().map(|(_, p)| p.clone());
+        if let (Some(requested), Some(existing)) = (path, notes.get(&day))
+            && requested != existing
+        {
+            return Err(Error::Invalid(format!(
+                "The daily note for {day} already exists at {existing}"
+            )));
+        }
+        let preferences = self.vault_preferences()?;
+        let filename = format!("{}.md", day.format(preferences.date_format()));
         let to = match (path, notes.get(&day), &prev) {
             (Some(p), ..) => crate::vault::normalize(p)?,
             (None, Some(existing), _) => existing.clone(),
-            (None, None, Some(p)) => match p.rsplit_once('/') {
-                Some((folder, _)) => format!("{folder}/{day}.md"),
-                None => format!("{day}.md"),
-            },
-            (None, None, None) => format!("{day}.md"),
+            (None, None, _) => {
+                if preferences.daily_folder.is_empty() {
+                    filename
+                } else {
+                    format!("{}/{filename}", preferences.daily_folder)
+                }
+            }
         };
         let nothing = |created| {
             Ok(CarryOver {

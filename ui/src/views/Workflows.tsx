@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { parseDocument } from "yaml";
 import { api } from "../ipc/api";
 import { errorMessage, type Agent, type AgentRun, type Proposal } from "../ipc/types";
@@ -9,6 +9,9 @@ import { parentOf, useVault, uniquePath } from "../state/vault";
 import { useWorkspace } from "../state/workspace";
 import { FRONTMATTER_RE } from "../editor/livePreview";
 import { viewPath } from "./specialTabs";
+import { vaultPrefs } from "../state/vaultPreferences";
+import { registerDraft } from "../state/drafts";
+import { FolderChoices } from "./FolderChoices";
 
 export function pendingForRun(run: AgentRun | undefined, pending: Proposal[]) {
   if (!run) return [];
@@ -135,14 +138,13 @@ export function workflowContent(source: string, schedule: string | null, events:
   if (events.length === 1) doc.set("on", events[0]); else if (events.length) doc.set("on", events); else doc.delete("on");
   if (model) doc.set("model", model); else doc.delete("model");
   doc.delete("may_change"); doc.set("may-change", folders);
-  const body = instructions === undefined ? source.slice(fm?.[0].length ?? 0).replace(/^\r?\n/, "") : `\n${instructions.trim()}\n`;
-  return `---\n${doc.toString()}---\n${body}`;
+  const body = instructions === undefined ? source.slice(fm?.[0].length ?? 0) : `\n${instructions.trim()}\n`;
+  return `---\n${doc.toString()}---${instructions === undefined && fm ? body : `\n${body}`}`;
 }
 export function WorkflowForm({ agent, onDone }: { agent?: Agent; onDone?: () => void }) {
   const agents = useAttention(s => s.agents);
-  const entries = useVault(s => s.entries);
-  const folders = entries.filter(e => e.is_dir).map(e => e.path);
-  const [step, setStep] = useState(0);
+  const [dirty, setDirty] = useState(false);
+  const form = useRef<HTMLFormElement>(null);
   const [choice, setChoice] = useState(agent?.name ?? "");
   const [title, setTitle] = useState("");
   const [instructions, setInstructions] = useState(agent?.instructions ?? "");
@@ -153,21 +155,40 @@ export function WorkflowForm({ agent, onDone }: { agent?: Agent; onDone?: () => 
   const [interval, setInterval] = useState(2);
   const [custom, setCustom] = useState("");
   const [eventFolders, setEventFolders] = useState<string[]>([]);
+  const [eventEnabled, setEventEnabled] = useState(false);
   const [otherEvents, setOtherEvents] = useState<string[]>([]);
   const [model, setModel] = useState("");
   const [review, setReview] = useState(true);
   const [allowed, setAllowed] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const saveLock = useRef(false);
   const chosen = agents.find(a => a.name === choice);
   const root = useVault(s => s.vault?.root);
+  const [initialRoot] = useState(root);
+  const [draftPath] = useState(() => agent ? viewPath("workflow", agent.name) : "mosaic:new-workflow");
+  const unregister = useRef<(() => void) | null>(null);
+  const discard = async () => {
+    if (!dirty) return true;
+    const ok = await useUi.getState().ask({ title: "Discard workflow changes?", body: "Your draft has not been saved. The agent source is unchanged.", confirmLabel: "Discard changes", danger: true });
+    if (ok) { setDirty(false); unregister.current?.(); }
+    return ok;
+  };
+  useEffect(() => {
+    if (!dirty) return;
+    unregister.current = registerDraft(draftPath, discard);
+    const beforeUnload = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
+    window.addEventListener("beforeunload", beforeUnload);
+    return () => { unregister.current?.(); window.removeEventListener("beforeunload", beforeUnload); };
+  }, [dirty, draftPath]);
   useEffect(() => {
     let live = true; setSource(null); setError(null);
-    if (!chosen) { setInstructions(""); setScheduleEnabled(false); setScheduleKind("daily"); setEventFolders([]); setOtherEvents([]); setModel(""); setAllowed([]); setReview(true); return; }
+    if (!chosen) { setInstructions(""); setScheduleEnabled(false); setScheduleKind("daily"); setEventEnabled(false); setEventFolders([]); setOtherEvents([]); setModel(""); setAllowed([]); setReview(true); return; }
     setInstructions(chosen.instructions); setAllowed(chosen.may_change); setReview(!chosen.may_change.length);
     setModel(chosen.model ?? "");
     const parsedEvents=(chosen.on ?? []).map(raw=>[raw,eventFolder(raw)] as const);
     setEventFolders(parsedEvents.map(([,folder])=>folder).filter((f): f is string => f !== null));
+    setEventEnabled(parsedEvents.some(([,folder]) => folder !== null));
     setOtherEvents(parsedEvents.filter(([,folder])=>folder === null).map(([raw])=>raw));
     const parts = /^(daily|weekdays|mon|tue|wed|thu|fri|sat|sun) (\d{2}:\d{2})$/.exec(chosen.schedule ?? "");
     const every = /^every (\d+)h$/.exec(chosen.schedule ?? "");
@@ -177,52 +198,63 @@ export function WorkflowForm({ agent, onDone }: { agent?: Agent; onDone?: () => 
     return () => { live = false; };
   }, [chosen?.path]);
   const save = async () => {
+    if (saveLock.current) return;
+    saveLock.current = true;
     setSaving(true); setError(null);
     try {
-      if (useVault.getState().vault?.root !== root) throw new Error("The vault changed. Reopen the workflow form.");
+      if (useVault.getState().vault?.root !== initialRoot) throw new Error("The vault changed. Reopen the workflow form.");
       if (!instructions.trim()) throw new Error("Describe what the agent should do.");
       if (!review && !allowed.length) throw new Error("Choose at least one folder, or review every change.");
       const schedule = !scheduleEnabled ? null : scheduleKind === "custom" ? custom : scheduleKind === "every" ? `every ${interval}h` : `${scheduleKind} ${time}`;
+      if (scheduleEnabled && !schedule?.trim()) throw new Error("Choose a schedule or disable scheduled runs.");
       if (scheduleEnabled && scheduleKind !== "custom" && scheduleKind !== "every" && !/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) throw new Error("Choose a valid time.");
       if (scheduleEnabled && scheduleKind === "every" && (!Number.isInteger(interval) || interval < 1 || interval > 8760)) throw new Error("Choose an interval between 1 and 8760 hours.");
-      const events=[...otherEvents,...eventFolders.map(folder=>`created in ${folder ? `${folder}/` : "/"}`)];
+      if (eventEnabled && !eventFolders.length) throw new Error("Choose at least one event folder, including Vault root if needed.");
+      const events=[...otherEvents,...(eventEnabled ? eventFolders : []).map(folder=>`created in ${folder ? `${folder}/` : "/"}`)];
       let path: string;
       if (chosen) {
         if (!source || source.path !== chosen.path) throw new Error("Wait for the agent to load.");
         const buffer = useWorkspace.getState().buffers[chosen.path];
         if (buffer?.dirty || buffer?.conflict) throw new Error("Save the open agent source and resolve conflicts before editing its workflow.");
-        await api.write(chosen.path, workflowContent(source.content, schedule, events, model || null, review ? [] : allowed, instructions), source.hash); path = chosen.path;
+        await api.write(chosen.path, workflowContent(source.content, schedule, events, model || null, review ? [] : allowed, instructions === chosen.instructions ? undefined : instructions), source.hash, initialRoot); path = chosen.path;
         await useWorkspace.getState().externalChange(path);
       } else {
         const name = title.trim(); if (!name || /[\\/:*?"<>|]/.test(name)) throw new Error("Enter a title without file path characters.");
-        path = uniquePath(new Set(useVault.getState().entries.map(e=>e.path.toLowerCase())), "Agents", name, "md");
-        await api.create(path, workflowContent("", schedule, events, model || null, review ? [] : allowed, instructions));
+        path = uniquePath(new Set(useVault.getState().entries.map(e=>e.path.toLowerCase())), vaultPrefs().agents_folder, name, "md");
+        await api.create(path, workflowContent("", schedule, events, model || null, review ? [] : allowed, instructions), initialRoot);
       }
       await api.mirrorAgents(); await useVault.getState().refresh(); await useAttention.getState().refresh();
       const result = useAttention.getState().agents.find(a => a.path === path);
+      unregister.current?.(); setDirty(false);
       if (result) useUi.getState().openView("workflow", result.name);
       if (onDone) onDone(); else { const ws=useWorkspace.getState(); for(const p of ws.panes) if(p.tabs.includes("mosaic:new-workflow")) ws.closeTab(p.id,"mosaic:new-workflow"); }
-    } catch(e) { setError(errorMessage(e)); } finally { setSaving(false); }
+    } catch(e) { setError(errorMessage(e)); form.current?.querySelector<HTMLElement>("[aria-invalid=true], :invalid")?.focus(); } finally { setSaving(false); saveLock.current = false; }
   };
-  const eventChoices=[{path:"",name:"Vault root"},...folders.map(path=>({path,name:`${path}/`}))];
-  return <div className="workspace-page"><h1>{agent ? "Edit workflow" : "Create workflow"}</h1><p>Step {step+1} of 3 · {["Choose an agent", "Choose triggers and model", "Folders and review"][step]}</p>
-    <div className="workflow-form">
-      {step === 0 && <><label>Agent<select value={choice} disabled={!!agent} onChange={e=>setChoice(e.target.value)}><option value="">Create a new agent</option>{agents.map(a=><option key={a.name} value={a.name}>{a.title}</option>)}</select></label>
-        {!choice && <label>Agent title<input value={title} onChange={e=>setTitle(e.target.value)} placeholder="Weekly review" /></label>}
-        <label>Instructions<textarea rows={8} value={instructions} onChange={e=>setInstructions(e.target.value)} placeholder="What should this agent do with your vault files?" /></label></>}
-      {step === 1 && <>
+  const cancel = async () => { if (await discard()) { if (onDone) onDone(); else useUi.getState().openView("workflows"); } };
+  return <div className="workspace-page workflow-editor"><header><p className="panel-meta">WORKFLOW · {agent ? "EDIT" : "NEW"}</p><h1>{agent ? "Edit workflow" : "Create workflow"}</h1><p>Describe the work, choose when it runs, and keep control of every change.</p></header>
+    <form ref={form} className="workflow-form" onChange={() => setDirty(true)} onSubmit={e => { e.preventDefault(); void save(); }}>
+      <section className="workflow-section"><h2>The work</h2>
+        {!agent && <label>Agent<select value={choice} onChange={e => { const value = e.target.value; void discard().then(ok => { if(ok) { setChoice(value); setDirty(false); } }); }}><option value="">Create a new agent</option>{agents.map(a=><option key={a.name} value={a.name}>{a.title}</option>)}</select></label>}
+        {!choice ? <label>Name<input required value={title} onChange={e=>setTitle(e.target.value)} placeholder="Weekly review" /></label> : <p className="notice">Editing <strong>{chosen?.title}</strong> · <code>{chosen?.path}</code>. Saving updates this agent, not a copy.</p>}
+        <label>Instructions<textarea required rows={10} value={instructions} onChange={e=>setInstructions(e.target.value)} placeholder="What should this agent do with your vault files?" /></label>
+      </section>
+      <section className="workflow-section"><h2>When to run</h2><p>Run now is always available. Automatic triggers run while Mosaic is open.</p>
         <label className="folder-choice"><input type="checkbox" checked={scheduleEnabled} onChange={e=>setScheduleEnabled(e.target.checked)} />Run on a schedule</label>
         {scheduleEnabled && <><label>Schedule<select value={scheduleKind} onChange={e=>setScheduleKind(e.target.value)}>{[["daily","Every day"],["weekdays","Weekdays"],["mon","Mondays"],["tue","Tuesdays"],["wed","Wednesdays"],["thu","Thursdays"],["fri","Fridays"],["sat","Saturdays"],["sun","Sundays"],["every","Every few hours"],...(custom ? [["custom",`Existing schedule: ${custom}`]] : [])].map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></label>
           {scheduleKind === "every" ? <label>Hours<input type="number" min={1} max={8760} value={interval} onChange={e=>setInterval(Number(e.target.value))} /></label> : scheduleKind !== "custom" && <label>Local time<input type="time" value={time} onChange={e=>setTime(e.target.value)} /></label>}</>}
-        <fieldset><legend>Run when a Markdown note is created in</legend>{eventChoices.map(f=><label className="folder-choice" key={f.path}><input type="checkbox" checked={eventFolders.includes(f.path)} onChange={e=>setEventFolders(e.target.checked ? [...eventFolders,f.path] : eventFolders.filter(x=>x!==f.path))} />{f.name}</label>)}</fieldset>
-        {!!otherEvents.length && <p className="notice warn">Unsupported events are kept in the source: {otherEvents.join(", ")}</p>}
+        <label className="folder-choice"><input type="checkbox" checked={eventEnabled} onChange={e => setEventEnabled(e.target.checked)} />Run when a Markdown note is created</label>
+        {eventEnabled && <><FolderChoices label="Event folders" root value={eventFolders} onChange={v => { setEventFolders(v); setDirty(true); }} /><p>Includes Markdown notes in subfolders.</p></>}
+        {!scheduleEnabled && !eventEnabled && !otherEvents.length && <p className="notice">Manual only · Run it whenever you need it.</p>}
+      </section>
+      <section className="workflow-section"><h2>Execution & safety</h2>
         <label>Model<select value={model} onChange={e=>setModel(e.target.value)}><option value="">Claude Code default</option><option value="sonnet">Sonnet</option><option value="opus">Opus</option><option value="haiku">Haiku</option>{model && !["sonnet","opus","haiku"].includes(model) && <option value={model}>{model}</option>}</select></label>
-        <p>Schedules and events run while Mosaic is open. They can be used together.</p>
-      </>}
-      {step === 2 && <><label>Review behavior<select value={review ? "all" : "folders"} onChange={e=>setReview(e.target.value === "all")}><option value="all">Review every change</option><option value="folders">Allow changes in selected folders</option></select></label>
-        {!review && <fieldset><legend>May change without review</legend>{[...new Set([...folders,...allowed])].map(f=><label className="folder-choice" key={f}><input type="checkbox" checked={allowed.includes(f)} onChange={e=>setAllowed(e.target.checked ? [...allowed,f] : allowed.filter(x=>x!==f))} />{f}/</label>)}{!folders.length && <p>Create folders in Notes first.</p>}</fieldset>}<p>Changes outside the selected folders are proposed for review.</p></>}
+        <label>Review behavior<select value={review ? "all" : "folders"} onChange={e=>setReview(e.target.value === "all")}><option value="all">Review every change — recommended</option><option value="folders">Allow changes in selected folders</option></select></label>
+        {!review && <FolderChoices label="May change without review" value={allowed} onChange={v => { setAllowed(v); setDirty(true); }} />}<p>Outside these folders, changes require review. Stricter vault permissions always apply.</p>
+      </section>
+      {chosen && <details className="workflow-section"><summary>Advanced · agent source</summary><p><code>{chosen.path}</code></p>{!!otherEvents.length && <p className="notice warn">Custom events preserved: {otherEvents.join(", ")}</p>}{scheduleKind === "custom" && <p>Custom schedule preserved: {custom}</p>}<button type="button" onClick={() => void useWorkspace.getState().open(chosen.path, {newTab:true})}>Edit source</button></details>}
+      {root !== initialRoot && <p className="error-text" role="alert">The vault changed. Reopen this form before saving.</p>}
       {error && <p className="error-text" role="alert">{error}</p>}
-      <footer><button disabled={saving} onClick={()=> step ? setStep(step-1) : onDone ? onDone() : useUi.getState().openView("workflows")}>{step ? "Back" : "Cancel"}</button><span className="spacer" />{step < 2 ? <button className="primary" disabled={!instructions.trim() || (!choice && !title.trim()) || (!!choice && !source)} onClick={()=>setStep(step+1)}>Continue</button> : <button className="primary" disabled={saving} onClick={()=>void save()}>{saving ? "Saving…" : "Save workflow"}</button>}</footer>
-    </div>
+      <footer className="workflow-save"><div><strong>{scheduleEnabled || eventEnabled || otherEvents.length ? "Automatic triggers configured" : "Manual only"}</strong><p>{review ? "Review every change" : `${allowed.length} allowed folders`} · Saving does not run or unpause this workflow.</p></div><button type="button" disabled={saving} onClick={()=>void cancel()}>Cancel</button><button type="submit" className="primary" disabled={saving || root !== initialRoot || (!!choice && !source)}>{saving ? "Saving…" : agent ? "Save changes" : "Create workflow"}</button></footer>
+    </form>
   </div>;
 }

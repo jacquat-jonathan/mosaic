@@ -66,6 +66,7 @@ const emit = (name: string, detail: unknown) => window.dispatchEvent(new CustomE
 
 function updateStatus() {
   return {
+    mode: updateSource ? "source" : "binary",
     version: "0.1.0",
     commit: "5320ff4",
     source_dir: updateSource ?? "/Users/you/Developer/mosaic",
@@ -145,11 +146,21 @@ const mockWorkflow = (text: string, mark: string): WorkflowState => {
 const taskStatus = (mark: string) => (mark === "x" || mark === "X" ? "done" : mark === ">" ? "moved" : mark === "-" ? "cancelled" : "open");
 
 function mockDays(from: string, to: string, today: string) {
-  const dailyOf = (p: string) => /(?:^|\/)(\d{4}-\d{2}-\d{2})\.md$/.exec(p)?.[1] ?? null;
+  const dailyOf = (p: string) => {
+    const iso = /(?:^|\/)(\d{4}-\d{2}-\d{2})\.md$/.exec(p)?.[1]; if(iso) return iso;
+    const format = vaultPreferences.get(mockRoot)?.daily_format;
+    const stem = p.split("/").pop()?.replace(/\.md$/, "") ?? "";
+    let date: string | null = null;
+    if(format === "DD-MM-YYYY" && /^\d{2}-\d{2}-\d{4}$/.test(stem)) date = stem.split("-").reverse().join("-");
+    if(format === "YYYYMMDD" && /^\d{8}$/.test(stem)) date = `${stem.slice(0,4)}-${stem.slice(4,6)}-${stem.slice(6)}`;
+    return date && mockDay(new Date(`${date}T12:00`)) === date ? date : null;
+  };
   const days: { date: string; note: string | null; tasks: unknown[] }[] = [];
   for (let d = new Date(`${from}T12:00`); mockDay(d) <= to; d.setDate(d.getDate() + 1)) {
     const date = mockDay(d);
-    days.push({ date, note: [...files.keys()].find((p) => dailyOf(p) === date) ?? null, tasks: [] });
+    const notes = [...files.keys()].filter(p => dailyOf(p) === date);
+    if (notes.length > 1) throw err("invalid", `Two daily notes represent ${date}; rename one before continuing`);
+    days.push({ date, note: notes[0] ?? null, tasks: [] });
   }
   const overdue: unknown[] = [];
   for (const [path, f] of [...files.entries()].sort(([a], [b]) => a.localeCompare(b))) {
@@ -166,8 +177,9 @@ function mockDays(from: string, to: string, today: string) {
 }
 
 function mockAgents(): Agent[] {
-  return [...files.entries()].filter(([p])=>/^Agents\/[^/]+\.md$/.test(p) || /^Agents\/[^/]+\/SKILL\.md$/i.test(p)).map(([path,f])=>{
-    const skill=/\/SKILL\.md$/i.test(path); const title=skill ? path.split("/")[1] : path.split("/").pop()!.replace(/\.md$/i, "");
+  const folder = String(vaultPreferences.get(mockRoot)?.agents_folder ?? "Agents");
+  return [...files.entries()].filter(([p])=>p.startsWith(folder+"/") && (/^[^/]+\.md$/i.test(p.slice(folder.length+1)) || /^[^/]+\/SKILL\.md$/i.test(p.slice(folder.length+1)))).map(([path,f])=>{
+    const skill=/\/SKILL\.md$/i.test(path); const title=skill ? path.slice(folder.length+1).split("/")[0] : path.split("/").pop()!.replace(/\.md$/i, "");
     const fm=/^---\n([\s\S]*?)\n---/.exec(f.content);
     let props: Record<string, unknown> = {}; try { props=parseYaml(fm?.[1] ?? "") ?? {}; } catch { /* Invalid frontmatter. */ }
     const body=f.content.slice(fm?.[0].length ?? 0).trim();
@@ -383,8 +395,19 @@ function write(p: string, content: string) {
   return { path: p, hash: hash(content) };
 }
 
+const vaultPreferences = new Map<string, Record<string, unknown>>();
 export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promise<unknown> {
+  if (typeof a.root === "string" && a.root !== mockRoot) throw err("invalid", "The vault changed");
   switch (cmd) {
+    case "vault_preferences": {
+      const { DEFAULT_VAULT_PREFS } = await import("../state/vaultPreferences");
+      return { ...DEFAULT_VAULT_PREFS, ...vaultPreferences.get(mockRoot) };
+    }
+    case "set_vault_preferences": {
+      if (a.root !== mockRoot) throw err("invalid", "The vault changed");
+      vaultPreferences.set(mockRoot, { ...vaultPreferences.get(mockRoot), ...(a.patch as object) });
+      emit("settings-changed", {}); return null;
+    }
     case "template_config": return templateConfigs.get(mockRoot) ?? defaultTemplateConfig();
     case "set_template_config": {
       const c = a.config as TemplateConfig;
@@ -606,6 +629,8 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
       const under = (p: string) => p === from || p.startsWith(`${from}/`);
       const c=templateConfigs.get(mockRoot);
       if(c) { if(under(c.folder)) c.folder=move(c.folder); for(const r of c.rules) { if(under(r.folder)) r.folder=move(r.folder); if(r.template&&under(r.template)) r.template=move(r.template); } }
+      const preferences = vaultPreferences.get(mockRoot);
+      if(preferences) { for(const key of ["agents_folder","daily_folder","daily_template","new_note_folder","attachment_folder","startup_note"]) { const value=preferences[key]; if(typeof value === "string" && under(value)) preferences[key]=move(value); } const colors=preferences.folder_colors as Record<string,string> | undefined; if(colors) preferences.folder_colors=Object.fromEntries(Object.entries(colors).map(([path,color])=>[under(path) ? move(path) : path,color])); }
       for (const [p, f] of [...files]) if (under(p)) { files.delete(p); files.set(move(p), f); }
       for (const d of [...dirs]) if (under(d)) { dirs.delete(d); dirs.add(move(d)); }
       addParents(to);

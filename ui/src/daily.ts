@@ -19,7 +19,9 @@ export function fillTemplate(template: string, d = new Date()): string {
 }
 
 /** The vault path of a day's note. */
-export function dailyPath(folder: string, d = new Date()): string {
+export function dailyPath(folder: string, d = new Date(), format = "YYYY-MM-DD"): string {
   const f = folder.replace(/^\/+|\/+$/g, "");
-  return f ? `${f}/${dayStamp(d)}.md` : `${dayStamp(d)}.md`;
+  const iso = dayStamp(d);
+  const name = format === "DD-MM-YYYY" ? iso.split("-").reverse().join("-") : format === "YYYYMMDD" ? iso.replaceAll("-", "") : iso;
+  return f ? `${f}/${name}.md` : `${name}.md`;
 }

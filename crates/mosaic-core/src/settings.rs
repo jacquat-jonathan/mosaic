@@ -22,6 +22,7 @@ pub struct Settings {
     pub tessera: BTreeMap<PathBuf, TesseraSettings>,
     /// Raw values preserve invalid/newer configurations so they can be reported and repaired.
     pub templates: BTreeMap<PathBuf, serde_json::Value>,
+    pub vault_preferences: BTreeMap<PathBuf, serde_json::Value>,
     /// Settings a newer Mosaic wrote that this version doesn't know: kept so saving doesn't drop them.
     #[serde(flatten)]
     pub other: BTreeMap<String, serde_json::Value>,
@@ -184,6 +185,17 @@ pub fn cache_dir() -> Option<PathBuf> {
 }
 
 impl Settings {
+    /// Configuration mutations must never turn a malformed settings file into silent defaults.
+    pub fn try_load() -> std::io::Result<Self> {
+        let Some(dir) = app_support_dir() else {
+            return Ok(Self::default());
+        };
+        match std::fs::read(dir.join(SETTINGS_FILE)) {
+            Ok(bytes) => serde_json::from_slice(&bytes).map_err(std::io::Error::other),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Self::default()),
+            Err(e) => Err(e),
+        }
+    }
     pub fn load() -> Self {
         app_support_dir()
             .and_then(|d| std::fs::read(d.join(SETTINGS_FILE)).ok())
@@ -205,7 +217,16 @@ impl Settings {
 
     /// Loads, applies `change`, and saves only if something changed.
     pub fn update(change: impl FnOnce(&mut Settings) -> bool) -> std::io::Result<()> {
-        let mut s = Settings::load();
+        let dir = app_support_dir().ok_or_else(|| std::io::Error::other("HOME not set"))?;
+        std::fs::create_dir_all(&dir)?;
+        let lock = std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .read(true)
+            .write(true)
+            .open(dir.join("settings.lock"))?;
+        lock.lock()?;
+        let mut s = Settings::try_load()?;
         if change(&mut s) { s.save() } else { Ok(()) }
     }
 

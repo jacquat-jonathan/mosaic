@@ -498,6 +498,12 @@ impl MosaicMcp {
             .and_then(ok)
     }
     #[tool(
+        description = "Read vault-scoped preferences configured in Settings: agents and daily folders, filename format and generated link syntax. Settings changes never move existing files. This is read-only; only the person may configure preferences."
+    )]
+    async fn get_vault_preferences(&self) -> ToolResult {
+        self.ws().vault_preferences().map_err(err).and_then(ok)
+    }
+    #[tool(
         description = "Preview a new note using its folder default, an explicit template or Blank. Returns rendered Markdown, source hash, default provenance and title/date/time context; writes nothing. Use the same timestamp and expected_template_hash when creating a scaffold."
     )]
     async fn render_template(&self, Parameters(a): Parameters<NoteArgs>) -> ToolResult {

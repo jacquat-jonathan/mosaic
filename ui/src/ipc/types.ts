@@ -238,6 +238,7 @@ export interface CliInfo {
 }
 
 export interface UpdateStatus {
+  mode?: "binary" | "source";
   version: string;
   /** Short commit the app was built from ("" if unknown). */
   commit: string;

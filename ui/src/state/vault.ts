@@ -4,6 +4,10 @@ import { useChat, listenToChat } from "./chat";
 import { api } from "../ipc/api";
 import { errorMessage, type Entry, type VaultInfo } from "../ipc/types";
 import { useWorkspace } from "./workspace";
+import { loadVaultPreferences, vaultPrefs } from "./vaultPreferences";
+import { prefs } from "./settings";
+import { useUi } from "./ui";
+import { leaveAllDrafts } from "./drafts";
 
 export function parentOf(path: string): string {
   const i = path.lastIndexOf("/");
@@ -118,8 +122,10 @@ export const useVault = create<VaultState>((set, get) => {
 
     async openVault(path) {
       try {
+        if (!(await leaveAllDrafts())) return;
         const vault = await api.openVault(path);
         set({ vault, entries: [], expanded: new Set(), renaming: null, error: null, offline: false, selected: new Set(), anchor: null, bookmarks: [] });
+        await loadVaultPreferences(vault.root);
         await get().refresh();
         set({ bookmarks: await api.bookmarks().catch(() => []) });
         void api.mirrorAgents().catch(() => {});
@@ -127,6 +133,10 @@ export const useVault = create<VaultState>((set, get) => {
         usePlanning.getState().restore(vault.root);
         listenToChat();
         await useWorkspace.getState().restoreLayout(vault.root);
+        if (prefs().startup === "today") useUi.getState().openView("today");
+        if (prefs().startup === "note" && vaultPrefs().startup_note && get().entries.some(e => e.path === vaultPrefs().startup_note && !e.is_dir)) {
+          await useWorkspace.getState().open(vaultPrefs().startup_note, {newTab:true});
+        }
       } catch (e) {
         fail(e);
       }

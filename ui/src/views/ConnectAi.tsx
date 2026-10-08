@@ -5,6 +5,7 @@ import type { AgentRule, CliInfo } from "../ipc/types";
 import { useUi } from "../state/ui";
 import { errorMessage } from "../ipc/types";
 import { useVault } from "../state/vault";
+import { aiSetup } from "../aiSetup";
 
 function CopyBlock({ label, text }: { label: string; text: string }) {
   const [copied, setCopied] = useState(false);
@@ -37,11 +38,7 @@ export function ConnectAiSection() {
     api.cliInfo().then(setInfo, (e) => setError(errorMessage(e)));
   }, []);
   if (!vault) return null;
-  const bin = info?.installed ? "mosaic" : (info?.path ?? "mosaic");
-  const quoted = (s: string) => (/[\s"']/.test(s) ? `"${s.replace(/"/g, '\\"')}"` : s);
-  // No --vault: the server follows the vault open here, so agents always write where you're looking.
-  const claudeCode = `claude mcp add mosaic -- ${quoted(bin)} mcp`;
-  const desktop = JSON.stringify({ mcpServers: { mosaic: { command: info?.path ?? "mosaic", args: ["mcp"] } } }, null, 2);
+  const { claudeCode, desktop } = aiSetup(info);
 
   return (
     <div className="connect-ai">
@@ -74,7 +71,9 @@ export function ConnectAiSection() {
       {error && <p className="error-text">{error}</p>}
 
       <h3>2 · Claude Code</h3>
-      <CopyBlock label="Run in a terminal" text={claudeCode} />
+      <p className="settings-note">Recommended: available in all your projects, private to your user account. It follows the vault selected in Mosaic, not the project folder where you start Claude.</p>
+      <CopyBlock label="Run once in any terminal — all your projects" text={claudeCode} />
+      <p className="settings-note">Start a new Claude session and check <code>/mcp</code>. An existing local or project registration named <code>mosaic</code> takes priority over this user registration. Remove or update that older registration in its project if it pins a vault. For project-only setup, replace <code>--scope user</code> with <code>--scope local</code>.</p>
 
       <h3>3 · Claude Desktop</h3>
       <CopyBlock label="Add to ~/Library/Application Support/Claude/claude_desktop_config.json" text={desktop} />
@@ -82,7 +81,7 @@ export function ConnectAiSection() {
       <p className="settings-note">
         The server always works on the vault open in Mosaic (now “{vault.name}”) and follows when you switch. To tie an agent to one
         vault instead, add <code>--vault "/path/to/vault"</code> before <code>mcp</code>; it then warns the agent when Mosaic shows
-        another vault. If you set Mosaic up before version 0.5, run <code>claude mcp remove mosaic</code>, then the command above, so your agent follows the app.
+        another vault. Switching vaults changes the target of every connected unpinned Mosaic session, including sessions already running in other projects. When the app is closed, the server uses the last selected vault.
       </p>
 
       <h3>4 · Folder rules for agents</h3>

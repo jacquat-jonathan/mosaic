@@ -8,14 +8,15 @@ diagrams, HTML pages, PDFs and data files. AI agents (Claude Code, Claude Deskto
 get the same abilities through an **MCP server** and a **`mosaic` command-line tool**, and whatever
 they change appears in the app within a second.
 
-Everything stays on your disk as ordinary files. The app makes no network requests, except `git fetch`/`git pull`
-of its own source when you click **Check for updates** or **Update** in Settings.
+Everything stays on your disk as ordinary files. Mosaic only contacts GitHub when you explicitly
+check for or download an update. There is no telemetry, background polling, or vault upload.
+Optional Claude features use Claude Code's own connection. A developer-only source updater remains available.
 
 ## Getting started
 
-1. Install the prerequisites and run `scripts/install.sh` (see [Install](#install-build-it-yourself)).
+1. [Download the latest release](https://github.com/jacquat-jonathan/mosaic/releases/latest), open its universal `.dmg`, and drag **Mosaic.app** into **Applications**. No build tools are needed.
 2. Open Mosaic and pick a folder: an existing Obsidian vault works as it is, or create a new one.
-3. Optional: **Settings › AI** (⌘, or the robot icon) connects Claude Code or Claude Desktop to your vault.
+3. Optional: **AI › Connections** connects Claude Code or Claude Desktop. Notes work without AI.
 4. To get new versions: **Settings › About & updates › Check for updates** (see [Update](#update)).
 
 ## Features
@@ -53,27 +54,49 @@ of its own source when you click **Check for updates** or **Update** in Settings
 - **Safe editing:** deletes go to the macOS Trash; renames update links everywhere. When a file
   changes on disk while you're editing it, Mosaic asks you what to do instead of overwriting.
 
-## Install (build it yourself)
+## Install on a Mac
+
+Mosaic supports **macOS 12+ on Intel and Apple Silicon**, with one universal download.
+
+1. Open the [latest release](https://github.com/jacquat-jonathan/mosaic/releases/latest) and download `Mosaic-<version>-universal.dmg` under Assets.
+2. Double-click the DMG. Drag **Mosaic.app** onto its **Applications** shortcut.
+3. Eject the disk image, then launch Mosaic from Applications. Choose a notes folder or create a vault.
+
+**First-launch warning.** Mosaic is ad-hoc signed, without a paid Apple Developer ID or Apple
+notarization. macOS may say it cannot verify the developer or check the app for malicious software.
+If you downloaded it from this repository and trust it, try opening it once, then use **System Settings
+› Privacy & Security › Open Anyway** for Mosaic and confirm the app-specific prompt. Wording differs
+by macOS version. This approval leaves Gatekeeper enabled for other apps.
+
+A warning that the app **contains malware**, **will damage your computer**, or **is damaged** is not
+the routine developer-verification warning: stop, delete that download, and report it. Don't disable
+Gatekeeper or run quarantine-removal commands. Mosaic does neither automatically.
+
+For command-line use, **AI › Connections › Install** optionally links the bundled CLI into
+`~/.local/bin/mosaic`. Add `~/.local/bin` to your shell's PATH if necessary. The app and AI setup work
+without that shortcut; MCP instructions use the absolute bundled executable.
+
+### Build it yourself (developers)
 
 Prerequisites:
 
 - macOS 12 or later.
 - Xcode command line tools: `xcode-select --install`.
 - Rust: <https://rustup.rs>, or Homebrew `rustup`.
-- Node 20 or later.
+- Node 24 or later (the current UI build requires a modern Node runtime).
 - pnpm: `corepack enable pnpm`.
 
 ```sh
-git clone <this repo> mosaic && cd mosaic
+git clone https://github.com/jacquat-jonathan/mosaic.git
+cd mosaic
 scripts/install.sh            # this Mac's architecture
 scripts/install.sh --universal  # Apple Silicon + Intel in one app
 ```
 
 This installs `/Applications/Mosaic.app` and links the `mosaic` command into `~/.local/bin`.
 
-**First launch.** The app is signed ad hoc (there's no Apple Developer ID), which is fine for a build
-you made yourself. If you copy the `.app` to another Mac instead of building it there, macOS will
-refuse to open it the first time. Right-click the app, choose **Open**, then confirm.
+If tools aren't found, ensure your Node/pnpm and Rust installations are on PATH before building.
+Downloaded or transferred builds may need the first-launch approval described above.
 
 ## Connect AI
 
@@ -83,12 +106,23 @@ shows the exact commands for your vault. Or set it up by hand:
 **Claude Code**
 
 ```sh
-claude mcp add mosaic -- mosaic mcp
+claude mcp add --scope user mosaic -- /Applications/Mosaic.app/Contents/MacOS/mosaic mcp
 ```
 
-Without `--vault`, the server works on the vault open in the Mosaic app and follows when you switch
-vaults, so agents always write where you're looking. To tie it to one vault, use
+This registers Mosaic privately for your user in **all Claude Code projects**, not just the folder
+where you run the command. Start a new Claude session and check `/mcp`. The absolute bundled path
+also works when a client doesn't inherit your terminal's PATH. If Mosaic is installed elsewhere,
+use the path shown in Connections.
+
+Without `--vault` (and without a `MOSAIC_VAULT` environment override), the server works on the vault
+selected in the Mosaic app and follows when you switch vaults, even in already-running sessions
+from other projects. When the app is closed, it uses the last selected vault. This is not a network
+server: each client starts a local stdio process. To tie it to one vault, use
 `mosaic --vault "/path/to/vault" mcp`; it then warns the agent when the app shows another vault.
+
+Existing local/project registrations named `mosaic` override the user registration. Remove or
+update those in their original project if they pin a vault. For project-only registration use
+`--scope local` instead of `--scope user`; the default when scope is omitted is local.
 
 **Claude Desktop**: add this to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 
@@ -108,7 +142,7 @@ The MCP tools are `vault_guide`, `list_files`, `read_file`, `outline`, `search`,
 `get_backlinks`, `list_tags`, `query` (notes by tag, frontmatter field, date or links), `list_bookmarks`,
 `add_bookmark`, `remove_bookmark`, `move_files`, `import_file`, `file_history`, `restore_version`,
 `list_proposals`, `withdraw_proposal` and `render` (a PNG of a canvas, so the agent can check what it
-drew). Notes are also MCP resources (`mosaic:///Folder/Note.md`). In Settings › AI you can make folders
+drew). Notes are also MCP resources (`mosaic:///Folder/Note.md`). In AI › Connections you can make folders
 read-only for agents, hide them, or **review** agents' changes there: edits, new files and deletions wait
 under AI activity until you accept or reject them. Edits accept an `expected_hash` so an agent never
 overwrites a newer human edit.
@@ -137,23 +171,50 @@ The vault is chosen by `--vault`, then `$MOSAIC_VAULT`, then the vault last open
 
 ## Update
 
-Open **Settings › About & updates** (⌘,). It shows your version, e.g. **Mosaic 0.2.0 (668163f)**.
-Mosaic remembers the source folder it was built from; you can point it at another checkout with
-**Change…**.
+Open **Settings › About & updates** (⌘,).
 
-1. **Check for updates** fetches the source and lists the newer versions with what changed in each
-   (from `CHANGELOG.md`). The individual commits are listed underneath.
-2. **Update** runs `git pull` and `scripts/install.sh --build-only` with a live log. It takes a few
-   minutes and you can keep working. **Cancel** stops it at any point.
-3. **Restart to finish** saves your notes, swaps in the new build and reopens Mosaic.
+1. **Check for updates** reads public GitHub Releases metadata over HTTPS. Only complete, stable
+   universal releases with a valid signed manifest are offered; drafts and prereleases are ignored.
+2. **Download update** stages the package with progress and Cancel. An embedded Ed25519 public key
+   verifies the release manifest, then Mosaic checks the signed checksum, bundle ID, version,
+   universal app/CLI architectures and code signature. This free release signature is separate from Apple signing.
+3. **Restart to finish** saves your notes, replaces only the installed app, and reopens it. Failed
+   swaps roll back; the previous app is retained under a unique hidden `.mosaic-install-*` directory
+   beside the installed bundle for recovery. Your vault, settings, history and CLI/MCP path are preserved.
 
-Your installed app is only replaced in step 3, so a failed or cancelled build never breaks it.
-Updating needs the same tools as installing.
+Install into `/Applications` or your own `~/Applications` first. A read-only DMG cannot update
+itself, and an unwritable Applications folder requires a manual install or your own Applications folder.
+macOS may still request app-specific approval; the updater doesn't remove quarantine. Restart
+connected MCP clients afterward to load the new executable.
 
-**If an update fails:** the build log in Settings shows the failing step. A common cause is
-uncommitted changes in the source folder (`git pull` refuses to run). Commit or stash them, then try
-again. If the swap in step 3 fails, Mosaic keeps the old app and says so in Settings; the details are
-in `~/Library/Logs/Mosaic/update.log`.
+Versions **0.17 and earlier** use the source updater. Download the first binary-update release
+manually (or rebuild once); those older apps don't acquire the new updater just by checking.
+
+**Developer option › source builds** lets you explicitly choose a git checkout and retain pull-and-rebuild
+updates, requiring the developer tools above. **Use releases** returns to downloads.
+
+**If an update fails:** inspect the update log in Settings and `~/Library/Logs/Mosaic/update.log`.
+Corrupt packages or signature failures never replace the app. An interrupted download is safe to retry.
+For manual recovery, copy the retained `Previous.app` back to `Mosaic.app` after quitting Mosaic.
+
+## Personalize Mosaic
+
+Settings contains Appearance (local note/code fonts, size, width, spacing, heading scale, accent,
+interface scale/density and preview), Editor (spellcheck, source line numbers, Trash confirmation),
+Vault folders, Templates, Calendar & links, Workspace, Shortcuts, and About. Search by a setting's name.
+Each field can return to its default; section resets ask first and explain their scope.
+
+App-wide preferences include appearance, week start, link opening, startup and sidebar defaults.
+Vault-specific preferences include agents/daily/template folders, new-note and attachment destinations,
+daily filenames, generated link syntax, folder colors and startup note. Folder changes affect future
+creation/discovery only; they never migrate files. Missing paths can be selected again or explicitly created.
+Daily names support `YYYY-MM-DD`, `DD-MM-YYYY` and `YYYYMMDD`, while legacy ISO notes remain recognized.
+Date placeholders and task due dates stay ISO. Duplicate daily dates are reported, never overwritten.
+Shared vault preferences are readable with `mosaic preferences` and MCP `get_vault_preferences`.
+
+Workflow creation/editing is one page. Schedules and note-created events can coexist; manual Run now
+is always available. Changes require review by default. Existing agents retain their identity and
+custom source fields; saving configures the workflow without running or unpausing it.
 
 ## Develop
 

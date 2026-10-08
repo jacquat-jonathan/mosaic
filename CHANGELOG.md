@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Release builds:** clean checkouts now prepare the bundled command before compiling the app, so the GitHub release workflow can run without locally generated files.
+
 ## 0.18.0 — 2026-10-08
 
 - **Downloadable Mac app:** universal Intel/Apple Silicon DMG installation, signed release packages and a download/verify/restart updater without development tools. Ad-hoc Apple signing remains free; first-launch approval and recovery are documented.

@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+## 0.18.0 — 2026-10-08
+
 - **Downloadable Mac app:** universal Intel/Apple Silicon DMG installation, signed release packages and a download/verify/restart updater without development tools. Ad-hoc Apple signing remains free; first-launch approval and recovery are documented.
 - **One-page workflows:** a focused create/edit workspace with simultaneous schedules and events, searchable folder chips, visible review safety, draft-discard prompts and source-preserving saves.
 - **Personalization:** local fonts, typography, accents, interface scale/density, source line numbers, per-vault folders and attachment destinations, daily formats, link syntax, week start, startup choices, folder colors, settings search and scoped resets. Shared preferences preserve unknown settings and follow renames without moving files.

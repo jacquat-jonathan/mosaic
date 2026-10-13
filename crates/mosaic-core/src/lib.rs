@@ -11,6 +11,7 @@ pub mod index;
 pub mod kind;
 pub mod links;
 pub mod parse;
+pub mod planner;
 pub mod preferences;
 pub mod query;
 pub mod render;

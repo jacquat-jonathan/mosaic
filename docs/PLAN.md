@@ -2,7 +2,8 @@
 
 Roadmap source of truth: the Mosaic vault's `Ideation/Next steps.md`; shipped work and decisions are in
 `Ideation/Done.md`, with individual milestone notes alongside them. This file is the repository's ordered,
-checkable implementation record through M30. Current release: **0.17.0** (`v0.17.0`, 2026-10-08).
+checkable implementation record through M33 and the planned M34-M38 calendar work. Current release:
+**0.18.1** (`v0.18.1`, 2026-10-08).
 
 ## Fixed decisions
 
@@ -282,7 +283,7 @@ Accepted, implemented and released 2026-10-08 as 0.17.0.
 - [x] Permissions, review, history, rename consistency and complete-content workflow triggering
 - [x] Acceptance checks, full release gate and documentation/ideation updates
 
-### M30 — Cross-project MCP setup (implemented, unreleased)
+### M30 — Cross-project MCP setup (included in 0.18.1)
 Decision: available privately to the user in every Claude Code project; follow the app-selected vault.
 - [x] Recommend `claude mcp add --scope user` with the absolute bundled executable and no pinned vault
 - [x] Explain live vault switching, last-selected vault when closed, and local/project override precedence
@@ -292,7 +293,7 @@ Decision: available privately to the user in every Claude Code project; follow t
 - [x] Update Connections, README, changelog and Ideation; no new release created for this follow-up
 
 ### M31 — Downloadable macOS releases and binary updates
-Implemented for 0.18.0. Public publishing requires the repository owner's GitHub API credential.
+Implemented through the 0.18.0/0.18.1 release sequence. Public publishing requires the repository owner's GitHub API credential.
 - [x] Universal, ad-hoc-signed DMG and updater archive; signed manifest, SHA-256 checksums and release notes
 - [x] Explicit public HTTPS update checks/downloads, signature and bundle validation, progress and cancellation
 - [x] Installed-app restart with saved notes, draft confirmation, atomic application exchange and retained rollback bundle
@@ -316,7 +317,22 @@ Implemented for 0.18.0.
 - [x] Two-vault persistence/migration, rename consistency, custom daily dates and shared agent discovery tests
 - [x] Full gate: 120 Rust tests and 156 UI tests; universal macOS build
 
+### M34-M38 — Independent planner and calendar
+
+Planned. Product decisions are in the vault's `Ideation/Calendar planning.md`; the code-facing design,
+migration contract, milestones and acceptance criteria are in
+[`docs/CALENDAR_PLANNING_IMPLEMENTATION.md`](CALENDAR_PLANNING_IMPLEMENTATION.md).
+
+- [x] M34: per-vault planner store, domain model, history and previewed Markdown-task import
+- [ ] M35: epic-swimlane Board, task editor, onboarding and migration UI
+- [ ] M36: local Month/Week/Day calendar, work sessions, events and recurrence
+- [ ] M37: `.ics` import/export and automatically refreshed read-only iCalendar overlays
+- [ ] M38: recovery, export, compatibility, accessibility, performance and release acceptance
+
 ## Working rules
 - `scripts/check.sh` green before each milestone commit.
 - Core logic gets Rust tests; UI logic gets Vitest; don't test third-party renderers beyond a smoke test.
 - Keep the Tauri layer thin: no business logic outside `mosaic-core`.
+- `main` is the release branch and `dev` is the integration branch. Start batches from updated `dev` on
+  `codex/<topic>`, merge tested batches into `dev`, and merge `dev` into `main` only for an explicitly
+  requested update. Do not create or push release tags without an explicit request.

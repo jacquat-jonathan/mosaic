@@ -7,6 +7,7 @@ use crate::index::{Backlink, Index, OutLink, SearchHit, SyncStats, TagCount};
 use crate::kind::FileKind;
 use crate::links::{FileSet, markdown_url_for, wiki_text_for};
 use crate::parse::{self, Heading, LinkKind};
+use crate::planner::PlannerStore;
 use crate::settings::{Access, AgentRule, SETTINGS_FILE, Settings, access_for};
 use crate::vault::{Entry, FileContent, Vault, Written, normalize};
 use regex::Regex;
@@ -16,6 +17,7 @@ use std::sync::{Mutex, MutexGuard};
 
 pub struct Workspace {
     pub vault: Vault,
+    pub(crate) planner: Mutex<PlannerStore>,
     index: Mutex<Index>,
     /// A read-only connection to the same index for queries, so a long sync doesn't block search.
     /// `None` for an in-memory index (tests), where queries use `index`.
@@ -123,8 +125,10 @@ impl Workspace {
 
     fn with_history(vault: Vault, index: Index, history: History) -> Self {
         let reader = index.open_reader().map(Mutex::new);
+        let planner = PlannerStore::in_memory().expect("in-memory planner");
         Workspace {
             vault,
+            planner: Mutex::new(planner),
             reader,
             index: Mutex::new(index),
             history: Mutex::new(history),
@@ -180,7 +184,10 @@ impl Workspace {
         let vault = Vault::open(root)?;
         let index = Index::open_for(&vault).or_else(|_| Index::in_memory())?;
         let history = History::open_for(vault.root()).or_else(|_| History::in_memory())?;
-        Ok(Self::with_history(vault, index, history))
+        let planner = PlannerStore::open(vault.root())?;
+        let mut workspace = Self::with_history(vault, index, history);
+        workspace.planner = Mutex::new(planner);
+        Ok(workspace)
     }
 
     /// Who changes files through this workspace (recorded in the history). The app is the default.

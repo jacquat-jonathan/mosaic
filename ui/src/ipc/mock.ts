@@ -2,7 +2,7 @@
 // It mirrors the core's semantics closely enough for UI work; it is not a second implementation to keep in sync
 // feature-for-feature.
 
-import type { Agent, AgentRun, Backlink, CoreError, Entry, FileContent, Proposal, QueryResult, QueryRow, SearchHit, Version } from "./types";
+import type { Agent, AgentRun, Backlink, CoreError, CreatePlannerEpic, CreatePlannerTask, Entry, FileContent, MarkdownImportCandidate, MarkdownImportPreview, MovePlannerTask, PlannerEpic, PlannerTask, Proposal, QueryResult, QueryRow, SearchHit, UpdatePlannerEpic, UpdatePlannerTask, Version } from "./types";
 import { kindOf } from "./kinds";
 import { parse as parseYaml } from "yaml";
 import { annotatedTask, taskLabel, type WorkflowState, WORKFLOW_STATES } from "../views/taskBoardModel";
@@ -31,6 +31,23 @@ let tesseraMaxDepth = 3;
 const tesseraPausedAgents: string[] = [];
 const tesseraRuns: AgentRun[] = [];
 const proposals: (Proposal & { content: string | null })[] = [];
+let plannerRevision = 0;
+let plannerId = 0;
+let plannerWorkSessions = 0;
+const plannerEpics: PlannerEpic[] = [];
+const plannerTasks: PlannerTask[] = [];
+const importedFingerprints = new Set<string>();
+const importedTaskIds = new Map<string, string>();
+
+const plannerNow = () => new Date().toISOString();
+const nextPlannerId = (kind: string) => `${kind}-${++plannerId}`;
+function plannerChanged(ids: string[]) {
+  plannerRevision++;
+  emit("planner-changed", { root: mockRoot, revision: plannerRevision, affected_ids: ids });
+}
+function plannerConflict(current: { revision: number }, expected: number) {
+  if (current.revision !== expected) throw { code: "conflict", message: "Planner object changed; reload it.", current_hash: String(current.revision) };
+}
 
 /** Browser testing: what an agent's change in a folder under review leaves behind. */
 export function mockPropose(path: string, content: string | null, actor = "claude-code"): number {
@@ -399,6 +416,72 @@ const vaultPreferences = new Map<string, Record<string, unknown>>();
 export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promise<unknown> {
   if (typeof a.root === "string" && a.root !== mockRoot) throw err("invalid", "The vault changed");
   switch (cmd) {
+    case "planner_summary":
+      return { schema_version: 1, revision: plannerRevision, epics: plannerEpics.length, tasks: plannerTasks.length, work_sessions: plannerWorkSessions, is_empty: plannerEpics.length === 0 && plannerTasks.length === 0 && plannerWorkSessions === 0 };
+    case "planner_epics":
+      return plannerEpics.filter(epic => (a.includeArchived || !epic.archived_at) && (a.includeTrashed || !epic.trashed_at)).sort((x,y)=>x.position-y.position).map(epic=>({...epic}));
+    case "planner_tasks":
+      return plannerTasks.filter(task => (a.includeArchived || !task.archived_at) && (a.includeTrashed || !task.trashed_at)).sort((x,y)=>x.position-y.position).map(task=>({...task}));
+    case "planner_create_epic": {
+      const input=a.input as CreatePlannerEpic, title=input.title.trim(); if(!title) throw err("invalid","Epic title cannot be empty");
+      const at=plannerNow(), epic: PlannerEpic={id:nextPlannerId("epic"),title,description:input.description,color:input.color,position:(plannerEpics.at(-1)?.position??0)+1024,revision:1,created_at:at,updated_at:at,archived_at:null,trashed_at:null};
+      plannerEpics.push(epic); plannerChanged([epic.id]); return {...epic};
+    }
+    case "planner_update_epic": {
+      const epic=plannerEpics.find(item=>item.id===a.id); if(!epic) throw err("not_found","Planner epic not found"); const input=a.input as UpdatePlannerEpic; plannerConflict(epic,input.expected_revision);
+      if(typeof input.title==="string") { if(!input.title.trim()) throw err("invalid","Epic title cannot be empty"); epic.title=input.title.trim(); }
+      if(typeof input.description==="string") epic.description=input.description; if(typeof input.color==="string") epic.color=input.color; if(typeof input.position==="number") epic.position=input.position;
+      epic.revision++; epic.updated_at=plannerNow(); plannerChanged([epic.id]); return {...epic};
+    }
+    case "planner_archive_epic": case "planner_restore_epic": case "planner_trash_epic": {
+      const epic=plannerEpics.find(item=>item.id===a.id); if(!epic) throw err("not_found","Planner epic not found"); plannerConflict(epic,Number(a.expectedRevision)); const at=plannerNow();
+      if(cmd==="planner_archive_epic") epic.archived_at??=at; else if(cmd==="planner_restore_epic") { epic.archived_at=null; epic.trashed_at=null; } else { if(!epic.archived_at) throw err("invalid","Archive an epic before moving it to Trash"); epic.trashed_at=at; }
+      epic.revision++; epic.updated_at=at; plannerChanged([epic.id]); return {...epic};
+    }
+    case "planner_create_task": {
+      const input=a.input as CreatePlannerTask, title=input.title.trim(); if(!title) throw err("invalid","Task title cannot be empty");
+      if(input.epic_id && !plannerEpics.some(epic=>epic.id===input.epic_id&&!epic.trashed_at)) throw err("not_found","Planner epic not found");
+      const parent=input.parent_id ? plannerTasks.find(task=>task.id===input.parent_id) : null; if(input.parent_id&&!parent) throw err("not_found","Planner parent task not found"); if(parent&&parent.epic_id!==input.epic_id) throw err("invalid","A subtask must use its parent's epic");
+      const at=plannerNow(), task: PlannerTask={id:nextPlannerId("task"),epic_id:input.epic_id,parent_id:input.parent_id,title,description:input.description,status:input.status,due_date:input.due_date,estimate_minutes:input.estimate_minutes,position:Math.max(0,...plannerTasks.filter(item=>item.epic_id===input.epic_id&&item.parent_id===input.parent_id&&item.status===input.status).map(item=>item.position))+1024,revision:1,created_at:at,updated_at:at,completed_at:input.status==="done"?at:null,archived_at:null,trashed_at:null};
+      plannerTasks.push(task); plannerChanged([task.id]); return {...task};
+    }
+    case "planner_update_task": {
+      const task=plannerTasks.find(item=>item.id===a.id); if(!task) throw err("not_found","Planner task not found"); const input=a.input as UpdatePlannerTask; plannerConflict(task,input.expected_revision);
+      if(typeof input.title==="string") { if(!input.title.trim()) throw err("invalid","Task title cannot be empty"); task.title=input.title.trim(); }
+      if(typeof input.description==="string") task.description=input.description; if(input.clear_due_date) task.due_date=null; else if(typeof input.due_date==="string") task.due_date=input.due_date;
+      if(input.clear_estimate) task.estimate_minutes=null; else if(typeof input.estimate_minutes==="number") task.estimate_minutes=input.estimate_minutes;
+      task.revision++; task.updated_at=plannerNow(); plannerChanged([task.id]); return {...task};
+    }
+    case "planner_move_task": {
+      const task=plannerTasks.find(item=>item.id===a.id); if(!task) throw err("not_found","Planner task not found"); const input=a.input as MovePlannerTask; plannerConflict(task,input.expected_revision);
+      if((task.status==="done")!==(input.status==="done")) throw err("invalid","Use the complete or reopen operation when crossing the Done boundary");
+      const descendants=new Set<string>(); let changed=true; while(changed){changed=false; for(const item of plannerTasks) if(item.parent_id&&(item.parent_id===task.id||descendants.has(item.parent_id))&&!descendants.has(item.id)){descendants.add(item.id);changed=true;}}
+      if(input.parent_id===task.id||descendants.has(input.parent_id??"")) throw err("invalid","Moving this task there would create a hierarchy cycle");
+      const parent=input.parent_id?plannerTasks.find(item=>item.id===input.parent_id):null; if(input.parent_id&&!parent) throw err("not_found","Planner parent task not found"); if(parent&&parent.epic_id!==input.epic_id) throw err("invalid","A subtask must use its parent's epic");
+      const at=plannerNow(); Object.assign(task,{epic_id:input.epic_id,parent_id:input.parent_id,status:input.status,position:input.position,completed_at:input.status==="done"?(task.completed_at??at):null,updated_at:at,revision:task.revision+1});
+      for(const id of descendants){const child=plannerTasks.find(item=>item.id===id)!;child.epic_id=input.epic_id;child.revision++;child.updated_at=at;} plannerChanged([task.id,...descendants]); return {...task};
+    }
+    case "planner_complete_task": {
+      const task=plannerTasks.find(item=>item.id===a.id); if(!task) throw err("not_found","Planner task not found"); plannerConflict(task,Number(a.expectedRevision));
+      if(!a.allowIncompleteSubtasks&&plannerTasks.some(item=>item.parent_id===task.id&&item.status!=="done"&&!item.archived_at)) throw err("invalid","Task has incomplete subtasks; confirm before completing it");
+      const at=plannerNow(); task.status="done"; task.completed_at??=at; task.updated_at=at; task.revision++; plannerChanged([task.id]); return {...task};
+    }
+    case "planner_reopen_task": case "planner_archive_task": case "planner_restore_task": case "planner_trash_task": {
+      const task=plannerTasks.find(item=>item.id===a.id); if(!task) throw err("not_found","Planner task not found"); plannerConflict(task,Number(a.expectedRevision)); const at=plannerNow();
+      if(cmd==="planner_reopen_task"){task.status="new";task.completed_at=null;} else if(cmd==="planner_archive_task") task.archived_at??=at; else if(cmd==="planner_restore_task"){task.archived_at=null;task.trashed_at=null;} else {if(!task.archived_at) throw err("invalid","Archive a task before moving it to Trash");task.trashed_at=at;}
+      task.updated_at=at;task.revision++;plannerChanged([task.id]);return {...task};
+    }
+    case "planner_migration_preview": {
+      const groups: {source_path:string;tasks:MarkdownImportCandidate[]}[]=[];
+      for(const [path,file] of [...files.entries()].sort(([x],[y])=>x.localeCompare(y))){if(!path.endsWith(".md"))continue;const rows=mockTasks(path,file.content),byLine=new Map<number,string>();const candidates:MarkdownImportCandidate[]=[];
+        for(const row of rows){const block=/\s\^([\w-]+)\s*$/.exec(row.text)?.[1]??null;const clean=taskLabel(row.text).replace(/\s\^[\w-]+\s*$/,"" ).replace(/\s*📅\s*\d{4}-\d{2}-\d{2}/g,"").trim()||"Untitled task";const fingerprint=hash(block?`${path}\0block\0${block}`:`${path}\0line\0${row.line}\0${clean}`);byLine.set(row.line,fingerprint);const status=row.mark.toLowerCase()==="x"?"done":row.mark===">"||row.mark==="-"?"new":mockWorkflow(row.text,row.mark);const archived=row.mark===">"||row.mark==="-";candidates.push({source_path:path,source_line:row.line,block_id:block,fingerprint,parent_fingerprint:row.parent?byLine.get(row.parent)??null:null,depth:row.depth,title:clean,status,due_date:row.due,all_day_session_date:/(?:^|\/)(\d{4}-\d{2}-\d{2})\.md$/.exec(path)?.[1]??null,archived,default_selected:!archived&&status!=="done",duplicate:importedFingerprints.has(fingerprint)});}
+        if(candidates.length)groups.push({source_path:path,tasks:candidates});}
+      const all=groups.flatMap(group=>group.tasks);return {planner_revision:plannerRevision,groups,candidates:all.length,selected_by_default:all.filter(item=>item.default_selected&&!item.duplicate).length,duplicates:all.filter(item=>item.duplicate).length} satisfies MarkdownImportPreview;
+    }
+    case "planner_import_markdown": {
+      const preview=a.preview as MarkdownImportPreview,selected=new Set(a.selectedFingerprints as string[]),all=preview.groups.flatMap(group=>group.tasks),known=new Set(all.map(item=>item.fingerprint));for(const item of selected)if(!known.has(item))throw err("invalid","Migration selection contains an unknown task");
+      const imported:string[]=[],skipped:string[]=[],mapped=new Map<string,string>();for(const item of all.filter(item=>selected.has(item.fingerprint)).sort((x,y)=>x.depth-y.depth||x.source_line-y.source_line)){if(!a.allowDuplicates&&importedFingerprints.has(item.fingerprint)){skipped.push(item.fingerprint);const prior=importedTaskIds.get(item.fingerprint);if(prior)mapped.set(item.fingerprint,prior);continue;}const at=plannerNow(),id=nextPlannerId("task"),parent_id=item.parent_fingerprint?(mapped.get(item.parent_fingerprint)??importedTaskIds.get(item.parent_fingerprint)??null):null;const created:PlannerTask={id,epic_id:null,parent_id,title:item.title,description:"",status:item.status,due_date:item.due_date,estimate_minutes:null,position:Math.max(0,...plannerTasks.filter(task=>task.epic_id===null&&task.parent_id===parent_id&&task.status===item.status).map(task=>task.position))+1024,revision:1,created_at:at,updated_at:at,completed_at:item.status==="done"?at:null,archived_at:item.archived?at:null,trashed_at:null};plannerTasks.push(created);if(item.all_day_session_date)plannerWorkSessions++;importedFingerprints.add(item.fingerprint);importedTaskIds.set(item.fingerprint,created.id);mapped.set(item.fingerprint,created.id);imported.push(created.id);}if(imported.length)plannerChanged(imported);return {planner_revision:plannerRevision,imported_task_ids:imported,skipped_duplicates:skipped};
+    }
     case "vault_preferences": {
       const { DEFAULT_VAULT_PREFS } = await import("../state/vaultPreferences");
       return { ...DEFAULT_VAULT_PREFS, ...vaultPreferences.get(mockRoot) };

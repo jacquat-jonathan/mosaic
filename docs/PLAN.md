@@ -324,7 +324,7 @@ migration contract, milestones and acceptance criteria are in
 [`docs/CALENDAR_PLANNING_IMPLEMENTATION.md`](CALENDAR_PLANNING_IMPLEMENTATION.md).
 
 - [x] M34: per-vault planner store, domain model, history and previewed Markdown-task import
-- [ ] M35: epic-swimlane Board, task editor, onboarding and migration UI
+- [x] M35: epic-swimlane Board, task editor, onboarding and migration UI
 - [ ] M36: local Month/Week/Day calendar, work sessions, events and recurrence
 - [ ] M37: `.ics` import/export and automatically refreshed read-only iCalendar overlays
 - [ ] M38: recovery, export, compatibility, accessibility, performance and release acceptance

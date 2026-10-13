@@ -7,12 +7,10 @@ import { SearchPanel } from "./SearchPanel";
 import { TagsPanel } from "./TagsPanel";
 import { BookmarksPanel } from "./BookmarksPanel";
 import { viewPath } from "./specialTabs";
-import { usePlanning } from "../state/planning";
 
 export function AreaSidebar({ destination }: { destination: Destination }) {
   const tab = useUi(s => s.sidebarTab);
   const open = useUi.getState().openView;
-  const saved = usePlanning(s => s.views);
   if (destination === "find") return <>
     <div className="area-nav" aria-label="Find views">
       {([['search', 'Search'], ['bookmarks', 'Bookmarks'], ['tags', 'Tags']] as const).map(([id, title]) => <button key={id} aria-pressed={tab === id} onClick={() => useUi.getState().setSidebarTab(id)}>{title}</button>)}
@@ -21,11 +19,9 @@ export function AreaSidebar({ destination }: { destination: Destination }) {
     {tab === "tags" ? <TagsPanel /> : tab === "bookmarks" ? <BookmarksPanel /> : <SearchPanel />}
   </>;
   if (destination === "plan") return <nav className="area-nav" aria-label="Plan views">
-    {[["today", "Today"], ["calendar", "Calendar"], ["tasks", "Tasks"], ["board", "Task board"]].map(([id, title]) => <button key={id} onClick={() => open(id)}>{title}</button>)}
-    <h3>Saved views</h3>
-    {[["week", "My week"], ["overdue", "Overdue"], ["projects", "Project tasks"]].map(([id, title]) => <button key={id} onClick={() => open(id)}>{title}</button>)}
-    {saved.map(v => <button key={v.id} onClick={() => open("planning", v.id)}>{v.title}</button>)}
-    <button onClick={() => void usePlanning.getState().create()}>+ New view</button>
+    <button onClick={() => open("board")}>Board</button>
+    <button onClick={() => open("calendar")}>Calendar</button>
+    <p className="panel-meta">Markdown task queries remain available through Search and query blocks.</p>
   </nav>;
   return <AiSidebar />;
 }

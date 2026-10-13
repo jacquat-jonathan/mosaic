@@ -187,6 +187,74 @@ export interface CarryOver {
   created: boolean;
 }
 
+export type PlannerTaskStatus = "new" | "blocked" | "in-progress" | "in-qa" | "done";
+
+export interface PlannerSummary {
+  schema_version: number;
+  revision: number;
+  epics: number;
+  tasks: number;
+  work_sessions: number;
+  is_empty: boolean;
+}
+
+export interface PlannerEpic {
+  id: string;
+  title: string;
+  description: string;
+  color: string;
+  position: number;
+  revision: number;
+  created_at: string;
+  updated_at: string;
+  archived_at: string | null;
+  trashed_at: string | null;
+}
+
+export interface PlannerTask {
+  id: string;
+  epic_id: string | null;
+  parent_id: string | null;
+  title: string;
+  description: string;
+  status: PlannerTaskStatus;
+  due_date: string | null;
+  estimate_minutes: number | null;
+  position: number;
+  revision: number;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+  archived_at: string | null;
+  trashed_at: string | null;
+}
+
+export interface CreatePlannerEpic { title: string; description: string; color: string }
+export interface UpdatePlannerEpic { expected_revision: number; title?: string | null; description?: string | null; color?: string | null; position?: number | null }
+export interface CreatePlannerTask { epic_id: string | null; parent_id: string | null; title: string; description: string; status: PlannerTaskStatus; due_date: string | null; estimate_minutes: number | null }
+export interface UpdatePlannerTask { expected_revision: number; title?: string | null; description?: string | null; due_date?: string | null; clear_due_date: boolean; estimate_minutes?: number | null; clear_estimate: boolean }
+export interface MovePlannerTask { expected_revision: number; epic_id: string | null; parent_id: string | null; status: PlannerTaskStatus; position: number }
+
+export interface MarkdownImportCandidate {
+  source_path: string;
+  source_line: number;
+  block_id: string | null;
+  fingerprint: string;
+  parent_fingerprint: string | null;
+  depth: number;
+  title: string;
+  status: PlannerTaskStatus;
+  due_date: string | null;
+  all_day_session_date: string | null;
+  archived: boolean;
+  default_selected: boolean;
+  duplicate: boolean;
+}
+export interface MarkdownImportGroup { source_path: string; tasks: MarkdownImportCandidate[] }
+export interface MarkdownImportPreview { planner_revision: number; groups: MarkdownImportGroup[]; candidates: number; selected_by_default: number; duplicates: number }
+export interface MarkdownImportResult { planner_revision: number; imported_task_ids: string[]; skipped_duplicates: string[] }
+export interface PlannerChanged { root: string; revision: number; affected_ids: string[] }
+
 export interface QueryRow {
   path: string;
   title: string;

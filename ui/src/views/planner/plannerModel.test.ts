@@ -1,0 +1,17 @@
+import { expect, test } from "vitest";
+import type { PlannerEpic, PlannerTask } from "../../ipc/types";
+import { descendants, subtaskProgress, swimlanes } from "./plannerModel";
+
+const epic = (id: string, position: number): PlannerEpic => ({ id, title:id, description:"", color:"blue", position, revision:1, created_at:"", updated_at:"", archived_at:null, trashed_at:null });
+const task = (id: string, epic_id: string | null, parent_id: string | null, status: PlannerTask["status"] = "new"): PlannerTask => ({ id, epic_id, parent_id, title:id, description:"", status, due_date:null, estimate_minutes:null, position:1, revision:1, created_at:"", updated_at:"", completed_at:null, archived_at:null, trashed_at:null });
+
+test("epic swimlanes keep nested tasks inside their parent and Unassigned last", () => {
+  const tasks = [task("parent","a",null),task("child","a","parent","done"),task("loose",null,null)];
+  const lanes = swimlanes([epic("b",2),epic("a",1)],tasks);
+  expect(lanes.map(lane=>lane.title)).toEqual(["a","b","Unassigned"]);
+  expect(lanes[0].tasks.map(item=>item.id)).toEqual(["parent"]);
+  expect(lanes[2].tasks.map(item=>item.id)).toEqual(["loose"]);
+  expect(descendants(tasks,"parent").map(item=>item.id)).toEqual(["child"]);
+  expect(subtaskProgress(tasks,"parent")).toEqual({done:1,total:1});
+});
+

@@ -5,6 +5,7 @@ import type { Backlink, CliInfo, Entry, FileContent, IndexProgress, RecentVault,
 import { mockInvoke } from "./mock";
 import type { VaultPreferences } from "../state/vaultPreferences";
 import type { TemplateConfig, TemplateList, TemplatePreview, TemplateRequest } from "./types";
+import type { CreatePlannerEpic, CreatePlannerTask, MarkdownImportPreview, MarkdownImportResult, MovePlannerTask, PlannerChanged, PlannerEpic, PlannerSummary, PlannerTask, UpdatePlannerEpic, UpdatePlannerTask } from "./types";
 
 export const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
@@ -84,6 +85,24 @@ export const api = {
   /** Ticks or unticks the task on `line` of a note; `conflict` when that line changed. */
   setTask: (path: string, line: number, text: string, done: boolean) => call<Written>("set_task", { path, line, text, done }),
   setTaskWorkflow: (path: string, line: number, text: string, expectedState: string, next: string) => call<Written>("set_task_workflow", { path, line, text, expectedState, next }),
+  plannerSummary: () => call<PlannerSummary>("planner_summary"),
+  plannerEpics: (includeArchived = false, includeTrashed = false) => call<PlannerEpic[]>("planner_epics", { includeArchived, includeTrashed }),
+  plannerTasks: (includeArchived = false, includeTrashed = false) => call<PlannerTask[]>("planner_tasks", { includeArchived, includeTrashed }),
+  createPlannerEpic: (input: CreatePlannerEpic) => call<PlannerEpic>("planner_create_epic", { input }),
+  updatePlannerEpic: (id: string, input: UpdatePlannerEpic) => call<PlannerEpic>("planner_update_epic", { id, input }),
+  archivePlannerEpic: (id: string, expectedRevision: number) => call<PlannerEpic>("planner_archive_epic", { id, expectedRevision }),
+  restorePlannerEpic: (id: string, expectedRevision: number) => call<PlannerEpic>("planner_restore_epic", { id, expectedRevision }),
+  trashPlannerEpic: (id: string, expectedRevision: number) => call<PlannerEpic>("planner_trash_epic", { id, expectedRevision }),
+  createPlannerTask: (input: CreatePlannerTask) => call<PlannerTask>("planner_create_task", { input }),
+  updatePlannerTask: (id: string, input: UpdatePlannerTask) => call<PlannerTask>("planner_update_task", { id, input }),
+  movePlannerTask: (id: string, input: MovePlannerTask) => call<PlannerTask>("planner_move_task", { id, input }),
+  completePlannerTask: (id: string, expectedRevision: number, allowIncompleteSubtasks: boolean, futureSessions: "cancel" | "keep" = "cancel") => call<PlannerTask>("planner_complete_task", { id, expectedRevision, allowIncompleteSubtasks, futureSessions }),
+  reopenPlannerTask: (id: string, expectedRevision: number) => call<PlannerTask>("planner_reopen_task", { id, expectedRevision }),
+  archivePlannerTask: (id: string, expectedRevision: number) => call<PlannerTask>("planner_archive_task", { id, expectedRevision }),
+  restorePlannerTask: (id: string, expectedRevision: number) => call<PlannerTask>("planner_restore_task", { id, expectedRevision }),
+  trashPlannerTask: (id: string, expectedRevision: number) => call<PlannerTask>("planner_trash_task", { id, expectedRevision }),
+  plannerMigrationPreview: () => call<MarkdownImportPreview>("planner_migration_preview"),
+  importMarkdownToPlanner: (preview: MarkdownImportPreview, selectedFingerprints: string[], allowDuplicates: boolean, timezone: string) => call<MarkdownImportResult>("planner_import_markdown", { preview, selectedFingerprints, allowDuplicates, timezone }),
   /** Agents' proposals in folders under review: pending first, then recent decisions. */
   proposals: (includeDecided = false) => call<Proposal[]>("proposals", { includeDecided }),
   /** The proposed content (null for a deletion). */
@@ -188,6 +207,7 @@ export async function onChatEvent(cb: (run: number, event: ChatEvent) => void): 
 }
 
 export const onTesseraChanged = (cb: () => void) => listenTo<void>("tessera-changed", cb);
+export const onPlannerChanged = (cb: (change: PlannerChanged) => void) => listenTo<PlannerChanged>("planner-changed", cb);
 
 /** Subscribes to changes of the app's settings file (e.g. an agent added a bookmark). */
 export async function onSettingsChanged(cb: () => void): Promise<() => void> {

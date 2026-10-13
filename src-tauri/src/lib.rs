@@ -1,6 +1,7 @@
 //! Tauri front end: every command is a thin mapping onto `mosaic_core::Workspace`.
 
 mod chat;
+mod planner;
 mod tessera;
 mod update;
 mod window_state;
@@ -640,6 +641,24 @@ pub fn run() {
             set_task_workflow,
             days,
             carry_over,
+            planner::planner_summary,
+            planner::planner_epics,
+            planner::planner_tasks,
+            planner::planner_create_epic,
+            planner::planner_update_epic,
+            planner::planner_archive_epic,
+            planner::planner_restore_epic,
+            planner::planner_trash_epic,
+            planner::planner_create_task,
+            planner::planner_update_task,
+            planner::planner_move_task,
+            planner::planner_complete_task,
+            planner::planner_reopen_task,
+            planner::planner_archive_task,
+            planner::planner_restore_task,
+            planner::planner_trash_task,
+            planner::planner_migration_preview,
+            planner::planner_import_markdown,
             agents,
             mirror_agents,
             chat::chat_check,

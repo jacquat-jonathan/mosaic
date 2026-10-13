@@ -100,7 +100,9 @@ fn domain_revisions_hierarchy_completion_and_history_are_atomic() {
             title: Some("Overwrite".into()),
             description: None,
             due_date: None,
+            clear_due_date: false,
             estimate_minutes: None,
+            clear_estimate: false,
         },
     );
     assert!(matches!(stale, Err(Error::Conflict { .. })));

@@ -146,10 +146,10 @@ pub struct UpdateTask {
     pub expected_revision: i64,
     pub title: Option<String>,
     pub description: Option<String>,
-    /// `None` leaves the date alone; `Some(None)` clears it.
-    pub due_date: Option<Option<String>>,
-    /// `None` leaves the estimate alone; `Some(None)` clears it.
-    pub estimate_minutes: Option<Option<i64>>,
+    pub due_date: Option<String>,
+    pub clear_due_date: bool,
+    pub estimate_minutes: Option<i64>,
+    pub clear_estimate: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

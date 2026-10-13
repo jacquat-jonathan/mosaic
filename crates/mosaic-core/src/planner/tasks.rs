@@ -211,13 +211,15 @@ impl PlannerStore {
             Some(title) => required_title(&title, "task")?,
             None => before.title.clone(),
         };
-        let due_date = match input.due_date {
-            Some(value) => validate_due_date(value)?,
-            None => before.due_date.clone(),
+        let due_date = match (input.due_date, input.clear_due_date) {
+            (Some(value), _) => validate_due_date(Some(value))?,
+            (None, true) => None,
+            (None, false) => before.due_date.clone(),
         };
-        let estimate_minutes = match input.estimate_minutes {
-            Some(value) => validate_estimate(value)?,
-            None => before.estimate_minutes,
+        let estimate_minutes = match (input.estimate_minutes, input.clear_estimate) {
+            (Some(value), _) => validate_estimate(Some(value))?,
+            (None, true) => None,
+            (None, false) => before.estimate_minutes,
         };
         let at = now();
         tx.execute(
@@ -253,6 +255,15 @@ impl PlannerStore {
     pub fn move_task(&mut self, id: &str, input: MoveTask) -> Result<PlannerTask> {
         let tx = self.conn.transaction().map_err(sql_error)?;
         expect_revision(&tx, "tasks", id, input.expected_revision)?;
+        let current = task_in(&tx, id)?;
+        if current.status != input.status
+            && matches!(current.status, TaskStatus::Done)
+                != matches!(input.status, TaskStatus::Done)
+        {
+            return Err(Error::Invalid(
+                "use the complete or reopen operation when crossing the Done boundary".into(),
+            ));
+        }
         ensure_epic(&tx, input.epic_id.as_deref())?;
         if input.parent_id.as_deref() == Some(id) {
             return Err(Error::Invalid("a task cannot be its own parent".into()));

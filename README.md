@@ -8,7 +8,8 @@ diagrams, HTML pages, PDFs and data files. AI agents (Claude Code, Claude Deskto
 get the same abilities through an **MCP server** and a **`mosaic` command-line tool**, and whatever
 they change appears in the app within a second.
 
-Everything stays on your disk as ordinary files. Mosaic only contacts GitHub when you explicitly
+Everything stays on your disk. Notes and attachments remain ordinary files; independent planning data
+uses a per-vault SQLite database under `.mosaic/`. Mosaic only contacts GitHub when you explicitly
 check for or download an update. There is no telemetry, background polling, or vault upload.
 Optional Claude features use Claude Code's own connection. A developer-only source updater remains available.
 
@@ -33,8 +34,10 @@ Optional Claude features use Claude Code's own connection. A developer-only sour
 - **Navigation:** Notes, Find, Plan and AI destinations; full-text search (`tag:`, `path:`,
   `"phrases"`), bookmarks, tags, the ⌘O quick switcher and the ⌘P command palette. Notes and feature
   views share tabs and split panes; resizable context panels follow the active item.
-- **Plan:** Today, month/week/day calendars, tasks, saved task views and a task board.
-  Drag cards between New, Blocked, In progress, In QA and Done; subtasks stay grouped under their parent.
+- **Plan:** an independent epic-swimlane Board and month/week/day Calendar. Drag planner cards between
+  New, Blocked, In progress, In QA and Done; schedule multiple work sessions, create recurring local
+  events, import/export `.ics`, and add read-only iCalendar overlays. Existing Markdown checkboxes stay
+  separate and can be copied into the planner only through a previewed, duplicate-safe import.
 - **AI workspace:** automatically saved chats per vault, model choices and attachments; manual,
   scheduled or note-created-event workflows with a guided setup, per-workflow models, allowed
   folders, pause controls, safe event chains and run details.
@@ -168,6 +171,20 @@ mosaic note create Meetings/Retro.md      # create using its default; --template
 ```
 
 The vault is chosen by `--vault`, then `$MOSAIC_VAULT`, then the vault last opened in the app.
+CLI and MCP task queries, `days`, and `carry-over` continue to operate on Markdown checkboxes only.
+Planner mutation is intentionally app-only in this release.
+
+## Planner data and recovery
+
+Board and Calendar data live in `<vault>/.mosaic/planner.sqlite3`, so they travel with a closed vault
+copy without rewriting notes. Mosaic keeps a pre-migration backup and refuses to silently replace a
+database that fails its integrity check. When a valid backup exists, vault opening offers an explicit
+planner-only restore; the damaged database is retained for manual recovery and Markdown is untouched.
+
+Board history records planner changes per epic and task. Archive and Trash views retain restorable
+items. Calendar has the same lifecycle for local events. Export the full planner, including lifecycle
+state and activity, as JSON or a flat CSV from Board; Calendar exports local events as iCalendar.
+Subscription URLs are stored in the macOS Keychain, while disposable feed caches stay outside the vault.
 
 ## Update
 
@@ -244,5 +261,6 @@ Push with `git push --follow-tags`. The release workflow needs the protected
 A Git tag alone is not a downloadable release and will not appear in binary **Check for updates**.
 See [publishing from your personal computer](docs/PUBLISHING.md) for the 0.18.0 handoff.
 
-The search index lives in `~/Library/Caches/mosaic/` and is rebuilt automatically. Mosaic never
-writes anything into your vault except your own content.
+The search index lives in `~/Library/Caches/mosaic/` and is rebuilt automatically. Mosaic writes your
+ordinary content plus app-owned per-vault metadata under `.mosaic/`; agents should use documented
+file tools and never edit that internal directory directly.

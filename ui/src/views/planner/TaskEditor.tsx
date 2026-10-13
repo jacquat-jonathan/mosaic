@@ -3,6 +3,7 @@ import { api } from "../../ipc/api";
 import { errorMessage, isCoreError, type PlannerEpic, type PlannerTask, type PlannerTaskStatus } from "../../ipc/types";
 import { useUi } from "../../state/ui";
 import { PLANNER_STATUSES } from "./plannerModel";
+import { ActivityTimeline } from "./ActivityTimeline";
 
 export function TaskEditor({ task, epics, tasks, onChanged, onClose, onReload }: { task: PlannerTask; epics: PlannerEpic[]; tasks: PlannerTask[]; onChanged(task: PlannerTask | null): void; onClose(): void; onReload(): void }) {
   const [title,setTitle]=useState(task.title),[description,setDescription]=useState(task.description),[due,setDue]=useState(task.due_date??""),[estimate,setEstimate]=useState(task.estimate_minutes?.toString()??"");
@@ -29,21 +30,24 @@ export function TaskEditor({ task, epics, tasks, onChanged, onClose, onReload }:
     await run(()=>api.movePlannerTask(task.id,{expected_revision:task.revision,epic_id:epicId,parent_id:parent,status:task.status,position:task.position}));
   };
   const archive=async()=>{if(!await useUi.getState().ask({title:"Archive task?",body:task.title,confirmLabel:"Archive"}))return;await run(()=>api.archivePlannerTask(task.id,task.revision));onChanged(null);};
+  const trash=async()=>{if(!await useUi.getState().ask({title:"Move task to Trash?",body:"It remains recoverable until restored.",confirmLabel:"Move to Trash"}))return;await run(()=>api.trashPlannerTask(task.id,task.revision));onChanged(null);};
   const addSubtask=async()=>{const title=await useUi.getState().askText({title:"New subtask",value:"",placeholder:`Part of ${task.title}`});if(!title?.trim())return;await run(()=>api.createPlannerTask({epic_id:task.epic_id,parent_id:task.id,title:title.trim(),description:"",status:"new",due_date:null,estimate_minutes:null}));};
   const promote=async()=>{if(!task.parent_id||!await useUi.getState().ask({title:"Promote subtask?",body:"It will become a top-level task in the same epic.",confirmLabel:"Promote"}))return;await run(()=>api.movePlannerTask(task.id,{expected_revision:task.revision,epic_id:task.epic_id,parent_id:null,status:task.status,position:task.position+1024}));};
   const reorder=(direction:-1|1)=>run(()=>api.movePlannerTask(task.id,{expected_revision:task.revision,epic_id:task.epic_id,parent_id:task.parent_id,status:task.status,position:task.position+direction*1536}));
+  const readOnly=!!task.archived_at||!!task.trashed_at;
   return <aside className="planner-editor" aria-label={`Edit ${task.title}`}>
     <header><h2>Task</h2><button aria-label="Close task editor" onClick={onClose}>×</button></header>
     {conflict&&<div className="conflict-bar"><span>This task changed elsewhere.</span><button onClick={onReload}>Reload</button></div>}
     {error&&<p className="error-text">{error}</p>}
-    <label>Title<input value={title} onChange={event=>setTitle(event.target.value)} /></label>
-    <label>Description<textarea rows={5} value={description} onChange={event=>setDescription(event.target.value)} /></label>
-    <label>Status<select value={task.status} disabled={busy||!!task.archived_at} onChange={event=>void status(event.target.value as PlannerTaskStatus)}>{PLANNER_STATUSES.map(item=><option key={item.id} value={item.id}>{item.title}</option>)}</select></label>
-    <label>Epic<select value={task.epic_id??""} disabled={busy||!!task.archived_at} onChange={event=>void moveEpic(event.target.value||null)}><option value="">Unassigned</option>{epics.filter(epic=>!epic.archived_at).map(epic=><option value={epic.id} key={epic.id}>{epic.title}</option>)}</select></label>
-    <div className="planner-editor-row"><label>Due date<input type="date" value={due} onChange={event=>setDue(event.target.value)} /></label><label>Estimate (minutes)<input type="number" min="0" value={estimate} onChange={event=>setEstimate(event.target.value)} /></label></div>
-    {!task.archived_at&&<div className="planner-editor-tools"><button onClick={()=>void addSubtask()}>Add subtask</button>{task.parent_id&&<button onClick={()=>void promote()}>Promote</button>}<button aria-label="Move task earlier" onClick={()=>void reorder(-1)}>Move earlier</button><button aria-label="Move task later" onClick={()=>void reorder(1)}>Move later</button></div>}
+    <label>Title<input value={title} disabled={readOnly} onChange={event=>setTitle(event.target.value)} /></label>
+    <label>Description<textarea rows={5} value={description} disabled={readOnly} onChange={event=>setDescription(event.target.value)} /></label>
+    <label>Status<select value={task.status} disabled={busy||readOnly} onChange={event=>void status(event.target.value as PlannerTaskStatus)}>{PLANNER_STATUSES.map(item=><option key={item.id} value={item.id}>{item.title}</option>)}</select></label>
+    <label>Epic<select value={task.epic_id??""} disabled={busy||readOnly} onChange={event=>void moveEpic(event.target.value||null)}><option value="">Unassigned</option>{epics.filter(epic=>!epic.archived_at&&!epic.trashed_at).map(epic=><option value={epic.id} key={epic.id}>{epic.title}</option>)}</select></label>
+    <div className="planner-editor-row"><label>Due date<input type="date" value={due} disabled={readOnly} onChange={event=>setDue(event.target.value)} /></label><label>Estimate (minutes)<input type="number" min="0" value={estimate} disabled={readOnly} onChange={event=>setEstimate(event.target.value)} /></label></div>
+    {!readOnly&&<div className="planner-editor-tools"><button onClick={()=>void addSubtask()}>Add subtask</button>{task.parent_id&&<button onClick={()=>void promote()}>Promote</button>}<button aria-label="Move task earlier" onClick={()=>void reorder(-1)}>Move earlier</button><button aria-label="Move task later" onClick={()=>void reorder(1)}>Move later</button></div>}
     <p className="panel-meta">Revision {task.revision}{task.parent_id?" · Subtask":""}</p>
-    <footer>{task.archived_at?<button onClick={()=>void run(()=>api.restorePlannerTask(task.id,task.revision))}>Restore</button>:<button className="danger" onClick={()=>void archive()}>Archive</button>}<button className="primary" disabled={busy||!title.trim()} onClick={()=>void save()}>{busy?"Saving…":"Save changes"}</button></footer>
+    <ActivityTimeline kind="task" id={task.id} revision={task.revision}/>
+    <footer>{task.trashed_at?<button onClick={()=>void run(()=>api.restorePlannerTask(task.id,task.revision))}>Restore from Trash</button>:task.archived_at?<><button onClick={()=>void run(()=>api.restorePlannerTask(task.id,task.revision))}>Restore</button><button className="danger" onClick={()=>void trash()}>Move to Trash</button></>:<button className="danger" onClick={()=>void archive()}>Archive</button>}<button className="primary" disabled={busy||!title.trim()||readOnly} onClick={()=>void save()}>{busy?"Saving…":"Save changes"}</button></footer>
   </aside>;
 }
 

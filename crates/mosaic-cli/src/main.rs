@@ -74,17 +74,19 @@ enum Cmd {
     /// Filters: tag:, folder:, kind:, links-to:, linked-from:, has: (prefix - to negate); field=value,
     /// != > >= < <= ~ (contains) on frontmatter fields, title, name, folder, tags, modified; a|b for
     /// either; today, today-7 as dates. Uppercase OR separates alternative groups. Also sort:field / sort:-field, limit:N, show:a,b, and words
-    /// for full-text search. `task:open` (done, moved, cancelled, all) lists checkbox tasks instead,
+    /// for full-text search. `task:open` (done, moved, cancelled, all) lists Markdown checkbox tasks
+    /// (not app-only planner tasks),
     /// with their own fields text, status, due (📅 date) and line, e.g. `task:open folder:Daily`.
     Query { query: Vec<String> },
-    /// Tasks by day, as the calendar shows them: each day's daily note tasks plus tasks due that
-    /// day (📅 date), and overdue ones. Dates as 2026-10-04; default today and the next 6 days.
+    /// Markdown checkbox tasks by day: each day's daily note tasks plus tasks due that day (📅 date),
+    /// and overdue ones. Does not include app-only planner tasks. Dates as 2026-10-04; default today
+    /// and the next 6 days.
     Days {
         from: Option<String>,
         to: Option<String>,
     },
-    /// Move the unfinished tasks of the last daily note before a day (default today) into that
-    /// day's note; the old note keeps them as `- [>]`.
+    /// Move unfinished Markdown checkbox tasks from the last daily note before a day (default today)
+    /// into that day's note; the old note keeps them as `- [>]`. Planner tasks are not changed.
     CarryOver { day: Option<String> },
     /// Create a new file; content from --content or stdin.
     Create {

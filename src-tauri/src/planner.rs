@@ -2,10 +2,10 @@ use crate::{AppState, CmdResult};
 use mosaic_core::Error;
 use mosaic_core::Workspace;
 use mosaic_core::planner::{
-    CalendarRange, CreateEpic, CreateEvent, CreateTask, CreateWorkSession, Epic,
+    ActivityEntry, CalendarRange, CreateEpic, CreateEvent, CreateTask, CreateWorkSession, Epic,
     FutureSessionPolicy, IcalImportPreview, IcalImportResult, MarkdownImportPreview,
-    MarkdownImportResult, MoveTask, PlannerEvent, PlannerSummary, PlannerTask, UpdateEpic,
-    UpdateEvent, UpdateTask, UpdateWorkSession, WorkSession,
+    MarkdownImportResult, MoveTask, PlannerEvent, PlannerStore, PlannerSummary, PlannerTask,
+    UpdateEpic, UpdateEvent, UpdateTask, UpdateWorkSession, WorkSession,
 };
 use serde::Serialize;
 use std::sync::Arc;
@@ -38,6 +38,15 @@ fn changed(
 #[tauri::command]
 pub(crate) fn planner_summary(state: State<AppState>) -> CmdResult<PlannerSummary> {
     state.get()?.planner_summary()
+}
+
+#[tauri::command]
+pub(crate) fn planner_activity(
+    state: State<AppState>,
+    entity_kind: String,
+    entity_id: String,
+) -> CmdResult<Vec<ActivityEntry>> {
+    state.get()?.planner_activity(&entity_kind, &entity_id)
 }
 
 #[tauri::command]
@@ -425,4 +434,43 @@ pub(crate) fn planner_ical_export_file(state: State<AppState>, path: String) -> 
         source,
     })?;
     Ok(destination.display().to_string())
+}
+
+#[tauri::command]
+pub(crate) fn planner_export(state: State<AppState>, format: String) -> CmdResult<String> {
+    match format.as_str() {
+        "json" => state.get()?.export_planner_json(),
+        "csv" => state.get()?.export_planner_csv(),
+        _ => Err(Error::Invalid("planner export must be JSON or CSV".into())),
+    }
+}
+
+#[tauri::command]
+pub(crate) fn planner_export_file(
+    state: State<AppState>,
+    format: String,
+    path: String,
+) -> CmdResult<String> {
+    let (extension, content) = match format.as_str() {
+        "json" => ("json", state.get()?.export_planner_json()?),
+        "csv" => ("csv", state.get()?.export_planner_csv()?),
+        _ => return Err(Error::Invalid("planner export must be JSON or CSV".into())),
+    };
+    let destination = std::path::PathBuf::from(&path);
+    if destination.extension().and_then(|value| value.to_str()) != Some(extension) {
+        return Err(Error::Invalid(format!(
+            "planner {format} export must use a .{extension} file"
+        )));
+    }
+    std::fs::write(&destination, content).map_err(|source| Error::Io {
+        path: destination.display().to_string(),
+        source,
+    })?;
+    Ok(destination.display().to_string())
+}
+
+#[tauri::command]
+pub(crate) fn planner_restore_backup(path: String) -> CmdResult<String> {
+    PlannerStore::restore_last_backup(std::path::Path::new(&path))
+        .map(|restored| restored.display().to_string())
 }

@@ -327,7 +327,7 @@ migration contract, milestones and acceptance criteria are in
 - [x] M35: epic-swimlane Board, task editor, onboarding and migration UI
 - [x] M36: local Month/Week/Day calendar, work sessions, events and recurrence
 - [x] M37: `.ics` import/export and automatically refreshed read-only iCalendar overlays
-- [ ] M38: recovery, export, compatibility, accessibility, performance and release acceptance
+- [x] M38: recovery, export, compatibility, accessibility, performance and release acceptance
 
 ## Working rules
 - `scripts/check.sh` green before each milestone commit.

@@ -10,7 +10,7 @@ use crate::planner::tasks::task_in;
 use chrono::{DateTime, NaiveDate, SecondsFormat, Utc};
 use chrono_tz::Tz;
 use rusqlite::{OptionalExtension, Row, Transaction, params};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 fn row_to_session(row: &Row<'_>) -> rusqlite::Result<WorkSession> {
     Ok(WorkSession {
@@ -740,6 +740,9 @@ impl PlannerStore {
                 .then_with(|| a.title.cmp(&b.title))
         });
 
+        let tasks = self.list_tasks(false, false)?;
+        let task_by_id: HashMap<&str, &super::PlannerTask> =
+            tasks.iter().map(|task| (task.id.as_str(), task)).collect();
         let mut sessions = self.list_work_sessions(None, false)?;
         sessions.retain(|session| session_overlaps(session, from_date, to_date));
         let mut work_sessions = Vec::new();
@@ -752,16 +755,12 @@ impl PlannerStore {
                 .ok_or_else(|| Error::Invalid("calendar range overflow".into()))?;
         }
         for session in sessions {
-            let task = self
-                .conn
-                .query_row(
-                    "SELECT id, epic_id, parent_id, title, description, status, due_date,
-                     estimate_minutes, position, revision, created_at, updated_at, completed_at,
-                     archived_at, trashed_at FROM tasks WHERE id = ?1",
-                    [&session.task_id],
-                    super::tasks::row_to_task,
-                )
-                .map_err(sql_error)?;
+            let task = task_by_id.get(session.task_id.as_str()).ok_or_else(|| {
+                Error::Invalid(format!(
+                    "work session {} references a missing task",
+                    session.id
+                ))
+            })?;
             let color = epic_color(&self.conn, task.epic_id.as_deref())?;
             let (day, minutes) = session_workload(&session, task.estimate_minutes)?;
             if let Some(total) = workload.get_mut(&day) {
@@ -769,14 +768,26 @@ impl PlannerStore {
             }
             work_sessions.push(CalendarWorkSession {
                 session,
-                task_title: task.title,
+                task_title: task.title.clone(),
                 task_status: task.status,
-                epic_id: task.epic_id,
+                epic_id: task.epic_id.clone(),
                 color,
             });
         }
+        drop(task_by_id);
 
-        let tasks = self.list_tasks(false, false)?;
+        let mut scheduled = HashSet::new();
+        let mut scheduled_stmt = self
+            .conn
+            .prepare("SELECT DISTINCT task_id FROM work_sessions WHERE state = 'planned'")
+            .map_err(sql_error)?;
+        for task_id in scheduled_stmt
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(sql_error)?
+        {
+            scheduled.insert(task_id.map_err(sql_error)?);
+        }
+        drop(scheduled_stmt);
         let mut due_markers = Vec::new();
         let mut unscheduled_tasks = Vec::new();
         for task in tasks {
@@ -793,18 +804,8 @@ impl PlannerStore {
                     color: epic_color(&self.conn, task.epic_id.as_deref())?,
                 });
             }
-            if task.status != TaskStatus::Done {
-                let scheduled: bool = self
-                    .conn
-                    .query_row(
-                        "SELECT EXISTS(SELECT 1 FROM work_sessions WHERE task_id = ?1 AND state = 'planned')",
-                        [&task.id],
-                        |row| row.get(0),
-                    )
-                    .map_err(sql_error)?;
-                if !scheduled {
-                    unscheduled_tasks.push(task);
-                }
+            if task.status != TaskStatus::Done && !scheduled.contains(&task.id) {
+                unscheduled_tasks.push(task);
             }
         }
         due_markers.sort_by(|a, b| a.date.cmp(&b.date).then_with(|| a.title.cmp(&b.title)));

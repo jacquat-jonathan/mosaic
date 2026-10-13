@@ -15,3 +15,13 @@ test("epic swimlanes keep nested tasks inside their parent and Unassigned last",
   expect(subtaskProgress(tasks,"parent")).toEqual({done:1,total:1});
 });
 
+test("10k-task board grouping stays within the interactive budget", () => {
+  const epics=Array.from({length:100},(_,index)=>epic(`epic-${index}`,index));
+  const tasks=Array.from({length:10_000},(_,index)=>({...task(`task-${index}`,`epic-${index%100}`,null,index%5===4?"done":"new"),position:index}));
+  const started=performance.now();
+  const lanes=swimlanes(epics,tasks);
+  const elapsed=performance.now()-started;
+  expect(lanes.reduce((count,lane)=>count+lane.tasks.length,0)).toBe(10_000);
+  expect(elapsed).toBeLessThan(1_000);
+});
+

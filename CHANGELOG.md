@@ -4,6 +4,11 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Independent planning:** plan app-owned tasks in epic swimlanes, nest subtasks, track estimates and due dates, and review per-item activity without changing Markdown checkboxes. A previewed import can copy existing note tasks when wanted.
+- **Calendar:** schedule multiple task sessions, create recurring timed or all-day events, edit occurrence exceptions, and work in accessible month, week and day views with workload and overlap layout.
+- **Calendar exchange:** preview and import `.ics`, export local events, and subscribe to read-only iCalendar feeds whose URLs stay in Keychain and whose last successful cache remains available offline.
+- **Recovery and portability:** archive, Trash and restore planner items; export complete JSON or flat CSV; explicitly restore the last valid planner backup while retaining the damaged database. Existing vault upgrades leave Markdown tasks byte-for-byte unchanged.
+
 ## 0.18.1 — 2026-10-08
 
 - **Release builds:** clean checkouts now prepare the bundled command before compiling the app, so the GitHub release workflow can run without locally generated files.

@@ -2,7 +2,7 @@
 // It mirrors the core's semantics closely enough for UI work; it is not a second implementation to keep in sync
 // feature-for-feature.
 
-import type { Agent, AgentRun, Backlink, CalendarOverlayOccurrence, CalendarSubscription, CoreError, CreatePlannerEpic, CreatePlannerEvent, CreatePlannerTask, CreatePlannerWorkSession, Entry, EventOccurrence, FileContent, IcalImportPreview, MarkdownImportCandidate, MarkdownImportPreview, MovePlannerTask, PlannerEpic, PlannerEvent, PlannerTask, PlannerWorkSession, Proposal, QueryResult, QueryRow, SearchHit, UpdatePlannerEpic, UpdatePlannerEvent, UpdatePlannerTask, UpdatePlannerWorkSession, Version } from "./types";
+import type { Agent, AgentRun, Backlink, CalendarOverlayOccurrence, CalendarSubscription, CoreError, CreatePlannerEpic, CreatePlannerEvent, CreatePlannerTask, CreatePlannerWorkSession, Entry, EventOccurrence, FileContent, IcalImportPreview, MarkdownImportCandidate, MarkdownImportPreview, MovePlannerTask, PlannerActivityEntry, PlannerEpic, PlannerEvent, PlannerTask, PlannerWorkSession, Proposal, QueryResult, QueryRow, SearchHit, UpdatePlannerEpic, UpdatePlannerEvent, UpdatePlannerTask, UpdatePlannerWorkSession, Version } from "./types";
 import { kindOf } from "./kinds";
 import { parse as parseYaml } from "yaml";
 import { annotatedTask, taskLabel, type WorkflowState, WORKFLOW_STATES } from "../views/taskBoardModel";
@@ -42,6 +42,7 @@ const importedFingerprints = new Set<string>();
 const importedTaskIds = new Map<string, string>();
 const importedIcal = new Set<string>();
 const mockCalendarSubscriptions: CalendarSubscription[] = [{id:"mock-team",name:"Team calendar",color:"#7c6fd0",visible:true,refresh_minutes:30,last_success:new Date().toISOString(),last_error:null,has_cache:true}];
+const plannerActivities: PlannerActivityEntry[]=[];
 
 const plannerNow = () => new Date().toISOString();
 const nextPlannerId = (kind: string) => `${kind}-${++plannerId}`;
@@ -49,6 +50,7 @@ function plannerChanged(ids: string[]) {
   plannerRevision++;
   emit("planner-changed", { root: mockRoot, revision: plannerRevision, affected_ids: ids });
 }
+function plannerRecord(entity_kind:"epic"|"task"|"event",entity_id:string,action:string,summary:string){plannerActivities.push({id:plannerActivities.length+1,entity_kind,entity_id,occurred_at:plannerNow(),action,summary,before:null,after:null});}
 function plannerConflict(current: { revision: number }, expected: number) {
   if (current.revision !== expected) throw { code: "conflict", message: "Planner object changed; reload it.", current_hash: String(current.revision) };
 }
@@ -447,6 +449,7 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
   switch (cmd) {
     case "planner_summary":
       return { schema_version: 1, revision: plannerRevision, epics: plannerEpics.length, tasks: plannerTasks.length, work_sessions: plannerWorkSessions.length, events: plannerEvents.filter(event=>!event.series_id).length, is_empty: plannerEpics.length === 0 && plannerTasks.length === 0 && plannerWorkSessions.length === 0 && plannerEvents.length === 0 };
+    case "planner_activity": return plannerActivities.filter(item=>item.entity_kind===a.entityKind&&item.entity_id===a.entityId).map(item=>structuredClone(item));
     case "planner_epics":
       return plannerEpics.filter(epic => (a.includeArchived || !epic.archived_at) && (a.includeTrashed || !epic.trashed_at)).sort((x,y)=>x.position-y.position).map(epic=>({...epic}));
     case "planner_tasks":
@@ -454,32 +457,32 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
     case "planner_create_epic": {
       const input=a.input as CreatePlannerEpic, title=input.title.trim(); if(!title) throw err("invalid","Epic title cannot be empty");
       const at=plannerNow(), epic: PlannerEpic={id:nextPlannerId("epic"),title,description:input.description,color:input.color,position:(plannerEpics.at(-1)?.position??0)+1024,revision:1,created_at:at,updated_at:at,archived_at:null,trashed_at:null};
-      plannerEpics.push(epic); plannerChanged([epic.id]); return {...epic};
+      plannerEpics.push(epic); plannerRecord("epic",epic.id,"created","Created epic"); plannerChanged([epic.id]); return {...epic};
     }
     case "planner_update_epic": {
       const epic=plannerEpics.find(item=>item.id===a.id); if(!epic) throw err("not_found","Planner epic not found"); const input=a.input as UpdatePlannerEpic; plannerConflict(epic,input.expected_revision);
       if(typeof input.title==="string") { if(!input.title.trim()) throw err("invalid","Epic title cannot be empty"); epic.title=input.title.trim(); }
       if(typeof input.description==="string") epic.description=input.description; if(typeof input.color==="string") epic.color=input.color; if(typeof input.position==="number") epic.position=input.position;
-      epic.revision++; epic.updated_at=plannerNow(); plannerChanged([epic.id]); return {...epic};
+      epic.revision++; epic.updated_at=plannerNow(); plannerRecord("epic",epic.id,"updated","Updated epic"); plannerChanged([epic.id]); return {...epic};
     }
     case "planner_archive_epic": case "planner_restore_epic": case "planner_trash_epic": {
       const epic=plannerEpics.find(item=>item.id===a.id); if(!epic) throw err("not_found","Planner epic not found"); plannerConflict(epic,Number(a.expectedRevision)); const at=plannerNow();
       if(cmd==="planner_archive_epic") epic.archived_at??=at; else if(cmd==="planner_restore_epic") { epic.archived_at=null; epic.trashed_at=null; } else { if(!epic.archived_at) throw err("invalid","Archive an epic before moving it to Trash"); epic.trashed_at=at; }
-      epic.revision++; epic.updated_at=at; plannerChanged([epic.id]); return {...epic};
+      epic.revision++; epic.updated_at=at; plannerRecord("epic",epic.id,cmd==="planner_archive_epic"?"archived":cmd==="planner_restore_epic"?"restored":"trashed",cmd==="planner_archive_epic"?"Archived epic":cmd==="planner_restore_epic"?"Restored epic":"Trashed epic"); plannerChanged([epic.id]); return {...epic};
     }
     case "planner_create_task": {
       const input=a.input as CreatePlannerTask, title=input.title.trim(); if(!title) throw err("invalid","Task title cannot be empty");
       if(input.epic_id && !plannerEpics.some(epic=>epic.id===input.epic_id&&!epic.trashed_at)) throw err("not_found","Planner epic not found");
       const parent=input.parent_id ? plannerTasks.find(task=>task.id===input.parent_id) : null; if(input.parent_id&&!parent) throw err("not_found","Planner parent task not found"); if(parent&&parent.epic_id!==input.epic_id) throw err("invalid","A subtask must use its parent's epic");
       const at=plannerNow(), task: PlannerTask={id:nextPlannerId("task"),epic_id:input.epic_id,parent_id:input.parent_id,title,description:input.description,status:input.status,due_date:input.due_date,estimate_minutes:input.estimate_minutes,position:Math.max(0,...plannerTasks.filter(item=>item.epic_id===input.epic_id&&item.parent_id===input.parent_id&&item.status===input.status).map(item=>item.position))+1024,revision:1,created_at:at,updated_at:at,completed_at:input.status==="done"?at:null,archived_at:null,trashed_at:null};
-      plannerTasks.push(task); plannerChanged([task.id]); return {...task};
+      plannerTasks.push(task); plannerRecord("task",task.id,"created","Created task"); plannerChanged([task.id]); return {...task};
     }
     case "planner_update_task": {
       const task=plannerTasks.find(item=>item.id===a.id); if(!task) throw err("not_found","Planner task not found"); const input=a.input as UpdatePlannerTask; plannerConflict(task,input.expected_revision);
       if(typeof input.title==="string") { if(!input.title.trim()) throw err("invalid","Task title cannot be empty"); task.title=input.title.trim(); }
       if(typeof input.description==="string") task.description=input.description; if(input.clear_due_date) task.due_date=null; else if(typeof input.due_date==="string") task.due_date=input.due_date;
       if(input.clear_estimate) task.estimate_minutes=null; else if(typeof input.estimate_minutes==="number") task.estimate_minutes=input.estimate_minutes;
-      task.revision++; task.updated_at=plannerNow(); plannerChanged([task.id]); return {...task};
+      task.revision++; task.updated_at=plannerNow(); plannerRecord("task",task.id,"updated","Updated task"); plannerChanged([task.id]); return {...task};
     }
     case "planner_move_task": {
       const task=plannerTasks.find(item=>item.id===a.id); if(!task) throw err("not_found","Planner task not found"); const input=a.input as MovePlannerTask; plannerConflict(task,input.expected_revision);
@@ -488,17 +491,17 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
       if(input.parent_id===task.id||descendants.has(input.parent_id??"")) throw err("invalid","Moving this task there would create a hierarchy cycle");
       const parent=input.parent_id?plannerTasks.find(item=>item.id===input.parent_id):null; if(input.parent_id&&!parent) throw err("not_found","Planner parent task not found"); if(parent&&parent.epic_id!==input.epic_id) throw err("invalid","A subtask must use its parent's epic");
       const at=plannerNow(); Object.assign(task,{epic_id:input.epic_id,parent_id:input.parent_id,status:input.status,position:input.position,completed_at:input.status==="done"?(task.completed_at??at):null,updated_at:at,revision:task.revision+1});
-      for(const id of descendants){const child=plannerTasks.find(item=>item.id===id)!;child.epic_id=input.epic_id;child.revision++;child.updated_at=at;} plannerChanged([task.id,...descendants]); return {...task};
+      for(const id of descendants){const child=plannerTasks.find(item=>item.id===id)!;child.epic_id=input.epic_id;child.revision++;child.updated_at=at;} plannerRecord("task",task.id,"moved","Moved task"); plannerChanged([task.id,...descendants]); return {...task};
     }
     case "planner_complete_task": {
       const task=plannerTasks.find(item=>item.id===a.id); if(!task) throw err("not_found","Planner task not found"); plannerConflict(task,Number(a.expectedRevision));
       if(!a.allowIncompleteSubtasks&&plannerTasks.some(item=>item.parent_id===task.id&&item.status!=="done"&&!item.archived_at)) throw err("invalid","Task has incomplete subtasks; confirm before completing it");
-      const at=plannerNow(); task.status="done"; task.completed_at??=at; task.updated_at=at; task.revision++; if(a.futureSessions==="cancel")for(const session of plannerWorkSessions)if(session.task_id===task.id&&session.state==="planned"&&session.start_value>at){session.state="cancelled";session.revision++;session.updated_at=at;}plannerChanged([task.id]); return {...task};
+      const at=plannerNow(); task.status="done"; task.completed_at??=at; task.updated_at=at; task.revision++; if(a.futureSessions==="cancel")for(const session of plannerWorkSessions)if(session.task_id===task.id&&session.state==="planned"&&session.start_value>at){session.state="cancelled";session.revision++;session.updated_at=at;}plannerRecord("task",task.id,"completed","Completed task");plannerChanged([task.id]); return {...task};
     }
     case "planner_reopen_task": case "planner_archive_task": case "planner_restore_task": case "planner_trash_task": {
       const task=plannerTasks.find(item=>item.id===a.id); if(!task) throw err("not_found","Planner task not found"); plannerConflict(task,Number(a.expectedRevision)); const at=plannerNow();
       if(cmd==="planner_reopen_task"){task.status="new";task.completed_at=null;} else if(cmd==="planner_archive_task") task.archived_at??=at; else if(cmd==="planner_restore_task"){task.archived_at=null;task.trashed_at=null;} else {if(!task.archived_at) throw err("invalid","Archive a task before moving it to Trash");task.trashed_at=at;}
-      task.updated_at=at;task.revision++;plannerChanged([task.id]);return {...task};
+      task.updated_at=at;task.revision++;plannerRecord("task",task.id,cmd==="planner_reopen_task"?"reopened":cmd==="planner_archive_task"?"archived":cmd==="planner_restore_task"?"restored":"trashed",cmd==="planner_reopen_task"?"Reopened task":cmd==="planner_archive_task"?"Archived task":cmd==="planner_restore_task"?"Restored task":"Trashed task");plannerChanged([task.id]);return {...task};
     }
     case "planner_work_sessions": return plannerWorkSessions.filter(session=>(!a.taskId||session.task_id===a.taskId)&&(a.includeCancelled||session.state!=="cancelled")).map(session=>({...session}));
     case "planner_create_work_session": {
@@ -510,13 +513,13 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
     case "planner_cancel_work_session": {const session=plannerWorkSessions.find(item=>item.id===a.id);if(!session)throw err("not_found","Planner work session not found");plannerConflict(session,Number(a.expectedRevision));session.state="cancelled";session.revision++;session.updated_at=plannerNow();plannerChanged([session.id,session.task_id]);return {...session};}
     case "planner_events": return plannerEvents.filter(event=>!event.series_id&&(a.includeArchived||!event.archived_at)&&(a.includeTrashed||!event.trashed_at)).map(event=>structuredClone(event));
     case "planner_create_event": {
-      const input=a.input as CreatePlannerEvent,title=input.title.trim();if(!title)throw err("invalid","Event title cannot be empty");const at=plannerNow(),event:PlannerEvent={...structuredClone(input),id:nextPlannerId("event"),series_id:null,title,revision:1,created_at:at,updated_at:at,archived_at:null,trashed_at:null};plannerEvents.push(event);plannerChanged([event.id]);return structuredClone(event);
+      const input=a.input as CreatePlannerEvent,title=input.title.trim();if(!title)throw err("invalid","Event title cannot be empty");const at=plannerNow(),event:PlannerEvent={...structuredClone(input),id:nextPlannerId("event"),series_id:null,title,revision:1,created_at:at,updated_at:at,archived_at:null,trashed_at:null};plannerEvents.push(event);plannerRecord("event",event.id,"created","Created event");plannerChanged([event.id]);return structuredClone(event);
     }
     case "planner_update_event": {
-      const event=plannerEvents.find(item=>item.id===a.id);if(!event)throw err("not_found","Planner event not found");const input=a.input as UpdatePlannerEvent;plannerConflict(event,input.expected_revision);if(!input.title.trim())throw err("invalid","Event title cannot be empty");Object.assign(event,structuredClone(input),{title:input.title.trim(),revision:event.revision+1,updated_at:plannerNow()});plannerChanged([event.id]);return structuredClone(event);
+      const event=plannerEvents.find(item=>item.id===a.id);if(!event)throw err("not_found","Planner event not found");const input=a.input as UpdatePlannerEvent;plannerConflict(event,input.expected_revision);if(!input.title.trim())throw err("invalid","Event title cannot be empty");Object.assign(event,structuredClone(input),{title:input.title.trim(),revision:event.revision+1,updated_at:plannerNow()});plannerRecord("event",event.id,"updated","Updated event");plannerChanged([event.id]);return structuredClone(event);
     }
     case "planner_archive_event": case "planner_restore_event": case "planner_trash_event": {
-      const event=plannerEvents.find(item=>item.id===a.id);if(!event)throw err("not_found","Planner event not found");plannerConflict(event,Number(a.expectedRevision));const at=plannerNow();if(cmd==="planner_archive_event")event.archived_at??=at;else if(cmd==="planner_restore_event"){event.archived_at=null;event.trashed_at=null;}else{if(!event.archived_at)throw err("invalid","Archive an event before moving it to Trash");event.trashed_at=at;}event.revision++;event.updated_at=at;plannerChanged([event.id]);return structuredClone(event);
+      const event=plannerEvents.find(item=>item.id===a.id);if(!event)throw err("not_found","Planner event not found");plannerConflict(event,Number(a.expectedRevision));const at=plannerNow();if(cmd==="planner_archive_event")event.archived_at??=at;else if(cmd==="planner_restore_event"){event.archived_at=null;event.trashed_at=null;}else{if(!event.archived_at)throw err("invalid","Archive an event before moving it to Trash");event.trashed_at=at;}event.revision++;event.updated_at=at;plannerRecord("event",event.id,cmd==="planner_archive_event"?"archived":cmd==="planner_restore_event"?"restored":"trashed",cmd==="planner_archive_event"?"Archived event":cmd==="planner_restore_event"?"Restored event":"Trashed event");plannerChanged([event.id]);return structuredClone(event);
     }
     case "planner_cancel_event_occurrence": {const event=plannerEvents.find(item=>item.id===a.seriesId);if(!event)throw err("not_found","Planner event not found");plannerConflict(event,Number(a.expectedRevision));plannerEventExceptions.set(`${event.id}:${a.occurrenceKey}`,{action:"cancelled",replacement:null});event.revision++;event.updated_at=plannerNow();plannerChanged([event.id]);return structuredClone(event);}
     case "planner_replace_event_occurrence": {const event=plannerEvents.find(item=>item.id===a.seriesId);if(!event)throw err("not_found","Planner event not found");plannerConflict(event,Number(a.expectedRevision));const input=a.input as CreatePlannerEvent,at=plannerNow(),replacement:PlannerEvent={...structuredClone(input),id:nextPlannerId("event"),series_id:event.id,recurrence_rule:null,revision:1,created_at:at,updated_at:at,archived_at:null,trashed_at:null};plannerEvents.push(replacement);plannerEventExceptions.set(`${event.id}:${a.occurrenceKey}`,{action:"replaced",replacement:replacement.id});event.revision++;event.updated_at=at;plannerChanged([event.id,replacement.id]);return structuredClone(replacement);}
@@ -529,6 +532,9 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
     }
     case "planner_ical_export": return `BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Mosaic//Planner//EN\r\n${plannerEvents.filter(item=>!item.series_id&&!item.archived_at&&!item.trashed_at).map(item=>`BEGIN:VEVENT\r\nUID:mosaic-${item.id}@local\r\nSUMMARY:${item.title}\r\nDTSTART${item.all_day?";VALUE=DATE":""}:${item.all_day?item.start_value.replaceAll("-",""):item.start_value.replaceAll(/[-:]/g,"").replace(".000","")}\r\nDTEND${item.all_day?";VALUE=DATE":""}:${item.all_day?item.end_value.replaceAll("-",""):item.end_value.replaceAll(/[-:]/g,"").replace(".000","")}\r\nEND:VEVENT\r\n`).join("")}END:VCALENDAR\r\n`;
     case "planner_ical_export_file": return String(a.path);
+    case "planner_export": {if(a.format==="json")return JSON.stringify({format_version:1,exported_at:plannerNow(),summary:await mockInvoke("planner_summary",{}),epics:plannerEpics,tasks:plannerTasks,work_sessions:plannerWorkSessions,events:plannerEvents.filter(item=>!item.series_id),activity:plannerActivities},null,2)+"\n";if(a.format==="csv")return"entity_type,id,parent_id,epic_id,status,title,start,end,due_date,estimate_minutes,archived_at,trashed_at\r\n"+plannerTasks.map(item=>`\"task\",\"${item.id}\",\"${item.parent_id??""}\",\"${item.epic_id??""}\",\"${item.status}\",\"${item.title.replaceAll('"','""')}\",\"\",\"\",\"${item.due_date??""}\",\"${item.estimate_minutes??""}\",\"${item.archived_at??""}\",\"${item.trashed_at??""}\"`).join("\r\n")+"\r\n";throw err("invalid","planner export must be JSON or CSV");}
+    case "planner_export_file": return String(a.path);
+    case "planner_restore_backup": return `${String(a.path)}/.mosaic/planner.sqlite3`;
     case "calendar_subscriptions": return structuredClone(mockCalendarSubscriptions);
     case "add_calendar_subscription": {const name=String(a.name).trim(),url=String(a.url);if(!name||!/^https?:\/\/|^webcal:\/\//i.test(url))throw err("invalid","subscription name and HTTPS or webcal URL are required");const item:CalendarSubscription={id:nextPlannerId("subscription"),name,color:String(a.color),visible:true,refresh_minutes:Number(a.refreshMinutes),last_success:new Date().toISOString(),last_error:null,has_cache:true};mockCalendarSubscriptions.push(item);return structuredClone(item);}
     case "update_calendar_subscription": {const item=mockCalendarSubscriptions.find(value=>value.id===a.id);if(!item)throw err("not_found","Calendar subscription not found");Object.assign(item,{name:String(a.name),color:String(a.color),visible:Boolean(a.visible),refresh_minutes:Number(a.refreshMinutes)});return structuredClone(item);}

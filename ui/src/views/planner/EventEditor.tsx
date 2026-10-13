@@ -2,6 +2,7 @@ import { useMemo,useState } from "react";
 import { api } from "../../ipc/api";
 import { errorMessage,type CreatePlannerEvent,type EventOccurrence,type PlannerEpic,type PlannerEvent } from "../../ipc/types";
 import { fromLocalInput,toLocalInput } from "./calendarModel";
+import { ActivityTimeline } from "./ActivityTimeline";
 
 type Repeat="none"|"daily"|"weekdays"|"weekly"|"monthly";
 function repeatFrom(rule:string|null):Repeat{if(!rule)return"none";if(rule.includes("BYDAY=MO,TU,WE,TH,FR"))return"weekdays";if(rule.includes("FREQ=DAILY"))return"daily";if(rule.includes("FREQ=WEEKLY"))return"weekly";return"monthly";}
@@ -28,6 +29,7 @@ export function EventEditor({occurrence,series,epics,initialStart,initialEnd,ini
     <div className="planner-editor-row"><label>Start<input type={allDay?"date":"datetime-local"} value={start} onChange={event=>setStart(event.target.value)} /></label><label>End<input type={allDay?"date":"datetime-local"} value={end} onChange={event=>setEnd(event.target.value)} /></label></div><p className="panel-meta">Time zone: {timezone}</p>
     {scope==="series"&&<><div className="planner-editor-row"><label>Repeat<select value={repeat} onChange={event=>setRepeat(event.target.value as Repeat)}><option value="none">Does not repeat</option><option value="daily">Daily</option><option value="weekdays">Weekdays</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option></select></label>{repeat!=="none"&&<label>Every<input type="number" min="1" max="366" value={interval} onChange={event=>setInterval(Number(event.target.value))} /></label>}</div>{repeat!=="none"&&<label>Repeat until<input type="date" value={until} onChange={event=>setUntil(event.target.value)} /></label>}</>}
     <label>Epic<select value={epic} onChange={event=>setEpic(event.target.value)}><option value="">No epic</option>{epics.filter(item=>!item.archived_at).map(item=><option value={item.id} key={item.id}>{item.title}</option>)}</select></label><label>Custom color<input type="color" value={color||"#5b8def"} onChange={event=>setColor(event.target.value)} /></label><label>Location<input value={location} onChange={event=>setLocation(event.target.value)} /></label><label>Meeting URL<input type="url" value={meeting} onChange={event=>setMeeting(event.target.value)} /></label><label>Participants<input value={participants} placeholder="anna@example.com, sam@example.com" onChange={event=>setParticipants(event.target.value)} /></label>
+    {series&&<ActivityTimeline kind="event" id={series.id} revision={series.revision}/>}
     <footer>{series?<button className="danger" disabled={busy} onClick={()=>void remove()}>{recurring&&scope==="occurrence"?"Delete occurrence":"Archive"}</button>:<span/>}<button className="primary" disabled={busy||!title.trim()||!start||!end} onClick={()=>void save()}>{busy?"Saving…":"Save"}</button></footer>
   </aside>;
 }

@@ -2,6 +2,7 @@ use super::*;
 use crate::index::Index;
 use crate::{Vault, Workspace};
 use std::fs;
+use std::time::{Duration, Instant};
 
 fn in_memory() -> PlannerStore {
     PlannerStore::in_memory().unwrap()
@@ -453,6 +454,29 @@ fn ical_failures_are_atomic_and_recurring_exceptions_export_inside_events() {
 }
 
 #[test]
+fn planner_json_and_csv_exports_include_history_and_lifecycle_state() {
+    let mut store = in_memory();
+    let epic = epic(&mut store, "Export, launch");
+    let task = task(&mut store, Some(epic.id.clone()), None, "Review \"copy\"");
+    let task = store.archive_task(&task.id, task.revision).unwrap();
+    store.trash_task(&task.id, task.revision).unwrap();
+
+    let json = store.export_json().unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(parsed["format_version"], 1);
+    assert_eq!(parsed["tasks"][0]["title"], "Review \"copy\"");
+    assert!(parsed["tasks"][0]["trashed_at"].is_string());
+    assert!(parsed["activity"].as_array().unwrap().len() >= 4);
+    assert!(!json.contains("calendar_subscriptions"));
+
+    let csv = store.export_csv().unwrap();
+    assert!(csv.starts_with("entity_type,id,parent_id"));
+    assert!(csv.contains("\"Export, launch\""));
+    assert!(csv.contains("\"Review \"\"copy\"\"\""));
+    assert!(csv.contains("\"task\""));
+}
+
+#[test]
 fn markdown_import_previews_maps_and_deduplicates_without_editing_notes() {
     let (dir, workspace) = workspace();
     workspace.mkdir("Daily").unwrap();
@@ -570,4 +594,87 @@ fn recovery_from_the_last_valid_backup_is_explicit() {
     assert!(corrupt.is_file());
     let restored = PlannerStore::open(dir.path()).unwrap();
     assert_eq!(restored.summary().unwrap().epics, 1);
+}
+
+#[test]
+fn opening_a_pre_planner_vault_and_previewing_migration_never_changes_markdown() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::create_dir(dir.path().join("Projects")).unwrap();
+    let note = dir.path().join("Projects/Release.md");
+    let daily = dir.path().join("2026-10-13.md");
+    fs::write(
+        &note,
+        b"# Release\n\n- [ ] Ship Mosaic \xf0\x9f\x93\x85 2026-10-20\n",
+    )
+    .unwrap();
+    fs::write(&daily, b"# Today\n\n- [x] Keep this exactly\n").unwrap();
+    let before_note = fs::read(&note).unwrap();
+    let before_daily = fs::read(&daily).unwrap();
+
+    let workspace = Workspace::open(dir.path()).unwrap();
+    workspace.sync(|_, _| {}).unwrap();
+    let preview = workspace.preview_markdown_planner_import().unwrap();
+    assert_eq!(preview.candidates, 2);
+    drop(workspace);
+
+    assert_eq!(fs::read(&note).unwrap(), before_note);
+    assert_eq!(fs::read(&daily).unwrap(), before_daily);
+    assert!(dir.path().join(".mosaic/planner.sqlite3").is_file());
+}
+
+#[test]
+fn ten_thousand_tasks_and_a_busy_month_load_within_the_acceptance_budget() {
+    let mut store = in_memory();
+    let tx = store.conn.transaction().unwrap();
+    for index in 0..10_000 {
+        tx.execute(
+            "INSERT INTO tasks(id, epic_id, parent_id, title, description, status, due_date,
+                 estimate_minutes, position, revision, created_at, updated_at, completed_at,
+                 archived_at, trashed_at)
+             VALUES (?1, NULL, NULL, ?2, '', 'new', ?3, 30, ?4, 1, ?5, ?5, NULL, NULL, NULL)",
+            rusqlite::params![
+                format!("task-{index}"),
+                format!("Task {index}"),
+                format!("2026-10-{:02}", index % 31 + 1),
+                index as i64,
+                "2026-10-01T00:00:00Z"
+            ],
+        )
+        .unwrap();
+    }
+    for index in 0..1_000 {
+        let day = index % 31 + 1;
+        let next_day = day % 31 + 1;
+        tx.execute(
+            "INSERT INTO events(id, series_id, title, description, location, meeting_url,
+                 participants_json, epic_id, color, all_day, start_value, end_value, timezone,
+                 recurrence_rule, revision, created_at, updated_at, archived_at, trashed_at)
+             VALUES (?1, NULL, ?2, '', '', NULL, '[]', NULL, NULL, 1, ?3, ?4, 'UTC',
+                 NULL, 1, ?5, ?5, NULL, NULL)",
+            rusqlite::params![
+                format!("event-{index}"),
+                format!("Event {index}"),
+                format!("2026-10-{day:02}"),
+                if day == 31 {
+                    "2026-11-01".to_string()
+                } else {
+                    format!("2026-10-{next_day:02}")
+                },
+                "2026-10-01T00:00:00Z"
+            ],
+        )
+        .unwrap();
+    }
+    tx.commit().unwrap();
+
+    let started = Instant::now();
+    let range = store.calendar_range("2026-10-01", "2026-10-31").unwrap();
+    let elapsed = started.elapsed();
+    assert_eq!(range.unscheduled_tasks.len(), 10_000);
+    assert_eq!(range.due_markers.len(), 10_000);
+    assert_eq!(range.events.len(), 1_000);
+    assert!(
+        elapsed < Duration::from_secs(5),
+        "large planner month loaded in {elapsed:?}, over the five-second acceptance budget"
+    );
 }

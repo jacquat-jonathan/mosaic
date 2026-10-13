@@ -47,6 +47,10 @@ write shows up in the app within a second.
   ISO daily names remain recognized, while due dates and date placeholders always use ISO. Two
   notes representing the same date are an error to repair, never a reason to overwrite either.
 - **Find notes by their properties with `query`** rather than reading many files: see "Queries" below.
+- **Planner data is app-owned.** Board tasks, epics, work sessions and local events are separate from
+  Markdown checkboxes and live under `.mosaic/`. CLI/MCP `task:` queries, `tasks_by_day` and
+  `carry_over` operate only on Markdown tasks. Do not inspect or edit `.mosaic/planner.sqlite3`
+  directly, and do not imply that changing a checkbox changes an independent planner item.
 - **Several files at once:** `move_files` moves a list into one folder in a single call; `import_file`
   adds an image or other binary file from base64 (never overwrites).
 - **Deleting is safe but visible:** files go to the macOS Trash.
@@ -101,8 +105,9 @@ still apply. Unknown placeholders are preserved; supported ones are `{{title}}`,
 - Embeds: `![[image.png]]`, `![[image.png|300]]` (width), `![[Other note]]`, `![[file.pdf]]`.
 - Tags: `#tag`, nested `#area/work`.
 - Block ids: end a line with ` ^my-id` to make it linkable.
-- Tasks: `- [ ] todo`, `- [x] done`. The task board uses New by default and Done for a checked
-  box. Other workflow states are portable comments on the task line:
+- Tasks: `- [ ] todo`, `- [x] done`. These are Markdown tasks used by note queries, daily-note tools
+  and legacy task views; the independent Plan Board does not synchronize them. Other workflow states
+  are portable comments on the task line:
   `- [ ] Review <!-- mosaic:state=blocked -->` (also `in-progress` and `in-qa`). Keep the
   comment before a trailing `^block-id`. Queries expose `workflow`, e.g.
   `task:open workflow=blocked show:workflow,due`. Calendar and query task labels omit the comment.

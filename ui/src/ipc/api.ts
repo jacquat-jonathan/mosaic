@@ -5,7 +5,7 @@ import type { Backlink, CliInfo, Entry, FileContent, IndexProgress, RecentVault,
 import { mockInvoke } from "./mock";
 import type { VaultPreferences } from "../state/vaultPreferences";
 import type { TemplateConfig, TemplateList, TemplatePreview, TemplateRequest } from "./types";
-import type { CalendarOverlayRange, CalendarSubscription, CreatePlannerEpic, CreatePlannerEvent, CreatePlannerTask, CreatePlannerWorkSession, IcalImportPreview, IcalImportResult, MarkdownImportPreview, MarkdownImportResult, MovePlannerTask, PlannerCalendarRange, PlannerChanged, PlannerEpic, PlannerEvent, PlannerSummary, PlannerTask, PlannerWorkSession, UpdatePlannerEpic, UpdatePlannerEvent, UpdatePlannerTask, UpdatePlannerWorkSession } from "./types";
+import type { CalendarOverlayRange, CalendarSubscription, CreatePlannerEpic, CreatePlannerEvent, CreatePlannerTask, CreatePlannerWorkSession, IcalImportPreview, IcalImportResult, MarkdownImportPreview, MarkdownImportResult, MovePlannerTask, PlannerActivityEntry, PlannerCalendarRange, PlannerChanged, PlannerEpic, PlannerEvent, PlannerSummary, PlannerTask, PlannerWorkSession, UpdatePlannerEpic, UpdatePlannerEvent, UpdatePlannerTask, UpdatePlannerWorkSession } from "./types";
 
 export const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
@@ -86,6 +86,7 @@ export const api = {
   setTask: (path: string, line: number, text: string, done: boolean) => call<Written>("set_task", { path, line, text, done }),
   setTaskWorkflow: (path: string, line: number, text: string, expectedState: string, next: string) => call<Written>("set_task_workflow", { path, line, text, expectedState, next }),
   plannerSummary: () => call<PlannerSummary>("planner_summary"),
+  plannerActivity: (entityKind: "epic" | "task" | "event", entityId: string) => call<PlannerActivityEntry[]>("planner_activity", { entityKind, entityId }),
   plannerEpics: (includeArchived = false, includeTrashed = false) => call<PlannerEpic[]>("planner_epics", { includeArchived, includeTrashed }),
   plannerTasks: (includeArchived = false, includeTrashed = false) => call<PlannerTask[]>("planner_tasks", { includeArchived, includeTrashed }),
   createPlannerEpic: (input: CreatePlannerEpic) => call<PlannerEpic>("planner_create_epic", { input }),
@@ -120,6 +121,9 @@ export const api = {
   importPlannerIcal: (preview: IcalImportPreview, selectedKeys: string[], allowDuplicates: boolean) => call<IcalImportResult>("planner_ical_import", { preview, selectedKeys, allowDuplicates }),
   exportPlannerIcal: () => call<string>("planner_ical_export"),
   exportPlannerIcalFile: (path: string) => call<string>("planner_ical_export_file", { path }),
+  exportPlanner: (format: "json" | "csv") => call<string>("planner_export", { format }),
+  exportPlannerFile: (format: "json" | "csv", path: string) => call<string>("planner_export_file", { format, path }),
+  restorePlannerBackup: (path: string) => call<string>("planner_restore_backup", { path }),
   calendarSubscriptions: () => call<CalendarSubscription[]>("calendar_subscriptions"),
   addCalendarSubscription: (name: string, url: string, color: string, refreshMinutes: number) => call<CalendarSubscription>("add_calendar_subscription", { name, url, color, refreshMinutes }),
   updateCalendarSubscription: (id: string, name: string, color: string, visible: boolean, refreshMinutes: number) => call<CalendarSubscription>("update_calendar_subscription", { id, name, color, visible, refreshMinutes }),

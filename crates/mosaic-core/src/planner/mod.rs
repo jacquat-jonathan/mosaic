@@ -3,6 +3,7 @@
 
 mod calendar;
 mod epics;
+mod export;
 mod ical;
 mod migration;
 mod recurrence;

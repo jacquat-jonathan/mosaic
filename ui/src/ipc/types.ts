@@ -199,6 +199,8 @@ export interface PlannerSummary {
   is_empty: boolean;
 }
 
+export interface PlannerActivityEntry { id: number; entity_kind: string; entity_id: string; occurred_at: string; action: string; summary: string; before: unknown | null; after: unknown | null }
+
 export interface PlannerEpic {
   id: string;
   title: string;

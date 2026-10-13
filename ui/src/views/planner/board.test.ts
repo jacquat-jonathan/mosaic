@@ -3,7 +3,7 @@ import { api } from "../../ipc/api";
 
 afterEach(()=>vi.unstubAllGlobals());
 
-test("planner mock covers create, edit, move, complete, archive and restore",async()=>{
+test("planner mock covers create, edit, move, complete, archive, trash, restore and history",async()=>{
   vi.stubGlobal("window",{dispatchEvent:vi.fn()});
   const epic=await api.createPlannerEpic({title:"Launch",description:"",color:"#5b8def"});
   const task=await api.createPlannerTask({epic_id:epic.id,parent_id:null,title:"Ship",description:"First",status:"new",due_date:null,estimate_minutes:60});
@@ -15,8 +15,12 @@ test("planner mock covers create, edit, move, complete, archive and restore",asy
   expect(done.status).toBe("done");
   const archived=await api.archivePlannerTask(task.id,done.revision);
   expect(archived.archived_at).not.toBeNull();
-  const restored=await api.restorePlannerTask(task.id,archived.revision);
+  const trashed=await api.trashPlannerTask(task.id,archived.revision);
+  expect(trashed.trashed_at).not.toBeNull();
+  const restored=await api.restorePlannerTask(task.id,trashed.revision);
   expect(restored.archived_at).toBeNull();
+  expect(restored.trashed_at).toBeNull();
+  expect((await api.plannerActivity("task",task.id)).map(entry=>entry.action)).toEqual(["created","updated","moved","completed","archived","trashed","restored"]);
 });
 
 test("planner migration preview imports selected tasks only once",async()=>{

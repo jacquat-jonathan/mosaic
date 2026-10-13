@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { rangeBetween, remapPath, topLevel, useVault } from "./vault";
+import { isPlannerRecoveryError, rangeBetween, remapPath, topLevel, useVault } from "./vault";
 import { canMoveInto, canvasOfFiles } from "../actions";
 import { reorder } from "../views/BookmarksPanel";
 
@@ -41,6 +41,14 @@ describe("moves and bookmarks", () => {
     expect(reorder(["a", "b", "c"], 0, 3)).toEqual(["b", "c", "a"]);
     expect(reorder(["a", "b", "c"], 2, 0)).toEqual(["c", "a", "b"]);
     expect(reorder(["a", "b", "c"], 0, 1)).toEqual(["a", "b", "c"]);
+  });
+});
+
+describe("planner recovery", () => {
+  it("is offered only for explicit integrity recovery errors", () => {
+    expect(isPlannerRecoveryError("planner database /vault/.mosaic/planner.sqlite3 failed its integrity check: malformed; restore the last backup explicitly")).toBe(true);
+    expect(isPlannerRecoveryError("planner database schema is newer than this Mosaic version")).toBe(false);
+    expect(isPlannerRecoveryError("restore the last backup explicitly")).toBe(false);
   });
 });
 

@@ -195,6 +195,7 @@ export interface PlannerSummary {
   epics: number;
   tasks: number;
   work_sessions: number;
+  events: number;
   is_empty: boolean;
 }
 
@@ -234,6 +235,18 @@ export interface UpdatePlannerEpic { expected_revision: number; title?: string |
 export interface CreatePlannerTask { epic_id: string | null; parent_id: string | null; title: string; description: string; status: PlannerTaskStatus; due_date: string | null; estimate_minutes: number | null }
 export interface UpdatePlannerTask { expected_revision: number; title?: string | null; description?: string | null; due_date?: string | null; clear_due_date: boolean; estimate_minutes?: number | null; clear_estimate: boolean }
 export interface MovePlannerTask { expected_revision: number; epic_id: string | null; parent_id: string | null; status: PlannerTaskStatus; position: number }
+
+export interface PlannerWorkSession { id: string; task_id: string; all_day: boolean; start_value: string; end_value: string; timezone: string; state: "planned" | "cancelled"; revision: number; created_at: string; updated_at: string }
+export interface CreatePlannerWorkSession { task_id: string; all_day: boolean; start_value: string; end_value: string; timezone: string }
+export interface UpdatePlannerWorkSession { expected_revision: number; all_day: boolean; start_value: string; end_value: string; timezone: string }
+export interface PlannerEvent { id: string; series_id: string | null; title: string; description: string; location: string; meeting_url: string | null; participants: string[]; epic_id: string | null; color: string | null; all_day: boolean; start_value: string; end_value: string; timezone: string; recurrence_rule: string | null; revision: number; created_at: string; updated_at: string; archived_at: string | null; trashed_at: string | null }
+export interface CreatePlannerEvent { title: string; description: string; location: string; meeting_url: string | null; participants: string[]; epic_id: string | null; color: string | null; all_day: boolean; start_value: string; end_value: string; timezone: string; recurrence_rule: string | null }
+export interface UpdatePlannerEvent extends CreatePlannerEvent { expected_revision: number }
+export interface EventOccurrence { event_id: string; series_id: string; occurrence_key: string; title: string; description: string; location: string; meeting_url: string | null; participants: string[]; epic_id: string | null; color: string | null; all_day: boolean; start_value: string; end_value: string; timezone: string; recurring: boolean }
+export interface CalendarWorkSession { session: PlannerWorkSession; task_title: string; task_status: PlannerTaskStatus; epic_id: string | null; color: string | null }
+export interface DueMarker { task_id: string; title: string; date: string; status: PlannerTaskStatus; epic_id: string | null; color: string | null }
+export interface DayWorkload { date: string; minutes: number }
+export interface PlannerCalendarRange { from: string; to: string; events: EventOccurrence[]; work_sessions: CalendarWorkSession[]; due_markers: DueMarker[]; unscheduled_tasks: PlannerTask[]; workload: DayWorkload[] }
 
 export interface MarkdownImportCandidate {
   source_path: string;

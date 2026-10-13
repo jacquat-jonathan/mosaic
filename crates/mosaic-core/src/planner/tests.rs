@@ -170,6 +170,163 @@ fn domain_revisions_hierarchy_completion_and_history_are_atomic() {
 }
 
 #[test]
+fn calendar_expands_recurrence_sessions_due_dates_and_exceptions() {
+    let mut store = in_memory();
+    let epic = epic(&mut store, "Calendar");
+    let mut task = task(&mut store, Some(epic.id.clone()), None, "Prepare launch");
+    task = store
+        .update_task(
+            &task.id,
+            UpdateTask {
+                expected_revision: task.revision,
+                title: None,
+                description: None,
+                due_date: Some("2026-03-30".into()),
+                clear_due_date: false,
+                estimate_minutes: Some(90),
+                clear_estimate: false,
+            },
+        )
+        .unwrap();
+    let first = store
+        .create_work_session(CreateWorkSession {
+            task_id: task.id.clone(),
+            all_day: false,
+            start_value: "2026-03-30T07:00:00Z".into(),
+            end_value: "2026-03-30T08:00:00Z".into(),
+            timezone: "Europe/Zurich".into(),
+        })
+        .unwrap();
+    let second = store
+        .create_work_session(CreateWorkSession {
+            task_id: task.id.clone(),
+            all_day: false,
+            start_value: "2026-03-30T07:30:00Z".into(),
+            end_value: "2026-03-30T08:30:00Z".into(),
+            timezone: "Europe/Zurich".into(),
+        })
+        .unwrap();
+    let moved = store
+        .update_work_session(
+            &first.id,
+            UpdateWorkSession {
+                expected_revision: first.revision,
+                all_day: false,
+                start_value: "2026-03-30T09:00:00Z".into(),
+                end_value: "2026-03-30T10:00:00Z".into(),
+                timezone: "Europe/Zurich".into(),
+            },
+        )
+        .unwrap();
+    assert_eq!(moved.start_value, "2026-03-30T09:00:00.000Z");
+    assert_eq!(
+        store
+            .list_work_sessions(Some(&task.id), false)
+            .unwrap()
+            .into_iter()
+            .find(|session| session.id == second.id)
+            .unwrap()
+            .start_value,
+        "2026-03-30T07:30:00.000Z",
+        "moving one session must not move another"
+    );
+
+    let recurring = store
+        .create_event(CreateEvent {
+            title: "Daily sync".into(),
+            description: String::new(),
+            location: "Room 1".into(),
+            meeting_url: None,
+            participants: vec!["anna@example.com".into()],
+            epic_id: Some(epic.id.clone()),
+            color: None,
+            all_day: false,
+            start_value: "2026-03-27T08:00:00Z".into(),
+            end_value: "2026-03-27T09:00:00Z".into(),
+            timezone: "Europe/Zurich".into(),
+            recurrence_rule: Some("FREQ=DAILY;UNTIL=20260331".into()),
+        })
+        .unwrap();
+    let all_day = store
+        .create_event(CreateEvent {
+            title: "Launch day".into(),
+            description: String::new(),
+            location: String::new(),
+            meeting_url: None,
+            participants: vec![],
+            epic_id: None,
+            color: Some("#d15f68".into()),
+            all_day: true,
+            start_value: "2026-03-30".into(),
+            end_value: "2026-03-31".into(),
+            timezone: "Europe/Zurich".into(),
+            recurrence_rule: None,
+        })
+        .unwrap();
+    assert_eq!(all_day.start_value, "2026-03-30");
+
+    let range = store.calendar_range("2026-03-27", "2026-03-31").unwrap();
+    assert_eq!(range.work_sessions.len(), 2);
+    assert_eq!(range.due_markers.len(), 1);
+    assert!(range.unscheduled_tasks.is_empty());
+    let recurring_occurrences: Vec<_> = range
+        .events
+        .iter()
+        .filter(|event| event.series_id == recurring.id)
+        .collect();
+    assert_eq!(recurring_occurrences.len(), 5);
+    assert_eq!(
+        recurring_occurrences[0].start_value,
+        "2026-03-27T08:00:00.000Z"
+    );
+    assert_eq!(
+        recurring_occurrences[2].start_value,
+        "2026-03-29T07:00:00.000Z"
+    );
+
+    let recurring = store
+        .cancel_event_occurrence(&recurring.id, recurring.revision, "2026-03-29")
+        .unwrap();
+    store
+        .replace_event_occurrence(
+            &recurring.id,
+            recurring.revision,
+            "2026-03-30",
+            CreateEvent {
+                title: "Late sync".into(),
+                description: String::new(),
+                location: String::new(),
+                meeting_url: None,
+                participants: vec![],
+                epic_id: Some(epic.id),
+                color: None,
+                all_day: false,
+                start_value: "2026-03-30T13:00:00Z".into(),
+                end_value: "2026-03-30T14:00:00Z".into(),
+                timezone: "Europe/Zurich".into(),
+                recurrence_rule: None,
+            },
+        )
+        .unwrap();
+    let range = store.calendar_range("2026-03-27", "2026-03-31").unwrap();
+    assert!(
+        !range.events.iter().any(|event| {
+            event.series_id == recurring.id && event.occurrence_key == "2026-03-29"
+        })
+    );
+    assert!(range.events.iter().any(|event| event.title == "Late sync"));
+    assert_eq!(
+        range
+            .workload
+            .iter()
+            .find(|day| day.date == "2026-03-30")
+            .unwrap()
+            .minutes,
+        120
+    );
+}
+
+#[test]
 fn markdown_import_previews_maps_and_deduplicates_without_editing_notes() {
     let (dir, workspace) = workspace();
     workspace.mkdir("Daily").unwrap();

@@ -4,6 +4,7 @@
 mod calendar;
 mod epics;
 mod migration;
+mod recurrence;
 mod schema;
 mod tasks;
 
@@ -36,6 +37,7 @@ pub struct PlannerSummary {
     pub epics: usize,
     pub tasks: usize,
     pub work_sessions: usize,
+    pub events: usize,
     pub is_empty: bool,
 }
 
@@ -178,6 +180,119 @@ pub struct WorkSession {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PlannerEvent {
+    pub id: String,
+    pub series_id: Option<String>,
+    pub title: String,
+    pub description: String,
+    pub location: String,
+    pub meeting_url: Option<String>,
+    pub participants: Vec<String>,
+    pub epic_id: Option<String>,
+    pub color: Option<String>,
+    pub all_day: bool,
+    /// RFC 3339 UTC instant for timed events; ISO date for all-day events.
+    pub start_value: String,
+    /// RFC 3339 UTC instant for timed events; exclusive ISO date for all-day events.
+    pub end_value: String,
+    pub timezone: String,
+    pub recurrence_rule: Option<String>,
+    pub revision: i64,
+    pub created_at: String,
+    pub updated_at: String,
+    pub archived_at: Option<String>,
+    pub trashed_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CreateEvent {
+    pub title: String,
+    pub description: String,
+    pub location: String,
+    pub meeting_url: Option<String>,
+    pub participants: Vec<String>,
+    pub epic_id: Option<String>,
+    pub color: Option<String>,
+    pub all_day: bool,
+    pub start_value: String,
+    pub end_value: String,
+    pub timezone: String,
+    pub recurrence_rule: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct UpdateEvent {
+    pub expected_revision: i64,
+    pub title: String,
+    pub description: String,
+    pub location: String,
+    pub meeting_url: Option<String>,
+    pub participants: Vec<String>,
+    pub epic_id: Option<String>,
+    pub color: Option<String>,
+    pub all_day: bool,
+    pub start_value: String,
+    pub end_value: String,
+    pub timezone: String,
+    pub recurrence_rule: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct EventOccurrence {
+    pub event_id: String,
+    pub series_id: String,
+    pub occurrence_key: String,
+    pub title: String,
+    pub description: String,
+    pub location: String,
+    pub meeting_url: Option<String>,
+    pub participants: Vec<String>,
+    pub epic_id: Option<String>,
+    pub color: Option<String>,
+    pub all_day: bool,
+    pub start_value: String,
+    pub end_value: String,
+    pub timezone: String,
+    pub recurring: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CalendarWorkSession {
+    pub session: WorkSession,
+    pub task_title: String,
+    pub task_status: TaskStatus,
+    pub epic_id: Option<String>,
+    pub color: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DueMarker {
+    pub task_id: String,
+    pub title: String,
+    pub date: String,
+    pub status: TaskStatus,
+    pub epic_id: Option<String>,
+    pub color: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DayWorkload {
+    pub date: String,
+    pub minutes: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CalendarRange {
+    pub from: String,
+    pub to: String,
+    pub events: Vec<EventOccurrence>,
+    pub work_sessions: Vec<CalendarWorkSession>,
+    pub due_markers: Vec<DueMarker>,
+    pub unscheduled_tasks: Vec<PlannerTask>,
+    pub workload: Vec<DayWorkload>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CreateWorkSession {
     pub task_id: String,
     pub all_day: bool,
@@ -243,13 +358,15 @@ impl PlannerStore {
         let epics = count(&self.conn, "epics")?;
         let tasks = count(&self.conn, "tasks")?;
         let work_sessions = count(&self.conn, "work_sessions")?;
+        let events = count(&self.conn, "events")?;
         Ok(PlannerSummary {
             schema_version,
             revision,
             epics,
             tasks,
             work_sessions,
-            is_empty: epics == 0 && tasks == 0 && work_sessions == 0,
+            events,
+            is_empty: epics == 0 && tasks == 0 && work_sessions == 0 && events == 0,
         })
     }
 
@@ -317,6 +434,7 @@ pub(super) fn count(conn: &Connection, table: &str) -> Result<usize> {
         "epics" => "SELECT COUNT(*) FROM epics",
         "tasks" => "SELECT COUNT(*) FROM tasks",
         "work_sessions" => "SELECT COUNT(*) FROM work_sessions",
+        "events" => "SELECT COUNT(*) FROM events",
         _ => return Err(Error::Invalid(format!("unknown planner table {table}"))),
     };
     conn.query_row(sql, [], |row| row.get::<_, i64>(0))
@@ -374,6 +492,7 @@ pub(super) fn current_revision(tx: &Transaction<'_>, table: &str, id: &str) -> R
         "epics" => "SELECT revision FROM epics WHERE id = ?1",
         "tasks" => "SELECT revision FROM tasks WHERE id = ?1",
         "work_sessions" => "SELECT revision FROM work_sessions WHERE id = ?1",
+        "events" => "SELECT revision FROM events WHERE id = ?1",
         _ => return Err(Error::Invalid(format!("unknown planner table {table}"))),
     };
     tx.query_row(sql, [id], |row| row.get(0))

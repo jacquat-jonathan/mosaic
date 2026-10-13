@@ -5,7 +5,7 @@ import type { Backlink, CliInfo, Entry, FileContent, IndexProgress, RecentVault,
 import { mockInvoke } from "./mock";
 import type { VaultPreferences } from "../state/vaultPreferences";
 import type { TemplateConfig, TemplateList, TemplatePreview, TemplateRequest } from "./types";
-import type { CreatePlannerEpic, CreatePlannerTask, MarkdownImportPreview, MarkdownImportResult, MovePlannerTask, PlannerChanged, PlannerEpic, PlannerSummary, PlannerTask, UpdatePlannerEpic, UpdatePlannerTask } from "./types";
+import type { CreatePlannerEpic, CreatePlannerEvent, CreatePlannerTask, CreatePlannerWorkSession, MarkdownImportPreview, MarkdownImportResult, MovePlannerTask, PlannerCalendarRange, PlannerChanged, PlannerEpic, PlannerEvent, PlannerSummary, PlannerTask, PlannerWorkSession, UpdatePlannerEpic, UpdatePlannerEvent, UpdatePlannerTask, UpdatePlannerWorkSession } from "./types";
 
 export const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
@@ -101,6 +101,19 @@ export const api = {
   archivePlannerTask: (id: string, expectedRevision: number) => call<PlannerTask>("planner_archive_task", { id, expectedRevision }),
   restorePlannerTask: (id: string, expectedRevision: number) => call<PlannerTask>("planner_restore_task", { id, expectedRevision }),
   trashPlannerTask: (id: string, expectedRevision: number) => call<PlannerTask>("planner_trash_task", { id, expectedRevision }),
+  plannerWorkSessions: (taskId: string | null = null, includeCancelled = false) => call<PlannerWorkSession[]>("planner_work_sessions", { taskId, includeCancelled }),
+  createPlannerWorkSession: (input: CreatePlannerWorkSession) => call<PlannerWorkSession>("planner_create_work_session", { input }),
+  updatePlannerWorkSession: (id: string, input: UpdatePlannerWorkSession) => call<PlannerWorkSession>("planner_update_work_session", { id, input }),
+  cancelPlannerWorkSession: (id: string, expectedRevision: number) => call<PlannerWorkSession>("planner_cancel_work_session", { id, expectedRevision }),
+  plannerCalendarRange: (from: string, to: string) => call<PlannerCalendarRange>("planner_calendar_range", { from, to }),
+  plannerEvents: (includeArchived = false, includeTrashed = false) => call<PlannerEvent[]>("planner_events", { includeArchived, includeTrashed }),
+  createPlannerEvent: (input: CreatePlannerEvent) => call<PlannerEvent>("planner_create_event", { input }),
+  updatePlannerEvent: (id: string, input: UpdatePlannerEvent) => call<PlannerEvent>("planner_update_event", { id, input }),
+  archivePlannerEvent: (id: string, expectedRevision: number) => call<PlannerEvent>("planner_archive_event", { id, expectedRevision }),
+  restorePlannerEvent: (id: string, expectedRevision: number) => call<PlannerEvent>("planner_restore_event", { id, expectedRevision }),
+  trashPlannerEvent: (id: string, expectedRevision: number) => call<PlannerEvent>("planner_trash_event", { id, expectedRevision }),
+  cancelPlannerEventOccurrence: (seriesId: string, expectedRevision: number, occurrenceKey: string) => call<PlannerEvent>("planner_cancel_event_occurrence", { seriesId, expectedRevision, occurrenceKey }),
+  replacePlannerEventOccurrence: (seriesId: string, expectedRevision: number, occurrenceKey: string, input: CreatePlannerEvent) => call<PlannerEvent>("planner_replace_event_occurrence", { seriesId, expectedRevision, occurrenceKey, input }),
   plannerMigrationPreview: () => call<MarkdownImportPreview>("planner_migration_preview"),
   importMarkdownToPlanner: (preview: MarkdownImportPreview, selectedFingerprints: string[], allowDuplicates: boolean, timezone: string) => call<MarkdownImportResult>("planner_import_markdown", { preview, selectedFingerprints, allowDuplicates, timezone }),
   /** Agents' proposals in folders under review: pending first, then recent decisions. */

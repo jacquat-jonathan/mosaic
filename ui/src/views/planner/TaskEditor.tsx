@@ -10,12 +10,13 @@ export function TaskEditor({ task, epics, tasks, onChanged, onClose, onReload }:
   useEffect(()=>{setTitle(task.title);setDescription(task.description);setDue(task.due_date??"");setEstimate(task.estimate_minutes?.toString()??"");setError(null);setConflict(false);},[task.id,task.revision]);
   const run=async(action:()=>Promise<PlannerTask>)=>{setBusy(true);setError(null);setConflict(false);try{onChanged(await action());}catch(e){setError(errorMessage(e));setConflict(isCoreError(e)&&e.code==="conflict");}finally{setBusy(false);}};
   const save=()=>run(()=>api.updatePlannerTask(task.id,{expected_revision:task.revision,title,description,due_date:due||null,clear_due_date:!due,estimate_minutes:estimate?Number(estimate):null,clear_estimate:!estimate}));
+  const futurePolicy=async()=>{const future=(await api.plannerWorkSessions(task.id,false)).filter(session=>!session.all_day&&session.start_value>new Date().toISOString()||session.all_day&&session.start_value>new Date().toISOString().slice(0,10));if(!future.length)return"cancel" as const;if(await useUi.getState().ask({title:"Cancel future work sessions?",body:`${future.length} future session${future.length===1?"":"s"} can be cancelled now.`,confirmLabel:"Cancel sessions"}))return"cancel" as const;if(await useUi.getState().ask({title:"Keep future work sessions?",body:"They will remain visible after this task is completed.",confirmLabel:"Keep sessions"}))return"keep" as const;return null;};
   const status=async(next:PlannerTaskStatus)=>{
     if(next===task.status)return;
     if(next==="done"){
       const open=tasks.some(item=>item.parent_id===task.id&&item.status!=="done"&&!item.archived_at);
       if(open&&!await useUi.getState().ask({title:"Complete task with unfinished subtasks?",body:"The subtasks will remain incomplete.",confirmLabel:"Complete task"}))return;
-      return run(()=>api.completePlannerTask(task.id,task.revision,open,"cancel"));
+      const policy=await futurePolicy();if(!policy)return;return run(()=>api.completePlannerTask(task.id,task.revision,open,policy));
     }
     if(task.status==="done"){
       return run(async()=>{const reopened=await api.reopenPlannerTask(task.id,task.revision);return next==="new"?reopened:api.movePlannerTask(reopened.id,{expected_revision:reopened.revision,epic_id:reopened.epic_id,parent_id:reopened.parent_id,status:next,position:reopened.position});});

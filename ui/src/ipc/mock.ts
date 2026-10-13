@@ -2,7 +2,7 @@
 // It mirrors the core's semantics closely enough for UI work; it is not a second implementation to keep in sync
 // feature-for-feature.
 
-import type { Agent, AgentRun, Backlink, CoreError, CreatePlannerEpic, CreatePlannerTask, Entry, FileContent, MarkdownImportCandidate, MarkdownImportPreview, MovePlannerTask, PlannerEpic, PlannerTask, Proposal, QueryResult, QueryRow, SearchHit, UpdatePlannerEpic, UpdatePlannerTask, Version } from "./types";
+import type { Agent, AgentRun, Backlink, CoreError, CreatePlannerEpic, CreatePlannerEvent, CreatePlannerTask, CreatePlannerWorkSession, Entry, EventOccurrence, FileContent, MarkdownImportCandidate, MarkdownImportPreview, MovePlannerTask, PlannerEpic, PlannerEvent, PlannerTask, PlannerWorkSession, Proposal, QueryResult, QueryRow, SearchHit, UpdatePlannerEpic, UpdatePlannerEvent, UpdatePlannerTask, UpdatePlannerWorkSession, Version } from "./types";
 import { kindOf } from "./kinds";
 import { parse as parseYaml } from "yaml";
 import { annotatedTask, taskLabel, type WorkflowState, WORKFLOW_STATES } from "../views/taskBoardModel";
@@ -33,7 +33,9 @@ const tesseraRuns: AgentRun[] = [];
 const proposals: (Proposal & { content: string | null })[] = [];
 let plannerRevision = 0;
 let plannerId = 0;
-let plannerWorkSessions = 0;
+const plannerWorkSessions: PlannerWorkSession[] = [];
+const plannerEvents: PlannerEvent[] = [];
+const plannerEventExceptions = new Map<string, { action: "cancelled" | "replaced"; replacement: string | null }>();
 const plannerEpics: PlannerEpic[] = [];
 const plannerTasks: PlannerTask[] = [];
 const importedFingerprints = new Set<string>();
@@ -47,6 +49,16 @@ function plannerChanged(ids: string[]) {
 }
 function plannerConflict(current: { revision: number }, expected: number) {
   if (current.revision !== expected) throw { code: "conflict", message: "Planner object changed; reload it.", current_hash: String(current.revision) };
+}
+const isoDay=(value:string)=>value.slice(0,10);
+const plusDays=(value:string,days:number)=>{const date=new Date(`${value}T12:00:00Z`);date.setUTCDate(date.getUTCDate()+days);return date.toISOString().slice(0,10);};
+function mockEventOccurrences(event:PlannerEvent,from:string,to:string):EventOccurrence[]{
+  const first=isoDay(event.start_value),duration=event.all_day?Math.max(1,Math.round((Date.parse(`${event.end_value}T00:00:00Z`)-Date.parse(`${event.start_value}T00:00:00Z`))/86400000)):0;
+  const rule=event.recurrence_rule;const result:EventOccurrence[]=[];let day=first,index=0;const until=/UNTIL=(\d{4})(\d{2})(\d{2})/.exec(rule??"");const last=until?`${until[1]}-${until[2]}-${until[3]}`:to;
+  while(day<=to&&day<=last&&index<500){let occurs=!rule||day===first;if(rule){const interval=Number(/INTERVAL=(\d+)/.exec(rule)?.[1]??1);const frequency=/FREQ=(DAILY|WEEKLY|MONTHLY)/.exec(rule)?.[1];const days=Math.round((Date.parse(`${day}T00:00:00Z`)-Date.parse(`${first}T00:00:00Z`))/86400000);const byday=/BYDAY=([A-Z,]+)/.exec(rule)?.[1].split(",");const code=["SU","MO","TU","WE","TH","FR","SA"][new Date(`${day}T12:00:00Z`).getUTCDay()];occurs=frequency==="DAILY"?days%interval===0&&(!byday||byday.includes(code)):frequency==="WEEKLY"?Math.floor(days/7)%interval===0&&(!byday?new Date(`${day}T12:00:00Z`).getUTCDay()===new Date(`${first}T12:00:00Z`).getUTCDay():byday.includes(code)):frequency==="MONTHLY"?new Date(`${day}T12:00:00Z`).getUTCDate()===new Date(`${first}T12:00:00Z`).getUTCDate()&&((new Date(`${day}T12:00:00Z`).getUTCFullYear()-new Date(`${first}T12:00:00Z`).getUTCFullYear())*12+new Date(`${day}T12:00:00Z`).getUTCMonth()-new Date(`${first}T12:00:00Z`).getUTCMonth())%interval===0:false;}
+    if(occurs&&day>=from){const exception=plannerEventExceptions.get(`${event.id}:${day}`);if(exception?.action==="replaced"&&exception.replacement){const replacement=plannerEvents.find(item=>item.id===exception.replacement);if(replacement)result.push(...mockEventOccurrences(replacement,from,to).map(item=>({...item,series_id:event.id,recurring:true})));}else if(!exception)result.push({event_id:event.id,series_id:event.series_id??event.id,occurrence_key:day,title:event.title,description:event.description,location:event.location,meeting_url:event.meeting_url,participants:[...event.participants],epic_id:event.epic_id,color:event.color,all_day:event.all_day,start_value:event.all_day?day:new Date(Date.parse(event.start_value)+index*86400000).toISOString(),end_value:event.all_day?plusDays(day,duration):new Date(Date.parse(event.end_value)+index*86400000).toISOString(),timezone:event.timezone,recurring:!!rule});}
+    if(!rule)break;day=plusDays(day,1);index++;}
+  return result;
 }
 
 /** Browser testing: what an agent's change in a folder under review leaves behind. */
@@ -417,7 +429,7 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
   if (typeof a.root === "string" && a.root !== mockRoot) throw err("invalid", "The vault changed");
   switch (cmd) {
     case "planner_summary":
-      return { schema_version: 1, revision: plannerRevision, epics: plannerEpics.length, tasks: plannerTasks.length, work_sessions: plannerWorkSessions, is_empty: plannerEpics.length === 0 && plannerTasks.length === 0 && plannerWorkSessions === 0 };
+      return { schema_version: 1, revision: plannerRevision, epics: plannerEpics.length, tasks: plannerTasks.length, work_sessions: plannerWorkSessions.length, events: plannerEvents.filter(event=>!event.series_id).length, is_empty: plannerEpics.length === 0 && plannerTasks.length === 0 && plannerWorkSessions.length === 0 && plannerEvents.length === 0 };
     case "planner_epics":
       return plannerEpics.filter(epic => (a.includeArchived || !epic.archived_at) && (a.includeTrashed || !epic.trashed_at)).sort((x,y)=>x.position-y.position).map(epic=>({...epic}));
     case "planner_tasks":
@@ -464,12 +476,35 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
     case "planner_complete_task": {
       const task=plannerTasks.find(item=>item.id===a.id); if(!task) throw err("not_found","Planner task not found"); plannerConflict(task,Number(a.expectedRevision));
       if(!a.allowIncompleteSubtasks&&plannerTasks.some(item=>item.parent_id===task.id&&item.status!=="done"&&!item.archived_at)) throw err("invalid","Task has incomplete subtasks; confirm before completing it");
-      const at=plannerNow(); task.status="done"; task.completed_at??=at; task.updated_at=at; task.revision++; plannerChanged([task.id]); return {...task};
+      const at=plannerNow(); task.status="done"; task.completed_at??=at; task.updated_at=at; task.revision++; if(a.futureSessions==="cancel")for(const session of plannerWorkSessions)if(session.task_id===task.id&&session.state==="planned"&&session.start_value>at){session.state="cancelled";session.revision++;session.updated_at=at;}plannerChanged([task.id]); return {...task};
     }
     case "planner_reopen_task": case "planner_archive_task": case "planner_restore_task": case "planner_trash_task": {
       const task=plannerTasks.find(item=>item.id===a.id); if(!task) throw err("not_found","Planner task not found"); plannerConflict(task,Number(a.expectedRevision)); const at=plannerNow();
       if(cmd==="planner_reopen_task"){task.status="new";task.completed_at=null;} else if(cmd==="planner_archive_task") task.archived_at??=at; else if(cmd==="planner_restore_task"){task.archived_at=null;task.trashed_at=null;} else {if(!task.archived_at) throw err("invalid","Archive a task before moving it to Trash");task.trashed_at=at;}
       task.updated_at=at;task.revision++;plannerChanged([task.id]);return {...task};
+    }
+    case "planner_work_sessions": return plannerWorkSessions.filter(session=>(!a.taskId||session.task_id===a.taskId)&&(a.includeCancelled||session.state!=="cancelled")).map(session=>({...session}));
+    case "planner_create_work_session": {
+      const input=a.input as CreatePlannerWorkSession,task=plannerTasks.find(item=>item.id===input.task_id);if(!task)throw err("not_found","Planner task not found");if(task.status==="done"||task.archived_at)throw err("invalid","Work sessions can only be added to active incomplete tasks");if(Date.parse(input.end_value)<=Date.parse(input.start_value)&&!input.all_day)throw err("invalid","Session end must be after start");if(input.all_day&&input.end_value<=input.start_value)throw err("invalid","Session end must be after start");const at=plannerNow(),session:PlannerWorkSession={id:nextPlannerId("session"),task_id:input.task_id,all_day:input.all_day,start_value:input.start_value,end_value:input.end_value,timezone:input.timezone,state:"planned",revision:1,created_at:at,updated_at:at};plannerWorkSessions.push(session);plannerChanged([session.id,session.task_id]);return {...session};
+    }
+    case "planner_update_work_session": {
+      const session=plannerWorkSessions.find(item=>item.id===a.id);if(!session)throw err("not_found","Planner work session not found");const input=a.input as UpdatePlannerWorkSession;plannerConflict(session,input.expected_revision);if(session.state==="cancelled")throw err("invalid","A cancelled work session cannot be moved or resized");Object.assign(session,{all_day:input.all_day,start_value:input.start_value,end_value:input.end_value,timezone:input.timezone,revision:session.revision+1,updated_at:plannerNow()});plannerChanged([session.id,session.task_id]);return {...session};
+    }
+    case "planner_cancel_work_session": {const session=plannerWorkSessions.find(item=>item.id===a.id);if(!session)throw err("not_found","Planner work session not found");plannerConflict(session,Number(a.expectedRevision));session.state="cancelled";session.revision++;session.updated_at=plannerNow();plannerChanged([session.id,session.task_id]);return {...session};}
+    case "planner_events": return plannerEvents.filter(event=>!event.series_id&&(a.includeArchived||!event.archived_at)&&(a.includeTrashed||!event.trashed_at)).map(event=>structuredClone(event));
+    case "planner_create_event": {
+      const input=a.input as CreatePlannerEvent,title=input.title.trim();if(!title)throw err("invalid","Event title cannot be empty");const at=plannerNow(),event:PlannerEvent={...structuredClone(input),id:nextPlannerId("event"),series_id:null,title,revision:1,created_at:at,updated_at:at,archived_at:null,trashed_at:null};plannerEvents.push(event);plannerChanged([event.id]);return structuredClone(event);
+    }
+    case "planner_update_event": {
+      const event=plannerEvents.find(item=>item.id===a.id);if(!event)throw err("not_found","Planner event not found");const input=a.input as UpdatePlannerEvent;plannerConflict(event,input.expected_revision);if(!input.title.trim())throw err("invalid","Event title cannot be empty");Object.assign(event,structuredClone(input),{title:input.title.trim(),revision:event.revision+1,updated_at:plannerNow()});plannerChanged([event.id]);return structuredClone(event);
+    }
+    case "planner_archive_event": case "planner_restore_event": case "planner_trash_event": {
+      const event=plannerEvents.find(item=>item.id===a.id);if(!event)throw err("not_found","Planner event not found");plannerConflict(event,Number(a.expectedRevision));const at=plannerNow();if(cmd==="planner_archive_event")event.archived_at??=at;else if(cmd==="planner_restore_event"){event.archived_at=null;event.trashed_at=null;}else{if(!event.archived_at)throw err("invalid","Archive an event before moving it to Trash");event.trashed_at=at;}event.revision++;event.updated_at=at;plannerChanged([event.id]);return structuredClone(event);
+    }
+    case "planner_cancel_event_occurrence": {const event=plannerEvents.find(item=>item.id===a.seriesId);if(!event)throw err("not_found","Planner event not found");plannerConflict(event,Number(a.expectedRevision));plannerEventExceptions.set(`${event.id}:${a.occurrenceKey}`,{action:"cancelled",replacement:null});event.revision++;event.updated_at=plannerNow();plannerChanged([event.id]);return structuredClone(event);}
+    case "planner_replace_event_occurrence": {const event=plannerEvents.find(item=>item.id===a.seriesId);if(!event)throw err("not_found","Planner event not found");plannerConflict(event,Number(a.expectedRevision));const input=a.input as CreatePlannerEvent,at=plannerNow(),replacement:PlannerEvent={...structuredClone(input),id:nextPlannerId("event"),series_id:event.id,recurrence_rule:null,revision:1,created_at:at,updated_at:at,archived_at:null,trashed_at:null};plannerEvents.push(replacement);plannerEventExceptions.set(`${event.id}:${a.occurrenceKey}`,{action:"replaced",replacement:replacement.id});event.revision++;event.updated_at=at;plannerChanged([event.id,replacement.id]);return structuredClone(replacement);}
+    case "planner_calendar_range": {
+      const from=String(a.from),to=String(a.to),roots=plannerEvents.filter(event=>!event.series_id&&!event.archived_at&&!event.trashed_at),events=roots.flatMap(event=>mockEventOccurrences(event,from,to));const sessions=plannerWorkSessions.filter(session=>session.state==="planned"&&isoDay(session.start_value)<=to&&isoDay(session.end_value)>=from).flatMap(session=>{const task=plannerTasks.find(item=>item.id===session.task_id);if(!task)return[];return[{session:{...session},task_title:task.title,task_status:task.status,epic_id:task.epic_id,color:plannerEpics.find(epic=>epic.id===task.epic_id)?.color??null}];});const due_markers=plannerTasks.filter(task=>task.due_date&&task.due_date>=from&&task.due_date<=to&&!task.archived_at&&!task.trashed_at).map(task=>({task_id:task.id,title:task.title,date:task.due_date!,status:task.status,epic_id:task.epic_id,color:plannerEpics.find(epic=>epic.id===task.epic_id)?.color??null}));const scheduled=new Set(plannerWorkSessions.filter(item=>item.state==="planned").map(item=>item.task_id)),unscheduled_tasks=plannerTasks.filter(task=>task.status!=="done"&&!task.archived_at&&!task.trashed_at&&!scheduled.has(task.id)).map(task=>({...task}));const workload=[];for(let day=from;day<=to;day=plusDays(day,1)){let minutes=0;for(const item of sessions)if(isoDay(item.session.start_value)===day)minutes+=item.session.all_day?(plannerTasks.find(task=>task.id===item.session.task_id)?.estimate_minutes??60):Math.max(0,(Date.parse(item.session.end_value)-Date.parse(item.session.start_value))/60000);workload.push({date:day,minutes});}return{from,to,events,work_sessions:sessions,due_markers,unscheduled_tasks,workload};
     }
     case "planner_migration_preview": {
       const groups: {source_path:string;tasks:MarkdownImportCandidate[]}[]=[];
@@ -480,7 +515,7 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
     }
     case "planner_import_markdown": {
       const preview=a.preview as MarkdownImportPreview,selected=new Set(a.selectedFingerprints as string[]),all=preview.groups.flatMap(group=>group.tasks),known=new Set(all.map(item=>item.fingerprint));for(const item of selected)if(!known.has(item))throw err("invalid","Migration selection contains an unknown task");
-      const imported:string[]=[],skipped:string[]=[],mapped=new Map<string,string>();for(const item of all.filter(item=>selected.has(item.fingerprint)).sort((x,y)=>x.depth-y.depth||x.source_line-y.source_line)){if(!a.allowDuplicates&&importedFingerprints.has(item.fingerprint)){skipped.push(item.fingerprint);const prior=importedTaskIds.get(item.fingerprint);if(prior)mapped.set(item.fingerprint,prior);continue;}const at=plannerNow(),id=nextPlannerId("task"),parent_id=item.parent_fingerprint?(mapped.get(item.parent_fingerprint)??importedTaskIds.get(item.parent_fingerprint)??null):null;const created:PlannerTask={id,epic_id:null,parent_id,title:item.title,description:"",status:item.status,due_date:item.due_date,estimate_minutes:null,position:Math.max(0,...plannerTasks.filter(task=>task.epic_id===null&&task.parent_id===parent_id&&task.status===item.status).map(task=>task.position))+1024,revision:1,created_at:at,updated_at:at,completed_at:item.status==="done"?at:null,archived_at:item.archived?at:null,trashed_at:null};plannerTasks.push(created);if(item.all_day_session_date)plannerWorkSessions++;importedFingerprints.add(item.fingerprint);importedTaskIds.set(item.fingerprint,created.id);mapped.set(item.fingerprint,created.id);imported.push(created.id);}if(imported.length)plannerChanged(imported);return {planner_revision:plannerRevision,imported_task_ids:imported,skipped_duplicates:skipped};
+      const imported:string[]=[],skipped:string[]=[],mapped=new Map<string,string>();for(const item of all.filter(item=>selected.has(item.fingerprint)).sort((x,y)=>x.depth-y.depth||x.source_line-y.source_line)){if(!a.allowDuplicates&&importedFingerprints.has(item.fingerprint)){skipped.push(item.fingerprint);const prior=importedTaskIds.get(item.fingerprint);if(prior)mapped.set(item.fingerprint,prior);continue;}const at=plannerNow(),id=nextPlannerId("task"),parent_id=item.parent_fingerprint?(mapped.get(item.parent_fingerprint)??importedTaskIds.get(item.parent_fingerprint)??null):null;const created:PlannerTask={id,epic_id:null,parent_id,title:item.title,description:"",status:item.status,due_date:item.due_date,estimate_minutes:null,position:Math.max(0,...plannerTasks.filter(task=>task.epic_id===null&&task.parent_id===parent_id&&task.status===item.status).map(task=>task.position))+1024,revision:1,created_at:at,updated_at:at,completed_at:item.status==="done"?at:null,archived_at:item.archived?at:null,trashed_at:null};plannerTasks.push(created);if(item.all_day_session_date){const end=plusDays(item.all_day_session_date,1);plannerWorkSessions.push({id:nextPlannerId("session"),task_id:id,all_day:true,start_value:item.all_day_session_date,end_value:end,timezone:String(a.timezone),state:"planned",revision:1,created_at:at,updated_at:at});}importedFingerprints.add(item.fingerprint);importedTaskIds.set(item.fingerprint,created.id);mapped.set(item.fingerprint,created.id);imported.push(created.id);}if(imported.length)plannerChanged(imported);return {planner_revision:plannerRevision,imported_task_ids:imported,skipped_duplicates:skipped};
     }
     case "vault_preferences": {
       const { DEFAULT_VAULT_PREFS } = await import("../state/vaultPreferences");

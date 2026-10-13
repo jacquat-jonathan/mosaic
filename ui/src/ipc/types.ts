@@ -248,6 +248,13 @@ export interface DueMarker { task_id: string; title: string; date: string; statu
 export interface DayWorkload { date: string; minutes: number }
 export interface PlannerCalendarRange { from: string; to: string; events: EventOccurrence[]; work_sessions: CalendarWorkSession[]; due_markers: DueMarker[]; unscheduled_tasks: PlannerTask[]; workload: DayWorkload[] }
 
+export interface IcalImportCandidate { key: string; source_uid: string; recurrence_id: string; title: string; all_day: boolean; start_value: string; end_value: string; timezone: string; recurrence_rule: string | null; duplicate: boolean; event: CreatePlannerEvent }
+export interface IcalImportPreview { planner_revision: number; source_kind: string; candidates: IcalImportCandidate[]; duplicates: number }
+export interface IcalImportResult { planner_revision: number; imported_event_ids: string[]; skipped_duplicates: string[] }
+export interface CalendarSubscription { id: string; name: string; color: string; visible: boolean; refresh_minutes: number; last_success: string | null; last_error: string | null; has_cache: boolean }
+export interface CalendarOverlayOccurrence { source_id: string; source_name: string; uid: string; title: string; description: string; location: string; meeting_url: string | null; all_day: boolean; start_value: string; end_value: string; timezone: string; occurrence_key: string; color: string | null; read_only: true }
+export interface CalendarOverlayRange { subscriptions: CalendarSubscription[]; occurrences: CalendarOverlayOccurrence[] }
+
 export interface MarkdownImportCandidate {
   source_path: string;
   source_line: number;

@@ -5,7 +5,7 @@ import type { Backlink, CliInfo, Entry, FileContent, IndexProgress, RecentVault,
 import { mockInvoke } from "./mock";
 import type { VaultPreferences } from "../state/vaultPreferences";
 import type { TemplateConfig, TemplateList, TemplatePreview, TemplateRequest } from "./types";
-import type { CreatePlannerEpic, CreatePlannerEvent, CreatePlannerTask, CreatePlannerWorkSession, MarkdownImportPreview, MarkdownImportResult, MovePlannerTask, PlannerCalendarRange, PlannerChanged, PlannerEpic, PlannerEvent, PlannerSummary, PlannerTask, PlannerWorkSession, UpdatePlannerEpic, UpdatePlannerEvent, UpdatePlannerTask, UpdatePlannerWorkSession } from "./types";
+import type { CalendarOverlayRange, CalendarSubscription, CreatePlannerEpic, CreatePlannerEvent, CreatePlannerTask, CreatePlannerWorkSession, IcalImportPreview, IcalImportResult, MarkdownImportPreview, MarkdownImportResult, MovePlannerTask, PlannerCalendarRange, PlannerChanged, PlannerEpic, PlannerEvent, PlannerSummary, PlannerTask, PlannerWorkSession, UpdatePlannerEpic, UpdatePlannerEvent, UpdatePlannerTask, UpdatePlannerWorkSession } from "./types";
 
 export const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
@@ -116,6 +116,16 @@ export const api = {
   replacePlannerEventOccurrence: (seriesId: string, expectedRevision: number, occurrenceKey: string, input: CreatePlannerEvent) => call<PlannerEvent>("planner_replace_event_occurrence", { seriesId, expectedRevision, occurrenceKey, input }),
   plannerMigrationPreview: () => call<MarkdownImportPreview>("planner_migration_preview"),
   importMarkdownToPlanner: (preview: MarkdownImportPreview, selectedFingerprints: string[], allowDuplicates: boolean, timezone: string) => call<MarkdownImportResult>("planner_import_markdown", { preview, selectedFingerprints, allowDuplicates, timezone }),
+  previewPlannerIcal: (content: string, sourceKind = "ics-file", fallbackTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC") => call<IcalImportPreview>("planner_ical_preview", { content, sourceKind, fallbackTimezone }),
+  importPlannerIcal: (preview: IcalImportPreview, selectedKeys: string[], allowDuplicates: boolean) => call<IcalImportResult>("planner_ical_import", { preview, selectedKeys, allowDuplicates }),
+  exportPlannerIcal: () => call<string>("planner_ical_export"),
+  exportPlannerIcalFile: (path: string) => call<string>("planner_ical_export_file", { path }),
+  calendarSubscriptions: () => call<CalendarSubscription[]>("calendar_subscriptions"),
+  addCalendarSubscription: (name: string, url: string, color: string, refreshMinutes: number) => call<CalendarSubscription>("add_calendar_subscription", { name, url, color, refreshMinutes }),
+  updateCalendarSubscription: (id: string, name: string, color: string, visible: boolean, refreshMinutes: number) => call<CalendarSubscription>("update_calendar_subscription", { id, name, color, visible, refreshMinutes }),
+  removeCalendarSubscription: (id: string) => call<void>("remove_calendar_subscription", { id }),
+  refreshCalendarSubscriptions: (force = false) => call<CalendarSubscription[]>("refresh_calendar_subscriptions", { force }),
+  calendarOverlayRange: (from: string, to: string, timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC") => call<CalendarOverlayRange>("calendar_overlay_range", { from, to, timezone }),
   /** Agents' proposals in folders under review: pending first, then recent decisions. */
   proposals: (includeDecided = false) => call<Proposal[]>("proposals", { includeDecided }),
   /** The proposed content (null for a deletion). */

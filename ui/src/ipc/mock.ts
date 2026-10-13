@@ -2,7 +2,7 @@
 // It mirrors the core's semantics closely enough for UI work; it is not a second implementation to keep in sync
 // feature-for-feature.
 
-import type { Agent, AgentRun, Backlink, CoreError, CreatePlannerEpic, CreatePlannerEvent, CreatePlannerTask, CreatePlannerWorkSession, Entry, EventOccurrence, FileContent, MarkdownImportCandidate, MarkdownImportPreview, MovePlannerTask, PlannerEpic, PlannerEvent, PlannerTask, PlannerWorkSession, Proposal, QueryResult, QueryRow, SearchHit, UpdatePlannerEpic, UpdatePlannerEvent, UpdatePlannerTask, UpdatePlannerWorkSession, Version } from "./types";
+import type { Agent, AgentRun, Backlink, CalendarOverlayOccurrence, CalendarSubscription, CoreError, CreatePlannerEpic, CreatePlannerEvent, CreatePlannerTask, CreatePlannerWorkSession, Entry, EventOccurrence, FileContent, IcalImportPreview, MarkdownImportCandidate, MarkdownImportPreview, MovePlannerTask, PlannerEpic, PlannerEvent, PlannerTask, PlannerWorkSession, Proposal, QueryResult, QueryRow, SearchHit, UpdatePlannerEpic, UpdatePlannerEvent, UpdatePlannerTask, UpdatePlannerWorkSession, Version } from "./types";
 import { kindOf } from "./kinds";
 import { parse as parseYaml } from "yaml";
 import { annotatedTask, taskLabel, type WorkflowState, WORKFLOW_STATES } from "../views/taskBoardModel";
@@ -40,6 +40,8 @@ const plannerEpics: PlannerEpic[] = [];
 const plannerTasks: PlannerTask[] = [];
 const importedFingerprints = new Set<string>();
 const importedTaskIds = new Map<string, string>();
+const importedIcal = new Set<string>();
+const mockCalendarSubscriptions: CalendarSubscription[] = [{id:"mock-team",name:"Team calendar",color:"#7c6fd0",visible:true,refresh_minutes:30,last_success:new Date().toISOString(),last_error:null,has_cache:true}];
 
 const plannerNow = () => new Date().toISOString();
 const nextPlannerId = (kind: string) => `${kind}-${++plannerId}`;
@@ -59,6 +61,21 @@ function mockEventOccurrences(event:PlannerEvent,from:string,to:string):EventOcc
     if(occurs&&day>=from){const exception=plannerEventExceptions.get(`${event.id}:${day}`);if(exception?.action==="replaced"&&exception.replacement){const replacement=plannerEvents.find(item=>item.id===exception.replacement);if(replacement)result.push(...mockEventOccurrences(replacement,from,to).map(item=>({...item,series_id:event.id,recurring:true})));}else if(!exception)result.push({event_id:event.id,series_id:event.series_id??event.id,occurrence_key:day,title:event.title,description:event.description,location:event.location,meeting_url:event.meeting_url,participants:[...event.participants],epic_id:event.epic_id,color:event.color,all_day:event.all_day,start_value:event.all_day?day:new Date(Date.parse(event.start_value)+index*86400000).toISOString(),end_value:event.all_day?plusDays(day,duration):new Date(Date.parse(event.end_value)+index*86400000).toISOString(),timezone:event.timezone,recurring:!!rule});}
     if(!rule)break;day=plusDays(day,1);index++;}
   return result;
+}
+
+function mockIcalPreview(content:string,sourceKind:string):IcalImportPreview{
+  if(content.length>10*1024*1024)throw err("invalid","iCalendar input is larger than 10 MB");
+  if(!/BEGIN:VCALENDAR/i.test(content))throw err("invalid","input is not an iCalendar document");
+  const blocks=content.replace(/\r\n[ \t]/g,"").match(/BEGIN:VEVENT[\s\S]*?END:VEVENT/gi)??[];
+  if(!blocks.length)throw err("invalid","iCalendar document has no events");
+  const value=(block:string,name:string)=>new RegExp(`^${name}(?:;[^:]*)?:(.*)$`,`mi`).exec(block)?.[1].trim()??null;
+  const dateValue=(raw:string,allDay:boolean)=>{if(allDay)return`${raw.slice(0,4)}-${raw.slice(4,6)}-${raw.slice(6,8)}`;const cleaned=raw.replace(/Z$/,"");return new Date(`${cleaned.slice(0,4)}-${cleaned.slice(4,6)}-${cleaned.slice(6,8)}T${cleaned.slice(9,11)}:${cleaned.slice(11,13)}:${cleaned.slice(13,15)}${raw.endsWith("Z")?"Z":""}`).toISOString();};
+  const candidates=blocks.map((block,index)=>{const uid=value(block,"UID")??`event-${index}`,recurrence_id=value(block,"RECURRENCE-ID")??"",startRaw=value(block,"DTSTART");if(!startRaw)throw err("invalid",`VEVENT ${uid} is missing DTSTART`);const all_day=startRaw.length===8,endRaw=value(block,"DTEND")??(all_day?startRaw:new Date(Date.parse(dateValue(startRaw,false))+3600000).toISOString()),start_value=dateValue(startRaw,all_day),end_value=/^\d{8}(?:T|$)/.test(endRaw)?dateValue(endRaw,all_day):endRaw,key=`${uid}\0${recurrence_id}`,event:CreatePlannerEvent={title:value(block,"SUMMARY")??"Untitled event",description:value(block,"DESCRIPTION")??"",location:value(block,"LOCATION")??"",meeting_url:value(block,"URL"),participants:[],epic_id:null,color:null,all_day,start_value,end_value,timezone:Intl.DateTimeFormat().resolvedOptions().timeZone||"UTC",recurrence_rule:value(block,"RRULE")};return{key,source_uid:uid,recurrence_id,title:event.title,all_day,start_value,end_value,timezone:event.timezone,recurrence_rule:event.recurrence_rule,duplicate:importedIcal.has(`${sourceKind}:${key}`),event};});
+  return{planner_revision:plannerRevision,source_kind:sourceKind,candidates,duplicates:candidates.filter(item=>item.duplicate).length};
+}
+
+function mockOverlayRange(from:string,to:string):CalendarOverlayOccurrence[]{
+  const source=mockCalendarSubscriptions.find(item=>item.visible);if(!source)return[];const today=new Date().toISOString().slice(0,10),day=today>=from&&today<=to?today:from,start=new Date(`${day}T10:30:00`).toISOString(),end=new Date(`${day}T11:15:00`).toISOString();return[{source_id:source.id,source_name:source.name,uid:"mock-overlay-event",title:"Design sync",description:"Read-only event from an external iCalendar feed.",location:"Studio 4",meeting_url:"https://example.com/meeting",all_day:false,start_value:start,end_value:end,timezone:Intl.DateTimeFormat().resolvedOptions().timeZone||"UTC",occurrence_key:day,color:source.color,read_only:true}];
 }
 
 /** Browser testing: what an agent's change in a folder under review leaves behind. */
@@ -506,6 +523,18 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
     case "planner_calendar_range": {
       const from=String(a.from),to=String(a.to),roots=plannerEvents.filter(event=>!event.series_id&&!event.archived_at&&!event.trashed_at),events=roots.flatMap(event=>mockEventOccurrences(event,from,to));const sessions=plannerWorkSessions.filter(session=>session.state==="planned"&&isoDay(session.start_value)<=to&&isoDay(session.end_value)>=from).flatMap(session=>{const task=plannerTasks.find(item=>item.id===session.task_id);if(!task)return[];return[{session:{...session},task_title:task.title,task_status:task.status,epic_id:task.epic_id,color:plannerEpics.find(epic=>epic.id===task.epic_id)?.color??null}];});const due_markers=plannerTasks.filter(task=>task.due_date&&task.due_date>=from&&task.due_date<=to&&!task.archived_at&&!task.trashed_at).map(task=>({task_id:task.id,title:task.title,date:task.due_date!,status:task.status,epic_id:task.epic_id,color:plannerEpics.find(epic=>epic.id===task.epic_id)?.color??null}));const scheduled=new Set(plannerWorkSessions.filter(item=>item.state==="planned").map(item=>item.task_id)),unscheduled_tasks=plannerTasks.filter(task=>task.status!=="done"&&!task.archived_at&&!task.trashed_at&&!scheduled.has(task.id)).map(task=>({...task}));const workload=[];for(let day=from;day<=to;day=plusDays(day,1)){let minutes=0;for(const item of sessions)if(isoDay(item.session.start_value)===day)minutes+=item.session.all_day?(plannerTasks.find(task=>task.id===item.session.task_id)?.estimate_minutes??60):Math.max(0,(Date.parse(item.session.end_value)-Date.parse(item.session.start_value))/60000);workload.push({date:day,minutes});}return{from,to,events,work_sessions:sessions,due_markers,unscheduled_tasks,workload};
     }
+    case "planner_ical_preview": return mockIcalPreview(String(a.content),String(a.sourceKind));
+    case "planner_ical_import": {
+      const preview=a.preview as IcalImportPreview,selected=new Set(a.selectedKeys as string[]),known=new Set(preview.candidates.map(item=>item.key));for(const key of selected)if(!known.has(key))throw err("invalid","iCalendar selection contains an unknown event");const imported_event_ids:string[]=[],skipped_duplicates:string[]=[];for(const candidate of preview.candidates.filter(item=>selected.has(item.key))){const fingerprint=`${preview.source_kind}:${candidate.key}`;if(importedIcal.has(fingerprint)&&!a.allowDuplicates){skipped_duplicates.push(candidate.key);continue;}const at=plannerNow(),event:PlannerEvent={...structuredClone(candidate.event),id:nextPlannerId("event"),series_id:null,revision:1,created_at:at,updated_at:at,archived_at:null,trashed_at:null};plannerEvents.push(event);importedIcal.add(fingerprint);imported_event_ids.push(event.id);}if(imported_event_ids.length)plannerChanged(imported_event_ids);return{planner_revision:plannerRevision,imported_event_ids,skipped_duplicates};
+    }
+    case "planner_ical_export": return `BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Mosaic//Planner//EN\r\n${plannerEvents.filter(item=>!item.series_id&&!item.archived_at&&!item.trashed_at).map(item=>`BEGIN:VEVENT\r\nUID:mosaic-${item.id}@local\r\nSUMMARY:${item.title}\r\nDTSTART${item.all_day?";VALUE=DATE":""}:${item.all_day?item.start_value.replaceAll("-",""):item.start_value.replaceAll(/[-:]/g,"").replace(".000","")}\r\nDTEND${item.all_day?";VALUE=DATE":""}:${item.all_day?item.end_value.replaceAll("-",""):item.end_value.replaceAll(/[-:]/g,"").replace(".000","")}\r\nEND:VEVENT\r\n`).join("")}END:VCALENDAR\r\n`;
+    case "planner_ical_export_file": return String(a.path);
+    case "calendar_subscriptions": return structuredClone(mockCalendarSubscriptions);
+    case "add_calendar_subscription": {const name=String(a.name).trim(),url=String(a.url);if(!name||!/^https?:\/\/|^webcal:\/\//i.test(url))throw err("invalid","subscription name and HTTPS or webcal URL are required");const item:CalendarSubscription={id:nextPlannerId("subscription"),name,color:String(a.color),visible:true,refresh_minutes:Number(a.refreshMinutes),last_success:new Date().toISOString(),last_error:null,has_cache:true};mockCalendarSubscriptions.push(item);return structuredClone(item);}
+    case "update_calendar_subscription": {const item=mockCalendarSubscriptions.find(value=>value.id===a.id);if(!item)throw err("not_found","Calendar subscription not found");Object.assign(item,{name:String(a.name),color:String(a.color),visible:Boolean(a.visible),refresh_minutes:Number(a.refreshMinutes)});return structuredClone(item);}
+    case "remove_calendar_subscription": {const index=mockCalendarSubscriptions.findIndex(value=>value.id===a.id);if(index<0)throw err("not_found","Calendar subscription not found");mockCalendarSubscriptions.splice(index,1);return null;}
+    case "refresh_calendar_subscriptions": {for(const item of mockCalendarSubscriptions){item.last_success=new Date().toISOString();item.last_error=null;}return structuredClone(mockCalendarSubscriptions);}
+    case "calendar_overlay_range": return {subscriptions:structuredClone(mockCalendarSubscriptions),occurrences:mockOverlayRange(String(a.from),String(a.to))};
     case "planner_migration_preview": {
       const groups: {source_path:string;tasks:MarkdownImportCandidate[]}[]=[];
       for(const [path,file] of [...files.entries()].sort(([x],[y])=>x.localeCompare(y))){if(!path.endsWith(".md"))continue;const rows=mockTasks(path,file.content),byLine=new Map<number,string>();const candidates:MarkdownImportCandidate[]=[];

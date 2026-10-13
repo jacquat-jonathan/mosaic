@@ -1,5 +1,6 @@
 //! Tauri front end: every command is a thin mapping onto `mosaic_core::Workspace`.
 
+mod calendar_subscriptions;
 mod chat;
 mod planner;
 mod tessera;
@@ -672,6 +673,16 @@ pub fn run() {
             planner::planner_replace_event_occurrence,
             planner::planner_migration_preview,
             planner::planner_import_markdown,
+            planner::planner_ical_preview,
+            planner::planner_ical_import,
+            planner::planner_ical_export,
+            planner::planner_ical_export_file,
+            calendar_subscriptions::calendar_subscriptions,
+            calendar_subscriptions::add_calendar_subscription,
+            calendar_subscriptions::update_calendar_subscription,
+            calendar_subscriptions::remove_calendar_subscription,
+            calendar_subscriptions::refresh_calendar_subscriptions,
+            calendar_subscriptions::calendar_overlay_range,
             agents,
             mirror_agents,
             chat::chat_check,

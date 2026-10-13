@@ -3,6 +3,7 @@
 
 mod calendar;
 mod epics;
+mod ical;
 mod migration;
 mod recurrence;
 mod schema;
@@ -18,6 +19,10 @@ use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
+pub use ical::{
+    IcalImportCandidate, IcalImportPreview, IcalImportResult, OverlayOccurrence,
+    overlay_occurrences, validate_ical,
+};
 pub use migration::{
     MarkdownImportCandidate, MarkdownImportGroup, MarkdownImportPreview, MarkdownImportResult,
 };

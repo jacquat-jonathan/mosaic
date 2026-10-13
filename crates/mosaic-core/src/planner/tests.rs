@@ -327,6 +327,132 @@ fn calendar_expands_recurrence_sessions_due_dates_and_exceptions() {
 }
 
 #[test]
+fn ical_preview_import_export_and_overlay_deduplicate() {
+    let content = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:focus@example.test\r\nDTSTART;TZID=Europe/Zurich:20261013T090000\r\nDTEND;TZID=Europe/Zurich:20261013T100000\r\nRRULE:FREQ=DAILY;UNTIL=20261015\r\nSUMMARY:Focus time\r\nDESCRIPTION:Deep work\\nNo notifications\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nUID:holiday@example.test\r\nDTSTART;VALUE=DATE:20261014\r\nDTEND;VALUE=DATE:20261015\r\nSUMMARY:Holiday\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+    let mut store = in_memory();
+    let preview = store
+        .preview_ical_import("file:test.ics", content, "Europe/Zurich")
+        .unwrap();
+    assert_eq!(preview.candidates.len(), 2);
+    assert_eq!(
+        preview.candidates[0].start_value,
+        "2026-10-13T07:00:00.000Z"
+    );
+    assert!(preview.candidates[1].all_day);
+    let selected = preview
+        .candidates
+        .iter()
+        .map(|candidate| candidate.key.clone())
+        .collect::<Vec<_>>();
+    let imported = store.import_ical(&preview, &selected, false).unwrap();
+    assert_eq!(imported.imported_event_ids.len(), 2);
+    let repeated_preview = store
+        .preview_ical_import("file:test.ics", content, "Europe/Zurich")
+        .unwrap();
+    assert_eq!(repeated_preview.duplicates, 2);
+    let repeated = store
+        .import_ical(&repeated_preview, &selected, false)
+        .unwrap();
+    assert!(repeated.imported_event_ids.is_empty());
+    assert_eq!(repeated.skipped_duplicates.len(), 2);
+
+    let exported = store.export_ical().unwrap();
+    assert!(exported.contains("PRODID:-//Mosaic//Planner//EN"));
+    assert!(exported.contains("RRULE:FREQ=DAILY;UNTIL=20261015"));
+    assert!(exported.contains("DTSTART;VALUE=DATE:20261014"));
+    let roundtrip = PlannerStore::in_memory()
+        .unwrap()
+        .preview_ical_import("roundtrip", &exported, "UTC")
+        .unwrap();
+    assert_eq!(roundtrip.candidates.len(), 2);
+
+    let overlay = overlay_occurrences(
+        content,
+        "subscription",
+        "Team",
+        Some("#5b8def".into()),
+        "2026-10-13",
+        "2026-10-15",
+        "Europe/Zurich",
+    )
+    .unwrap();
+    assert_eq!(
+        overlay
+            .iter()
+            .filter(|item| item.uid == "focus@example.test")
+            .count(),
+        3
+    );
+    assert!(overlay.iter().all(|item| item.read_only));
+}
+
+#[test]
+fn ical_failures_are_atomic_and_recurring_exceptions_export_inside_events() {
+    let mut store = in_memory();
+    assert!(validate_ical("not a calendar", "UTC").is_err());
+    let oversized = format!("BEGIN:VCALENDAR\n{}", "x".repeat(10 * 1024 * 1024));
+    assert!(validate_ical(&oversized, "UTC").is_err());
+
+    let content = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:atomic@example.test\r\nDTSTART;VALUE=DATE:20261014\r\nDTEND;VALUE=DATE:20261015\r\nSUMMARY:Atomic import\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+    let preview = store.preview_ical_import("atomic", content, "UTC").unwrap();
+    let revision = store.summary().unwrap().revision;
+    assert!(
+        store
+            .import_ical(&preview, &["unknown-event".into()], false)
+            .is_err()
+    );
+    assert_eq!(store.summary().unwrap().revision, revision);
+    assert!(store.list_events(false, false).unwrap().is_empty());
+
+    let recurring = store
+        .create_event(CreateEvent {
+            title: "Morning sync".into(),
+            description: String::new(),
+            location: String::new(),
+            meeting_url: None,
+            participants: vec![],
+            epic_id: None,
+            color: None,
+            all_day: false,
+            start_value: "2026-10-13T07:00:00Z".into(),
+            end_value: "2026-10-13T08:00:00Z".into(),
+            timezone: "Europe/Zurich".into(),
+            recurrence_rule: Some("FREQ=DAILY;UNTIL=20261015".into()),
+        })
+        .unwrap();
+    let recurring = store
+        .cancel_event_occurrence(&recurring.id, recurring.revision, "2026-10-14")
+        .unwrap();
+    store
+        .replace_event_occurrence(
+            &recurring.id,
+            recurring.revision,
+            "2026-10-15",
+            CreateEvent {
+                title: "Later sync".into(),
+                description: String::new(),
+                location: String::new(),
+                meeting_url: None,
+                participants: vec![],
+                epic_id: None,
+                color: None,
+                all_day: false,
+                start_value: "2026-10-15T11:00:00Z".into(),
+                end_value: "2026-10-15T12:00:00Z".into(),
+                timezone: "Europe/Zurich".into(),
+                recurrence_rule: None,
+            },
+        )
+        .unwrap();
+    let exported = store.export_ical().unwrap();
+    assert!(exported.contains("EXDATE;TZID=Europe/Zurich:20261014T090000"));
+    assert!(exported.contains("RECURRENCE-ID;TZID=Europe/Zurich:20261015T090000"));
+    let base_end = exported.find("EXDATE;TZID=Europe/Zurich").unwrap();
+    assert!(exported[base_end..].find("END:VEVENT").is_some());
+    assert_eq!(validate_ical(&exported, "UTC").unwrap(), 2);
+}
+
+#[test]
 fn markdown_import_previews_maps_and_deduplicates_without_editing_notes() {
     let (dir, workspace) = workspace();
     workspace.mkdir("Daily").unwrap();

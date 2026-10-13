@@ -16,5 +16,19 @@ describe("planner calendar browser API",()=>{
     expect(range.due_markers.some(item=>item.task_id===task.id)).toBe(true);
     expect(range.unscheduled_tasks.some(item=>item.id===task.id)).toBe(false);
   });
+  it("previews, imports and deduplicates iCalendar events and exposes locked overlays",async()=>{
+    vi.stubGlobal("window",{dispatchEvent:vi.fn()});
+    const content="BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:ui-test@example.test\r\nDTSTART;VALUE=DATE:20261016\r\nDTEND;VALUE=DATE:20261017\r\nSUMMARY:UI import\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+    const preview=await api.previewPlannerIcal(content,"ui-test","UTC");
+    expect(preview.candidates).toHaveLength(1);
+    const imported=await api.importPlannerIcal(preview,[preview.candidates[0].key],false);
+    expect(imported.imported_event_ids).toHaveLength(1);
+    const repeated=await api.previewPlannerIcal(content,"ui-test","UTC");
+    expect(repeated.duplicates).toBe(1);
+    const overlays=await api.calendarOverlayRange("2026-10-13","2026-10-17","UTC");
+    expect(overlays.subscriptions[0].name).toBe("Team calendar");
+    expect(overlays.occurrences[0]).toMatchObject({read_only:true,source_name:"Team calendar"});
+    expect(await api.exportPlannerIcal()).toContain("UID:mosaic-");
+  });
 });
 afterEach(()=>vi.unstubAllGlobals());

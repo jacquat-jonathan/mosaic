@@ -91,7 +91,7 @@ fn normalize_range(
     }
 }
 
-fn row_to_event(row: &Row<'_>) -> rusqlite::Result<PlannerEvent> {
+pub(super) fn row_to_event(row: &Row<'_>) -> rusqlite::Result<PlannerEvent> {
     let participants: String = row.get(6)?;
     Ok(PlannerEvent {
         id: row.get(0)?,
@@ -153,7 +153,7 @@ fn normalize_optional(value: Option<String>) -> Option<String> {
     })
 }
 
-fn insert_event(
+pub(super) fn insert_event(
     tx: &Transaction<'_>,
     input: CreateEvent,
     series_id: Option<&str>,

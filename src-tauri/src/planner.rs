@@ -1,10 +1,11 @@
 use crate::{AppState, CmdResult};
+use mosaic_core::Error;
 use mosaic_core::Workspace;
 use mosaic_core::planner::{
     CalendarRange, CreateEpic, CreateEvent, CreateTask, CreateWorkSession, Epic,
-    FutureSessionPolicy, MarkdownImportPreview, MarkdownImportResult, MoveTask, PlannerEvent,
-    PlannerSummary, PlannerTask, UpdateEpic, UpdateEvent, UpdateTask, UpdateWorkSession,
-    WorkSession,
+    FutureSessionPolicy, IcalImportPreview, IcalImportResult, MarkdownImportPreview,
+    MarkdownImportResult, MoveTask, PlannerEvent, PlannerSummary, PlannerTask, UpdateEpic,
+    UpdateEvent, UpdateTask, UpdateWorkSession, WorkSession,
 };
 use serde::Serialize;
 use std::sync::Arc;
@@ -377,4 +378,51 @@ pub(crate) fn planner_import_markdown(
     )?;
     changed(&app, &workspace, result.imported_task_ids.clone())?;
     Ok(result)
+}
+
+#[tauri::command]
+pub(crate) fn planner_ical_preview(
+    state: State<AppState>,
+    source_kind: String,
+    content: String,
+    fallback_timezone: String,
+) -> CmdResult<IcalImportPreview> {
+    state
+        .get()?
+        .preview_planner_ical_import(&source_kind, &content, &fallback_timezone)
+}
+
+#[tauri::command]
+pub(crate) fn planner_ical_import(
+    app: AppHandle,
+    state: State<AppState>,
+    preview: IcalImportPreview,
+    selected_keys: Vec<String>,
+    allow_duplicates: bool,
+) -> CmdResult<IcalImportResult> {
+    let workspace = state.get()?;
+    let result = workspace.import_planner_ical(&preview, &selected_keys, allow_duplicates)?;
+    changed(&app, &workspace, result.imported_event_ids.clone())?;
+    Ok(result)
+}
+
+#[tauri::command]
+pub(crate) fn planner_ical_export(state: State<AppState>) -> CmdResult<String> {
+    state.get()?.export_planner_ical()
+}
+
+#[tauri::command]
+pub(crate) fn planner_ical_export_file(state: State<AppState>, path: String) -> CmdResult<String> {
+    let content = state.get()?.export_planner_ical()?;
+    let destination = std::path::PathBuf::from(&path);
+    if destination.extension().and_then(|value| value.to_str()) != Some("ics") {
+        return Err(Error::Invalid(
+            "calendar export must use an .ics file".into(),
+        ));
+    }
+    std::fs::write(&destination, content).map_err(|source| Error::Io {
+        path: destination.display().to_string(),
+        source,
+    })?;
+    Ok(destination.display().to_string())
 }

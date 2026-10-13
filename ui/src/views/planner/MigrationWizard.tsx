@@ -20,12 +20,12 @@ export function MigrationWizard({ preview, onDone, onCancel }: { preview: Markdo
   };
   return <section className="migration-wizard" aria-label="Import Markdown tasks">
     <header><div><h2>Preview Markdown task import</h2><p>Your notes will not be edited. Imported tasks become independent planner objects.</p></div><button onClick={onCancel}>Close</button></header>
-    <div className="migration-summary"><strong>{selected.size}</strong> of {preview.candidates} tasks selected{preview.duplicates ? ` · ${preview.duplicates} previously imported` : ""}</div>
+    <div className="migration-summary"><strong>{selected.size}</strong> of {preview.candidates} items selected{preview.duplicates ? ` · ${preview.duplicates} previously imported` : ""}</div>
     <div className="migration-groups">{preview.groups.map(group=><section key={group.source_path}>
       <h3>{group.source_path}</h3>
       {group.tasks.map(task=><label key={task.fingerprint} className={task.duplicate ? "duplicate" : ""} style={{paddingLeft:task.depth*18}}>
         <input type="checkbox" checked={selected.has(task.fingerprint)} disabled={busy || (task.duplicate&&!includeDuplicates)} onChange={event=>toggle(task.fingerprint,event.target.checked)} />
-        <span>{task.title}</span><small>{task.status}{task.due_date?` · due ${task.due_date}`:""}{task.all_day_session_date?` · planned ${task.all_day_session_date}`:""}{task.duplicate?" · already imported":""}</small>
+        <span>{task.title}</span><small>{task.kind}{task.kind!=="epic"?` · ${task.status}`:""}{task.due_date?` · due ${task.due_date}`:""}{task.duplicate?" · already imported":""}</small>
       </label>)}
     </section>)}</div>
     {preview.duplicates>0&&<label className="migration-duplicates"><input type="checkbox" checked={includeDuplicates} onChange={event=>{setIncludeDuplicates(event.target.checked);if(!event.target.checked)setSelected(new Set([...selected].filter(id=>!preview.groups.flatMap(group=>group.tasks).some(task=>task.fingerprint===id&&task.duplicate))));}} /> Allow intentional duplicates</label>}

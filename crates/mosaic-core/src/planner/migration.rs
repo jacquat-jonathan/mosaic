@@ -4,7 +4,6 @@ use super::{
 use crate::api::Workspace;
 use crate::error::{Error, Result};
 use crate::index::TaskMeta;
-use chrono::Days;
 use regex::Regex;
 use rusqlite::{OptionalExtension, Transaction, params};
 use serde::{Deserialize, Serialize};
@@ -16,6 +15,14 @@ static BLOCK_ID: LazyLock<Regex> =
 static DUE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\s*📅\s*\d{4}-\d{2}-\d{2}").expect("valid due regex"));
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum MarkdownImportKind {
+    Epic,
+    Task,
+    Subtask,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct MarkdownImportCandidate {
     pub source_path: String,
@@ -23,7 +30,9 @@ pub struct MarkdownImportCandidate {
     pub block_id: Option<String>,
     pub fingerprint: String,
     pub parent_fingerprint: Option<String>,
+    pub epic_fingerprint: Option<String>,
     pub depth: usize,
+    pub kind: MarkdownImportKind,
     pub title: String,
     pub status: TaskStatus,
     pub due_date: Option<String>,
@@ -51,8 +60,15 @@ pub struct MarkdownImportPreview {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct MarkdownImportResult {
     pub planner_revision: i64,
+    pub imported_epic_ids: Vec<String>,
     pub imported_task_ids: Vec<String>,
     pub skipped_duplicates: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+enum ImportedEntity {
+    Epic(String),
+    Task(String),
 }
 
 fn block_id(text: &str) -> Option<String> {
@@ -95,27 +111,38 @@ fn mapped_status(task: &TaskMeta) -> TaskStatus {
     }
 }
 
-fn imported_task(
+fn imported_entity(
     tx: &Transaction<'_>,
     candidate: &MarkdownImportCandidate,
-) -> Result<Option<String>> {
+) -> Result<Option<ImportedEntity>> {
+    let read = |row: &rusqlite::Row<'_>| {
+        let task_id: Option<String> = row.get(0)?;
+        let epic_id: Option<String> = row.get(1)?;
+        Ok(match (task_id, epic_id) {
+            (Some(id), None) => Some(ImportedEntity::Task(id)),
+            (None, Some(id)) => Some(ImportedEntity::Epic(id)),
+            _ => None,
+        })
+    };
     if let Some(block) = candidate.block_id.as_deref() {
         tx.query_row(
-            "SELECT imported_task_id FROM legacy_imports
+            "SELECT imported_task_id, imported_epic_id FROM legacy_imports
              WHERE source_path = ?1 AND block_id = ?2 ORDER BY id DESC LIMIT 1",
             params![candidate.source_path, block],
-            |row| row.get(0),
+            read,
         )
         .optional()
+        .map(Option::flatten)
         .map_err(sql_error)
     } else {
         tx.query_row(
-            "SELECT imported_task_id FROM legacy_imports
+            "SELECT imported_task_id, imported_epic_id FROM legacy_imports
              WHERE source_fingerprint = ?1 ORDER BY id DESC LIMIT 1",
             [&candidate.fingerprint],
-            |row| row.get(0),
+            read,
         )
         .optional()
+        .map(Option::flatten)
         .map_err(sql_error)
     }
 }
@@ -187,6 +214,7 @@ impl PlannerStore {
         if candidates.is_empty() {
             return Ok(MarkdownImportResult {
                 planner_revision: store_revision(&self.conn)?,
+                imported_epic_ids: Vec::new(),
                 imported_task_ids: Vec::new(),
                 skipped_duplicates: Vec::new(),
             });
@@ -194,20 +222,111 @@ impl PlannerStore {
 
         let tx = self.conn.transaction().map_err(sql_error)?;
         let at = now();
-        let mut mapped: HashMap<String, String> = HashMap::new();
+        let mut mapped_epics: HashMap<String, String> = HashMap::new();
+        let mut mapped_tasks: HashMap<String, String> = HashMap::new();
+        let mut imported_epic_ids = Vec::new();
         let mut imported_task_ids = Vec::new();
         let mut skipped_duplicates = Vec::new();
         for candidate in candidates {
-            if !allow_duplicates && let Some(existing) = imported_task(&tx, candidate)? {
-                mapped.insert(candidate.fingerprint.clone(), existing);
+            if !allow_duplicates && let Some(existing) = imported_entity(&tx, candidate)? {
+                match existing {
+                    ImportedEntity::Epic(id) => {
+                        mapped_epics.insert(candidate.fingerprint.clone(), id);
+                    }
+                    ImportedEntity::Task(id) => {
+                        mapped_tasks.insert(candidate.fingerprint.clone(), id);
+                    }
+                }
                 skipped_duplicates.push(candidate.fingerprint.clone());
                 continue;
             }
+
             let id = uuid::Uuid::new_v4().to_string();
+            if candidate.kind == MarkdownImportKind::Epic {
+                let position: i64 = tx
+                    .query_row(
+                        "SELECT COALESCE(MAX(position), 0) + 1024 FROM epics",
+                        [],
+                        |row| row.get(0),
+                    )
+                    .map_err(sql_error)?;
+                let archived_at = candidate.archived.then_some(at.clone());
+                tx.execute(
+                    "INSERT INTO epics(id, title, description, color, position, revision,
+                                       created_at, updated_at, archived_at)
+                     VALUES (?1, ?2, '', '#6477d4', ?3, 1, ?4, ?4, ?5)",
+                    params![id, candidate.title, position, at, archived_at],
+                )
+                .map_err(sql_error)?;
+                tx.execute(
+                    "INSERT INTO note_links(owner_kind, owner_id, path, heading, block_id)
+                     VALUES ('epic', ?1, ?2, NULL, ?3)",
+                    params![id, candidate.source_path, candidate.block_id],
+                )
+                .map_err(sql_error)?;
+                tx.execute(
+                    "INSERT INTO legacy_imports(
+                        source_path, source_line, block_id, source_fingerprint,
+                        imported_task_id, imported_epic_id, imported_at
+                     ) VALUES (?1, ?2, ?3, ?4, NULL, ?5, ?6)",
+                    params![
+                        candidate.source_path,
+                        candidate.source_line as i64,
+                        candidate.block_id,
+                        candidate.fingerprint,
+                        id,
+                        at
+                    ],
+                )
+                .map_err(sql_error)?;
+                record_activity(
+                    &tx,
+                    ("epic", &id),
+                    &at,
+                    "imported",
+                    &format!(
+                        "Imported from Markdown at {}:{}",
+                        candidate.source_path, candidate.source_line
+                    ),
+                    None,
+                    Some(serde_json::json!({
+                        "source_path": candidate.source_path,
+                        "source_line": candidate.source_line,
+                        "block_id": candidate.block_id,
+                    })),
+                )?;
+                mapped_epics.insert(candidate.fingerprint.clone(), id.clone());
+                imported_epic_ids.push(id);
+                continue;
+            }
+
+            let epic_id = match candidate.epic_fingerprint.as_deref() {
+                Some(epic) if mapped_epics.contains_key(epic) => mapped_epics.get(epic).cloned(),
+                Some(epic) => match all.get(epic) {
+                    Some(epic_candidate) => match imported_entity(&tx, epic_candidate)? {
+                        Some(ImportedEntity::Epic(id)) => Some(id),
+                        _ => None,
+                    },
+                    None => None,
+                },
+                None => None,
+            };
             let parent_id = match candidate.parent_fingerprint.as_deref() {
-                Some(parent) if mapped.contains_key(parent) => mapped.get(parent).cloned(),
+                Some(parent)
+                    if all
+                        .get(parent)
+                        .is_some_and(|candidate| candidate.kind == MarkdownImportKind::Epic) =>
+                {
+                    None
+                }
+                Some(parent) if mapped_tasks.contains_key(parent) => {
+                    mapped_tasks.get(parent).cloned()
+                }
                 Some(parent) => match all.get(parent) {
-                    Some(parent_candidate) => imported_task(&tx, parent_candidate)?,
+                    Some(parent_candidate) => match imported_entity(&tx, parent_candidate)? {
+                        Some(ImportedEntity::Task(id)) => Some(id),
+                        _ => None,
+                    },
                     None => None,
                 },
                 None => None,
@@ -215,8 +334,8 @@ impl PlannerStore {
             let position: i64 = tx
                 .query_row(
                     "SELECT COALESCE(MAX(position), 0) + 1024 FROM tasks
-                     WHERE epic_id IS NULL AND parent_id IS ?1 AND status = ?2",
-                    params![parent_id, candidate.status.as_str()],
+                     WHERE epic_id IS ?1 AND parent_id IS ?2 AND status = ?3",
+                    params![epic_id, parent_id, candidate.status.as_str()],
                     |row| row.get(0),
                 )
                 .map_err(sql_error)?;
@@ -226,9 +345,10 @@ impl PlannerStore {
                 "INSERT INTO tasks(id, epic_id, parent_id, title, description, status, due_date,
                                    estimate_minutes, position, revision, created_at, updated_at,
                                    completed_at, archived_at)
-                 VALUES (?1, NULL, ?2, ?3, '', ?4, ?5, NULL, ?6, 1, ?7, ?7, ?8, ?9)",
+                 VALUES (?1, ?2, ?3, ?4, '', ?5, ?6, NULL, ?7, 1, ?8, ?8, ?9, ?10)",
                 params![
                     id,
+                    epic_id,
                     parent_id,
                     candidate.title,
                     candidate.status.as_str(),
@@ -247,9 +367,10 @@ impl PlannerStore {
             )
             .map_err(sql_error)?;
             tx.execute(
-                "INSERT INTO legacy_imports(source_path, source_line, block_id, source_fingerprint,
-                                            imported_task_id, imported_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                "INSERT INTO legacy_imports(
+                    source_path, source_line, block_id, source_fingerprint,
+                    imported_task_id, imported_epic_id, imported_at
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, NULL, ?6)",
                 params![
                     candidate.source_path,
                     candidate.source_line as i64,
@@ -277,34 +398,10 @@ impl PlannerStore {
                     "status": candidate.status,
                 })),
             )?;
-            if let Some(date) = candidate.all_day_session_date.as_deref() {
-                let date = chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d")
-                    .map_err(|_| Error::Invalid(format!("invalid daily-note date {date}")))?;
-                let end = date
-                    .checked_add_days(Days::new(1))
-                    .ok_or_else(|| Error::Invalid("daily-note date is out of range".into()))?;
-                let session_id = uuid::Uuid::new_v4().to_string();
-                tx.execute(
-                    "INSERT INTO work_sessions(id, task_id, all_day, start_value, end_value, timezone,
-                                               state, revision, created_at, updated_at)
-                     VALUES (?1, ?2, 1, ?3, ?4, ?5, 'planned', 1, ?6, ?6)",
-                    params![session_id, id, date.to_string(), end.to_string(), timezone, at],
-                )
-                .map_err(sql_error)?;
-                record_activity(
-                    &tx,
-                    ("work_session", &session_id),
-                    &at,
-                    "imported",
-                    "Imported all-day work session from daily note",
-                    None,
-                    Some(serde_json::json!({"task_id": id, "date": date.to_string()})),
-                )?;
-            }
-            mapped.insert(candidate.fingerprint.clone(), id.clone());
+            mapped_tasks.insert(candidate.fingerprint.clone(), id.clone());
             imported_task_ids.push(id);
         }
-        let planner_revision = if imported_task_ids.is_empty() {
+        let planner_revision = if imported_epic_ids.is_empty() && imported_task_ids.is_empty() {
             store_revision(&tx)?
         } else {
             bump_store_revision(&tx, &at)?
@@ -312,6 +409,7 @@ impl PlannerStore {
         tx.commit().map_err(sql_error)?;
         Ok(MarkdownImportResult {
             planner_revision,
+            imported_epic_ids,
             imported_task_ids,
             skipped_duplicates,
         })
@@ -321,7 +419,6 @@ impl PlannerStore {
 impl Workspace {
     pub fn preview_markdown_planner_import(&self) -> Result<MarkdownImportPreview> {
         let rules = self.rules();
-        let preferences = self.vault_preferences()?;
         let tasks: Vec<TaskMeta> = self
             .reading()
             .tasks()?
@@ -330,12 +427,14 @@ impl Workspace {
             .collect();
 
         let mut fingerprints: HashMap<(String, usize), String> = HashMap::new();
+        let mut structure: HashMap<(String, usize), (usize, Option<usize>)> = HashMap::new();
         for task in &tasks {
             let block = block_id(&task.text);
             fingerprints.insert(
                 (task.path.clone(), task.line),
                 fingerprint(task, block.as_deref()),
             );
+            structure.insert((task.path.clone(), task.line), (task.depth, task.parent));
         }
         let planner = self.planner.lock().unwrap_or_else(|p| p.into_inner());
         let mut groups: BTreeMap<String, Vec<MarkdownImportCandidate>> = BTreeMap::new();
@@ -345,23 +444,40 @@ impl Workspace {
             let parent_fingerprint = task
                 .parent
                 .and_then(|line| fingerprints.get(&(task.path.clone(), line)).cloned());
+            let mut ancestor_line = Some(task.line);
+            let mut epic_fingerprint = None;
+            while let Some(line) = ancestor_line {
+                let Some((depth, parent)) = structure.get(&(task.path.clone(), line)) else {
+                    break;
+                };
+                if *depth == 0 {
+                    epic_fingerprint = fingerprints.get(&(task.path.clone(), line)).cloned();
+                    break;
+                }
+                ancestor_line = *parent;
+            }
+            let kind = match task.depth {
+                0 => MarkdownImportKind::Epic,
+                1 => MarkdownImportKind::Task,
+                _ => MarkdownImportKind::Subtask,
+            };
             let status = mapped_status(&task);
             let archived = matches!(task.mark, '>' | '-');
-            let default_selected = !archived && status != TaskStatus::Done;
-            let daily_date = preferences
-                .daily_date(&task.path)
-                .map(|date| date.to_string());
+            let default_selected =
+                !archived && (kind == MarkdownImportKind::Epic || status != TaskStatus::Done);
             let mut candidate = MarkdownImportCandidate {
                 source_path: task.path.clone(),
                 source_line: task.line,
                 block_id,
                 fingerprint,
                 parent_fingerprint,
+                epic_fingerprint,
                 depth: task.depth,
+                kind,
                 title: title(&task.text),
                 status,
                 due_date: task.due,
-                all_day_session_date: daily_date,
+                all_day_session_date: None,
                 archived,
                 default_selected,
                 duplicate: false,

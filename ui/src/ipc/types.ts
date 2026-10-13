@@ -263,7 +263,9 @@ export interface MarkdownImportCandidate {
   block_id: string | null;
   fingerprint: string;
   parent_fingerprint: string | null;
+  epic_fingerprint: string | null;
   depth: number;
+  kind: "epic" | "task" | "subtask";
   title: string;
   status: PlannerTaskStatus;
   due_date: string | null;
@@ -274,7 +276,7 @@ export interface MarkdownImportCandidate {
 }
 export interface MarkdownImportGroup { source_path: string; tasks: MarkdownImportCandidate[] }
 export interface MarkdownImportPreview { planner_revision: number; groups: MarkdownImportGroup[]; candidates: number; selected_by_default: number; duplicates: number }
-export interface MarkdownImportResult { planner_revision: number; imported_task_ids: string[]; skipped_duplicates: string[] }
+export interface MarkdownImportResult { planner_revision: number; imported_epic_ids: string[]; imported_task_ids: string[]; skipped_duplicates: string[] }
 export interface PlannerChanged { root: string; revision: number; affected_ids: string[] }
 
 export interface QueryRow {

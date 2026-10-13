@@ -206,8 +206,8 @@ The update itself performs no migration.
    Start empty, Preview import and Later.
 2. The wizard scans through the existing index and groups candidates by note. Open tasks are selected
    by default; done, moved and cancelled tasks are optional.
-3. Preview shows the exact epic (initially Unassigned), hierarchy, status, due date, planned session and
-   source link that will be created. Nothing is written yet.
+3. Preview shows the exact epic, hierarchy, status, due date and source link that will be created.
+   Nothing is written yet.
 4. Confirm performs one database transaction. A failure imports nothing.
 5. Original Markdown is never edited. Imported planner objects link to the source note/block.
 6. `legacy_imports` prevents the same source block/fingerprint from being imported twice. The person can
@@ -218,9 +218,11 @@ Mapping:
 - Unchecked checkbox -> New task.
 - Mosaic workflow annotation -> matching planner status.
 - Checked checkbox -> Done when selected for import.
-- Nested checkbox -> subtask hierarchy.
+- Top-level checkbox -> epic.
+- Second-level checkbox -> task in its top-level epic.
+- Third and deeper checkbox levels -> subtask hierarchy.
 - `📅 YYYY-MM-DD` -> due date.
-- Task in a recognized dated daily note -> all-day work session on that date.
+- Imported tasks start unscheduled, including tasks from dated daily notes.
 - Moved/cancelled -> excluded by default; optional archived import.
 - Each timeline starts with Imported from Markdown. Earlier history is not invented.
 

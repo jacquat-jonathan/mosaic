@@ -25,10 +25,11 @@ pub use ical::{
     overlay_occurrences, validate_ical,
 };
 pub use migration::{
-    MarkdownImportCandidate, MarkdownImportGroup, MarkdownImportPreview, MarkdownImportResult,
+    MarkdownImportCandidate, MarkdownImportGroup, MarkdownImportKind, MarkdownImportPreview,
+    MarkdownImportResult,
 };
 
-pub const SCHEMA_VERSION: i64 = 1;
+pub const SCHEMA_VERSION: i64 = 2;
 
 #[derive(Debug)]
 pub struct PlannerStore {

@@ -973,6 +973,13 @@ button:focus-visible, [tabindex]:focus-visible, input:focus-visible, select:focu
 .planner-onboarding { max-width: 680px; margin: auto; align-self: center; }
 .planner-onboarding > p { font-size: 15px; line-height: 1.6; }
 .planner-onboarding-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 24px 0 12px; }
+.epic-editor > header { display: flex; justify-content: space-between; align-items: center; }
+.epic-editor > header h2 { margin: 0; }
+.epic-editor > header button { border: 0; background: none; font-size: 20px; }
+.epic-editor form { display: grid; gap: 12px; margin-top: 16px; }
+.epic-editor form label { display: grid; gap: 5px; color: var(--muted); font-size: 12px; }
+.epic-editor form input:not([type="color"]) { width: 100%; min-width: 0; padding: 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--fg); font: inherit; }
+.epic-editor footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
 .migration-wizard { max-width: 840px; margin: 0 auto; }
 .migration-wizard > header { display: flex; justify-content: space-between; align-items: start; gap: 16px; }
 .migration-wizard > header h2 { margin-bottom: 6px; }
@@ -1047,6 +1054,7 @@ button:focus-visible, [tabindex]:focus-visible, input:focus-visible, select:focu
 .unscheduled-tray ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .unscheduled-tray li { border-left: 3px solid var(--task-color); border-radius: 5px; background: var(--bg); }
 .unscheduled-tray li > button { width: 100%; border: 0; padding: 7px; background: none; text-align: left; display: grid; gap: 3px; }
+.unscheduled-tray .unscheduled-epic { color: var(--muted); font-size: 10px; font-weight: 500; line-height: 1.2; }
 .unscheduled-tray li span { color: var(--muted); font-size: 10.5px; }
 .event-scope { margin: 12px 0; border: 1px solid var(--border); border-radius: 6px; display: flex; gap: 12px; }
 .event-scope label { margin: 0; }

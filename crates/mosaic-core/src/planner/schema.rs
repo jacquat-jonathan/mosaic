@@ -82,6 +82,9 @@ fn migrate(conn: &mut Connection, existed: bool, backup_path: &Path) -> Result<(
     if version < 1 {
         migrate_v1(conn)?;
     }
+    if version < 2 {
+        migrate_v2(conn)?;
+    }
     Ok(())
 }
 
@@ -233,10 +236,181 @@ fn migrate_v1(conn: &mut Connection) -> Result<()> {
     tx.execute(
         "INSERT INTO planner_meta(id, schema_version, revision, created_at, updated_at)
          VALUES (1, ?1, 0, ?2, ?2)",
-        params![SCHEMA_VERSION, at],
+        params![1, at],
     )
     .map_err(sql_error)?;
-    tx.pragma_update(None, "user_version", SCHEMA_VERSION)
+    tx.pragma_update(None, "user_version", 1)
+        .map_err(sql_error)?;
+    tx.commit().map_err(sql_error)
+}
+
+fn migrate_v2(conn: &mut Connection) -> Result<()> {
+    let tx = conn.transaction().map_err(sql_error)?;
+    let at = now();
+    tx.execute_batch(
+        "ALTER TABLE legacy_imports RENAME TO legacy_imports_v1;
+         CREATE TABLE legacy_imports (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source_path TEXT NOT NULL,
+            source_line INTEGER NOT NULL,
+            block_id TEXT,
+            source_fingerprint TEXT NOT NULL,
+            imported_task_id TEXT REFERENCES tasks(id) ON DELETE RESTRICT,
+            imported_epic_id TEXT REFERENCES epics(id) ON DELETE RESTRICT,
+            imported_at TEXT NOT NULL,
+            CHECK((imported_task_id IS NOT NULL) != (imported_epic_id IS NOT NULL)),
+            UNIQUE(source_fingerprint, imported_task_id),
+            UNIQUE(source_fingerprint, imported_epic_id)
+         );
+         INSERT INTO legacy_imports(
+            id, source_path, source_line, block_id, source_fingerprint, imported_task_id,
+            imported_epic_id, imported_at
+         )
+         SELECT id, source_path, source_line, block_id, source_fingerprint, imported_task_id,
+                NULL, imported_at
+         FROM legacy_imports_v1;
+         DROP TABLE legacy_imports_v1;
+         CREATE INDEX legacy_import_source
+            ON legacy_imports(source_path, block_id, source_fingerprint);
+         INSERT INTO activity(entity_kind, entity_id, occurred_at, action, summary)
+         SELECT 'work_session', work_sessions.id, datetime('now'), 'cancelled',
+                'Moved imported task to Unscheduled'
+         FROM work_sessions
+         WHERE work_sessions.state = 'planned' AND work_sessions.revision = 1
+           AND EXISTS (
+             SELECT 1 FROM activity
+             WHERE activity.entity_kind = 'work_session'
+               AND activity.entity_id = work_sessions.id
+               AND activity.action = 'imported'
+               AND activity.summary = 'Imported all-day work session from daily note'
+           );
+         UPDATE work_sessions
+         SET state = 'cancelled', revision = revision + 1, updated_at = datetime('now')
+         WHERE state = 'planned' AND revision = 1
+           AND EXISTS (
+             SELECT 1 FROM activity
+             WHERE activity.entity_kind = 'work_session'
+               AND activity.entity_id = work_sessions.id
+               AND activity.action = 'imported'
+               AND activity.summary = 'Imported all-day work session from daily note'
+           );",
+    )
+    .map_err(sql_error)?;
+
+    // Upgrade untouched legacy imports in place so existing vaults immediately use the new
+    // top-level epic convention. Modified root tasks, and roots with manually managed sessions,
+    // stay unchanged rather than risking loss of user edits.
+    let imported_roots = {
+        let mut stmt = tx
+            .prepare(
+                "SELECT t.id, t.title, t.description, t.created_at, t.updated_at,
+                        t.archived_at, t.trashed_at
+                 FROM tasks t
+                 JOIN legacy_imports i ON i.imported_task_id = t.id
+                 WHERE t.parent_id IS NULL AND t.epic_id IS NULL AND t.revision = 1
+                   AND NOT EXISTS (
+                     SELECT 1 FROM work_sessions s
+                     WHERE s.task_id = t.id
+                       AND NOT (
+                         s.revision = 1 AND EXISTS (
+                           SELECT 1 FROM activity a
+                           WHERE a.entity_kind = 'work_session' AND a.entity_id = s.id
+                             AND a.action = 'imported'
+                             AND a.summary = 'Imported all-day work session from daily note'
+                         )
+                       )
+                   )
+                 ORDER BY t.position, t.id",
+            )
+            .map_err(sql_error)?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, Option<String>>(5)?,
+                    row.get::<_, Option<String>>(6)?,
+                ))
+            })
+            .map_err(sql_error)?;
+        rows.collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(sql_error)?
+    };
+    for (id, title, description, created_at, updated_at, archived_at, trashed_at) in imported_roots
+    {
+        tx.execute(
+            "INSERT INTO epics(
+                id, title, description, color, position, revision, created_at, updated_at,
+                archived_at, trashed_at
+             ) VALUES (
+                ?1, ?2, ?3, '#6477d4',
+                (SELECT COALESCE(MAX(position), 0) + 1024 FROM epics),
+                1, ?4, ?5, ?6, ?7
+             )",
+            params![
+                id,
+                title,
+                description,
+                created_at,
+                updated_at,
+                archived_at,
+                trashed_at
+            ],
+        )
+        .map_err(sql_error)?;
+        tx.execute(
+            "WITH RECURSIVE descendants(id) AS (
+                SELECT id FROM tasks WHERE parent_id = ?1
+                UNION ALL
+                SELECT task.id FROM tasks task JOIN descendants ON task.parent_id = descendants.id
+             )
+             UPDATE tasks SET epic_id = ?1 WHERE id IN (SELECT id FROM descendants)",
+            [&id],
+        )
+        .map_err(sql_error)?;
+        tx.execute(
+            "UPDATE tasks SET parent_id = NULL WHERE parent_id = ?1",
+            [&id],
+        )
+        .map_err(sql_error)?;
+        tx.execute(
+            "DELETE FROM activity WHERE entity_kind = 'work_session' AND entity_id IN (
+                SELECT id FROM work_sessions WHERE task_id = ?1
+             )",
+            [&id],
+        )
+        .map_err(sql_error)?;
+        tx.execute("DELETE FROM work_sessions WHERE task_id = ?1", [&id])
+            .map_err(sql_error)?;
+        tx.execute(
+            "UPDATE note_links SET owner_kind = 'epic' WHERE owner_kind = 'task' AND owner_id = ?1",
+            [&id],
+        )
+        .map_err(sql_error)?;
+        tx.execute(
+            "UPDATE activity SET entity_kind = 'epic' WHERE entity_kind = 'task' AND entity_id = ?1",
+            [&id],
+        )
+        .map_err(sql_error)?;
+        tx.execute(
+            "UPDATE legacy_imports
+             SET imported_task_id = NULL, imported_epic_id = ?1
+             WHERE imported_task_id = ?1",
+            [&id],
+        )
+        .map_err(sql_error)?;
+        tx.execute("DELETE FROM tasks WHERE id = ?1", [&id])
+            .map_err(sql_error)?;
+    }
+    tx.execute(
+        "UPDATE planner_meta SET schema_version = 2, updated_at = ?1 WHERE id = 1",
+        [&at],
+    )
+    .map_err(sql_error)?;
+    tx.pragma_update(None, "user_version", 2)
         .map_err(sql_error)?;
     tx.commit().map_err(sql_error)
 }
@@ -304,6 +478,89 @@ mod tests {
                     .get::<_, String>(0))
                 .unwrap(),
             "kept"
+        );
+    }
+
+    #[test]
+    fn v2_migration_preserves_imports_and_unschedules_automatic_daily_sessions() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        configure(&conn).unwrap();
+        migrate_v1(&mut conn).unwrap();
+        let at = now();
+        conn.execute(
+            "INSERT INTO tasks(
+                id, title, description, status, position, revision, created_at, updated_at
+             ) VALUES ('task-1', 'Imported epic', '', 'new', 1024, 1, ?1, ?1)",
+            [&at],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO tasks(
+                id, parent_id, title, description, status, position, revision, created_at, updated_at
+             ) VALUES ('task-2', 'task-1', 'Imported task', '', 'new', 1024, 1, ?1, ?1)",
+            [&at],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO legacy_imports(
+                source_path, source_line, source_fingerprint, imported_task_id, imported_at
+             ) VALUES ('Daily/2026-10-13.md', 1, 'fingerprint', 'task-1', ?1)",
+            [&at],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO work_sessions(
+                id, task_id, all_day, start_value, end_value, timezone, state, revision,
+                created_at, updated_at
+             ) VALUES (
+                'session-1', 'task-2', 1, '2026-10-13', '2026-10-14', 'Europe/Zurich',
+                'planned', 1, ?1, ?1
+             )",
+            [&at],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO activity(entity_kind, entity_id, occurred_at, action, summary)
+             VALUES (
+                'work_session', 'session-1', ?1, 'imported',
+                'Imported all-day work session from daily note'
+             )",
+            [&at],
+        )
+        .unwrap();
+
+        migrate(&mut conn, false, Path::new("")).unwrap();
+
+        assert_eq!(
+            conn.pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))
+                .unwrap(),
+            2
+        );
+        assert_eq!(
+            conn.query_row(
+                "SELECT imported_epic_id FROM legacy_imports WHERE source_fingerprint = 'fingerprint'",
+                [],
+                |row| row.get::<_, String>(0),
+            ).unwrap(),
+            "task-1"
+        );
+        assert_eq!(
+            conn.query_row(
+                "SELECT epic_id || ':' || COALESCE(parent_id, '') FROM tasks WHERE id = 'task-2'",
+                [],
+                |row| row.get::<_, String>(0),
+            )
+            .unwrap(),
+            "task-1:"
+        );
+        assert_eq!(
+            conn.query_row(
+                "SELECT state FROM work_sessions WHERE id = 'session-1'",
+                [],
+                |row| row.get::<_, String>(0),
+            )
+            .unwrap(),
+            "cancelled"
         );
     }
 }

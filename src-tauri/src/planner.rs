@@ -385,7 +385,9 @@ pub(crate) fn planner_import_markdown(
         allow_duplicates,
         &timezone,
     )?;
-    changed(&app, &workspace, result.imported_task_ids.clone())?;
+    let mut affected = result.imported_epic_ids.clone();
+    affected.extend(result.imported_task_ids.clone());
+    changed(&app, &workspace, affected)?;
     Ok(result)
 }
 

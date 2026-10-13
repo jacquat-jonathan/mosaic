@@ -23,15 +23,17 @@ test("planner mock covers create, edit, move, complete, archive, trash, restore 
   expect((await api.plannerActivity("task",task.id)).map(entry=>entry.action)).toEqual(["created","updated","moved","completed","archived","trashed","restored"]);
 });
 
-test("planner migration preview imports selected tasks only once",async()=>{
+test("planner migration preview imports selected items only once",async()=>{
   vi.stubGlobal("window",{dispatchEvent:vi.fn()});
   const preview=await api.plannerMigrationPreview();
   const candidate=preview.groups.flatMap(group=>group.tasks).find(task=>task.default_selected&&!task.duplicate);
   expect(candidate).toBeTruthy();
   const imported=await api.importMarkdownToPlanner(preview,[candidate!.fingerprint],false,"Europe/Zurich");
-  expect(imported.imported_task_ids).toHaveLength(1);
+  expect(candidate!.kind).toBe("epic");
+  expect(imported.imported_epic_ids).toHaveLength(1);
+  expect(imported.imported_task_ids).toHaveLength(0);
   const repeated=await api.importMarkdownToPlanner(preview,[candidate!.fingerprint],false,"Europe/Zurich");
-  expect(repeated.imported_task_ids).toHaveLength(0);
+  expect(repeated.imported_epic_ids).toHaveLength(0);
   expect(repeated.skipped_duplicates).toEqual([candidate!.fingerprint]);
 });
 

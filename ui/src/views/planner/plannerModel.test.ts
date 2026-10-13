@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import type { PlannerEpic, PlannerTask } from "../../ipc/types";
-import { descendants, subtaskProgress, swimlanes } from "./plannerModel";
+import { descendants, subtaskProgress, swimlanes, taskLifecycles } from "./plannerModel";
 
 const epic = (id: string, position: number): PlannerEpic => ({ id, title:id, description:"", color:"blue", position, revision:1, created_at:"", updated_at:"", archived_at:null, trashed_at:null });
 const task = (id: string, epic_id: string | null, parent_id: string | null, status: PlannerTask["status"] = "new"): PlannerTask => ({ id, epic_id, parent_id, title:id, description:"", status, due_date:null, estimate_minutes:null, position:1, revision:1, created_at:"", updated_at:"", completed_at:null, archived_at:null, trashed_at:null });
@@ -23,5 +23,13 @@ test("10k-task board grouping stays within the interactive budget", () => {
   const elapsed=performance.now()-started;
   expect(lanes.reduce((count,lane)=>count+lane.tasks.length,0)).toBe(10_000);
   expect(elapsed).toBeLessThan(1_000);
+});
+
+test("tasks inherit archive and trash lifecycle from their parent or epic",()=>{
+  const archivedEpic={...epic("archived-epic",1),archived_at:"2026-10-13T12:00:00Z"},trashedEpic={...epic("trashed-epic",2),trashed_at:"2026-10-13T12:00:00Z"};
+  const archivedParent={...task("archived-parent",null,null),archived_at:"2026-10-13T12:00:00Z"};
+  const tasks=[archivedParent,task("child",null,archivedParent.id),task("epic-child",archivedEpic.id,null),task("trash-child",trashedEpic.id,null),task("active",null,null)];
+  const lifecycle=taskLifecycles(tasks,[archivedEpic,trashedEpic]);
+  expect(Object.fromEntries(lifecycle)).toMatchObject({"archived-parent":"archived",child:"archived","epic-child":"archived","trash-child":"trash",active:"active"});
 });
 

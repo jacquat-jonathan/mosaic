@@ -128,10 +128,28 @@ impl PlannerStore {
         let mut stmt = self
             .conn
             .prepare(
-                "SELECT id, epic_id, parent_id, title, description, status, due_date, estimate_minutes,
+                "WITH RECURSIVE
+                 archived_tree(id) AS (
+                     SELECT tasks.id FROM tasks
+                     LEFT JOIN epics ON epics.id = tasks.epic_id
+                     WHERE tasks.archived_at IS NOT NULL OR epics.archived_at IS NOT NULL
+                     UNION
+                     SELECT child.id FROM tasks child
+                     JOIN archived_tree parent ON child.parent_id = parent.id
+                 ),
+                 trashed_tree(id) AS (
+                     SELECT tasks.id FROM tasks
+                     LEFT JOIN epics ON epics.id = tasks.epic_id
+                     WHERE tasks.trashed_at IS NOT NULL OR epics.trashed_at IS NOT NULL
+                     UNION
+                     SELECT child.id FROM tasks child
+                     JOIN trashed_tree parent ON child.parent_id = parent.id
+                 )
+                 SELECT id, epic_id, parent_id, title, description, status, due_date, estimate_minutes,
                         position, revision, created_at, updated_at, completed_at, archived_at, trashed_at
                  FROM tasks
-                 WHERE (?1 OR archived_at IS NULL) AND (?2 OR trashed_at IS NULL)
+                 WHERE (?1 OR id NOT IN (SELECT id FROM archived_tree))
+                   AND (?2 OR id NOT IN (SELECT id FROM trashed_tree))
                  ORDER BY COALESCE(epic_id, ''), COALESCE(parent_id, ''), status, position, id",
             )
             .map_err(sql_error)?;

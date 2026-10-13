@@ -477,6 +477,40 @@ fn planner_json_and_csv_exports_include_history_and_lifecycle_state() {
 }
 
 #[test]
+fn archived_parents_and_epics_hide_their_active_descendants_from_active_planning() {
+    let mut store = in_memory();
+    let epic = epic(&mut store, "Archived plan");
+    let parent = task(&mut store, Some(epic.id.clone()), None, "Parent");
+    let child = task(
+        &mut store,
+        Some(epic.id.clone()),
+        Some(parent.id.clone()),
+        "Child",
+    );
+
+    let parent = store.archive_task(&parent.id, parent.revision).unwrap();
+    assert!(
+        store
+            .list_tasks(false, false)
+            .unwrap()
+            .iter()
+            .all(|task| task.id != child.id)
+    );
+    assert!(
+        store
+            .calendar_range("2026-10-13", "2026-10-14")
+            .unwrap()
+            .unscheduled_tasks
+            .is_empty()
+    );
+
+    store.restore_task(&parent.id, parent.revision).unwrap();
+    store.archive_epic(&epic.id, epic.revision).unwrap();
+    assert!(store.list_tasks(false, false).unwrap().is_empty());
+    assert_eq!(store.list_tasks(true, false).unwrap().len(), 2);
+}
+
+#[test]
 fn markdown_import_previews_maps_and_deduplicates_without_editing_notes() {
     let (dir, workspace) = workspace();
     workspace.mkdir("Daily").unwrap();

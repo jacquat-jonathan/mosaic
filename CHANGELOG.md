@@ -4,6 +4,7 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Navigation and local HTML:** the destination rail is grouped into Files, Plan, AI and Settings; changing tabs or focused splits reveals the active file in the tree; and HTML previews can load relative vault CSS, scripts, fonts, media and JSON data without gaining network access.
 - **Responsive note editing:** tables stay inside their pane, keep stable column widths while typing, and can grow one column at a time up to the pane edge. `/table` opens as an editable table immediately, narrow notes wrap instead of disappearing off-screen, and closing a split restores the remaining pane to the full workspace.
 - **Independent planning:** plan app-owned tasks in epic swimlanes, nest subtasks, track estimates and due dates, and review per-item activity without changing Markdown checkboxes. A previewed import can copy existing note tasks when wanted.
 - **Calendar:** schedule multiple task sessions, create recurring timed or all-day events, edit occurrence exceptions, and work in accessible month, week and day views with workload and overlap layout.

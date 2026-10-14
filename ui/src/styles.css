@@ -89,9 +89,10 @@ button.secondary { border: 1px solid var(--border); padding: 7px 14px; }
 .icon-bar { flex: none; width: 44px; display: flex; flex-direction: column; align-items: center; gap: 2px; padding-bottom: 8px; background: var(--bg-side); border-right: 1px solid var(--border); color: var(--muted); }
 .icon-bar-group { display: flex; flex-direction: column; gap: 2px; }
 .icon-bar button { position: relative; padding: 7px; border-radius: 7px; color: inherit; }
+.icon-bar button[data-section-start="true"] { margin-top: 7px; }
+.icon-bar button[data-section-start="true"]::before { content: ""; position: absolute; left: 6px; right: 6px; top: -5px; height: 1px; background: var(--border); }
 .icon-bar button:hover { color: var(--fg); background: var(--bg-hover, var(--bg-active)); }
 .icon-bar button.active { color: var(--accent); background: var(--bg-active); }
-.icon-bar .spacer { flex: 1; }
 .sidebar-head { height: var(--titlebar); display: flex; align-items: center; justify-content: space-between; gap: 4px; padding: 0 8px 0 34px; flex: none; border-bottom: 1px solid var(--border); }
 .vault-name { font-weight: 600; min-width: 0; padding: 4px 6px; gap: 3px; }
 .vault-name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

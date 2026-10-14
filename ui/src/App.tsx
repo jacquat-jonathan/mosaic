@@ -5,7 +5,7 @@ import { useVault } from "./state/vault";
 import { FileTree } from "./views/FileTree";
 import { Workspace } from "./views/Workspace";
 import { ConfirmDialog, ContextMenu, ErrorToast, PromptDialog } from "./views/Overlays";
-import { createVault, newNote, newNoteDir, NEW_KINDS, newOfKind, openDailyNote, openVaultFolder } from "./actions";
+import { createVault, newNote, newNoteDir, NEW_KINDS, newOfKind, openDailyNote, openVaultFolder, revealInTree } from "./actions";
 import { useShortcuts } from "./shortcuts";
 import { RIGHT_DEFAULT, SIDEBAR_DEFAULT, useUi, type MenuItem, type Destination } from "./state/ui";
 import { RightPanel } from "./views/RightPanel";
@@ -19,7 +19,7 @@ import { Resizer } from "./views/Resizer";
 import { HistoryModal } from "./views/HistoryModal";
 import { AreaSidebar } from "./views/AreaSidebar";
 import { useWorkspace } from "./state/workspace";
-import { contextKind } from "./views/specialTabs";
+import { contextKind, isSpecialTab } from "./views/specialTabs";
 import { useChat } from "./state/chat";
 import { useAttention, startAttention } from "./state/attention";
 import { useReview } from "./state/review";
@@ -101,11 +101,11 @@ function Welcome() {
   );
 }
 
-const TABS: { id: Destination; label: string; icon: typeof Files }[] = [
-  { id: "notes", label: "Notes", icon: Files },
-  { id: "find", label: "Find", icon: Search },
-  { id: "plan", label: "Plan", icon: CalendarDays },
-  { id: "ai", label: "AI", icon: Bot },
+const TABS: { id: Destination; label: string; section: string; icon: typeof Files }[] = [
+  { id: "notes", label: "Files", section: "Files", icon: Files },
+  { id: "find", label: "Find", section: "Files", icon: Search },
+  { id: "plan", label: "Plan", section: "Plan", icon: CalendarDays },
+  { id: "ai", label: "AI", section: "AI", icon: Bot },
 ];
 
 /** Dropdown under the vault name: recent vaults, open or create another, reveal in Finder. */
@@ -163,6 +163,7 @@ function Main() {
     return () => { context.removeEventListener("change", collapseContext); area.removeEventListener("change", collapseArea); };
   }, []);
   useEffect(() => {
+    if (active && !isSpecialTab(active) && useVault.getState().entries.some(entry => entry.path === active && !entry.is_dir)) revealInTree(active);
     if (window.matchMedia("(max-width: 800px)").matches) useUi.setState({ leftSidebar: false });
   }, [active]);
   // Agents' proposals arrive from another process: check for them while this vault is open.
@@ -173,9 +174,11 @@ function Main() {
       <div className="shell-body">
       <nav className="icon-bar" aria-label="Destinations" data-focus-region tabIndex={-1}>
         <div role="tablist" aria-orientation="vertical" className="icon-bar-group">
-          {TABS.map((t) => (
+          {TABS.map((t, index) => (
             <button
               key={t.id}
+              data-section={t.section}
+              data-section-start={index > 0 && TABS[index - 1].section !== t.section ? "true" : undefined}
               role="tab"
               aria-selected={tab === t.id}
               tabIndex={tab === t.id ? 0 : -1}
@@ -194,8 +197,7 @@ function Main() {
             </button>
           ))}
         </div>
-        <span className="spacer" />
-        <button title={`Settings (${shortcutOf("settings")})`} aria-label="Settings" onClick={() => ui().openSettings()}>
+        <button data-section="Settings" data-section-start="true" className={active === "mosaic:settings" ? "active" : ""} aria-pressed={active === "mosaic:settings"} title={`Settings (${shortcutOf("settings")})`} aria-label="Settings" onClick={() => ui().openSettings()}>
           <Gear size={18} />
         </button>
       </nav>

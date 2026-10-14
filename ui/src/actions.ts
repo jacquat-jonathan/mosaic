@@ -145,7 +145,7 @@ export function revealInTree(path: string) {
   vault.revealParents(path);
   vault.setSelection([path]);
   useUi.getState().setSidebarTab("files");
-  requestAnimationFrame(() => document.querySelector(`[data-path="${CSS.escape(path)}"]`)?.scrollIntoView({ block: "nearest" }));
+  requestAnimationFrame(() => requestAnimationFrame(() => document.querySelector(`[data-path="${CSS.escape(path)}"]`)?.scrollIntoView({ block: "nearest" })));
 }
 
 /** Expands or collapses a folder and every folder inside it. */

@@ -127,7 +127,7 @@ button.secondary { border: 1px solid var(--border); padding: 7px 14px; }
 .tree-empty { color: var(--muted); padding: 12px 8px; line-height: 1.5; }
 
 /* Panes and tabs */
-.panes { flex: 1; min-height: 0; display: flex; }
+.panes { flex: 1; min-width: 0; min-height: 0; display: flex; }
 .panes.row { flex-direction: row; }
 .panes.column { flex-direction: column; }
 .pane { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
@@ -155,12 +155,12 @@ button.secondary { border: 1px solid var(--border); padding: 7px 14px; }
 .tab-close.dirty::before { content: ""; width: 7px; height: 7px; margin: 2.5px; border-radius: 50%; background: var(--fg); }
 .tab-close.dirty:hover svg { display: block; }
 .tab-close.dirty:hover::before { display: none; }
-.pane-body { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.pane-body { position: relative; flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 /* Where a dragged tab will open: the right or bottom half of the pane. */
 .split-preview { position: absolute; z-index: 20; pointer-events: none; background: color-mix(in srgb, var(--accent) 14%, transparent); border: 2px solid var(--accent); border-radius: 6px; }
 .split-preview.row { top: 4px; bottom: 4px; right: 4px; width: calc(50% - 6px); }
 .split-preview.column { left: 4px; right: 4px; bottom: 4px; height: calc(50% - 6px); }
-.file-view { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.file-view { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 
 /* Editors and viewers */
 .plain-editor { flex: 1; border: 0; resize: none; outline: none; padding: 24px max(24px, calc(50% - 360px)); background: var(--bg); color: var(--fg); font: 14px/1.6 var(--font-mono); user-select: text; }
@@ -196,9 +196,9 @@ button.secondary { border: 1px solid var(--border); padding: 7px 14px; }
 .toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); z-index: 70; background: var(--danger); color: #fff; padding: 9px 16px; border-radius: 8px; box-shadow: var(--shadow); max-width: 70vw; }
 
 /* ---------- Editors ---------- */
-.md-scroll, .code-scroll { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.md-editor, .code-editor { flex: 1; min-height: 0; display: flex; }
-.md-editor .cm-editor, .code-editor .cm-editor { flex: 1; height: 100%; }
+.md-scroll, .code-scroll { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.md-editor, .code-editor { flex: 1; min-width: 0; min-height: 0; display: flex; }
+.md-editor .cm-editor, .code-editor .cm-editor { flex: 1; min-width: 0; height: 100%; }
 .cm-editor.cm-focused { outline: none; }
 .cm-editor { background: var(--bg); color: var(--fg); }
 .cm-scroller { user-select: text; -webkit-user-select: text; }
@@ -219,9 +219,9 @@ button.secondary { border: 1px solid var(--border); padding: 7px 14px; }
 .code-editor .cm-line { padding: 0 20px; }
 
 /* Markdown live preview: readable column, document typography */
-.md-editor .cm-scroller { font: var(--note-size, 16px)/var(--note-leading, 1.7) var(--font-text); }
-.md-editor .cm-content { max-width: var(--note-width, 760px); margin: 0 auto; padding: 32px 32px 40vh; width: 100%; }
-.md-editor .cm-line { padding: 0; }
+.md-editor .cm-scroller { min-width: 0; max-width: 100%; overflow-x: hidden; font: var(--note-size, 16px)/var(--note-leading, 1.7) var(--font-text); }
+.md-editor .cm-content { width: min(100%, var(--note-width, 760px)); min-width: 0; max-width: 100%; margin: 0 auto; padding: 32px clamp(16px, 4vw, 32px) 40vh; }
+.md-editor .cm-line { min-width: 0; padding: 0; overflow-wrap: anywhere; word-break: break-word; }
 .cm-h { font-weight: 650; line-height: 1.3; }
 .cm-h1 { font-size: calc(1.9em * var(--heading-scale, 1)); padding-top: 0.6em !important; padding-bottom: 0.15em !important; }
 .cm-h2 { font-size: calc(1.5em * var(--heading-scale, 1)); padding-top: 0.55em !important; padding-bottom: 0.1em !important; }
@@ -271,7 +271,7 @@ button.secondary { border: 1px solid var(--border); padding: 7px 14px; }
 .cm-embed-note { display: block; border-left: 3px solid var(--accent); background: var(--bg-side); border-radius: 0 6px 6px 0; padding: 8px 14px; margin: 6px 0; cursor: text; }
 .cm-embed-note-title { font-weight: 600; display: block; margin-bottom: 4px; }
 .cm-embed-note-body { white-space: pre-wrap; color: var(--muted); font-size: 14px; }
-.cm-table-wrap { overflow-x: auto; padding: 6px 0 2px; cursor: text; }
+.cm-table-wrap { max-width: 100%; overflow: hidden; padding: 6px 0 2px; cursor: text; }
 .cm-table-inner { display: inline-grid; grid-template-columns: auto 18px; gap: 4px; max-width: 100%; }
 .cm-table-wrap th, .cm-table-wrap td { min-width: 3em; outline: none; cursor: text; }
 .cm-table-wrap th:focus, .cm-table-wrap td:focus { box-shadow: inset 0 0 0 2px var(--accent); }
@@ -376,7 +376,7 @@ body.resizing * { pointer-events: none; }
 .diff-sign { display: inline-block; width: 16px; color: var(--muted); }
 
 /* ---------- Viewers ---------- */
-.viewer { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.viewer { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 .viewer-toolbar { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-bottom: 1px solid var(--border); flex: none; font-size: 12.5px; }
 .viewer-toolbar .spacer { flex: 1; }
 .toolbar-meta { color: var(--muted); }
@@ -819,7 +819,7 @@ svg path.flow-on { stroke-dasharray: 9 6 !important; animation: edge-flow 0.7s l
 .shell { flex-direction: column; }
 .window-chrome { height: var(--titlebar); flex: none; padding: 0 90px; display: flex; align-items: center; justify-content: center; background: var(--bg-side); color: var(--muted); font-size: 12px; }
 .window-chrome span { pointer-events: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.shell-body { display: flex; flex: 1; min-height: 0; position: relative; }
+.shell-body { display: flex; flex: 1; min-width: 0; min-height: 0; position: relative; }
 .icon-bar { padding-top: 10px; }
 .sidebar-head { padding-left: 8px; }
 .shell.no-left .pane.top-left .tabbar { padding-left: 8px; }

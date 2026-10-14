@@ -7,7 +7,7 @@ import { isDark } from "../theme";
 import { editorContext, type EditorContext } from "./context";
 import { syntaxTree } from "@codemirror/language";
 import { useVault } from "../state/vault";
-import { resizeTableBoundary, loadTableWidths, saveTableWidths, tableWidthKey } from "./tableWidths";
+import { fitTableWidths, resizeTableColumn, loadTableWidths, saveTableWidths, tableWidthKey } from "./tableWidths";
 
 import { blockRenderers, showRenderError as showError } from "./blocks";
 import { errorMessage } from "../ipc/types";
@@ -466,6 +466,7 @@ export class TableWidget extends WidgetType {
     model.header.forEach(() => colgroup.append(document.createElement("col")));
     table.prepend(colgroup);
     const handles: HTMLButtonElement[] = [];
+    const availableWidth = () => Math.max(1, wrap.clientWidth - 22);
     const positionHandles = () => {
       const bounds = inner.getBoundingClientRect();
       cellEls[0].forEach((cell, i) => {
@@ -474,60 +475,74 @@ export class TableWidget extends WidgetType {
       });
     };
     const applyWidths = () => {
-      table.classList.toggle("resized", !!widths);
-      table.style.width = widths ? `${widths.reduce((a, b) => a + b, 0)}px` : "";
-      [...colgroup.children].forEach((col, i) => { (col as HTMLElement).style.width = widths ? `${widths[i]}px` : ""; });
-      const current = widths ?? cellEls[0].map(cell => cell.getBoundingClientRect().width);
+      if (!widths) return;
+      const current = fitTableWidths(widths, availableWidth());
+      table.classList.add("resized");
+      table.style.width = `${current.reduce((a, b) => a + b, 0)}px`;
+      [...colgroup.children].forEach((col, i) => { (col as HTMLElement).style.width = `${current[i]}px`; });
       handles.forEach((handle, i) => {
         handle.setAttribute("aria-valuenow", String(Math.round(current[i])));
-        handle.setAttribute("aria-valuemin", String(Math.round(resizeTableBoundary(current, i, -Number.MAX_VALUE)[i])));
-        handle.setAttribute("aria-valuemax", String(Math.round(resizeTableBoundary(current, i, Number.MAX_VALUE)[i])));
+        handle.setAttribute("aria-valuemin", String(Math.round(resizeTableColumn(current, i, -Number.MAX_VALUE, availableWidth())[i])));
+        handle.setAttribute("aria-valuemax", String(Math.round(resizeTableColumn(current, i, Number.MAX_VALUE, availableWidth())[i])));
       });
       positionHandles();
     };
-    if (!view.state.readOnly) model.header.slice(0, -1).forEach((_, col) => {
+    const naturalWidths = () => {
+      table.classList.remove("resized");
+      table.style.width = "";
+      [...colgroup.children].forEach((col) => { (col as HTMLElement).style.width = ""; });
+      return fitTableWidths(cellEls[0].map(cell => cell.getBoundingClientRect().width), availableWidth());
+    };
+    const resetWidths = () => {
+      widths = naturalWidths();
+      saveTableWidths(widthKey, widths);
+      applyWidths();
+    };
+    const currentWidths = () => (widths ??= naturalWidths());
+    if (!view.state.readOnly) model.header.forEach((_, col) => {
       const handle = document.createElement("button");
       handle.className = "table-resize";
-      handle.setAttribute("aria-label", `Resize columns ${col + 1} and ${col + 2}`);
+      handle.setAttribute("aria-label", `Resize column ${col + 1}`);
       handle.title = "Drag to resize · Arrow keys adjust · Double-click to reset widths";
       handle.setAttribute("role", "separator");
       handle.setAttribute("aria-orientation", "vertical");
       handle.setAttribute("aria-valuemin", "64");
       handle.setAttribute("aria-valuemax", "1200");
       let startX = 0, startWidths: number[] = [], dragging = false;
-      const ensureWidths = () => { widths ??= cellEls[0].map(cell => cell.getBoundingClientRect().width); };
       handle.addEventListener("pointerdown", e => {
         if (e.button !== 0) return;
-        e.preventDefault(); e.stopPropagation(); ensureWidths();
-        startX = e.clientX; startWidths = [...widths!]; dragging = true; handle.setPointerCapture(e.pointerId);
+        e.preventDefault(); e.stopPropagation();
+        startX = e.clientX; startWidths = fitTableWidths(currentWidths(), availableWidth()); dragging = true; handle.setPointerCapture(e.pointerId);
       });
       handle.addEventListener("pointermove", e => {
         if (!dragging) return;
-        widths = resizeTableBoundary(startWidths, col, e.clientX - startX); applyWidths();
+        widths = resizeTableColumn(startWidths, col, e.clientX - startX, availableWidth()); applyWidths();
       });
       const finish = () => { if (dragging) { dragging = false; saveTableWidths(widthKey, widths); } };
       handle.addEventListener("pointerup", finish);
       handle.addEventListener("pointercancel", finish);
       handle.addEventListener("lostpointercapture", finish);
-      handle.addEventListener("dblclick", () => { widths = null; saveTableWidths(widthKey, null); applyWidths(); });
+      handle.addEventListener("dblclick", () => resetWidths());
       handle.addEventListener("keydown", e => {
         if (!["ArrowLeft", "ArrowRight", "Home"].includes(e.key)) return;
         e.preventDefault(); e.stopPropagation();
-        if (e.key === "Home") widths = null;
-        else { ensureWidths(); widths = resizeTableBoundary(widths!, col, (e.key === "ArrowRight" ? 1 : -1) * (e.shiftKey ? 40 : 10)); }
+        if (e.key === "Home") { resetWidths(); return; }
+        widths = resizeTableColumn(currentWidths(), col, (e.key === "ArrowRight" ? 1 : -1) * (e.shiftKey ? 40 : 10), availableWidth());
         saveTableWidths(widthKey, widths); applyWidths();
       });
       handles.push(handle); inner.append(handle);
     });
-    const observer = new ResizeObserver(positionHandles);
-    observer.observe(table);
+    const observer = new ResizeObserver(applyWidths);
+    observer.observe(wrap);
     this.cleanups.set(wrap, () => observer.disconnect());
     queueMicrotask(() => {
       if (!wrap.isConnected) return;
       let ordinal = 0;
       syntaxTree(view.state).iterate({ to: from(), enter(node) { if (node.name === "Table" && node.from < from()) ordinal++; } });
       widthKey = tableWidthKey(useVault.getState().vault?.root ?? "", view.state.facet(editorContext).path, ordinal);
-      widths = loadTableWidths(widthKey, model.header.length); applyWidths();
+      widths = loadTableWidths(widthKey, model.header.length) ?? naturalWidths();
+      saveTableWidths(widthKey, widths);
+      applyWidths();
     });
     const cellAt = (row: number, col: number) => cellEls[row + 1]?.[col];
     const posOf = (el: Element) => ({ row: Number((el as HTMLElement).dataset.row), col: Number((el as HTMLElement).dataset.col) });
@@ -632,7 +647,7 @@ export class TableWidget extends WidgetType {
             action: () => commit(setAlign(t(), col, a === "left" ? null : a)),
           })),
         },
-        { label: "Reset column widths", action: () => { widths = null; saveTableWidths(widthKey, null); applyWidths(); } },
+        { label: "Reset column widths", action: resetWidths },
         { label: "Edit as Markdown", action: () => (view.dispatch({ selection: { anchor: from() } }), view.focus()) },
       ];
     };

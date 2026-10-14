@@ -55,8 +55,10 @@ test("split and close panes", async () => {
   ws().split("row");
   expect(ws().panes).toHaveLength(2);
   expect(ws().panes[1].tabs).toEqual(["Welcome.md"]);
+  ws().resize(0, -0.25);
   ws().closeTab(ws().panes[1].id, "Welcome.md");
   expect(ws().panes).toHaveLength(1);
+  expect(ws().panes[0].size).toBe(1);
 });
 
 test("dropping a tab on a pane's edge splits it off", async () => {

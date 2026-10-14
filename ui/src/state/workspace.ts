@@ -96,6 +96,13 @@ function remap(p: string, from: string, to: string): string {
   return p === from ? to : p.startsWith(`${from}/`) ? to + p.slice(from.length) : p;
 }
 
+/** Keep pane weights well-conditioned after removing a split; a lone pane always owns the workspace. */
+function normalizePaneSizes(panes: Pane[]): Pane[] {
+  if (panes.length === 1) return [{ ...panes[0], size: 1 }];
+  const total = panes.reduce((sum, pane) => sum + (pane.size ?? 1), 0);
+  return panes.map((pane) => ({ ...pane, size: ((pane.size ?? 1) * panes.length) / total }));
+}
+
 export const useWorkspace = create<WorkspaceState>((set, get) => {
   const updateBuffer = (path: string, patch: Partial<Buffer>) =>
     set((s) => (s.buffers[path] ? { buffers: { ...s.buffers, [path]: { ...s.buffers[path], ...patch } } } : s));
@@ -241,7 +248,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
       }
       set((s) => {
         if (s.panes.length === 1) return s;
-        const panes = s.panes.filter((p) => p.id !== paneId);
+        const panes = normalizePaneSizes(s.panes.filter((p) => p.id !== paneId));
         return { panes, focused: s.focused === paneId ? panes[0].id : s.focused };
       });
       dropUnusedBuffers();

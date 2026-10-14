@@ -2,11 +2,20 @@ import { type CompletionContext, type CompletionResult, type Completion } from "
 import { EditorView } from "@codemirror/view";
 import { syntaxTree } from "@codemirror/language";
 
-export const insertions = [
+interface Insertion {
+  label: string;
+  detail: string;
+  text: string;
+  cursor: number;
+  /** Leave the Markdown block behind the caret so live preview renders it immediately. */
+  placeAfter?: boolean;
+}
+
+export const insertions: Insertion[] = [
   { label: "Heading 1", detail: "Large heading", text: "# ", cursor: 2 },
   { label: "Heading 2", detail: "Section heading", text: "## ", cursor: 3 },
   { label: "Heading 3", detail: "Small heading", text: "### ", cursor: 4 },
-  { label: "Table", detail: "Two columns", text: "| Column 1 | Column 2 |\n| --- | --- |\n|  |  |\n", cursor: 2 },
+  { label: "Table", detail: "Two columns", text: "| Column 1 | Column 2 |\n| --- | --- |\n|  |  |\n", cursor: 0, placeAfter: true },
   { label: "Task list", detail: "Checkbox task", text: "- [ ] ", cursor: 6 },
   { label: "Bullet list", detail: "Unordered list", text: "- ", cursor: 2 },
   { label: "Numbered list", detail: "Ordered list", text: "1. ", cursor: 3 },
@@ -42,7 +51,10 @@ export function slashCompletion(ctx: CompletionContext): CompletionResult | null
     options: insertions.map(item => ({
       label: item.label, detail: item.detail, type: "text",
       apply(view: EditorView, _completion: Completion, _from: number, to: number) {
-        view.dispatch({ changes: { from: slash, to, insert: item.text }, selection: { anchor: slash + item.cursor }, userEvent: "input.complete" });
+        const followingNewline = item.placeAfter && view.state.sliceDoc(to, to + 1) === "\n";
+        const insert = item.placeAfter && !followingNewline ? `${item.text}\n` : item.text;
+        const anchor = item.placeAfter ? slash + insert.length + (followingNewline ? 1 : 0) : slash + item.cursor;
+        view.dispatch({ changes: { from: slash, to, insert }, selection: { anchor }, userEvent: "input.complete" });
       },
     })),
   };

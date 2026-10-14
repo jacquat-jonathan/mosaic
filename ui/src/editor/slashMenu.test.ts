@@ -17,13 +17,24 @@ test("slash menu only opens in an empty Markdown block", () => {
   expect(completion("/table remaining", 6)).toBeNull();
   expect(completion("/table", 6, true)).toBeNull();
 });
-test("insertion replaces the command, keeps surrounding text and selects the new block", () => {
+test("table insertion replaces the command and leaves the caret outside the rendered block", () => {
   let state = EditorState.create({ doc: "Before\n/table\nAfter", selection: { anchor: 13 }, extensions: [markdown()] });
   const result = slashCompletion(new CompletionContext(state, 13, false))!;
   const option = result.options.find(o => o.label === "Table")!;
-  const view = { dispatch(spec: TransactionSpec) { state = state.update(spec).state; } } as EditorView;
+  const view = { get state() { return state; }, dispatch(spec: TransactionSpec) { state = state.update(spec).state; } } as EditorView;
   if (typeof option.apply !== "function") throw new Error("Expected an insertion command");
   option.apply(view, option, result.from, 13);
   expect(state.doc.toString()).toBe("Before\n| Column 1 | Column 2 |\n| --- | --- |\n|  |  |\n\nAfter");
-  expect(state.selection.main.head).toBe(9);
+  expect(state.selection.main.head).toBe(state.doc.toString().indexOf("After"));
+});
+
+test("a table inserted at the end keeps a blank separator after it", () => {
+  let state = EditorState.create({ doc: "/table", selection: { anchor: 6 }, extensions: [markdown()] });
+  const result = slashCompletion(new CompletionContext(state, 6, false))!;
+  const option = result.options.find(o => o.label === "Table")!;
+  const view = { get state() { return state; }, dispatch(spec: TransactionSpec) { state = state.update(spec).state; } } as EditorView;
+  if (typeof option.apply !== "function") throw new Error("Expected an insertion command");
+  option.apply(view, option, result.from, 6);
+  expect(state.doc.toString()).toBe("| Column 1 | Column 2 |\n| --- | --- |\n|  |  |\n\n");
+  expect(state.selection.main.head).toBe(state.doc.length);
 });

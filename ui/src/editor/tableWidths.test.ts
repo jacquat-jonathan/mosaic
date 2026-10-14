@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { resizeTableBoundary, loadTableWidths, saveTableWidths, tableWidthKey } from "./tableWidths";
+import { fitTableWidths, resizeTableColumn, loadTableWidths, saveTableWidths, tableWidthKey } from "./tableWidths";
 afterEach(() => vi.unstubAllGlobals());
 test("widths persist by vault, note and table, with invalid storage rejected", () => {
   const values = new Map<string, string>();
@@ -17,34 +17,35 @@ test("widths persist by vault, note and table, with invalid storage rejected", (
   saveTableWidths(key, null); expect(values.has(key)).toBe(false);
 });
 
-test("resizing redistributes adjacent widths while preserving the table and other columns", () => {
+test("resizing changes only the selected column and can grow the table up to its viewport", () => {
   const widths = [180.25, 240.5, 100.75];
-  const resized = resizeTableBoundary(widths, 0, 35.5);
-  expect(resized).toEqual([215.75, 205, 100.75]);
-  expect(resized.reduce((a, b) => a + b, 0)).toBe(521.5);
+  expect(resizeTableColumn(widths, 0, 35.5, 700)).toEqual([215.75, 240.5, 100.75]);
+  expect(resizeTableColumn(widths, 1, -10, 700)).toEqual([180.25, 230.5, 100.75]);
   expect(widths).toEqual([180.25, 240.5, 100.75]);
-  expect(resizeTableBoundary(resized, 0, -35.5)).toEqual(widths);
-  expect(resizeTableBoundary(widths, 1, -10)).toEqual([180.25, 230.5, 110.75]);
 });
 
-test("boundaries stop when either neighbor reaches its minimum or maximum", () => {
-  expect(resizeTableBoundary([100, 100], 0, 1000)).toEqual([136, 64]);
-  expect(resizeTableBoundary([100, 100], 0, -1000)).toEqual([64, 136]);
-  expect(resizeTableBoundary([1190, 200], 0, 40)).toEqual([1200, 190]);
-  expect(resizeTableBoundary([200, 1190], 0, -40)).toEqual([190, 1200]);
+test("resizing stops at the preferred minimum, maximum and viewport edge", () => {
+  expect(resizeTableColumn([100, 100], 0, 1000, 260)).toEqual([160, 100]);
+  expect(resizeTableColumn([100, 100], 0, -1000, 260)).toEqual([64, 100]);
+  expect(resizeTableColumn([1190, 200], 0, 40, 1500)).toEqual([1200, 200]);
+  expect(resizeTableColumn([100, 100], 0, 20, 200)).toEqual([100, 100]);
+  expect(resizeTableColumn([10, 40], 0, 20, 50)).toEqual([10, 40]);
+  expect(resizeTableColumn([1500, 100], 0, -20, 2000)).toEqual([1480, 100]);
 });
 
-test("natural widths are captured without jumps, including columns outside preferred limits", () => {
-  expect(resizeTableBoundary([50.5, 1500.25], 0, 0)).toEqual([50.5, 1500.25]);
-  expect(resizeTableBoundary([50.5, 1500.25], 0, -10)).toEqual([50.5, 1500.25]);
-  expect(resizeTableBoundary([50.5, 1500.25], 0, 10)).toEqual([60.5, 1490.25]);
+test("tables shrink proportionally to their viewport without growing smaller tables", () => {
+  expect(fitTableWidths([100, 200], 400)).toEqual([100, 200]);
+  const fitted = fitTableWidths([200, 300, 100], 420);
+  expect(fitted.reduce((a, b) => a + b, 0)).toBeCloseTo(420);
+  expect(fitted[1]).toBeGreaterThan(fitted[0]);
+  expect(fitted.every((width) => width >= 64)).toBe(true);
+  expect(fitTableWidths([100, 100, 100], 120)).toEqual([40, 40, 40]);
 });
 
-test("there is no resize boundary at the table's outer edge or in a single-column table", () => {
-  expect(resizeTableBoundary([200], 0, 40)).toEqual([200]);
-  expect(resizeTableBoundary([100, 200], 1, 40)).toEqual([100, 200]);
-  expect(resizeTableBoundary([100, 200], -1, 40)).toEqual([100, 200]);
-  expect(resizeTableBoundary([100, 200], 0, NaN)).toEqual([100, 200]);
+test("invalid resize requests leave widths unchanged", () => {
+  expect(resizeTableColumn([100, 200], 2, 40, 400)).toEqual([100, 200]);
+  expect(resizeTableColumn([100, 200], -1, 40, 400)).toEqual([100, 200]);
+  expect(resizeTableColumn([100, 200], 0, NaN, 400)).toEqual([100, 200]);
 });
 test("unavailable storage leaves resizing usable", () => {
   vi.stubGlobal("localStorage", { getItem() { throw new Error("Blocked"); }, setItem() { throw new Error("Full"); } });

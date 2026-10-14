@@ -209,9 +209,11 @@ button.secondary { border: 1px solid var(--border); padding: 7px 14px; }
 .cm-selectionMatch { background: rgba(255, 196, 0, 0.18); }
 .cm-panels { background: var(--bg-side); color: var(--fg); border-color: var(--border) !important; }
 .cm-panel.cm-search input, .cm-panel.cm-search button { font: inherit; }
-.cm-tooltip { background: var(--bg); border: 0 !important; border-radius: 8px; box-shadow: var(--shadow); overflow: hidden; }
-.cm-tooltip-autocomplete ul li { padding: 4px 10px !important; }
+.cm-tooltip { background: var(--bg); color: var(--fg); border: 1px solid var(--border) !important; border-radius: 8px; box-shadow: var(--shadow); overflow: hidden; }
+.cm-tooltip-autocomplete, .cm-tooltip-autocomplete > ul { background: var(--bg); color: var(--fg); }
+.cm-tooltip-autocomplete ul li { padding: 4px 10px !important; color: var(--fg); }
 .cm-tooltip-autocomplete ul li[aria-selected] { background: var(--accent) !important; color: #fff; }
+.cm-completionSection { padding: 7px 10px 3px !important; color: var(--muted); background: var(--bg-side); font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; }
 .cm-completionDetail { opacity: 0.6; margin-left: 10px; font-style: normal !important; }
 
 /* Code editor */
@@ -344,7 +346,18 @@ mark { background: rgba(255, 196, 0, 0.35); color: inherit; border-radius: 2px; 
 .backlink { margin-bottom: 10px; }
 .backlink-source { font-weight: 600; color: var(--accent); padding: 2px 4px; margin-left: -4px; }
 .backlink-context { font-size: 12.5px; color: var(--muted); padding: 3px 8px; margin-top: 2px; border-left: 2px solid var(--border); line-height: 1.45; word-break: break-word; }
-.outline-item { font-size: 13px; padding: 3px 0; color: var(--fg); }
+.outline-hint { margin: -3px 0 6px; color: var(--faint); font-size: 11px; line-height: 1.35; }
+.outline-row { display: flex; align-items: center; min-width: 0; border-radius: 5px; }
+.outline-row.drop { box-shadow: inset 0 2px var(--accent); }
+.outline-row.dragging { opacity: 0.45; }
+.outline-item { display: flex !important; align-items: center; gap: 3px; flex: 1; min-width: 0; font-size: 13px; padding: 3px 0; color: var(--fg); cursor: grab; }
+.outline-item:active { cursor: grabbing; }
+.outline-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.outline-item svg { flex: none; color: var(--faint); opacity: 0; }
+.outline-row:hover .outline-item svg, .outline-item:focus-visible svg { opacity: 1; }
+.outline-add { flex: none; display: inline-flex; padding: 3px; color: var(--faint); opacity: 0; }
+.outline-row:hover .outline-add, .outline-add:focus-visible { opacity: 1; }
+.outline-add:hover { color: var(--accent); }
 
 /* Quick switcher */
 .modal-backdrop.top { place-items: start center; padding-top: 12vh; }
@@ -386,7 +399,14 @@ body.resizing * { pointer-events: none; }
 .segmented button.active { background: var(--bg); color: var(--fg); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15); }
 .warn-toggle { color: var(--muted); }
 .warn-toggle.on { color: var(--danger); background: var(--err-bg); }
-.html-frame { flex: 1; border: 0; background: #fff; width: 100%; }
+.html-zoom { display: inline-flex; align-items: center; border: 1px solid var(--border); border-radius: 6px; color: var(--muted); }
+.html-zoom button { display: inline-flex; align-items: center; gap: 4px; min-height: 25px; padding: 3px 6px; border-radius: 0; }
+.html-zoom button + button { border-left: 1px solid var(--border); }
+.html-zoom button:disabled { opacity: 0.35; }
+.html-zoom span { min-width: 32px; font-variant-numeric: tabular-nums; }
+.html-frame-scroll { flex: 1; min-width: 0; min-height: 0; overflow: auto; background: #fff; }
+.html-frame-zoom { position: relative; min-width: 100%; min-height: 100%; }
+.html-frame { position: absolute; inset: 0 auto auto 0; border: 0; background: #fff; transform-origin: top left; }
 .pdf-viewer { flex: 1; overflow: auto; display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 20px; background: var(--bg-side); }
 .pdf-viewer.compact { flex: none; overflow: visible; padding: 10px; border-radius: 8px; max-height: 520px; overflow-y: auto; }
 .pdf-page { width: 100%; max-width: 900px; display: flex; justify-content: center; }
@@ -898,7 +918,7 @@ button:focus-visible, [tabindex]:focus-visible, input:focus-visible, select:focu
 
 .calendar-day.selected, .calendar-cell.selected { box-shadow: inset 0 0 0 2px var(--accent); }
 
-.outline-item { display: block; width: 100%; text-align: left; }
+.outline-item { text-align: left; }
 
 /* Per-note table widths are presentation preferences, outside Markdown. */
 .cm-table-inner { position: relative; max-width: none; }

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { GripVertical, Plus } from "lucide-react";
 import { isSpecialTab, contextKind, parseView } from "./specialTabs";
 import { api } from "../ipc/api";
 import { errorMessage, type Backlink, type Mention } from "../ipc/types";
@@ -9,7 +10,7 @@ import { useUi } from "../state/ui";
 import { useChat } from "../state/chat";
 import { usePlanning } from "../state/planning";
 import { RunDetail, WorkflowContext } from "./Workflows";
-import { revealNotePosition } from "../editor/noteViews";
+import { addSiblingNoteSection, dropNoteSection, moveNoteSection, revealNotePosition } from "../editor/noteViews";
 import { PropertiesEditor } from "../editor/PropertiesEditor";
 import { FRONTMATTER_RE } from "../editor/livePreview";
 import { dayStamp } from "../daily";
@@ -56,6 +57,8 @@ function LinksPanel() {
   const content = useWorkspace((s) => (active ? s.buffers[active]?.content : null));
   const revision = useVault((s) => s.revision);
   const [backlinks, setBacklinks] = useState<Backlink[]>([]);
+  const [dragLine, setDragLine] = useState<number | null>(null);
+  const [dropLine, setDropLine] = useState<number | null>(null);
 
   useEffect(() => {
     if (!active || isSpecialTab(active)) {
@@ -114,12 +117,66 @@ function LinksPanel() {
       {headings.length > 0 && (
         <section>
           <h3>Outline</h3>
+          <p className="outline-hint">Drag sibling sections to reorder. Use ⌥↑/⌥↓ from the keyboard.</p>
           <div className="outline">
-            {headings.map((h, i) => (
-              <button key={i} className="outline-item" style={{ paddingLeft: (h.level - 1) * 12 }} onClick={()=>revealNotePosition(active, content?.split("\n").slice(0, h.line-1).reduce((n,line)=>n+line.length+1,0) ?? 0)}>
-                {h.text}
-              </button>
-            ))}
+            {headings.map((h) => {
+              return (
+                <div
+                  key={`${h.line}:${h.text}`}
+                  className={`outline-row${dragLine === h.line ? " dragging" : ""}${dropLine === h.line ? " drop" : ""}`}
+                  style={{ paddingLeft: (h.level - 1) * 12 }}
+                  onDragOver={(event) => {
+                    if (dragLine !== null && dragLine !== h.line) {
+                      event.preventDefault();
+                      event.dataTransfer.dropEffect = "move";
+                      setDropLine(h.line);
+                    }
+                  }}
+                  onDragLeave={() => dropLine === h.line && setDropLine(null)}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    const from = Number(event.dataTransfer.getData("application/x-mosaic-section"));
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    const place = event.clientY < rect.top + rect.height / 2 ? "before" : "after";
+                    if (Number.isFinite(from)) dropNoteSection(active, from, h.line, place);
+                    setDragLine(null);
+                    setDropLine(null);
+                  }}
+                >
+                  <button
+                    className="outline-item"
+                    draggable
+                    aria-label={`${h.text}. Drag to reorder; Option Up or Option Down moves among sibling sections.`}
+                    onDragStart={(event) => {
+                      event.dataTransfer.effectAllowed = "move";
+                      event.dataTransfer.setData("application/x-mosaic-section", String(h.line));
+                      setDragLine(h.line);
+                    }}
+                    onDragEnd={() => {
+                      setDragLine(null);
+                      setDropLine(null);
+                    }}
+                    onKeyDown={(event) => {
+                      if (!event.altKey || (event.key !== "ArrowUp" && event.key !== "ArrowDown")) return;
+                      event.preventDefault();
+                      moveNoteSection(active, h.line, event.key === "ArrowUp" ? -1 : 1);
+                    }}
+                    onClick={() => revealNotePosition(active, h.offset)}
+                  >
+                    <GripVertical size={13} aria-hidden="true" />
+                    <span>{h.text}</span>
+                  </button>
+                  <button
+                    className="outline-add"
+                    aria-label={`Add a section after ${h.text}`}
+                    title={`Add a level ${h.level} section after “${h.text}”`}
+                    onClick={() => addSiblingNoteSection(active, h.line)}
+                  >
+                    <Plus size={13} />
+                  </button>
+                </div>
+              );
+            })}
           </div>
         </section>
       )}

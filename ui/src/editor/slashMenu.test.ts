@@ -17,6 +17,23 @@ test("slash menu only opens in an empty Markdown block", () => {
   expect(completion("/table remaining", 6)).toBeNull();
   expect(completion("/table", 6, true)).toBeNull();
 });
+
+test("slash commands are grouped and include the agreed text, block, link and media helpers", () => {
+  const options = completion("/")!.options;
+  expect(options.map((option) => option.label)).toEqual(expect.arrayContaining(["Callout", "Math block", "Wikilink", "Web link", "Embed file"]));
+  expect(new Set(options.map((option) => option.section))).toEqual(new Set(["Text", "Blocks", "Links & media"]));
+});
+
+test("placeholder-based commands select the text to replace", () => {
+  let state = EditorState.create({ doc: "/wiki", selection: { anchor: 5 }, extensions: [markdown()] });
+  const result = slashCompletion(new CompletionContext(state, 5, false))!;
+  const option = result.options.find(o => o.label === "Wikilink")!;
+  const view = { get state() { return state; }, dispatch(spec: TransactionSpec) { state = state.update(spec).state; } } as EditorView;
+  if (typeof option.apply !== "function") throw new Error("Expected an insertion command");
+  option.apply(view, option, result.from, 5);
+  expect(state.doc.toString()).toBe("[[Note]]");
+  expect(state.sliceDoc(state.selection.main.from, state.selection.main.to)).toBe("Note");
+});
 test("table insertion replaces the command and leaves the caret outside the rendered block", () => {
   let state = EditorState.create({ doc: "Before\n/table\nAfter", selection: { anchor: 13 }, extensions: [markdown()] });
   const result = slashCompletion(new CompletionContext(state, 13, false))!;

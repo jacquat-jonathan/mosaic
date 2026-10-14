@@ -2,6 +2,7 @@
 
 import type { EditorView } from "@codemirror/view";
 import { FRONTMATTER_RE } from "./livePreview";
+import { insertSiblingSection, moveSection, moveSectionTo } from "../views/outline";
 
 const views = new Map<string, EditorView>();
 
@@ -66,4 +67,40 @@ export function revealNotePosition(path: string, position: number): void {
   if (!view) return;
   view.dispatch({ selection: { anchor: Math.min(position, view.state.doc.length) }, scrollIntoView: true });
   view.focus();
+}
+
+function applySectionEdit(path: string, edit: ReturnType<typeof moveSection>): boolean {
+  const view = views.get(path);
+  if (!view || !edit) return false;
+  const doc = view.state.doc.toString();
+  view.dispatch({
+    changes: { from: 0, to: doc.length, insert: edit.text },
+    selection: edit.select ?? { anchor: edit.focus },
+    scrollIntoView: true,
+    userEvent: "move.section",
+  });
+  return true;
+}
+
+/** Moves a heading section one sibling earlier/later, as one undoable editor change. */
+export function moveNoteSection(path: string, line: number, direction: -1 | 1): boolean {
+  const view = views.get(path);
+  if (!view) return false;
+  return applySectionEdit(path, moveSection(view.state.doc.toString(), line, direction));
+}
+
+/** Drops a heading section before/after another sibling, as one undoable editor change. */
+export function dropNoteSection(path: string, fromLine: number, targetLine: number, place: "before" | "after"): boolean {
+  const view = views.get(path);
+  if (!view) return false;
+  return applySectionEdit(path, moveSectionTo(view.state.doc.toString(), fromLine, targetLine, place));
+}
+
+/** Creates a same-level section after this heading and selects its placeholder title. */
+export function addSiblingNoteSection(path: string, line: number): boolean {
+  const view = views.get(path);
+  if (!view) return false;
+  const changed = applySectionEdit(path, insertSiblingSection(view.state.doc.toString(), line));
+  if (changed) view.focus();
+  return changed;
 }

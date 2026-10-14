@@ -28,9 +28,9 @@ describe("HTML preview resources", () => {
   it("embeds literal local fetches but leaves external and dynamic requests alone", async () => {
     const loaded: string[] = [];
     const source = `const a=fetch('./flows.json'); const b=fetch("https://example.com/x"); fetch(variable);`;
-    const out = await embedLocalFetches(source, "Test html", async path => { loaded.push(path); return '{"ok":true}'; });
+    const out = await embedLocalFetches(source, "Test html", async path => { loaded.push(path); return '{"label":"it\'s ready"}'; });
     expect(loaded).toEqual(["Test html/flows.json"]);
-    expect(out).toContain("fetch('data:application/json;charset=utf-8,%7B%22ok%22%3Atrue%7D')");
+    expect(out).toContain("fetch('data:application/json;charset=utf-8,%7B%22label%22%3A%22it%27s%20ready%22%7D')");
     expect(out).toContain('fetch("https://example.com/x")');
     expect(out).toContain("fetch(variable)");
   });

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { ShieldAlert, ShieldCheck } from "lucide-react";
 import type { Buffer } from "../state/workspace";
-import { api, fileUrl } from "../ipc/api";
+import { api, fileUrl, htmlPreviewDocumentUrl } from "../ipc/api";
 import { parentOf } from "../state/vault";
 import { CodeEditor } from "./CodeEditor";
 import { Segmented, Toolbar } from "./Toolbar";
@@ -45,7 +45,8 @@ export async function embedLocalFetches(source: string, dir: string, load: (path
   const replacements = await Promise.all(matches.map(async match => {
     const path = resolveHtmlResource(dir, match[2]);
     const content = await load(path).catch(() => null);
-    return content === null ? null : { from: match.index! + match[0].indexOf(match[2]), to: match.index! + match[0].indexOf(match[2]) + match[2].length, value: `data:${dataMime(path)};charset=utf-8,${encodeURIComponent(content)}` };
+    const encoded = content === null ? null : encodeURIComponent(content).replace(/'/g, "%27");
+    return encoded === null ? null : { from: match.index! + match[0].indexOf(match[2]), to: match.index! + match[0].indexOf(match[2]) + match[2].length, value: `data:${dataMime(path)};charset=utf-8,${encoded}` };
   }));
   let out = source;
   for (const replacement of replacements.filter((value): value is NonNullable<typeof value> => value !== null).sort((a, b) => b.from - a.from)) {
@@ -70,11 +71,12 @@ async function sandboxedDoc(path: string, html: string, scripts: boolean): Promi
     ...[...doc.querySelectorAll('link[rel~="stylesheet"][href]')].map((el) => rewrite(el, "href")),
     ...[...doc.querySelectorAll("script[src]")].map((el) => rewrite(el, "src")),
     ...[...doc.querySelectorAll("script:not([src])")].filter(scriptType).map(async el => {
-      const source = await embedLocalFetches(el.textContent ?? "", dir, async resource => (await api.read(resource)).content);
+      const source = await embedLocalFetches(
+        el.textContent ?? "",
+        dir,
+        async resource => (await api.read(resource)).content,
+      );
       el.textContent = "";
-      // A data URL stays loadable from the iframe's intentionally opaque sandbox origin. Blob
-      // URLs inherit the app origin and WebKit rejects them here unless allow-same-origin is added,
-      // which would let an opted-in page reach the surrounding application.
       el.setAttribute("src", `data:text/javascript;charset=utf-8,${encodeURIComponent(source)}`);
     }),
   ]);
@@ -92,13 +94,13 @@ export function HtmlViewer({ buffer }: { buffer: Buffer }) {
   const [mode, setMode] = useState<"preview" | "source">("preview");
   const [scripts, setScripts] = useState(scriptsAllowed.has(buffer.path));
   // Each built document gets a fresh iframe: swapping srcdoc on a live sandboxed frame can leave it blank.
-  const [doc, setDoc] = useState<{ html: string; seq: number } | null>(null);
+  const [doc, setDoc] = useState<{ url: string; seq: number } | null>(null);
 
   useEffect(() => {
     if (mode !== "preview") return;
     let live = true;
-    void sandboxedDoc(buffer.path, buffer.content ?? "", scripts).then((html) => {
-      if (live) setDoc((prev) => ({ html, seq: (prev?.seq ?? 0) + 1 }));
+    void sandboxedDoc(buffer.path, buffer.content ?? "", scripts).then(htmlPreviewDocumentUrl).then((url) => {
+      if (live) setDoc((prev) => ({ url, seq: (prev?.seq ?? 0) + 1 }));
     });
     return () => {
       live = false;
@@ -132,8 +134,8 @@ export function HtmlViewer({ buffer }: { buffer: Buffer }) {
             key={doc.seq}
             className="html-frame"
             title={buffer.path}
-            sandbox={scripts ? "allow-scripts" : ""}
-            srcDoc={doc.html}
+            sandbox={scripts ? "allow-scripts allow-same-origin" : "allow-same-origin"}
+            src={doc.url}
           />
         )
       )}

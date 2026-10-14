@@ -176,6 +176,14 @@ export async function fileUrl(path: string): Promise<string> {
   return convertFileSrc(await api.absolutePath(path));
 }
 
+/** Publishes a sanitized HTML preview on Mosaic's local asset origin. */
+export async function htmlPreviewDocumentUrl(html: string): Promise<string> {
+  if (!inTauri) return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
+  const path = await call<string>("html_preview_document", { html });
+  const { convertFileSrc } = await import("@tauri-apps/api/core");
+  return convertFileSrc(path);
+}
+
 async function mockFileUrl(path: string): Promise<string> {
   const { mockInvoke } = await import("./mock");
   const raw = (await mockInvoke("read_raw", { path })) as string;

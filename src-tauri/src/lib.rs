@@ -2,6 +2,7 @@
 
 mod calendar_subscriptions;
 mod chat;
+mod html_preview;
 mod planner;
 mod tessera;
 mod update;
@@ -738,6 +739,7 @@ pub fn run() {
             ai_activity,
             undo_change,
             absolute_path,
+            html_preview::html_preview_document,
             search,
             backlinks,
             tags,

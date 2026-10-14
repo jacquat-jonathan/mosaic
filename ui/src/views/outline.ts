@@ -86,6 +86,16 @@ interface TextReplacement {
   insert: string;
 }
 
+function headingNumber(text: string, heading: OutlineHeading): { from: number; to: number; number: number } | null {
+  const end = text.indexOf("\n", heading.offset);
+  const source = text.slice(heading.offset, end < 0 ? text.length : end);
+  // Accept both list-like titles (`## 2. Shipping`) and bare numeric titles (`## 2`).
+  const match = /^(#{1,6})([ \t]+)(\d+)(?:(?=[.)](?:[ \t]|$))|(?=[ \t#]*$))/.exec(source);
+  if (!match) return null;
+  const from = heading.offset + match[1].length + match[2].length;
+  return { from, to: from + match[3].length, number: Number(match[3]) };
+}
+
 /**
  * Numbered section headings are a lightweight ordered list (`## 1. First`, `## 2. Second`).
  * After one of them moves, keep every numbered sibling in display order while preserving whether
@@ -94,17 +104,10 @@ interface TextReplacement {
 function renumberMovedSection(text: string, focus: number): SectionEdit {
   const headings = parse(text);
   const moved = headings.find((heading) => heading.offset === focus);
-  if (!moved || !/^\d+[.)][ \t]+/.test(moved.text)) return { text, focus };
+  if (!moved || !headingNumber(text, moved)) return { text, focus };
   const lines = siblingLines(text, moved.line);
   const siblings = headings.filter((heading) => lines.includes(heading.line));
-  const numbered = siblings.flatMap((heading) => {
-    const end = text.indexOf("\n", heading.offset);
-    const source = text.slice(heading.offset, end < 0 ? text.length : end);
-    const match = /^(#{1,6})([ \t]+)(\d+)([.)])(?=[ \t]+)/.exec(source);
-    if (!match) return [];
-    const from = heading.offset + match[1].length + match[2].length;
-    return [{ from, to: from + match[3].length, number: Number(match[3]) }];
-  });
+  const numbered = siblings.flatMap((heading) => headingNumber(text, heading) ?? []);
   if (numbered.length < 2) return { text, focus };
 
   const start = Math.min(...numbered.map((item) => item.number));
@@ -124,6 +127,14 @@ function renumberMovedSection(text: string, focus: number): SectionEdit {
   return { text: result, focus: adjustedFocus };
 }
 
+function insertMovedBlock(text: string, at: number, block: string): SectionEdit {
+  const before = text.slice(0, at);
+  const after = text.slice(at);
+  const prefix = before && !before.endsWith("\n\n") ? (before.endsWith("\n") ? "\n" : "\n\n") : "";
+  const suffix = after && !block.endsWith("\n\n") ? (block.endsWith("\n") ? "\n" : "\n\n") : "";
+  return { text: before + prefix + block + suffix + after, focus: at + prefix.length };
+}
+
 /** Moves one section before/after a sibling while retaining its nested subsections and exact source. */
 export function moveSectionTo(text: string, fromLine: number, targetLine: number, place: "before" | "after"): SectionEdit | null {
   if (fromLine === targetLine) return null;
@@ -136,7 +147,8 @@ export function moveSectionTo(text: string, fromLine: number, targetLine: number
   const without = text.slice(0, source.from) + text.slice(source.to);
   let at = place === "before" ? target.from : target.to;
   if (at > source.from) at -= block.length;
-  return renumberMovedSection(without.slice(0, at) + block + without.slice(at), at);
+  const inserted = insertMovedBlock(without, at, block);
+  return renumberMovedSection(inserted.text, inserted.focus);
 }
 
 /** Moves a section one place among its siblings. */

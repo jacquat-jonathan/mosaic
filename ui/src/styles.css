@@ -210,14 +210,17 @@ button.secondary { border: 1px solid var(--border); padding: 7px 14px; }
 .cm-panels { background: var(--bg-side); color: var(--fg); border-color: var(--border) !important; }
 .cm-panel.cm-search input, .cm-panel.cm-search button { font: inherit; }
 .cm-tooltip { background: var(--bg); color: var(--fg); border: 1px solid var(--border) !important; border-radius: 8px; box-shadow: var(--shadow); overflow: hidden; }
-.cm-tooltip-autocomplete { min-width: 280px; max-width: min(400px, calc(100vw - 24px)); padding: 4px; font: 13px/1.35 var(--font-ui); }
+.cm-editor .cm-tooltip.cm-tooltip-autocomplete { min-width: 280px; max-width: min(380px, calc(100vw - 24px)); padding: 4px; border: 0 !important; outline: 0; border-radius: 10px; box-shadow: 0 12px 32px rgba(0, 0, 0, .42), 0 0 0 1px rgba(255, 255, 255, .08); }
 .cm-tooltip-autocomplete, .cm-tooltip-autocomplete > ul { background: var(--bg); color: var(--fg); }
-.cm-tooltip-autocomplete > ul { max-height: min(340px, 55vh); }
-.cm-tooltip-autocomplete ul li { min-height: 29px; padding: 5px 8px !important; border-radius: 6px; color: var(--fg); }
+.cm-editor .cm-tooltip.cm-tooltip-autocomplete > ul { min-width: 272px; max-width: 372px; max-height: min(320px, 55vh); height: auto; padding: 0; outline: none !important; font-family: var(--font-ui) !important; font-size: 13px; line-height: 1.35; scrollbar-width: thin; scrollbar-color: var(--faint) transparent; }
+.cm-tooltip-autocomplete > ul::-webkit-scrollbar { width: 7px; }
+.cm-tooltip-autocomplete > ul::-webkit-scrollbar-track { background: transparent; }
+.cm-tooltip-autocomplete > ul::-webkit-scrollbar-thumb { background: var(--faint); border: 2px solid transparent; border-radius: 8px; background-clip: padding-box; }
+.cm-tooltip-autocomplete ul li { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; column-gap: 18px; min-height: 28px; padding: 5px 8px !important; border-radius: 6px; color: var(--fg); line-height: 18px !important; }
 .cm-tooltip-autocomplete ul li[aria-selected] { background: var(--bg-active) !important; color: var(--fg); }
-.cm-completionSection { min-height: 0 !important; padding: 8px 8px 4px !important; color: var(--muted); background: transparent; font: 700 10px/1.2 var(--font-ui); letter-spacing: 0.06em; text-transform: uppercase; }
-.cm-completionLabel { font-weight: 520; }
-.cm-completionDetail { float: right; opacity: 1; margin-left: 20px; color: var(--muted); font-style: normal !important; font-weight: 400; }
+.cm-tooltip-autocomplete completion-section, .cm-completionSection { min-height: 0 !important; padding: 9px 8px 4px !important; border: 0 !important; color: var(--muted); background: transparent; font: 650 10px/1.2 var(--font-ui); letter-spacing: 0.06em; text-transform: uppercase; opacity: 1 !important; }
+.cm-completionLabel { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
+.cm-completionDetail { overflow: hidden; text-overflow: ellipsis; opacity: 1; margin: 0; color: var(--muted); font: 400 12px/1.35 var(--font-ui); font-style: normal !important; }
 
 /* Code editor */
 .code-editor .cm-scroller { font: 13px/1.6 var(--font-mono); }

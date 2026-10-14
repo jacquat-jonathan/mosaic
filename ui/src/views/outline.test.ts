@@ -70,6 +70,14 @@ describe("Markdown note sections", () => {
     expect(changed.text.slice(changed.focus)).toMatch(/^## 1\) Third/);
   });
 
+  it("renumbers bare numeric headings and separates a moved final section", () => {
+    const numbered = "# 1\n\nas1\n\n# 2\n\nasd2\n\n# 3\n\nas3";
+    const changed = moveSectionTo(numbered, lineOf(numbered, "# 3"), lineOf(numbered, "# 2"), "before")!;
+    expect(parse(changed.text).map((heading) => heading.text)).toEqual(["1", "2", "3"]);
+    expect(changed.text).toContain("# 2\n\nas3\n\n# 3\n\nasd2");
+    expect(changed.text).not.toContain("as3#");
+  });
+
   it("adds a same-level section after the complete selected section", () => {
     const changed = insertSiblingSection(note, lineOf(note, "## Alpha"))!;
     expect(changed.text.indexOf("### Alpha child")).toBeLessThan(changed.text.indexOf("## New section"));

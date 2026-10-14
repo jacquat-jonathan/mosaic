@@ -2,6 +2,9 @@ import type { CalendarOverlayOccurrence, CalendarWorkSession, EventOccurrence } 
 
 export type CalendarMode="month"|"week"|"day";
 export const DAY_MS=86_400_000;
+export const CALENDAR_START_HOUR=6;
+export const CALENDAR_END_HOUR=22;
+export const visibleCalendarHours=()=>Array.from({length:CALENDAR_END_HOUR-CALENDAR_START_HOUR},(_,index)=>CALENDAR_START_HOUR+index);
 export const isoDay=(date:Date)=>`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}`;
 export const atNoon=(date:Date)=>new Date(date.getFullYear(),date.getMonth(),date.getDate(),12);
 export const addDays=(date:Date,days:number)=>{const next=atNoon(date);next.setDate(next.getDate()+days);return next;};

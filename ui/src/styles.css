@@ -952,11 +952,9 @@ button:focus-visible, [tabindex]:focus-visible, input:focus-visible, select:focu
 .planner-card-title { display: flex; justify-content: space-between; gap: 8px; }
 .planner-card > p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .planner-card-meta { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 11px; color: var(--muted); }
-.planner-card-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .planner-subtasks { list-style: none; margin: 0; padding: 8px 0 0; border-top: 1px solid var(--border); display: grid; gap: 5px; }
-.planner-subtasks li { display: grid; grid-template-columns: minmax(0,1fr) 92px; gap: 5px; align-items: center; }
+.planner-subtasks li { min-width: 0; }
 .planner-subtasks button { min-width: 0; padding: 2px 0; border: 0; background: none; text-align: left; overflow: hidden; text-overflow: ellipsis; }
-.planner-subtasks select { min-width: 0; font-size: 11px; }
 .planner-editor { flex: 0 0 340px; max-width: 42%; min-width: 280px; border-left: 1px solid var(--border); background: var(--bg-side); padding: 16px; overflow: auto; }
 .planner-editor > header { display: flex; justify-content: space-between; align-items: center; }
 .planner-editor > header h2 { margin: 0; }
@@ -1042,9 +1040,9 @@ button:focus-visible, [tabindex]:focus-visible, input:focus-visible, select:focu
 .planner-event-chip small { color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
 .planner-session-chip button { border: 0; padding: 0 2px; background: none; }
 .planner-time-scroll { position: relative; }
-.planner-hours { grid-column: 1; display: grid; grid-template-rows: repeat(24,40px); color: var(--muted); font-size: 10px; text-align: right; }
+.planner-hours { grid-column: 1; display: grid; grid-template-rows: repeat(16,40px); color: var(--muted); font-size: 10px; text-align: right; }
 .planner-hours > div { padding: 0 6px; transform: translateY(-6px); }
-.planner-time-day { position: relative; height: 960px; border-left: 1px solid var(--border); }
+.planner-time-day { position: relative; height: 640px; border-left: 1px solid var(--border); overflow: hidden; }
 .planner-hour-cell { display: block; width: 100%; height: 40px; padding: 0; border: 0; border-top: 1px solid color-mix(in srgb,var(--border) 65%,transparent); border-radius: 0; background: transparent; }
 .planner-hour-cell:hover,.planner-hour-cell[data-selecting=true] { background: color-mix(in srgb,var(--accent) 9%,transparent); }
 .planner-timed-item { position: absolute; z-index: 2; min-width: 0; padding: 4px 5px; border: 0; border-left: 4px solid var(--item-color); border-radius: 5px; background: color-mix(in srgb,var(--item-color) 15%,var(--bg)); color: var(--fg); overflow: hidden; font-size: 10.5px; text-align: left; display: flex; flex-direction: column; }

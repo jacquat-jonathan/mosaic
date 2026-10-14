@@ -10,7 +10,7 @@ use crate::planner::tasks::task_in;
 use chrono::{DateTime, NaiveDate, SecondsFormat, Utc};
 use chrono_tz::Tz;
 use rusqlite::{OptionalExtension, Row, Transaction, params};
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap};
 
 fn row_to_session(row: &Row<'_>) -> rusqlite::Result<WorkSession> {
     Ok(WorkSession {
@@ -776,18 +776,6 @@ impl PlannerStore {
         }
         drop(task_by_id);
 
-        let mut scheduled = HashSet::new();
-        let mut scheduled_stmt = self
-            .conn
-            .prepare("SELECT DISTINCT task_id FROM work_sessions WHERE state = 'planned'")
-            .map_err(sql_error)?;
-        for task_id in scheduled_stmt
-            .query_map([], |row| row.get::<_, String>(0))
-            .map_err(sql_error)?
-        {
-            scheduled.insert(task_id.map_err(sql_error)?);
-        }
-        drop(scheduled_stmt);
         let mut due_markers = Vec::new();
         let mut unscheduled_tasks = Vec::new();
         for task in tasks {
@@ -804,7 +792,7 @@ impl PlannerStore {
                     color: epic_color(&self.conn, task.epic_id.as_deref())?,
                 });
             }
-            if task.status != TaskStatus::Done && !scheduled.contains(&task.id) {
+            if task.status != TaskStatus::Done {
                 unscheduled_tasks.push(task);
             }
         }

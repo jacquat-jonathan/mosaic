@@ -68,6 +68,16 @@ fn validate_estimate(value: Option<i64>) -> Result<Option<i64>> {
     }
 }
 
+fn status_label(status: TaskStatus) -> &'static str {
+    match status {
+        TaskStatus::New => "New",
+        TaskStatus::Blocked => "Blocked",
+        TaskStatus::InProgress => "In progress",
+        TaskStatus::InQa => "In QA",
+        TaskStatus::Done => "Done",
+    }
+}
+
 fn ensure_epic(tx: &Transaction<'_>, epic_id: Option<&str>) -> Result<()> {
     let Some(epic_id) = epic_id else {
         return Ok(());
@@ -338,17 +348,29 @@ impl PlannerStore {
         }
         for task_id in &ids {
             let after = task_in(&tx, task_id)?;
+            let previous = &before[task_id];
+            let summary = if task_id != id {
+                "Moved with parent task".to_string()
+            } else if previous.status != after.status {
+                format!(
+                    "Moved task from {} to {}",
+                    status_label(previous.status),
+                    status_label(after.status)
+                )
+            } else if previous.epic_id != after.epic_id {
+                "Moved task to another epic".to_string()
+            } else if previous.parent_id != after.parent_id {
+                "Changed task hierarchy".to_string()
+            } else {
+                "Reordered task".to_string()
+            };
             record_activity(
                 &tx,
                 ("task", task_id),
                 &at,
                 "moved",
-                if task_id == id {
-                    "Moved task"
-                } else {
-                    "Moved with parent task"
-                },
-                Some(serde_json::to_value(&before[task_id]).unwrap()),
+                &summary,
+                Some(serde_json::to_value(previous).unwrap()),
                 Some(serde_json::to_value(&after).unwrap()),
             )?;
         }

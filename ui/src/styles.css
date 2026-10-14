@@ -953,7 +953,8 @@ button:focus-visible, [tabindex]:focus-visible, input:focus-visible, select:focu
 .planner-card > p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .planner-card-meta { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 11px; color: var(--muted); }
 .planner-subtasks { list-style: none; margin: 0; padding: 8px 0 0; border-top: 1px solid var(--border); display: grid; gap: 5px; }
-.planner-subtasks li { min-width: 0; }
+.planner-subtasks li { min-width: 0; display: flex; align-items: center; gap: 6px; }
+.planner-subtasks input { flex: none; margin: 0; }
 .planner-subtasks button { min-width: 0; padding: 2px 0; border: 0; background: none; text-align: left; overflow: hidden; text-overflow: ellipsis; }
 .planner-editor { flex: 0 0 340px; max-width: 42%; min-width: 280px; border-left: 1px solid var(--border); background: var(--bg-side); padding: 16px; overflow: auto; }
 .planner-editor > header { display: flex; justify-content: space-between; align-items: center; }
@@ -1014,44 +1015,54 @@ button:focus-visible, [tabindex]:focus-visible, input:focus-visible, select:focu
 .calendar-chooser label, .event-check, .event-scope label { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
 .calendar-chooser label i { width: 8px; height: 8px; border-radius: 50%; }
 .calendar-chooser > div > button { margin-top: 3px; }
-.planner-month { flex: 1; align-self: stretch; min-width: 840px; min-height: 100%; padding: 10px; display: grid; grid-template-columns: repeat(7,minmax(116px,1fr)); grid-template-rows: 28px repeat(6,minmax(108px,1fr)); gap: 6px; }
+.planner-month { flex: 1; align-self: stretch; min-width: 650px; min-height: 100%; padding: 10px; display: grid; grid-template-columns: repeat(5,minmax(116px,1fr)); grid-template-rows: 28px repeat(6,minmax(108px,1fr)); gap: 6px; }
 .planner-month-weekday { color: var(--muted); font-size: 11px; padding: 5px 7px; text-transform: uppercase; }
 .planner-month-cell { min-width: 0; padding: 9px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--fg); text-align: left; overflow: hidden; display: flex; flex-direction: column; gap: 5px; }
 .planner-month-cell { cursor: pointer; }
 .planner-month-cell.other-month { opacity: .48; background: var(--bg-side); }
 .planner-month-cell.today { box-shadow: inset 0 0 0 2px var(--accent); }
+.planner-month-cell.drop-target { box-shadow: inset 0 0 0 2px color-mix(in srgb,var(--accent) 65%,transparent); background: color-mix(in srgb,var(--accent) 5%,var(--bg)); }
 .planner-month-date { font-weight: 650; }
 .planner-workload { align-self: flex-end; margin-top: -20px; color: var(--muted); font-size: 10px; }
 .planner-month-item,.planner-due { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 4px 6px; border-left: 3px solid; border-radius: 4px; background: var(--bg-side); font-size: 11px; }
 .planner-month-item:is(button) { width: 100%; border-top: 0; border-right: 0; border-bottom: 0; color: var(--fg); text-align: left; }
+.planner-month-item[draggable=true] { cursor: grab; }
+.planner-month-drop-preview { display: block; min-width: 0; padding: 4px 6px; border: 1px dashed var(--preview-color); border-left-width: 3px; border-radius: 4px; background: color-mix(in srgb,var(--preview-color) 9%,transparent); color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: .8; }
 .planner-due { border-color: var(--danger); color: var(--muted); }
-.planner-week-wrap { flex: 1; min-width: 650px; overflow: auto; position: relative; }
-.planner-week-head,.planner-all-day,.planner-time-scroll { display: grid; grid-template-columns: 54px repeat(var(--planner-days,7),minmax(110px,1fr)); min-width: max-content; }
+.planner-week-wrap { flex: 1; min-width: 650px; height: 100%; overflow: auto; position: relative; --planner-hour-height: 40px; --planner-grid-height: 720px; }
+.planner-week-head,.planner-all-day,.planner-time-scroll { display: grid; grid-template-columns: 54px repeat(var(--planner-days,5),minmax(110px,1fr)); min-width: max-content; }
 .planner-calendar-content.mode-day .planner-week-head,.planner-calendar-content.mode-day .planner-all-day,.planner-calendar-content.mode-day .planner-time-scroll { --planner-days: 1; min-width: 420px; }
-.planner-calendar-content.mode-week .planner-week-head,.planner-calendar-content.mode-week .planner-all-day,.planner-calendar-content.mode-week .planner-time-scroll { --planner-days: 7; min-width: 900px; }
+.planner-calendar-content.mode-week .planner-week-head,.planner-calendar-content.mode-week .planner-all-day,.planner-calendar-content.mode-week .planner-time-scroll { --planner-days: 5; min-width: 680px; }
 .planner-week-head { position: sticky; top: 0; z-index: 6; background: var(--bg); border-bottom: 1px solid var(--border); }
 .planner-week-head > div { min-height: 38px; padding: 5px; display: flex; justify-content: center; align-items: baseline; gap: 5px; }
 .planner-week-head .today { color: var(--accent); }
 .planner-all-day { position: sticky; top: 38px; z-index: 5; background: var(--bg); border-bottom: 1px solid var(--border); }
 .planner-time-label { color: var(--muted); font-size: 10px; padding: 7px; text-align: right; }
 .planner-all-day-cell { min-height: 42px; padding: 3px; border-left: 1px solid var(--border); display: flex; flex-direction: column; gap: 3px; }
+.planner-all-day-drop-preview { display: block; min-width: 0; padding: 2px 4px; border: 1px dashed var(--preview-color); border-left-width: 3px; border-radius: 3px; background: color-mix(in srgb,var(--preview-color) 9%,transparent); color: var(--muted); font-size: 10.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: .85; }
 .planner-event-chip,.planner-session-chip { display: flex; align-items: center; justify-content: space-between; gap: 4px; min-width: 0; padding: 2px 4px; border: 0; border-left: 3px solid; border-radius: 3px; background: var(--bg-side); color: var(--fg); font-size: 10.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .planner-event-chip.read-only,.planner-month-item.read-only,.planner-timed-item.overlay { background-image: repeating-linear-gradient(135deg,transparent,transparent 6px,color-mix(in srgb,var(--fg) 5%,transparent) 6px,color-mix(in srgb,var(--fg) 5%,transparent) 9px); }
 .planner-event-chip small { color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
-.planner-session-chip button { border: 0; padding: 0 2px; background: none; }
+.planner-session-chip,.planner-event-chip[draggable=true] { cursor: grab; }
 .planner-time-scroll { position: relative; }
-.planner-hours { grid-column: 1; display: grid; grid-template-rows: repeat(16,40px); color: var(--muted); font-size: 10px; text-align: right; }
+.planner-hours { grid-column: 1; display: grid; grid-template-rows: repeat(18,var(--planner-hour-height)); color: var(--muted); font-size: 10px; text-align: right; }
 .planner-hours > div { padding: 0 6px; transform: translateY(-6px); }
-.planner-time-day { position: relative; height: 640px; border-left: 1px solid var(--border); overflow: hidden; }
-.planner-hour-cell { display: block; width: 100%; height: 40px; padding: 0; border: 0; border-top: 1px solid color-mix(in srgb,var(--border) 65%,transparent); border-radius: 0; background: transparent; }
+.planner-time-day { position: relative; height: var(--planner-grid-height); border-left: 1px solid var(--border); overflow: hidden; }
+.planner-hour-cell { display: block; width: 100%; height: var(--planner-hour-height); padding: 0; border: 0; border-top: 1px solid color-mix(in srgb,var(--border) 65%,transparent); border-radius: 0; background: transparent; }
 .planner-hour-cell:hover,.planner-hour-cell[data-selecting=true] { background: color-mix(in srgb,var(--accent) 9%,transparent); }
 .planner-timed-item { position: absolute; z-index: 2; min-width: 0; padding: 4px 5px; border: 0; border-left: 4px solid var(--item-color); border-radius: 5px; background: color-mix(in srgb,var(--item-color) 15%,var(--bg)); color: var(--fg); overflow: hidden; font-size: 10.5px; text-align: left; display: flex; flex-direction: column; }
 .planner-timed-item strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .planner-timed-item > span { color: var(--muted); }
+.planner-week-drop-preview { position: absolute; z-index: 4; left: 3px; right: 3px; min-height: 10px; padding: 4px 5px; border: 1px dashed var(--preview-color); border-left-width: 4px; border-radius: 5px; background: color-mix(in srgb,var(--preview-color) 11%,var(--bg)); color: var(--fg); pointer-events: none; opacity: .85; overflow: hidden; font-size: 10.5px; display: flex; flex-direction: column; }
+.planner-week-drop-preview strong,.planner-week-drop-preview span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.planner-week-drop-preview span { color: var(--muted); }
 .planner-timed-item.session { cursor: grab; }
-.planner-timed-item.session > div { display: none; gap: 2px; margin-top: auto; }
-.planner-timed-item.session:hover > div,.planner-timed-item.session:focus-within > div { display: flex; }
-.planner-timed-item.session button { padding: 0 3px; min-width: 18px; background: var(--bg); }
+.planner-session-menu { position: fixed; z-index: 30; min-width: 120px; padding: 5px; border: 1px solid var(--border); border-radius: 7px; background: var(--bg); box-shadow: var(--shadow); }
+.planner-session-menu button { width: 100%; border: 0; padding: 6px 9px; background: transparent; color: var(--danger); text-align: left; }
+.planner-session-menu button:hover { background: var(--bg-side); }
+.planner-timed-item.event { cursor: grab; }
+.planner-resize-handle { position: absolute; left: 5px; right: 5px; bottom: 0; height: 8px; cursor: ns-resize; touch-action: none; border-bottom: 2px solid color-mix(in srgb,var(--item-color) 75%,var(--fg)); opacity: .35; }
+.planner-timed-item:hover .planner-resize-handle,.planner-resize-handle:focus { opacity: 1; }
 .unscheduled-tray { flex: 0 0 250px; min-width: 190px; border-left: 1px solid var(--border); background: var(--bg-side); overflow: auto; padding: 10px; }
 .unscheduled-tray.collapsed { flex-basis: 42px; min-width: 42px; overflow: hidden; }
 .unscheduled-tray > header { display: flex; align-items: center; gap: 6px; }
@@ -1059,6 +1070,11 @@ button:focus-visible, [tabindex]:focus-visible, input:focus-visible, select:focu
 .unscheduled-tray h3 { margin: 0; flex: 1; font-size: 13px; }
 .unscheduled-filters { display: grid; gap: 6px; margin: 10px 0; }
 .unscheduled-filters input,.unscheduled-filters select { min-width: 0; width: 100%; }
+.unscheduled-groups { display: grid; gap: 12px; }
+.unscheduled-groups section { min-width: 0; }
+.unscheduled-groups h4 { display: flex; align-items: center; gap: 6px; margin: 0 0 5px; font-size: 11px; font-weight: 650; }
+.unscheduled-groups h4 i { width: 8px; height: 8px; border-radius: 50%; }
+.unscheduled-groups h4 span { margin-left: auto; color: var(--muted); font-weight: 400; }
 .unscheduled-tray ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .unscheduled-tray li { border-left: 3px solid var(--task-color); border-radius: 5px; background: var(--bg); }
 .unscheduled-tray li > button { width: 100%; border: 0; padding: 7px; background: none; text-align: left; display: grid; gap: 3px; }

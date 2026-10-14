@@ -2,8 +2,11 @@ import type { CalendarOverlayOccurrence, CalendarWorkSession, EventOccurrence } 
 
 export type CalendarMode="month"|"week"|"day";
 export const DAY_MS=86_400_000;
-export const CALENDAR_START_HOUR=6;
-export const CALENDAR_END_HOUR=22;
+export const CALENDAR_START_HOUR=5;
+export const CALENDAR_END_HOUR=23;
+export const CALENDAR_MINUTES_PER_STEP=15;
+export const EVENT_DRAG="application/x-mosaic-calendar-event";
+export const SESSION_DRAG="application/x-mosaic-work-session";
 export const visibleCalendarHours=()=>Array.from({length:CALENDAR_END_HOUR-CALENDAR_START_HOUR},(_,index)=>CALENDAR_START_HOUR+index);
 export const isoDay=(date:Date)=>`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}`;
 export const atNoon=(date:Date)=>new Date(date.getFullYear(),date.getMonth(),date.getDate(),12);
@@ -11,8 +14,9 @@ export const addDays=(date:Date,days:number)=>{const next=atNoon(date);next.setD
 export const startOfWeek=(date:Date,sunday=false)=>addDays(date,-((date.getDay()+(sunday?0:6))%7));
 export function visibleDays(anchor:Date,mode:CalendarMode,sunday=false):Date[]{
   if(mode==="day")return[atNoon(anchor)];
-  const start=mode==="week"?startOfWeek(anchor,sunday):startOfWeek(new Date(anchor.getFullYear(),anchor.getMonth(),1),sunday);
-  const count=mode==="week"?7:42;return Array.from({length:count},(_,index)=>addDays(start,index));
+  void sunday;
+  const start=startOfWeek(mode==="week"?anchor:new Date(anchor.getFullYear(),anchor.getMonth(),1));
+  const count=mode==="week"?5:30;return Array.from({length:count},(_,index)=>addDays(start,Math.floor(index/5)*7+index%5));
 }
 export const localDate=(value:string,timezone:string)=>new Intl.DateTimeFormat("en-CA",{timeZone:timezone,year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date(value));
 export const localHour=(value:string,timezone:string)=>{const parts=new Intl.DateTimeFormat("en",{timeZone:timezone,hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(new Date(value));return Number(parts.find(part=>part.type==="hour")?.value??0)+Number(parts.find(part=>part.type==="minute")?.value??0)/60;};
@@ -24,3 +28,5 @@ export function timedLayout(events:EventOccurrence[],sessions:CalendarWorkSessio
 }
 export const toLocalInput=(value:string)=>{const date=new Date(value),offset=date.getTimezoneOffset()*60000;return new Date(date.getTime()-offset).toISOString().slice(0,16);};
 export const fromLocalInput=(value:string)=>new Date(value).toISOString();
+export const formatCalendarDate=(value:string)=>{const match=/^(\d{4})-(\d{2})-(\d{2})$/.exec(value);return match?`${match[3]}/${match[2]}/${match[1]}`:value;};
+export const parseCalendarDate=(value:string)=>{const match=/^(\d{2})\/(\d{2})\/(\d{4})$/.exec(value.trim());if(!match)return null;const [,day,month,year]=match,iso=`${year}-${month}-${day}`,date=new Date(`${iso}T12:00:00`);return isoDay(date)===iso?iso:null;};

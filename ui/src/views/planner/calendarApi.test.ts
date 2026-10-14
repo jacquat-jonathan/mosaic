@@ -14,7 +14,7 @@ describe("planner calendar browser API",()=>{
     expect(range.events.filter(item=>item.title==="Focus")).toHaveLength(3);
     expect(range.work_sessions.filter(item=>item.session.task_id===task.id)).toHaveLength(2);
     expect(range.due_markers.some(item=>item.task_id===task.id)).toBe(true);
-    expect(range.unscheduled_tasks.some(item=>item.id===task.id)).toBe(false);
+    expect(range.unscheduled_tasks.some(item=>item.id===task.id)).toBe(true);
   });
   it("previews, imports and deduplicates iCalendar events and exposes locked overlays",async()=>{
     vi.stubGlobal("window",{dispatchEvent:vi.fn()});

@@ -93,6 +93,15 @@ fn domain_revisions_hierarchy_completion_and_history_are_atomic() {
     assert_eq!(moved.epic_id, Some(second_epic.id.clone()));
     assert_eq!(moved_child.epic_id, Some(second_epic.id));
     assert!(moved_child.revision > child.revision);
+    assert_eq!(
+        store
+            .activity("task", &parent.id)
+            .unwrap()
+            .last()
+            .unwrap()
+            .summary,
+        "Moved task from New to In progress"
+    );
 
     let stale = store.update_task(
         &parent.id,
@@ -269,7 +278,8 @@ fn calendar_expands_recurrence_sessions_due_dates_and_exceptions() {
     let range = store.calendar_range("2026-03-27", "2026-03-31").unwrap();
     assert_eq!(range.work_sessions.len(), 2);
     assert_eq!(range.due_markers.len(), 1);
-    assert!(range.unscheduled_tasks.is_empty());
+    assert_eq!(range.unscheduled_tasks.len(), 1);
+    assert_eq!(range.unscheduled_tasks[0].id, task.id);
     let recurring_occurrences: Vec<_> = range
         .events
         .iter()

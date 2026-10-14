@@ -996,6 +996,9 @@ button:focus-visible, [tabindex]:focus-visible, input:focus-visible, select:focu
 .migration-groups section { border: 1px solid var(--border); border-radius: 8px; padding: 10px; }
 .migration-groups h3 { margin: 0 0 8px; font-size: 13px; overflow-wrap: anywhere; }
 .migration-groups label { display: grid; grid-template-columns: 20px minmax(0,1fr) auto; align-items: center; gap: 7px; min-height: 30px; }
+.migration-groups .migration-group-toggle { display: flex; gap: 8px; margin: -2px 0 7px; padding: 2px 0 7px; border-bottom: 1px solid var(--border); cursor: pointer; }
+.migration-group-toggle h3 { flex: 1; margin: 0; }
+.migration-group-toggle small { white-space: nowrap; }
 .migration-groups label.duplicate { color: var(--muted); }
 .migration-groups small { color: var(--muted); }
 .migration-duplicates { display: flex; gap: 7px; margin-top: 12px; color: var(--muted); }

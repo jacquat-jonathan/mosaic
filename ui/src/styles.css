@@ -1005,7 +1005,7 @@ button:focus-visible, [tabindex]:focus-visible, input:focus-visible, select:focu
 .planner-calendar-page { flex: 1; min-height: 0; display: flex; overflow: hidden; }
 .planner-calendar { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 .planner-calendar .viewer-toolbar { flex: none; flex-wrap: wrap; height: auto; min-height: 42px; padding-block: 5px; }
-.planner-calendar-content { flex: 1; min-height: 0; display: flex; overflow: hidden; }
+.planner-calendar-content { position: relative; flex: 1; min-height: 0; display: flex; overflow: hidden; }
 .planner-calendar-content.mode-month { overflow: auto; display: flex; }
 .calendar-loading { padding: 16px; }
 .calendar-chooser { position: relative; }
@@ -1029,7 +1029,7 @@ button:focus-visible, [tabindex]:focus-visible, input:focus-visible, select:focu
 .planner-month-item[draggable=true] { cursor: grab; }
 .planner-month-drop-preview { display: block; min-width: 0; padding: 4px 6px; border: 1px dashed var(--preview-color); border-left-width: 3px; border-radius: 4px; background: color-mix(in srgb,var(--preview-color) 9%,transparent); color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: .8; }
 .planner-due { border-color: var(--danger); color: var(--muted); }
-.planner-week-wrap { flex: 1; min-width: 650px; height: 100%; overflow: auto; position: relative; --planner-hour-height: 40px; --planner-grid-height: 720px; }
+.planner-week-wrap { flex: 1; min-width: 0; height: 100%; overflow: auto; position: relative; --planner-hour-height: 40px; --planner-grid-height: 720px; }
 .planner-week-head,.planner-all-day,.planner-time-scroll { display: grid; grid-template-columns: 54px repeat(var(--planner-days,5),minmax(110px,1fr)); min-width: max-content; }
 .planner-calendar-content.mode-day .planner-week-head,.planner-calendar-content.mode-day .planner-all-day,.planner-calendar-content.mode-day .planner-time-scroll { --planner-days: 1; min-width: 420px; }
 .planner-calendar-content.mode-week .planner-week-head,.planner-calendar-content.mode-week .planner-all-day,.planner-calendar-content.mode-week .planner-time-scroll { --planner-days: 5; min-width: 680px; }
@@ -1065,6 +1065,7 @@ button:focus-visible, [tabindex]:focus-visible, input:focus-visible, select:focu
 .planner-timed-item:hover .planner-resize-handle,.planner-resize-handle:focus { opacity: 1; }
 .unscheduled-tray { flex: 0 0 250px; min-width: 190px; border-left: 1px solid var(--border); background: var(--bg-side); overflow: auto; padding: 10px; }
 .unscheduled-tray.collapsed { flex-basis: 42px; min-width: 42px; overflow: hidden; }
+.unscheduled-tray.compact:not(.collapsed) { position: absolute; z-index: 8; inset: 0 0 0 auto; width: min(250px,calc(100% - 42px)); min-width: 0; box-shadow: -8px 0 24px rgba(0,0,0,.18); }
 .unscheduled-tray > header { display: flex; align-items: center; gap: 6px; }
 .unscheduled-tray > header button { padding: 2px 5px; border: 0; background: none; }
 .unscheduled-tray h3 { margin: 0; flex: 1; font-size: 13px; }

@@ -12,6 +12,7 @@ import { livePreview } from "./livePreview";
 import "./blocks"; // registers the diagram renderers used by code blocks
 import { prefs, useSettings } from "../state/settings";
 import { slashCompletion } from "./slashMenu";
+import { sectionDrag } from "./sectionDrag";
 
 
 const highlight = HighlightStyle.define([
@@ -189,6 +190,7 @@ export function markdownExtensions(ctx: EditorContext, onChange: (text: string) 
     autocompletion({ override: [wikiCompletion, slashCompletion], icons: false }),
     Prec.highest(keymap.of([...completionKeymap, { key: "Tab", run: acceptCompletion }])),
     livePreview(),
+    sectionDrag,
     finderDrop,
     spellcheck.of(spellcheckAttrs(prefs().spellcheck)),
     spellcheckFollower,

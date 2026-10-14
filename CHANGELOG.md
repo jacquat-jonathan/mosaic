@@ -4,7 +4,7 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
-- **Faster note shaping:** reorder sibling heading sections from the Outline by dragging or with ⌥↑/⌥↓; nested subsections move with their parent, and the adjacent + action creates a same-level section in one click. The slash menu now follows the active theme, groups its choices and adds callouts, math, vault/web links and file embeds.
+- **Faster note shaping:** reorder sibling heading sections from the editor or Outline by dragging, or use ⌥↑/⌥↓ in the Outline; nested subsections move with their parent and numbered headings are renumbered. The adjacent + action creates a same-level section, while the compact slash menu groups its choices, adds callouts, math, links and embeds, and calls checklist items Checkboxes.
 - **Zoomable HTML previews:** zoom local HTML reports and large diagrams from 50–200%, with a one-click 100% reset. Zoom affects only the current preview and does not change the file.
 - **Navigation and local HTML:** the destination rail is grouped into Files, Plan, AI and Settings; changing tabs or focused splits reveals the active file in the tree; and HTML previews can load relative vault CSS, scripts, fonts, media and JSON data without gaining network access.
 - **Responsive note editing:** tables stay inside their pane, keep stable column widths while typing, and can grow one column at a time up to the pane edge. `/table` opens as an editable table immediately, narrow notes wrap instead of disappearing off-screen, and closing a split restores the remaining pane to the full workspace.

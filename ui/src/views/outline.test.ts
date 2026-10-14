@@ -61,6 +61,15 @@ describe("Markdown note sections", () => {
     expect(moveSectionTo(note, childLine, gammaLine, "before")).toBeNull();
   });
 
+  it("renumbers numbered sibling headings after they move", () => {
+    const numbered = "# Plan\n\n## 1. First\n\nA.\n\n## 2. Second\n\nB.\n\n## 3) Third\n\nC.\n";
+    const changed = moveSectionTo(numbered, lineOf(numbered, "## 3) Third"), lineOf(numbered, "## 1. First"), "before")!;
+    expect(parse(changed.text).map((heading) => heading.text)).toEqual([
+      "Plan", "1) Third", "2. First", "3. Second",
+    ]);
+    expect(changed.text.slice(changed.focus)).toMatch(/^## 1\) Third/);
+  });
+
   it("adds a same-level section after the complete selected section", () => {
     const changed = insertSiblingSection(note, lineOf(note, "## Alpha"))!;
     expect(changed.text.indexOf("### Alpha child")).toBeLessThan(changed.text.indexOf("## New section"));

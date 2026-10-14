@@ -19,7 +19,7 @@ export const insertions: Insertion[] = [
   { label: "Heading 3", detail: "Small heading", group: "Text", text: "### ", cursor: 4 },
   { label: "Bullet list", detail: "Unordered list", group: "Text", text: "- ", cursor: 2 },
   { label: "Numbered list", detail: "Ordered list", group: "Text", text: "1. ", cursor: 3 },
-  { label: "Task list", detail: "Checkbox task", group: "Text", text: "- [ ] ", cursor: 6 },
+  { label: "Checkbox", detail: "Checklist item", group: "Text", text: "- [ ] ", cursor: 6 },
   { label: "Quote", detail: "Block quote", group: "Text", text: "> ", cursor: 2 },
   { label: "Callout", detail: "Highlighted note", group: "Text", text: "> [!note]\n> ", cursor: 12 },
   { label: "Divider", detail: "Horizontal rule", group: "Text", text: "---\n\n", cursor: 5 },

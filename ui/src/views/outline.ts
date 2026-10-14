@@ -80,6 +80,50 @@ export interface SectionEdit {
   select?: { anchor: number; head: number };
 }
 
+interface TextReplacement {
+  from: number;
+  to: number;
+  insert: string;
+}
+
+/**
+ * Numbered section headings are a lightweight ordered list (`## 1. First`, `## 2. Second`).
+ * After one of them moves, keep every numbered sibling in display order while preserving whether
+ * each heading used a dot or a closing parenthesis.
+ */
+function renumberMovedSection(text: string, focus: number): SectionEdit {
+  const headings = parse(text);
+  const moved = headings.find((heading) => heading.offset === focus);
+  if (!moved || !/^\d+[.)][ \t]+/.test(moved.text)) return { text, focus };
+  const lines = siblingLines(text, moved.line);
+  const siblings = headings.filter((heading) => lines.includes(heading.line));
+  const numbered = siblings.flatMap((heading) => {
+    const end = text.indexOf("\n", heading.offset);
+    const source = text.slice(heading.offset, end < 0 ? text.length : end);
+    const match = /^(#{1,6})([ \t]+)(\d+)([.)])(?=[ \t]+)/.exec(source);
+    if (!match) return [];
+    const from = heading.offset + match[1].length + match[2].length;
+    return [{ from, to: from + match[3].length, number: Number(match[3]) }];
+  });
+  if (numbered.length < 2) return { text, focus };
+
+  const start = Math.min(...numbered.map((item) => item.number));
+  const changes: TextReplacement[] = numbered.map((item, index) => ({
+    from: item.from,
+    to: item.to,
+    insert: String(start + index),
+  }));
+  let adjustedFocus = focus;
+  for (const change of changes) {
+    if (change.from < focus) adjustedFocus += change.insert.length - (change.to - change.from);
+  }
+  let result = text;
+  for (const change of changes.reverse()) {
+    result = result.slice(0, change.from) + change.insert + result.slice(change.to);
+  }
+  return { text: result, focus: adjustedFocus };
+}
+
 /** Moves one section before/after a sibling while retaining its nested subsections and exact source. */
 export function moveSectionTo(text: string, fromLine: number, targetLine: number, place: "before" | "after"): SectionEdit | null {
   if (fromLine === targetLine) return null;
@@ -92,7 +136,7 @@ export function moveSectionTo(text: string, fromLine: number, targetLine: number
   const without = text.slice(0, source.from) + text.slice(source.to);
   let at = place === "before" ? target.from : target.to;
   if (at > source.from) at -= block.length;
-  return { text: without.slice(0, at) + block + without.slice(at), focus: at };
+  return renumberMovedSection(without.slice(0, at) + block + without.slice(at), at);
 }
 
 /** Moves a section one place among its siblings. */

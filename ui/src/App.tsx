@@ -140,6 +140,7 @@ async function showVaultMenu(anchor: DOMRect) {
 
 function Main() {
   const vault = useVault((s) => s.vault)!;
+  const [version, setVersion] = useState<string>("");
   const tab = useUi((s) => s.destination);
   const right = useUi((s) => s.rightPanel);
   const left = useUi((s) => s.leftSidebar);
@@ -152,6 +153,11 @@ function Main() {
   const attention = useAttention((s) => s.count);
   const active = useWorkspace((s) => s.panes.find(p => p.id === s.focused)?.active ?? null);
   useEffect(() => startAttention(), [vault.root]);
+  useEffect(() => {
+    let current = true;
+    void api.updateStatus().then((status) => { if (current) setVersion(status.version); }, () => {});
+    return () => { current = false; };
+  }, []);
   const ui = useUi.getState;
   useEffect(() => {
     const context = window.matchMedia("(max-width: 1100px)");
@@ -170,7 +176,10 @@ function Main() {
   useEffect(() => useReview.getState().watch(), [vault.root]);
   return (
     <div className={`shell ${left ? "" : "no-left"}`}>
-      <header className="window-chrome" data-tauri-drag-region><span data-tauri-drag-region>Mosaic — {vault.name}</span></header>
+      <header className="window-chrome" data-tauri-drag-region>
+        <span className="window-title" data-tauri-drag-region>Mosaic — {vault.name}</span>
+        <span className="window-version" data-tauri-drag-region>v{version || "—"}</span>
+      </header>
       <div className="shell-body">
       <nav className="icon-bar" aria-label="Destinations" data-focus-region tabIndex={-1}>
         <div role="tablist" aria-orientation="vertical" className="icon-bar-group">

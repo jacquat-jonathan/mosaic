@@ -183,6 +183,12 @@ See `Ideation/Done.md` and `Ideation/Next steps.md` in the vault for milestone s
 
 ## Rotating the release key
 
+**Key history.** `39a9c21d…` signed 0.18.0 – 0.19.x; its private key was lost on 2026-10-16, so
+it was dropped without a standby to take over. `c4e17594…` signs from 0.20.0 on. Installs of 0.19
+and earlier trust only the lost key and need one manual download of 0.20.0 (the release notes say
+so). Sections 1 and 3 above describe the original 0.18.0 setup; the key they mention is the lost
+one.
+
 The app trusts every key listed in `src-tauri/release-public-key.hex` (one hex public key per
 line, `#` comments). Keep **two**: the current key, which signs releases, and a standby key, which
 signs nothing yet and is stored offline. Then a lost or leaked key can be retired without leaving

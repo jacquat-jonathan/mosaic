@@ -4,6 +4,7 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **One manual download needed:** this version is signed with a new release key, so Mosaic 0.19 and earlier can't install it from About & updates (they report that the signature can't be verified). Download the DMG from the GitHub release page once; later updates install from within the app as before.
 - **Safer update signing:** releases are signed in a separate, approved step that never runs third-party build code, and the app can trust a second, standby signing key, so a compromised key can be replaced without stranding installed copies.
 - **Consistently formatted, linted UI code:** the interface code is formatted and checked by Biome on every change, which catches React hook dependency mistakes before they reach a release.
 - **Undo history that lasts:** undo history and pending AI proposals move out of the Caches folder, which macOS and cleaning tools may empty, into Application Support. They now follow a vault you move or rename, a copied vault starts its own history, and if the history can't be saved Mosaic says so in a banner instead of quietly keeping it only until you quit. Existing history is moved over the first time you open each vault.

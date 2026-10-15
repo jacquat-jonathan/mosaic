@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+## 0.20.0 — 2026-10-16
+
 - **One manual download needed:** this version is signed with a new release key, so Mosaic 0.19 and earlier can't install it from About & updates (they report that the signature can't be verified). Download the DMG from the GitHub release page once; later updates install from within the app as before.
 - **Safer update signing:** releases are signed in a separate, approved step that never runs third-party build code, and the app can trust a second, standby signing key, so a compromised key can be replaced without stranding installed copies.
 - **Consistently formatted, linted UI code:** the interface code is formatted and checked by Biome on every change, which catches React hook dependency mistakes before they reach a release.

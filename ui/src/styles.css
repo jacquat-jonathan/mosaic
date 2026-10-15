@@ -210,9 +210,9 @@ button.secondary { border: 1px solid var(--border); padding: 7px 14px; }
 .cm-panels { background: var(--bg-side); color: var(--fg); border-color: var(--border) !important; }
 .cm-panel.cm-search input, .cm-panel.cm-search button { font: inherit; }
 .cm-tooltip { background: var(--bg); color: var(--fg); border: 1px solid var(--border) !important; border-radius: 8px; box-shadow: var(--shadow); overflow: hidden; }
-.cm-tooltip.cm-tooltip-autocomplete { min-width: 280px; max-width: min(380px, calc(100vw - 24px)); padding: 4px; border: 0 !important; outline: 0 !important; border-radius: 10px; box-shadow: 0 12px 32px rgba(0, 0, 0, .42); }
+.cm-tooltip.cm-tooltip-autocomplete { min-width: 280px; max-width: min(380px, calc(100vw - 24px)); padding: 4px; border: 0 !important; outline: 0 !important; border-radius: 10px; background: var(--bg) !important; color: var(--fg) !important; box-shadow: 0 12px 32px rgba(0, 0, 0, .42); }
 .cm-tooltip-autocomplete, .cm-tooltip-autocomplete > ul { background: var(--bg); color: var(--fg); }
-.cm-tooltip.cm-tooltip-autocomplete > ul { min-width: 272px; max-width: 372px; max-height: min(320px, 55vh); height: auto; padding: 0; border: 0 !important; outline: none !important; box-shadow: none !important; font-family: var(--font-ui) !important; font-size: 13px; line-height: 1.35; scrollbar-width: thin; scrollbar-color: var(--faint) transparent; }
+.cm-tooltip.cm-tooltip-autocomplete > ul { min-width: 272px; max-width: 372px; max-height: min(520px, 72vh) !important; height: auto !important; padding: 0; border: 0 !important; outline: none !important; box-shadow: none !important; font-family: var(--font-ui) !important; font-size: 13px; line-height: 1.35; scrollbar-width: thin; scrollbar-color: var(--faint) transparent; }
 .cm-tooltip-autocomplete > ul::-webkit-scrollbar { width: 7px; }
 .cm-tooltip-autocomplete > ul::-webkit-scrollbar-track { background: transparent; }
 .cm-tooltip-autocomplete > ul::-webkit-scrollbar-thumb { background: var(--faint); border: 2px solid transparent; border-radius: 8px; background-clip: padding-box; }

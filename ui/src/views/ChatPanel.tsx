@@ -22,7 +22,13 @@ const noteName = (p: string) => (p.split("/").pop() ?? p).replace(/\.md$/i, "");
 
 export function ChatPanel({ id }: { id: string }) {
   const chat = useChat((s) => s.chats[id]);
-  if (!chat) return <div className="empty"><p>This chat is no longer available.</p><button onClick={() => useUi.getState().showChat()}>New chat</button></div>;
+  if (!chat)
+    return (
+      <div className="empty">
+        <p>This chat is no longer available.</p>
+        <button onClick={() => useUi.getState().showChat()}>New chat</button>
+      </div>
+    );
   return <ConversationView key={id} id={id} />;
 }
 function ConversationView({ id }: { id: string }) {
@@ -34,7 +40,7 @@ function ConversationView({ id }: { id: string }) {
   const setAttached = (f: (a: string[]) => string[]) => update({ attached: f(attached) });
   const setSelection = (selection: typeof chat.selection) => update({ selection });
   const setInput = (draft: string) => update({ draft });
-  const active = useWorkspace((s) => s.panes.map(p => p.active).find(p => p && !isSpecialTab(p)) ?? null);
+  const active = useWorkspace((s) => s.panes.map((p) => p.active).find((p) => p && !isSpecialTab(p)) ?? null);
   const [claude, setClaude] = useState<ClaudeInfo | null>(null);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [skipped, setSkipped] = useState<string | null>(null);
@@ -50,9 +56,12 @@ function ConversationView({ id }: { id: string }) {
     list.current?.scrollTo({ top: list.current.scrollHeight });
   }, [items, run]);
 
-  const candidate = active && !isSpecialTab(active) ? active : attached[0] ?? null;
+  const candidate = active && !isSpecialTab(active) ? active : (attached[0] ?? null);
   const activeNote = candidate !== skipped ? candidate : null;
-  const context = useMemo(() => [...new Set([...(activeNote ? [activeNote] : []), ...attached])], [activeNote, attached]);
+  const context = useMemo(
+    () => [...new Set([...(activeNote ? [activeNote] : []), ...attached])],
+    [activeNote, attached],
+  );
 
   const send = () => {
     let text = input.trim();
@@ -78,7 +87,9 @@ function ConversationView({ id }: { id: string }) {
     }
   };
   const attach = () => {
-    const notes = useVault.getState().entries.filter((e) => !e.is_dir && e.path.toLowerCase().endsWith(".md") && !context.includes(e.path));
+    const notes = useVault
+      .getState()
+      .entries.filter((e) => !e.is_dir && e.path.toLowerCase().endsWith(".md") && !context.includes(e.path));
     useUi.getState().openPicker({
       placeholder: "Attach a note to the chat",
       items: notes.map((n) => ({ id: n.path, label: noteName(n.path), detail: n.path })),
@@ -90,13 +101,18 @@ function ConversationView({ id }: { id: string }) {
     if (!activeNote) return setError("Open a note and select some text first.");
     const picked = noteSelection(activeNote);
     if (!picked) return setError("Select some text in the open note first.");
-    if (picked.text.length > 20_000) return setError("That selection is too large to attach (maximum 20,000 characters).");
+    if (picked.text.length > 20_000)
+      return setError("That selection is too large to attach (maximum 20,000 characters).");
     setSelection({ path: picked.path, text: picked.text });
     setError(null);
   };
   const save = async () => {
     const first = items.find((i) => i.kind === "user") as Extract<ChatItem, { kind: "user" }> | undefined;
-    const words = (first?.text ?? "Chat").replace(/[\\/:*?"<>|#^[\]]/g, "").split(/\s+/).slice(0, 6).join(" ");
+    const words = (first?.text ?? "Chat")
+      .replace(/[\\/:*?"<>|#^[\]]/g, "")
+      .split(/\s+/)
+      .slice(0, 6)
+      .join(" ");
     const time = new Date().toTimeString().slice(0, 5).replace(":", "");
     const path = `${vaultPrefs().agents_folder}/Chats/${dayStamp()} ${time} ${words}.md`.replace(/\s+\.md$/, ".md");
     try {
@@ -113,8 +129,8 @@ function ConversationView({ id }: { id: string }) {
         <div className="chat-empty">
           <Bot size={22} />
           <p>
-            The chat uses <strong>Claude Code</strong>, which isn't installed. Install it from claude.com/claude-code, run <code>claude</code> once in a terminal to log in,
-            then reopen this panel.
+            The chat uses <strong>Claude Code</strong>, which isn't installed. Install it from claude.com/claude-code,
+            run <code>claude</code> once in a terminal to log in, then reopen this panel.
           </p>
         </div>
       </div>
@@ -123,13 +139,29 @@ function ConversationView({ id }: { id: string }) {
 
   return (
     <div className="chat">
-      <header className="workspace-heading"><div><h2>{chat.title}</h2><span>Claude Code · {model || "Default model"}</span></div><button onClick={async () => { const title = await useUi.getState().askText({ title: "Rename chat", value: chat.title }); if (title?.trim()) update({ title: title.trim() }); }}>Rename</button></header>
+      <header className="workspace-heading">
+        <div>
+          <h2>{chat.title}</h2>
+          <span>Claude Code · {model || "Default model"}</span>
+        </div>
+        <button
+          onClick={async () => {
+            const title = await useUi.getState().askText({ title: "Rename chat", value: chat.title });
+            if (title?.trim()) update({ title: title.trim() });
+          }}
+        >
+          Rename
+        </button>
+      </header>
       {storageError && <p className="error-text">{storageError}</p>}
       <div className="chat-list" ref={list} onClick={(e) => openLink(e)}>
         {items.length === 0 && (
           <div className="chat-empty">
             <Bot size={22} />
-            <p>Ask Claude about your notes, or to change them. Changes appear in AI activity, with Undo; in folders you review, they wait for you.</p>
+            <p>
+              Ask Claude about your notes, or to change them. Changes appear in AI activity, with Undo; in folders you
+              review, they wait for you.
+            </p>
             {agents.length > 0 && (
               <div className="chat-starters">
                 {agents.map((a) => (
@@ -146,7 +178,11 @@ function ConversationView({ id }: { id: string }) {
         ))}
         {run !== null && <div className="chat-thinking">Working…</div>}
       </div>
-      {noMosaic && <p className="chat-warn">Mosaic's tools weren't connected for that answer: Claude could read files but not change them through Mosaic.</p>}
+      {noMosaic && (
+        <p className="chat-warn">
+          Mosaic's tools weren't connected for that answer: Claude could read files but not change them through Mosaic.
+        </p>
+      )}
       {error && <p className="error-text chat-warn">{error}</p>}
       <div className="chat-compose">
         <div className="chat-chips">
@@ -161,7 +197,10 @@ function ConversationView({ id }: { id: string }) {
           {context.map((p) => (
             <span key={p} className="chat-chip" title={p}>
               {noteName(p)}
-              <button aria-label={`Detach ${noteName(p)}`} onClick={() => (p === activeNote ? setSkipped(p) : setAttached((a) => a.filter((x) => x !== p)))}>
+              <button
+                aria-label={`Detach ${noteName(p)}`}
+                onClick={() => (p === activeNote ? setSkipped(p) : setAttached((a) => a.filter((x) => x !== p)))}
+              >
                 <X size={10} />
               </button>
             </span>
@@ -169,7 +208,9 @@ function ConversationView({ id }: { id: string }) {
           {selection && (
             <span className="chat-chip selection" title={selection.text}>
               <TextSelect size={11} /> Selection from {noteName(selection.path)}
-              <button aria-label="Detach selected text" onClick={() => setSelection(null)}><X size={10} /></button>
+              <button aria-label="Detach selected text" onClick={() => setSelection(null)}>
+                <X size={10} />
+              </button>
             </span>
           )}
           <button className="chat-chip add" title="Attach selected text from the open note" onClick={attachSelection}>
@@ -183,20 +224,45 @@ function ConversationView({ id }: { id: string }) {
           aria-label="Message to Claude"
           value={input}
           rows={3}
-          placeholder={agent ? "Anything to add for this agent? (↵ to run)" : agents.length ? "Ask Claude… (↵ to send, /agent to run one)" : "Ask Claude… (↵ to send)"}
+          placeholder={
+            agent
+              ? "Anything to add for this agent? (↵ to run)"
+              : agents.length
+                ? "Ask Claude… (↵ to send, /agent to run one)"
+                : "Ask Claude… (↵ to send)"
+          }
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={onKey}
         />
         <div className="chat-actions">
-          <button title="New chat" aria-label="New chat" onClick={() => useUi.getState().showChat()} disabled={!items.length}>
+          <button
+            title="New chat"
+            aria-label="New chat"
+            onClick={() => useUi.getState().showChat()}
+            disabled={!items.length}
+          >
             <Plus size={14} />
           </button>
-          <button title="Save this chat as a note in Agents/Chats" aria-label="Save as note" onClick={() => void save()} disabled={!items.length || run !== null}>
+          <button
+            title="Save this chat as a note in Agents/Chats"
+            aria-label="Save as note"
+            onClick={() => void save()}
+            disabled={!items.length || run !== null}
+          >
             <Save size={14} />
           </button>
-          {cost > 0 && <span className="chat-cost" title="What this chat has cost so far">${cost.toFixed(2)}</span>}
+          {cost > 0 && (
+            <span className="chat-cost" title="What this chat has cost so far">
+              ${cost.toFixed(2)}
+            </span>
+          )}
           <label className="chat-model" title="Claude Code model for new answers">
-            <select aria-label="Chat model" value={model} onChange={(e) => update({ model: e.target.value })} disabled={run !== null}>
+            <select
+              aria-label="Chat model"
+              value={model}
+              onChange={(e) => update({ model: e.target.value })}
+              disabled={run !== null}
+            >
               <option value="">Default model</option>
               <option value="sonnet">Sonnet</option>
               <option value="opus">Opus</option>
@@ -224,14 +290,25 @@ function Item({ item }: { item: ChatItem }) {
     case "user":
       return (
         <div className="chat-msg user">
-          {item.agent && <div className="chat-agent"><Bot size={11} /> {item.agent}</div>}
-          {(item.selection || item.model) && <div className="chat-agent">{item.selection ? `Selection from ${noteName(item.selection.path)}` : ""}{item.selection && item.model ? " · " : ""}{item.model ?? ""}</div>}
+          {item.agent && (
+            <div className="chat-agent">
+              <Bot size={11} /> {item.agent}
+            </div>
+          )}
+          {(item.selection || item.model) && (
+            <div className="chat-agent">
+              {item.selection ? `Selection from ${noteName(item.selection.path)}` : ""}
+              {item.selection && item.model ? " · " : ""}
+              {item.model ?? ""}
+            </div>
+          )}
           {item.text}
         </div>
       );
     case "text": {
       const { entries, aliases } = useVault.getState();
       const html = renderMarkdown(item.text, (t) => resolveLink(t, entries, null, aliases));
+      // biome-ignore lint/security/noDangerouslySetInnerHtml: renderMarkdown output, sanitized by DOMPurify
       return <div className="chat-msg assistant md-render" dangerouslySetInnerHTML={{ __html: html }} />;
     }
     case "tool":
@@ -246,11 +323,19 @@ function Item({ item }: { item: ChatItem }) {
             <span>{item.summary}</span>
           )}
           {item.review !== null && (
-            <button className="chat-review" onClick={() => useUi.getState().setSidebarTab("activity")} title="Waiting for your review in AI activity">
+            <button
+              className="chat-review"
+              onClick={() => useUi.getState().setSidebarTab("activity")}
+              title="Waiting for your review in AI activity"
+            >
               proposed — review
             </button>
           )}
-          {item.error && <span className="chat-tool-error" title={item.error}>failed</span>}
+          {item.error && (
+            <span className="chat-tool-error" title={item.error}>
+              failed
+            </span>
+          )}
         </div>
       );
     case "error":

@@ -112,18 +112,69 @@ pub fn now_ms() -> i64 {
         .unwrap_or(0)
 }
 
-pub fn default_db_path(vault_root: &Path) -> Option<PathBuf> {
-    crate::index::default_db_path(vault_root).map(|p| p.with_file_name("history.db"))
+/// Where versions 0.19 and older kept the history: beside the search index in Caches, keyed by
+/// the vault's path. Only read, to migrate it.
+fn legacy_db_path(cache: &Path, vault_root: &Path) -> PathBuf {
+    let hash = crate::vault::hash_bytes(vault_root.to_string_lossy().as_bytes());
+    cache.join(&hash[..16]).join("history.db")
+}
+
+/// Copies an old history into `db`, once: the old file is kept, marked as migrated.
+fn migrate(legacy: &Path, db: &Path, id: &str) -> Result<bool> {
+    let marker = legacy.with_extension("db.migrated");
+    if !legacy.is_file() || marker.exists() {
+        return Ok(false);
+    }
+    let src = Connection::open_with_flags(legacy, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+        .map_err(sql_err)?;
+    src.busy_timeout(std::time::Duration::from_secs(5))
+        .map_err(sql_err)?;
+    // Into a temporary file first, so an interrupted copy never looks like a history.
+    let tmp = db.with_extension(format!("db.{}.migrating", uuid::Uuid::new_v4()));
+    {
+        let mut dst = Connection::open(&tmp).map_err(sql_err)?;
+        rusqlite::backup::Backup::new(&src, &mut dst)
+            .and_then(|b| b.run_to_completion(256, std::time::Duration::ZERO, None))
+            .map_err(sql_err)?;
+    }
+    // Only if no other process got there first (a hard link fails if `db` exists).
+    let linked = std::fs::hard_link(&tmp, db);
+    let _ = std::fs::remove_file(&tmp);
+    match linked {
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => return Ok(true),
+        other => other.map_err(|e| Error::io(db.display().to_string(), e))?,
+    }
+    let _ = std::fs::write(&marker, format!("moved to vault {id}\n"));
+    Ok(true)
 }
 
 impl History {
+    /// The vault's history in Application Support, under the id kept in the vault (so it follows
+    /// a moved folder), migrated from the old cache location the first time.
     pub fn open_for(vault_root: &Path) -> Result<Self> {
-        let db =
-            default_db_path(vault_root).ok_or_else(|| Error::Invalid("HOME is not set".into()))?;
-        if let Some(dir) = db.parent() {
-            std::fs::create_dir_all(dir).map_err(|e| Error::io(dir.display().to_string(), e))?;
+        let support = crate::settings::app_support_dir()
+            .ok_or_else(|| Error::Invalid("HOME is not set".into()))?;
+        let cache = crate::settings::cache_dir();
+        Self::open_in(vault_root, &support, cache.as_deref())
+    }
+
+    /// `open_for` with explicit folders: `support` for the history, `cache` for the old one.
+    pub fn open_in(vault_root: &Path, support: &Path, cache: Option<&Path>) -> Result<Self> {
+        let vault = crate::vault_id::identify(vault_root)?;
+        let dir = support.join("vaults").join(&vault.id);
+        std::fs::create_dir_all(&dir).map_err(|e| Error::io(dir.display().to_string(), e))?;
+        let db = dir.join("history.db");
+        if !db.exists()
+            && let Some(cache) = cache
+        {
+            // Under the vault's current path, or the one it had before it was moved.
+            for root in std::iter::once(vault_root).chain(vault.moved_from.as_deref()) {
+                if migrate(&legacy_db_path(cache, root), &db, &vault.id)? {
+                    break;
+                }
+            }
         }
-        Self::init(Connection::open(db).map_err(sql_err)?)
+        Self::open_at(&db)
     }
 
     pub fn in_memory() -> Result<Self> {
@@ -418,6 +469,41 @@ mod tests {
 
     fn h() -> History {
         History::in_memory().unwrap()
+    }
+
+    #[test]
+    fn history_moves_out_of_caches_once_and_follows_the_vault_id() {
+        let d = tempfile::tempdir().unwrap();
+        let (support, cache) = (d.path().join("support"), d.path().join("cache"));
+        let root = d.path().join("Vault");
+        std::fs::create_dir_all(&root).unwrap();
+        let root = std::fs::canonicalize(root).unwrap();
+        // A 0.19 history beside the index.
+        let legacy = legacy_db_path(&cache, &root);
+        std::fs::create_dir_all(legacy.parent().unwrap()).unwrap();
+        History::open_at(&legacy)
+            .unwrap()
+            .keep_before("Note.md", "old text", "h1", &Source::Cli)
+            .unwrap();
+
+        let h = History::open_in(&root, &support, Some(&cache)).unwrap();
+        assert_eq!(h.list("Note.md", 10).unwrap().len(), 1);
+        let id = crate::vault_id::identify(&root).unwrap().id;
+        assert!(
+            support
+                .join("vaults")
+                .join(&id)
+                .join("history.db")
+                .is_file()
+        );
+        assert!(legacy.is_file(), "the old file is kept");
+        assert!(legacy.with_extension("db.migrated").exists());
+        drop(h);
+
+        // Clearing Caches no longer loses anything.
+        std::fs::remove_dir_all(&cache).unwrap();
+        let h = History::open_in(&root, &support, Some(&cache)).unwrap();
+        assert_eq!(h.list("Note.md", 10).unwrap().len(), 1);
     }
 
     #[test]

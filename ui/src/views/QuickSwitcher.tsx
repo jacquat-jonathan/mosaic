@@ -40,7 +40,11 @@ function SwitcherDialog() {
 
   const results = useMemo(() => {
     const files = entries.filter((e) => !e.is_dir);
-    if (!q.trim()) return files.slice().sort((a, b) => b.mtime - a.mtime).slice(0, 30);
+    if (!q.trim())
+      return files
+        .slice()
+        .sort((a, b) => b.mtime - a.mtime)
+        .slice(0, 30);
     return files
       .map((e) => ({ e, s: Math.max(fuzzyScore(q, displayName(e)) * 2, fuzzyScore(q, e.path)) }))
       .filter((r) => r.s >= 0)
@@ -83,10 +87,17 @@ function SwitcherDialog() {
         />
         <div className="switcher-results">
           {results.map((e, i) => (
-            <button key={e.path} className={i === sel ? "selected" : ""} onMouseEnter={() => setSel(i)} onClick={(ev) => void choose(i, ev.metaKey)}>
+            <button
+              key={e.path}
+              className={i === sel ? "selected" : ""}
+              onMouseEnter={() => setSel(i)}
+              onClick={(ev) => void choose(i, ev.metaKey)}
+            >
               {kindIcon(e.kind, 14)}
               <span className="switcher-name">{displayName(e)}</span>
-              <span className="switcher-path">{e.path.includes("/") ? e.path.slice(0, e.path.lastIndexOf("/")) : ""}</span>
+              <span className="switcher-path">
+                {e.path.includes("/") ? e.path.slice(0, e.path.lastIndexOf("/")) : ""}
+              </span>
             </button>
           ))}
           {results.length === 0 && q.trim() && (

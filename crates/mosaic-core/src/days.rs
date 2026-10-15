@@ -108,7 +108,7 @@ fn day_task(t: TaskMeta, daily: bool) -> DayTask {
 impl Workspace {
     /// Daily notes the caller may see; ambiguous dates are never silently overwritten.
     fn daily_notes(&self) -> Result<BTreeMap<NaiveDate, String>> {
-        let rules = self.rules();
+        let rules = self.rules()?;
         let mut out = BTreeMap::new();
         let preferences = self.vault_preferences()?;
         for n in self.reading().notes_meta()? {
@@ -135,7 +135,7 @@ impl Workspace {
                 "the range must run forward and span at most 62 days".into(),
             ));
         }
-        let rules = self.rules();
+        let rules = self.rules()?;
         let notes = self.daily_notes()?;
         let preferences = self.vault_preferences()?;
         let mut days: BTreeMap<NaiveDate, Day> = BTreeMap::new();

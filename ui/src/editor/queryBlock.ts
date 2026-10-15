@@ -16,7 +16,7 @@ export function cell(row: QueryRow, column: string): string {
   if (t) {
     if (column === "text") return t.text;
     if (column === "status") return t.status;
-    if (column === "workflow") return t.status === "done" ? "done" : t.workflow ?? "new";
+    if (column === "workflow") return t.status === "done" ? "done" : (t.workflow ?? "new");
     if (column === "line") return String(t.line);
     if (column === "due" && t.due) return t.due;
   }
@@ -50,7 +50,10 @@ function taskCell(row: QueryRow): string {
   return `<td class="query-task status-${t.status}" style="padding-left:${t.depth * 18}px">${box}${mark}<span class="query-task-text">${esc(t.text) || "&nbsp;"}</span></td>`;
 }
 
-export interface QuerySort { column: string; descending: boolean }
+export interface QuerySort {
+  column: string;
+  descending: boolean;
+}
 
 /** The first sort directive in a query, used to mark the active table header. */
 export function querySort(source: string): QuerySort | null {
@@ -66,12 +69,18 @@ export function querySort(source: string): QuerySort | null {
 export function sortQuery(source: string, column: string): string {
   const current = querySort(source);
   const next = current?.column !== column ? column : current.descending ? null : `-${column}`;
-  const lines = source.split("\n").map((line) =>
-    line.trim().startsWith("//") ? line : line.replace(/(^|\s)sort:-?[^\s]+/g, "$1").replace(/[ \t]+$/g, ""),
-  );
+  const lines = source
+    .split("\n")
+    .map((line) =>
+      line.trim().startsWith("//") ? line : line.replace(/(^|\s)sort:-?[^\s]+/g, "$1").replace(/[ \t]+$/g, ""),
+    );
   if (next) {
     let at = -1;
-    for (let i = lines.length - 1; i >= 0; i--) if (lines[i].trim() && !lines[i].trim().startsWith("//")) { at = i; break; }
+    for (let i = lines.length - 1; i >= 0; i--)
+      if (lines[i].trim() && !lines[i].trim().startsWith("//")) {
+        at = i;
+        break;
+      }
     if (at < 0) lines.unshift(`sort:${next}`);
     else lines[at] = `${lines[at]} sort:${next}`.trim();
   }
@@ -85,7 +94,11 @@ const sortHead = (label: string, column: string, sort: QuerySort | null) => {
   return `<th><button class="query-sort${active ? " active" : ""}" data-query-sort="${esc(column)}" aria-label="Sort by ${esc(label)}, ${next}">${esc(label)}${arrow}</button></th>`;
 };
 
-export function queryTable(r: QueryResult, tasks = r.rows.some((row) => row.task), sort: QuerySort | null = null): string {
+export function queryTable(
+  r: QueryResult,
+  tasks = r.rows.some((row) => row.task),
+  sort: QuerySort | null = null,
+): string {
   if (!r.rows.length) return `<div class="query-empty">${tasks ? "No matching tasks." : "No matching notes."}</div>`;
   const head = tasks
     ? `<tr>${sortHead("Task", "text", sort)}${sortHead("Note", "title", sort)}${r.columns.map((c) => sortHead(c, c, sort)).join("")}</tr>`
@@ -93,17 +106,31 @@ export function queryTable(r: QueryResult, tasks = r.rows.some((row) => row.task
   const body = r.rows
     .map((row) => {
       const cols = r.columns.map((c) => `<td>${esc(cell(row, c))}</td>`).join("");
-      return row.task ? `<tr>${taskCell(row)}<td>${noteLink(row)}</td>${cols}</tr>` : `<tr><td>${noteLink(row)}</td>${cols}</tr>`;
+      return row.task
+        ? `<tr>${taskCell(row)}<td>${noteLink(row)}</td>${cols}</tr>`
+        : `<tr><td>${noteLink(row)}</td>${cols}</tr>`;
     })
     .join("");
-  const more = r.total > r.rows.length ? `<div class="query-more">${r.rows.length} of ${r.total} shown — add <code>limit:${Math.min(r.total, 1000)}</code> for all</div>` : "";
+  const more =
+    r.total > r.rows.length
+      ? `<div class="query-more">${r.rows.length} of ${r.total} shown — add <code>limit:${Math.min(r.total, 1000)}</code> for all</div>`
+      : "";
   return `<table class="query-table"><thead>${head}</thead><tbody>${body}</tbody></table>${more}`;
 }
 
 /** Renders the query into `el`, and again whenever files change while `el` is on screen. */
-export async function renderQuery(source: string, el: HTMLElement, replaceSource?: (source: string) => void): Promise<void> {
+export async function renderQuery(
+  source: string,
+  el: HTMLElement,
+  replaceSource?: (source: string) => void,
+): Promise<void> {
   let current = source;
-  const queryText = () => current.split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("//")).join(" ");
+  const queryText = () =>
+    current
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l && !l.startsWith("//"))
+      .join(" ");
   const tasks = isTaskQuery(queryText());
   const draw = (r: QueryResult) => (el.innerHTML = queryTable(r, tasks, querySort(current)));
   draw(await api.query(queryText()));
@@ -124,8 +151,13 @@ export async function renderQuery(source: string, el: HTMLElement, replaceSource
     api.setTask(path!, Number(line), text!, box.checked).catch((err) => {
       box.checked = !box.checked;
       const conflict = (err as { code?: string }).code === "conflict";
-      box.title = conflict ? "The note changed: this task isn't on that line any more. The table refreshes in a moment." : errorMessage(err);
-      void api.query(queryText()).then((r) => el.isConnected && draw(r), () => {});
+      box.title = conflict
+        ? "The note changed: this task isn't on that line any more. The table refreshes in a moment."
+        : errorMessage(err);
+      void api.query(queryText()).then(
+        (r) => el.isConnected && draw(r),
+        () => {},
+      );
     });
   });
   let off: (() => void) | undefined;
@@ -134,7 +166,10 @@ export async function renderQuery(source: string, el: HTMLElement, replaceSource
     if (!el.isConnected) return off?.();
     clearTimeout(pending);
     pending = setTimeout(() => {
-      api.query(queryText()).then((r) => el.isConnected && draw(r), () => {});
+      api.query(queryText()).then(
+        (r) => el.isConnected && draw(r),
+        () => {},
+      );
     }, 300);
   }).then((f) => (off = f));
 }

@@ -2,7 +2,16 @@ import { expect, test } from "vitest";
 import { canvasToMermaid } from "./canvasToMermaid";
 import type { CanvasDoc } from "../viewers/canvas/jsonCanvas";
 
-const n = (id: string, x: number, y: number, extra: object = {}) => ({ id, type: "text", x, y, width: 100, height: 50, text: id, ...extra });
+const n = (id: string, x: number, y: number, extra: object = {}) => ({
+  id,
+  type: "text",
+  x,
+  y,
+  width: 100,
+  height: 50,
+  text: id,
+  ...extra,
+});
 
 test("shapes, groups and connection styles", () => {
   const doc: CanvasDoc = {

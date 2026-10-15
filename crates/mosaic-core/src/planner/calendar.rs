@@ -899,17 +899,12 @@ impl Workspace {
         task_id: Option<&str>,
         include_cancelled: bool,
     ) -> Result<Vec<WorkSession>> {
-        self.planner
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
+        self.planner()?
             .list_work_sessions(task_id, include_cancelled)
     }
 
     pub fn create_planner_work_session(&self, input: CreateWorkSession) -> Result<WorkSession> {
-        self.planner
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .create_work_session(input)
+        self.planner()?.create_work_session(input)
     }
 
     pub fn update_planner_work_session(
@@ -917,10 +912,7 @@ impl Workspace {
         id: &str,
         input: UpdateWorkSession,
     ) -> Result<WorkSession> {
-        self.planner
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .update_work_session(id, input)
+        self.planner()?.update_work_session(id, input)
     }
 
     pub fn cancel_planner_work_session(
@@ -928,10 +920,7 @@ impl Workspace {
         id: &str,
         expected_revision: i64,
     ) -> Result<WorkSession> {
-        self.planner
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .cancel_work_session(id, expected_revision)
+        self.planner()?.cancel_work_session(id, expected_revision)
     }
 
     pub fn planner_events(
@@ -939,45 +928,28 @@ impl Workspace {
         include_archived: bool,
         include_trashed: bool,
     ) -> Result<Vec<PlannerEvent>> {
-        self.planner
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
+        self.planner()?
             .list_events(include_archived, include_trashed)
     }
 
     pub fn create_planner_event(&self, input: CreateEvent) -> Result<PlannerEvent> {
-        self.planner
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .create_event(input)
+        self.planner()?.create_event(input)
     }
 
     pub fn update_planner_event(&self, id: &str, input: UpdateEvent) -> Result<PlannerEvent> {
-        self.planner
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .update_event(id, input)
+        self.planner()?.update_event(id, input)
     }
 
     pub fn archive_planner_event(&self, id: &str, revision: i64) -> Result<PlannerEvent> {
-        self.planner
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .archive_event(id, revision)
+        self.planner()?.archive_event(id, revision)
     }
 
     pub fn restore_planner_event(&self, id: &str, revision: i64) -> Result<PlannerEvent> {
-        self.planner
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .restore_event(id, revision)
+        self.planner()?.restore_event(id, revision)
     }
 
     pub fn trash_planner_event(&self, id: &str, revision: i64) -> Result<PlannerEvent> {
-        self.planner
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .trash_event(id, revision)
+        self.planner()?.trash_event(id, revision)
     }
 
     pub fn cancel_planner_event_occurrence(
@@ -986,9 +958,7 @@ impl Workspace {
         revision: i64,
         occurrence_key: &str,
     ) -> Result<PlannerEvent> {
-        self.planner
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
+        self.planner()?
             .cancel_event_occurrence(series_id, revision, occurrence_key)
     }
 
@@ -999,16 +969,11 @@ impl Workspace {
         occurrence_key: &str,
         input: CreateEvent,
     ) -> Result<PlannerEvent> {
-        self.planner
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
+        self.planner()?
             .replace_event_occurrence(series_id, revision, occurrence_key, input)
     }
 
     pub fn planner_calendar_range(&self, from: &str, to: &str) -> Result<CalendarRange> {
-        self.planner
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .calendar_range(from, to)
+        self.planner()?.calendar_range(from, to)
     }
 }

@@ -20,22 +20,40 @@ export interface VaultPreferences {
   legacy_migrated?: boolean;
 }
 export const DEFAULT_VAULT_PREFS: VaultPreferences = {
-  version: 1, agents_folder: "Agents", daily_folder: "Daily", daily_template: "", daily_format: "YYYY-MM-DD",
-  new_note_location: "current", new_note_folder: "", attachment_location: "next-to-note", attachment_folder: "", show_attachments_in_tree: false,
-  link_style: "wiki", startup_note: "", folder_colors: {},
+  version: 1,
+  agents_folder: "Agents",
+  daily_folder: "Daily",
+  daily_template: "",
+  daily_format: "YYYY-MM-DD",
+  new_note_location: "current",
+  new_note_folder: "",
+  attachment_location: "next-to-note",
+  attachment_folder: "",
+  show_attachments_in_tree: false,
+  link_style: "wiki",
+  startup_note: "",
+  folder_colors: {},
 };
-export const useVaultPreferences = create<{ root: string | null; value: VaultPreferences; error: string | null }>(() => ({ root: null, value: DEFAULT_VAULT_PREFS, error: null }));
+export const useVaultPreferences = create<{ root: string | null; value: VaultPreferences; error: string | null }>(
+  () => ({ root: null, value: DEFAULT_VAULT_PREFS, error: null }),
+);
 export const vaultPrefs = () => useVaultPreferences.getState().value;
 let generation = 0;
 export async function loadVaultPreferences(root: string) {
   const ticket = ++generation;
-  if (useVaultPreferences.getState().root !== root) useVaultPreferences.setState({ root, value: DEFAULT_VAULT_PREFS, error: null });
+  if (useVaultPreferences.getState().root !== root)
+    useVaultPreferences.setState({ root, value: DEFAULT_VAULT_PREFS, error: null });
   try {
     let value = await api.vaultPreferences();
     if (ticket !== generation) return;
     if (!value.legacy_migrated) {
       const legacy = prefs();
-      await api.setVaultPreferences(root, { daily_folder: legacy.dailyFolder, daily_template: legacy.dailyTemplate, new_note_location: legacy.newNoteLocation, legacy_migrated: true });
+      await api.setVaultPreferences(root, {
+        daily_folder: legacy.dailyFolder,
+        daily_template: legacy.dailyTemplate,
+        new_note_location: legacy.newNoteLocation,
+        legacy_migrated: true,
+      });
       value = await api.vaultPreferences();
     }
     if (ticket === generation) useVaultPreferences.setState({ value, error: null });

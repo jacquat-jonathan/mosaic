@@ -51,7 +51,12 @@ export function reviewHunks(a: string, b: string): ReviewDiffLine[] {
 export function acceptHunks(current: string, proposed: string, selected: Set<number>): string {
   const out: string[] = [];
   for (const line of reviewHunks(current, proposed)) {
-    if (line.op === "same" || (line.op === "add" && selected.has(line.hunk!)) || (line.op === "del" && !selected.has(line.hunk!))) out.push(line.text);
+    if (
+      line.op === "same" ||
+      (line.op === "add" && selected.has(line.hunk!)) ||
+      (line.op === "del" && !selected.has(line.hunk!))
+    )
+      out.push(line.text);
   }
   return out.join("\n");
 }

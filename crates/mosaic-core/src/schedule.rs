@@ -143,7 +143,10 @@ mod tests {
 
     #[test]
     fn interval_crossing_is_due_once() {
-        let now = minute_start(Local::now());
+        // A fixed minute mid-interval: at the top of an hour, `now - 20s` would cross a boundary.
+        let now = Local
+            .timestamp_opt(1_800_000_000 / 3600 * 3600 + 30 * 60, 0)
+            .unwrap();
         assert!(due(
             &Schedule::EveryMinutes(60),
             now - Duration::minutes(61),

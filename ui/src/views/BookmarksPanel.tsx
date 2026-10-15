@@ -27,7 +27,9 @@ export function BookmarksPanel() {
   const [dropAt, setDropAt] = useState<number | null>(null);
 
   const saveQuery = async () => {
-    const query = await useUi.getState().askText({ title: "Save a query", value: "", placeholder: "tag:project status=active OR priority>2" });
+    const query = await useUi
+      .getState()
+      .askText({ title: "Save a query", value: "", placeholder: "tag:project status=active OR priority>2" });
     if (!query?.trim()) return;
     try {
       const value = query.trim();
@@ -35,7 +37,9 @@ export function BookmarksPanel() {
       const vault = useVault.getState();
       const key = `query:${value}`;
       if (!vault.bookmarks.includes(key)) await vault.setBookmarks([...vault.bookmarks, key]);
-    } catch (e) { useVault.getState().setError(errorMessage(e)); }
+    } catch (e) {
+      useVault.getState().setError(errorMessage(e));
+    }
   };
 
   const onDrop = (ev: DragEvent, index: number) => {
@@ -48,11 +52,26 @@ export function BookmarksPanel() {
 
   return (
     <div className="tree bookmarks" role="list">
-      <button className="tree-row" onClick={() => void saveQuery()}><span className="tree-icon"><Plus size={15} /></span><span className="tree-name">Save query…</span></button>
-      {bookmarks.length === 0 && <p className="tree-empty">No bookmarks yet. Right-click a file or folder, star a search, or save a structured query.</p>}
+      <button className="tree-row" onClick={() => void saveQuery()}>
+        <span className="tree-icon">
+          <Plus size={15} />
+        </span>
+        <span className="tree-name">Save query…</span>
+      </button>
+      {bookmarks.length === 0 && (
+        <p className="tree-empty">
+          No bookmarks yet. Right-click a file or folder, star a search, or save a structured query.
+        </p>
+      )}
       {bookmarks.map((path, i) => {
-        if (path.startsWith("search:")) return <SearchBookmark key={path} entry={path} index={i} dropAt={dropAt} setDropAt={setDropAt} onDrop={onDrop} />;
-        if (path.startsWith("query:")) return <QueryBookmark key={path} entry={path} index={i} dropAt={dropAt} setDropAt={setDropAt} onDrop={onDrop} />;
+        if (path.startsWith("search:"))
+          return (
+            <SearchBookmark key={path} entry={path} index={i} dropAt={dropAt} setDropAt={setDropAt} onDrop={onDrop} />
+          );
+        if (path.startsWith("query:"))
+          return (
+            <QueryBookmark key={path} entry={path} index={i} dropAt={dropAt} setDropAt={setDropAt} onDrop={onDrop} />
+          );
         const entry = byPath.get(path);
         const missing = !entry;
         const isDir = entry?.is_dir ?? false;
@@ -80,7 +99,9 @@ export function BookmarksPanel() {
             }}
             onDragLeave={() => setDropAt((d) => (d === i ? null : d))}
             onDrop={(ev) => onDrop(ev, i)}
-            onClick={(ev) => (ev.altKey && !isDir && !missing ? void useWorkspace.getState().open(path, { newTab: true }) : open())}
+            onClick={(ev) =>
+              ev.altKey && !isDir && !missing ? void useWorkspace.getState().open(path, { newTab: true }) : open()
+            }
             onContextMenu={(ev) => {
               ev.preventDefault();
               useUi.getState().showMenu(ev.clientX, ev.clientY, [
@@ -89,7 +110,10 @@ export function BookmarksPanel() {
                   : isDir
                     ? [{ label: "Reveal in file tree", action: () => revealInTree(path) }]
                     : [
-                        { label: "Open in new tab", action: () => void useWorkspace.getState().open(path, { newTab: true }) },
+                        {
+                          label: "Open in new tab",
+                          action: () => void useWorkspace.getState().open(path, { newTab: true }),
+                        },
                         { label: "Open to the right", action: () => void openToTheRight(path) },
                         { label: "Reveal in file tree", action: () => revealInTree(path) },
                       ]),
@@ -119,16 +143,54 @@ export function BookmarksPanel() {
 }
 
 /** A structured query (`query:<query>`): opens as a workspace result view. */
-function QueryBookmark({ entry, index, dropAt, setDropAt, onDrop }: { entry: string; index: number; dropAt: number | null; setDropAt(f: (d: number | null) => number | null): void; onDrop(ev: DragEvent, index: number): void }) {
+function QueryBookmark({
+  entry,
+  index,
+  dropAt,
+  setDropAt,
+  onDrop,
+}: {
+  entry: string;
+  index: number;
+  dropAt: number | null;
+  setDropAt(f: (d: number | null) => number | null): void;
+  onDrop(ev: DragEvent, index: number): void;
+}) {
   const query = entry.slice("query:".length);
   const open = () => void useWorkspace.getState().open(viewPath("query", query));
-  return <div role="listitem" className={`tree-row ${dropAt === index ? "drop-before" : ""}`} title={`Query: ${query}`} draggable
-    onDragStart={ev => { ev.dataTransfer.setData(BOOKMARK_DRAG, String(index)); ev.dataTransfer.effectAllowed = "move"; }}
-    onDragOver={ev => { if (!ev.dataTransfer.types.includes(BOOKMARK_DRAG)) return; ev.preventDefault(); setDropAt(() => index); }}
-    onDragLeave={() => setDropAt(d => d === index ? null : d)} onDrop={ev => onDrop(ev,index)} onClick={open}
-    onContextMenu={ev => { ev.preventDefault(); useUi.getState().showMenu(ev.clientX,ev.clientY,[{label:"Run query",action:open},{label:"",separator:true},{label:"Remove bookmark",action:()=>void useVault.getState().toggleBookmark(entry)}]); }}>
-    <span className="tree-icon"><ListFilter size={15} strokeWidth={1.75}/></span><span className="tree-name">{query}</span>
-  </div>;
+  return (
+    <div
+      role="listitem"
+      className={`tree-row ${dropAt === index ? "drop-before" : ""}`}
+      title={`Query: ${query}`}
+      draggable
+      onDragStart={(ev) => {
+        ev.dataTransfer.setData(BOOKMARK_DRAG, String(index));
+        ev.dataTransfer.effectAllowed = "move";
+      }}
+      onDragOver={(ev) => {
+        if (!ev.dataTransfer.types.includes(BOOKMARK_DRAG)) return;
+        ev.preventDefault();
+        setDropAt(() => index);
+      }}
+      onDragLeave={() => setDropAt((d) => (d === index ? null : d))}
+      onDrop={(ev) => onDrop(ev, index)}
+      onClick={open}
+      onContextMenu={(ev) => {
+        ev.preventDefault();
+        useUi.getState().showMenu(ev.clientX, ev.clientY, [
+          { label: "Run query", action: open },
+          { label: "", separator: true },
+          { label: "Remove bookmark", action: () => void useVault.getState().toggleBookmark(entry) },
+        ]);
+      }}
+    >
+      <span className="tree-icon">
+        <ListFilter size={15} strokeWidth={1.75} />
+      </span>
+      <span className="tree-name">{query}</span>
+    </div>
+  );
 }
 
 /** A saved search (`search:<query>`): runs it in the Search panel. */

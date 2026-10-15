@@ -24,7 +24,12 @@ export function FileView({ path }: { path: string }) {
     if (!buffer) void useWorkspace.getState().ensure(path);
   }, [buffer, path]);
   if (isSpecialTab(path)) return <SpecialView path={path} />;
-  if (!buffer) return <div className="empty"><p>Loading…</p></div>;
+  if (!buffer)
+    return (
+      <div className="empty">
+        <p>Loading…</p>
+      </div>
+    );
   return (
     <div className="file-view">
       <ConflictBar buffer={buffer} />
@@ -49,7 +54,9 @@ function Viewer({ buffer }: { buffer: Buffer }) {
       return <RenderedSourceViewer buffer={buffer} label="Graph" render={renderGraphviz} />;
     case "json":
       if (buffer.path.toLowerCase().endsWith(".vl.json")) {
-        return <RenderedSourceViewer buffer={buffer} label="Chart" render={(src, el) => renderChart(src, el, buffer.path)} />;
+        return (
+          <RenderedSourceViewer buffer={buffer} label="Chart" render={(src, el) => renderChart(src, el, buffer.path)} />
+        );
       }
       return <CodeEditor buffer={buffer} />;
     case "html":

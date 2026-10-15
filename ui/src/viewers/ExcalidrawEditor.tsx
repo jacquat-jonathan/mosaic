@@ -9,13 +9,21 @@ import { Segmented, Toolbar } from "./Toolbar";
 const ExcalidrawCanvas = lazy(() => import("./ExcalidrawCanvas"));
 
 export const EMPTY_DRAWING = JSON.stringify(
-  { type: "excalidraw", version: 2, source: "mosaic", elements: [], appState: { gridSize: null, viewBackgroundColor: "#ffffff" }, files: {} },
+  {
+    type: "excalidraw",
+    version: 2,
+    source: "mosaic",
+    elements: [],
+    appState: { gridSize: null, viewBackgroundColor: "#ffffff" },
+    files: {},
+  },
   null,
   2,
 );
 
 export function ExcalidrawEditor({ buffer }: { buffer: Buffer }) {
   const [mode, setMode] = useState<"draw" | "source">("draw");
+  // biome-ignore lint/correctness/useExhaustiveDependencies: only external reloads re-seed the drawing; our own edits live in Excalidraw's state
   const parsed = useMemo(() => {
     try {
       const text = buffer.content?.trim() ? buffer.content : EMPTY_DRAWING;
@@ -25,8 +33,6 @@ export function ExcalidrawEditor({ buffer }: { buffer: Buffer }) {
     } catch (e) {
       return { data: null, error: (e as Error).message };
     }
-    // Only external reloads re-seed the drawing; our own edits live in Excalidraw's state.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [buffer.version, buffer.path]);
   const lastWritten = useRef(buffer.content);
   const showSource = mode === "source" || !parsed.data;
@@ -34,13 +40,28 @@ export function ExcalidrawEditor({ buffer }: { buffer: Buffer }) {
   return (
     <div className="viewer">
       <Toolbar>
-        <Segmented<"draw" | "source"> value={showSource ? "source" : "draw"} onChange={setMode} options={[{ value: "draw", label: "Drawing" }, { value: "source", label: "Source" }]} />
-        {parsed.error && <span className="toolbar-error">Can't open this drawing: {parsed.error}. The file is left untouched.</span>}
+        <Segmented<"draw" | "source">
+          value={showSource ? "source" : "draw"}
+          onChange={setMode}
+          options={[
+            { value: "draw", label: "Drawing" },
+            { value: "source", label: "Source" },
+          ]}
+        />
+        {parsed.error && (
+          <span className="toolbar-error">Can't open this drawing: {parsed.error}. The file is left untouched.</span>
+        )}
       </Toolbar>
       {showSource ? (
         <CodeEditor buffer={buffer} />
       ) : (
-        <Suspense fallback={<div className="empty"><p>Loading drawing tools…</p></div>}>
+        <Suspense
+          fallback={
+            <div className="empty">
+              <p>Loading drawing tools…</p>
+            </div>
+          }
+        >
           <ExcalidrawCanvas
             key={buffer.version}
             initial={parsed.data}

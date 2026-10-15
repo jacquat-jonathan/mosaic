@@ -4,6 +4,18 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **One manual download needed:** this version is signed with a new release key, so Mosaic 0.19 and earlier can't install it from About & updates (they report that the signature can't be verified). Download the DMG from the GitHub release page once; later updates install from within the app as before.
+- **Safer update signing:** releases are signed in a separate, approved step that never runs third-party build code, and the app can trust a second, standby signing key, so a compromised key can be replaced without stranding installed copies.
+- **Consistently formatted, linted UI code:** the interface code is formatted and checked by Biome on every change, which catches React hook dependency mistakes before they reach a release.
+- **Undo history that lasts:** undo history and pending AI proposals move out of the Caches folder, which macOS and cleaning tools may empty, into Application Support. They now follow a vault you move or rename, a copied vault starts its own history, and if the history can't be saved Mosaic says so in a banner instead of quietly keeping it only until you quit. Existing history is moved over the first time you open each vault.
+- **Faster AI tool calls on large vaults:** while Mosaic is open, agents' searches and queries use the index the app already keeps current instead of re-scanning every file first, and a quick run of calls shares one scan.
+- **Notes don't depend on the planner:** `mosaic` commands and AI agents work on notes even when the planner's database is damaged, and no longer create a `.mosaic` folder in vaults that don't use the planner. The planner also waits briefly instead of failing when two windows use it at once.
+- **No more freezes while a vault indexes:** file, search, history and planner work now runs off the window's thread, the index catches up in small batches so typing right after opening a large vault saves at once, and finding Claude Code no longer re-reads your shell profile for every chat.
+- **Checked on every change:** the full test suite now runs on GitHub for each push to `main` and each pull request, not only when a release is cut.
+- **Chats and workflows read only through Mosaic:** Claude no longer uses its own file tools, which could read hidden folders and files outside the vault; it reads with Mosaic's tools, so folder rules always apply. Workflows reach the web only when you tick **Can use the web** (`web: true`), and a run started by a new note treats that note as untrusted input.
+- **Folder rules fail closed:** if Mosaic's settings file is damaged or can't be read, agents are refused with a clear message instead of briefly seeing every folder as if no rules existed.
+- **Folder rules can't be sidestepped by spelling:** hidden, read-only and review folders now apply however an agent spells the path — `private/secret.md` is treated like `Private/Secret.md`, and accented names match in either Unicode form — and a link inside the vault is judged by where it points.
+
 ## 0.19.0 — 2026-10-15
 
 - **Faster note shaping:** reorder sibling heading sections from the editor or Outline by dragging, or use ⌥↑/⌥↓ in the Outline; nested subsections move with their parent and numbered headings are renumbered. The adjacent + action creates a same-level section, while the compact slash menu groups its choices, adds callouts, math, links and embeds, and calls checklist items Checkboxes.

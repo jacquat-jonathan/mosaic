@@ -27,7 +27,17 @@ export function flowchartShapes(src: string): Map<string, string> {
     if (!shapes.has(id)) shapes.set(id, openers.find(([o]) => o === open)![1]);
   }
   for (const m of src.matchAll(/([A-Za-z0-9_]+)@\{\s*shape:\s*([\w-]+)/g)) {
-    const named: Record<string, string> = { doc: "document", cloud: "cloud", "sm-circ": "initial", "fr-circ": "final", fork: "bar", cyl: "cylinder", diam: "diamond", hex: "hexagon", circle: "ellipse" };
+    const named: Record<string, string> = {
+      doc: "document",
+      cloud: "cloud",
+      "sm-circ": "initial",
+      "fr-circ": "final",
+      fork: "bar",
+      cyl: "cylinder",
+      diam: "diamond",
+      hex: "hexagon",
+      circle: "ellipse",
+    };
     if (named[m[2]]) shapes.set(m[1], named[m[2]]);
   }
   return shapes;
@@ -72,7 +82,15 @@ export async function mermaidToCanvas(src: string): Promise<CanvasDoc> {
     const byMermaidId = new Map<string, CanvasNode>();
     for (const g of host.querySelectorAll("g.cluster")) {
       const b = box(g);
-      nodes.push({ id: newId(), type: "group", x: Math.round(b.x - 10), y: Math.round(b.y - 10), width: Math.round(b.w * SPREAD + 20), height: Math.round(b.h * SPREAD + 20), label: g.textContent?.trim() ?? "" });
+      nodes.push({
+        id: newId(),
+        type: "group",
+        x: Math.round(b.x - 10),
+        y: Math.round(b.y - 10),
+        width: Math.round(b.w * SPREAD + 20),
+        height: Math.round(b.h * SPREAD + 20),
+        label: g.textContent?.trim() ?? "",
+      });
     }
     for (const g of host.querySelectorAll("g.node")) {
       const m = /(?:flowchart|state)-(.+)-\d+$/.exec(g.id);
@@ -86,15 +104,29 @@ export async function mermaidToCanvas(src: string): Promise<CanvasDoc> {
       const width = small ? 30 : Math.max(100, Math.round(b.w * 1.15));
       const height = small ? 30 : Math.max(50, Math.round(b.h * 1.15));
       // Keep the centre where Mermaid put it.
-      const node: CanvasNode = { id: newId(), type: "text", x: Math.round(b.x + (b.w * SPREAD) / 2 - width / 2), y: Math.round(b.y + (b.h * SPREAD) / 2 - height / 2), width, height, text, shape };
+      const node: CanvasNode = {
+        id: newId(),
+        type: "text",
+        x: Math.round(b.x + (b.w * SPREAD) / 2 - width / 2),
+        y: Math.round(b.y + (b.h * SPREAD) / 2 - height / 2),
+        width,
+        height,
+        text,
+        shape,
+      };
       nodes.push(node);
       byMermaidId.set(id, node);
     }
     const centre = (n: CanvasNode) => ({ x: n.x + n.width / 2, y: n.y + n.height / 2 });
     const nearest = (p: { x: number; y: number }) =>
-      [...byMermaidId.values()].reduce((best, n) => (Math.hypot(centre(n).x - p.x, centre(n).y - p.y) < Math.hypot(centre(best).x - p.x, centre(best).y - p.y) ? n : best));
+      [...byMermaidId.values()].reduce((best, n) =>
+        Math.hypot(centre(n).x - p.x, centre(n).y - p.y) < Math.hypot(centre(best).x - p.x, centre(best).y - p.y)
+          ? n
+          : best,
+      );
     const labels = new Map<string, string>();
-    for (const l of host.querySelectorAll(".edgeLabel [data-id]")) labels.set(l.getAttribute("data-id")!, l.textContent?.trim() ?? "");
+    for (const l of host.querySelectorAll(".edgeLabel [data-id]"))
+      labels.set(l.getAttribute("data-id")!, l.textContent?.trim() ?? "");
     const edges: CanvasEdge[] = [];
     for (const p of host.querySelectorAll<SVGPathElement>("path[data-edge]")) {
       const dataId = p.dataset.id ?? "";
@@ -160,10 +192,15 @@ export interface Relation {
 
 const LEFT_END: Record<string, string> = { "<|": "triangle", "*": "diamond", o: "diamond-open", "<": "arrow" };
 const RIGHT_END: Record<string, string> = { "|>": "triangle", "*": "diamond", o: "diamond-open", ">": "arrow" };
-const RELATION = /^([\w~]+)(?:\s+"([^"]*)")?\s+(<\||\*|o|<)?(--|\.\.)(\|>|\*|o|>)?\s+(?:"([^"]*)"\s+)?([\w~]+)\s*(?::\s*(.+))?$/;
+const RELATION =
+  /^([\w~]+)(?:\s+"([^"]*)")?\s+(<\||\*|o|<)?(--|\.\.)(\|>|\*|o|>)?\s+(?:"([^"]*)"\s+)?([\w~]+)\s*(?::\s*(.+))?$/;
 
 /** Canvas member style: `+total() Money` → `+ total(): Money`. */
-const memberText = (m: string) => m.trim().replace(/^([-+#~])\s*/, "$1 ").replace(/\)\s*([^\s:$*].*)$/, "): $1");
+const memberText = (m: string) =>
+  m
+    .trim()
+    .replace(/^([-+#~])\s*/, "$1 ")
+    .replace(/\)\s*([^\s:$*].*)$/, "): $1");
 
 /** Classes (in order of appearance) and relations of a Mermaid class diagram. */
 export function parseClassDiagram(src: string): { classes: ClassInfo[]; relations: Relation[] } {
@@ -227,7 +264,11 @@ export function classText(c: ClassInfo): string {
   return parts.join("\n---\n");
 }
 
-function classCanvas(src: string, host: HTMLElement, box: (el: Element) => { x: number; y: number; w: number; h: number }): CanvasDoc {
+function classCanvas(
+  src: string,
+  host: HTMLElement,
+  box: (el: Element) => { x: number; y: number; w: number; h: number },
+): CanvasDoc {
   const { classes, relations } = parseClassDiagram(src);
   const placed = new Map<string, { x: number; y: number; w: number; h: number }>();
   for (const g of host.querySelectorAll("g.node")) {
@@ -240,10 +281,24 @@ function classCanvas(src: string, host: HTMLElement, box: (el: Element) => { x: 
     const lines = c.stereotypes.length + 1 + c.attributes.length + c.methods.length;
     const width = Math.max(160, ...[c.name, ...c.attributes, ...c.methods].map((l) => Math.round(l.length * 8 + 40)));
     const height = 40 + lines * 20 + (c.attributes.length ? 10 : 0) + (c.methods.length ? 10 : 0);
-    const b = placed.get(c.name) ?? { x: (i % 4) * 280, y: Math.floor(i / 4) * 240, w: width / SPREAD, h: height / SPREAD };
+    const b = placed.get(c.name) ?? {
+      x: (i % 4) * 280,
+      y: Math.floor(i / 4) * 240,
+      w: width / SPREAD,
+      h: height / SPREAD,
+    };
     const id = newId();
     ids.set(c.name, id);
-    nodes.push({ id, type: "text", x: Math.round(b.x + (b.w * SPREAD) / 2 - width / 2), y: Math.round(b.y + (b.h * SPREAD) / 2 - height / 2), width, height, text: classText(c), shape: "class" });
+    nodes.push({
+      id,
+      type: "text",
+      x: Math.round(b.x + (b.w * SPREAD) / 2 - width / 2),
+      y: Math.round(b.y + (b.h * SPREAD) / 2 - height / 2),
+      width,
+      height,
+      text: classText(c),
+      shape: "class",
+    });
   });
   const edges: CanvasEdge[] = relations.map((r) => {
     const e: CanvasEdge = { id: newId(), fromNode: ids.get(r.from)!, toNode: ids.get(r.to)!, toEnd: r.toEnd };

@@ -168,6 +168,31 @@ impl Vault {
         Ok(abs)
     }
 
+    /// The path as it is spelled on disk ("" for the root): on a case-insensitive volume
+    /// `private/x.md` opens `Private/x.md`, and APFS treats NFC and NFD names as one. The deepest
+    /// existing ancestor is canonicalized and the missing tail (a new file) appended as given.
+    pub fn canonical_rel(&self, rel: &str) -> Result<String> {
+        let norm = normalize(rel)?;
+        let abs = self.resolve(&norm)?;
+        let mut existing = abs.as_path();
+        let mut tail = Vec::new();
+        let real = loop {
+            if let Ok(real) = fs::canonicalize(existing) {
+                break real;
+            }
+            match (existing.parent(), existing.file_name()) {
+                (Some(parent), Some(name)) => {
+                    tail.push(name.to_os_string());
+                    existing = parent;
+                }
+                _ => return Ok(norm),
+            }
+        };
+        let joined = tail.iter().rev().fold(real, |p, part| p.join(part));
+        self.relative(&joined)
+            .ok_or_else(|| Error::InvalidPath(format!("{norm} (resolves outside the vault)")))
+    }
+
     /// Vault-relative form of an absolute path inside the root, if it is part of the vault.
     pub fn relative(&self, abs: &Path) -> Option<String> {
         let rel = abs.strip_prefix(&self.root).ok()?;
@@ -573,6 +598,29 @@ mod tests {
             Err(Error::Conflict { .. })
         ));
         assert_eq!(v.read("notes/a.md").unwrap().hash, w2.hash);
+    }
+
+    #[test]
+    fn canonical_rel_is_the_spelling_on_disk() {
+        let (_d, v) = vault();
+        v.create("Private/Secret.md", "x").unwrap();
+        // A link inside the vault resolves to where it points.
+        std::os::unix::fs::symlink(v.root().join("Private"), v.root().join("Public")).unwrap();
+        assert_eq!(
+            v.canonical_rel("Public/Secret.md").unwrap(),
+            "Private/Secret.md"
+        );
+        // Missing files keep their tail; the existing part takes the disk's spelling.
+        assert_eq!(v.canonical_rel("Private/New.md").unwrap(), "Private/New.md");
+        assert_eq!(v.canonical_rel("").unwrap(), "");
+        if v.root().join("private").exists() {
+            // Case-insensitive volume (the macOS default).
+            assert_eq!(
+                v.canonical_rel("private/secret.md").unwrap(),
+                "Private/Secret.md"
+            );
+            assert_eq!(v.canonical_rel("PRIVATE/new.md").unwrap(), "Private/new.md");
+        }
     }
 
     #[test]

@@ -64,8 +64,23 @@ function CompareModal({ buffer, onClose }: { buffer: Buffer; onClose(): void }) 
         </pre>
         <div className="modal-actions">
           <button onClick={onClose}>Close</button>
-          <button onClick={() => { onClose(); void ws().reload(buffer.path); }}>Load disk version</button>
-          <button className="primary" onClick={() => { onClose(); void ws().keepMine(buffer.path); }}>Keep mine</button>
+          <button
+            onClick={() => {
+              onClose();
+              void ws().reload(buffer.path);
+            }}
+          >
+            Load disk version
+          </button>
+          <button
+            className="primary"
+            onClick={() => {
+              onClose();
+              void ws().keepMine(buffer.path);
+            }}
+          >
+            Keep mine
+          </button>
         </div>
       </div>
     </div>

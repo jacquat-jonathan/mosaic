@@ -47,7 +47,10 @@ export function parseTiming(text: string): Timing {
       if (changes.length) lanes.push({ name: l[1].replace(/[*_`]/g, ""), changes });
       continue;
     }
-    const plain = line.replace(/^#+\s*/, "").replace(/[*_`]/g, "").trim();
+    const plain = line
+      .replace(/^#+\s*/, "")
+      .replace(/[*_`]/g, "")
+      .trim();
     if (plain) title.push(plain);
   }
   const times = lanes.flatMap((l) => l.changes.map((c) => c.at));
@@ -81,7 +84,9 @@ export function timingSvg(text: string, x: number, y: number, w: number, h: numb
   const out: string[] = [];
   let top = y + 8;
   if (d.title) {
-    out.push(`<text x="${r1(x + 10)}" y="${r1(top + 13)}" font-size="13" font-weight="600" fill="${c.fg}">${esc(d.title)}</text>`);
+    out.push(
+      `<text x="${r1(x + 10)}" y="${r1(top + 13)}" font-size="13" font-weight="600" fill="${c.fg}">${esc(d.title)}</text>`,
+    );
     top += 24;
   }
   const axisH = 26;
@@ -92,18 +97,29 @@ export function timingSvg(text: string, x: number, y: number, w: number, h: numb
   const tx = (t: number) => plotX + ((Math.min(Math.max(t, d.start), d.end) - d.start) / (d.end - d.start)) * plotW;
   // Axis with ticks and faint guide lines.
   const step = tickStep(d.end - d.start);
-  out.push(`<line x1="${r1(plotX)}" y1="${r1(bottom)}" x2="${r1(plotX + plotW)}" y2="${r1(bottom)}" stroke="${c.muted}" stroke-width="1"/>`);
+  out.push(
+    `<line x1="${r1(plotX)}" y1="${r1(bottom)}" x2="${r1(plotX + plotW)}" y2="${r1(bottom)}" stroke="${c.muted}" stroke-width="1"/>`,
+  );
   for (let k = Math.ceil(d.start / step - 1e-9); k <= Math.floor(d.end / step + 1e-9); k++) {
     const t = k * step;
     const px = r1(tx(t));
-    out.push(`<line x1="${px}" y1="${r1(top)}" x2="${px}" y2="${r1(bottom + 4)}" stroke="${c.grid}" stroke-width="1" stroke-dasharray="3 4"/>`);
-    out.push(`<text x="${px}" y="${r1(bottom + 18)}" text-anchor="middle" font-size="11" fill="${c.muted}">${esc(num(t) + (d.unit ? ` ${d.unit}` : ""))}</text>`);
+    out.push(
+      `<line x1="${px}" y1="${r1(top)}" x2="${px}" y2="${r1(bottom + 4)}" stroke="${c.grid}" stroke-width="1" stroke-dasharray="3 4"/>`,
+    );
+    out.push(
+      `<text x="${px}" y="${r1(bottom + 18)}" text-anchor="middle" font-size="11" fill="${c.muted}">${esc(num(t) + (d.unit ? ` ${d.unit}` : ""))}</text>`,
+    );
   }
   const laneH = d.lanes.length ? (bottom - top) / d.lanes.length : 0;
   d.lanes.forEach((lane, i) => {
     const lt = top + i * laneH;
-    if (i > 0) out.push(`<line x1="${r1(x)}" y1="${r1(lt)}" x2="${r1(x + w)}" y2="${r1(lt)}" stroke="${c.grid}" stroke-width="1"/>`);
-    out.push(`<text x="${r1(x + 10)}" y="${r1(lt + 16)}" font-size="13" font-weight="600" fill="${c.fg}">${esc(lane.name)}</text>`);
+    if (i > 0)
+      out.push(
+        `<line x1="${r1(x)}" y1="${r1(lt)}" x2="${r1(x + w)}" y2="${r1(lt)}" stroke="${c.grid}" stroke-width="1"/>`,
+      );
+    out.push(
+      `<text x="${r1(x + 10)}" y="${r1(lt + 16)}" font-size="13" font-weight="600" fill="${c.fg}">${esc(lane.name)}</text>`,
+    );
     // One level per state, in order of first appearance, top to bottom.
     const states = [...new Set(lane.changes.map((ch) => ch.state))];
     const hi = lt + 26;
@@ -113,7 +129,9 @@ export function timingSvg(text: string, x: number, y: number, w: number, h: numb
       return states.length === 1 ? (hi + lo) / 2 : hi + ((lo - hi) * k) / (states.length - 1);
     };
     for (const s of states) {
-      out.push(`<text x="${r1(plotX - 8)}" y="${r1(level(s) + 4)}" text-anchor="end" font-size="11" fill="${c.muted}">${esc(s)}</text>`);
+      out.push(
+        `<text x="${r1(plotX - 8)}" y="${r1(level(s) + 4)}" text-anchor="end" font-size="11" fill="${c.muted}">${esc(s)}</text>`,
+      );
     }
     const pts: string[] = [];
     lane.changes.forEach((ch, k) => {
@@ -124,6 +142,9 @@ export function timingSvg(text: string, x: number, y: number, w: number, h: numb
     });
     out.push(`<path d="${pts.join(" ")}" fill="none" stroke="${c.stroke}" stroke-width="2" stroke-linejoin="round"/>`);
   });
-  if (!d.lanes.length) out.push(`<text x="${r1(x + w / 2)}" y="${r1((top + bottom) / 2)}" text-anchor="middle" font-size="12" fill="${c.muted}">Lane: State@0 Other@5</text>`);
+  if (!d.lanes.length)
+    out.push(
+      `<text x="${r1(x + w / 2)}" y="${r1((top + bottom) / 2)}" text-anchor="middle" font-size="12" fill="${c.muted}">Lane: State@0 Other@5</text>`,
+    );
   return out.join("");
 }

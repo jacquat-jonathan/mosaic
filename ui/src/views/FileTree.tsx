@@ -48,16 +48,27 @@ const DRAG_TYPE = "application/x-mosaic-path";
 export function kindIcon(kind: FileKind | null, size = 15) {
   const p = { size, strokeWidth: 1.75 };
   switch (kind) {
-    case "markdown": return <FileText {...p} />;
-    case "canvas": return <LayoutDashboard {...p} />;
-    case "excalidraw": return <PenTool {...p} />;
-    case "html": return <Globe {...p} />;
-    case "image": return <FileImage {...p} />;
-    case "csv": return <FileSpreadsheet {...p} />;
-    case "json": case "yaml": return <FileJson {...p} />;
-    case "graphviz": return <Network {...p} />;
-    case "code": return <FileCode {...p} />;
-    default: return <File {...p} />;
+    case "markdown":
+      return <FileText {...p} />;
+    case "canvas":
+      return <LayoutDashboard {...p} />;
+    case "excalidraw":
+      return <PenTool {...p} />;
+    case "html":
+      return <Globe {...p} />;
+    case "image":
+      return <FileImage {...p} />;
+    case "csv":
+      return <FileSpreadsheet {...p} />;
+    case "json":
+    case "yaml":
+      return <FileJson {...p} />;
+    case "graphviz":
+      return <Network {...p} />;
+    case "code":
+      return <FileCode {...p} />;
+    default:
+      return <File {...p} />;
   }
 }
 
@@ -73,7 +84,7 @@ const OPEN_ON_HOVER_MS = 600;
 export function FileTree() {
   const entries = useVault((s) => s.entries);
   const expanded = useVault((s) => s.expanded);
-  const showAttachments = useVaultPreferences(s => s.value.show_attachments_in_tree);
+  const showAttachments = useVaultPreferences((s) => s.value.show_attachments_in_tree);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const hoverTimer = useRef<{ dir: string; t: ReturnType<typeof setTimeout> } | null>(null);
 
@@ -102,12 +113,14 @@ export function FileTree() {
     if (ev.target !== ev.currentTarget) return;
     ev.preventDefault();
     useVault.getState().clearSelection();
-    useUi.getState().showMenu(ev.clientX, ev.clientY, [
-      ...newItems(""),
-      { label: "", separator: true },
-      { label: "Collapse all", action: () => useVault.setState({ expanded: new Set() }) },
-      { label: "Reveal vault in Finder", action: () => void revealInFinder("") },
-    ]);
+    useUi
+      .getState()
+      .showMenu(ev.clientX, ev.clientY, [
+        ...newItems(""),
+        { label: "", separator: true },
+        { label: "Collapse all", action: () => useVault.setState({ expanded: new Set() }) },
+        { label: "Reveal vault in Finder", action: () => void revealInFinder("") },
+      ]);
   };
 
   const cancelHover = () => {
@@ -145,7 +158,12 @@ export function FileTree() {
       if (isFinderDrag(ev.dataTransfer)) {
         // Like a new note: the (first) dropped file opens; everything dropped stays selected.
         void importDropped(droppedItems(ev.dataTransfer), dir).then((paths) => {
-          const dirs = new Set(useVault.getState().entries.filter((e) => e.is_dir).map((e) => e.path));
+          const dirs = new Set(
+            useVault
+              .getState()
+              .entries.filter((e) => e.is_dir)
+              .map((e) => e.path),
+          );
           const file = paths.find((p) => !dirs.has(p));
           if (file) void useWorkspace.getState().open(file, { newTab: true });
         });
@@ -213,7 +231,10 @@ function newItems(dir: string): MenuItem[] {
     {
       label: "New",
       children: [
-        ...NEW_KINDS.filter((k) => k.ext !== "md").map((k) => ({ label: k.label.replace(/^New /, ""), action: () => void newOfKind(dir, k) })),
+        ...NEW_KINDS.filter((k) => k.ext !== "md").map((k) => ({
+          label: k.label.replace(/^New /, ""),
+          action: () => void newOfKind(dir, k),
+        })),
       ],
     },
     { label: "New folder", shortcut: shortcutOf("new-folder"), action: () => void useVault.getState().newFolder(dir) },
@@ -224,7 +245,15 @@ function copyItems(entry: Entry): MenuItem {
   return {
     label: "Copy",
     children: [
-      ...(entry.is_dir ? [] : [{ label: "Wikilink", detail: wikilinkFor(entry.path), action: () => void copyText(wikilinkFor(entry.path)) }]),
+      ...(entry.is_dir
+        ? []
+        : [
+            {
+              label: "Wikilink",
+              detail: wikilinkFor(entry.path),
+              action: () => void copyText(wikilinkFor(entry.path)),
+            },
+          ]),
       { label: "Vault path", detail: entry.path, action: () => void copyText(entry.path) },
       { label: "Absolute path", action: () => void api.absolutePath(entry.path).then(copyText) },
     ],
@@ -234,18 +263,35 @@ function copyItems(entry: Entry): MenuItem {
 async function folderTemplateMenu(folder: string): Promise<MenuItem> {
   try {
     const effective = (await api.templates(`${folder}/Untitled.md`)).default;
-    const source = effective.rule_folder === null ? "No assigned folder default" : effective.rule_folder ? `Default from ${effective.rule_folder}` : "Default from vault root";
+    const source =
+      effective.rule_folder === null
+        ? "No assigned folder default"
+        : effective.rule_folder
+          ? `Default from ${effective.rule_folder}`
+          : "Default from vault root";
     return {
       label: "Default template",
       detail: effective.template ?? "Blank",
       children: [
         { label: effective.template ?? "Blank", detail: source, disabled: true },
-        ...(effective.template ? [{ label: "Edit template", detail: effective.template, action: () => void useWorkspace.getState().open(effective.template!, { newTab: true }) }] : []),
+        ...(effective.template
+          ? [
+              {
+                label: "Edit template",
+                detail: effective.template,
+                action: () => void useWorkspace.getState().open(effective.template!, { newTab: true }),
+              },
+            ]
+          : []),
         { label: "Change default…", action: () => useUi.getState().openSettings("templates") },
       ],
     };
   } catch {
-    return { label: "Default template…", detail: "Open template settings", action: () => useUi.getState().openSettings("templates") };
+    return {
+      label: "Default template…",
+      detail: "Open template settings",
+      action: () => useUi.getState().openSettings("templates"),
+    };
   }
 }
 
@@ -274,8 +320,14 @@ async function singleMenu(entry: Entry): Promise<MenuItem[]> {
                 {
                   label: "Export",
                   children: [
-                    { label: "As HTML file", action: () => void import("../export/note").then((m) => m.exportNoteHtml(entry.path)) },
-                    { label: "As PDF (print)…", action: () => void import("../export/note").then((m) => m.printNote(entry.path)) },
+                    {
+                      label: "As HTML file",
+                      action: () => void import("../export/note").then((m) => m.exportNoteHtml(entry.path)),
+                    },
+                    {
+                      label: "As PDF (print)…",
+                      action: () => void import("../export/note").then((m) => m.printNote(entry.path)),
+                    },
                   ],
                 },
               ]
@@ -305,14 +357,26 @@ function multiMenu(paths: string[]): MenuItem[] {
     { label: `${paths.length} items selected`, disabled: true },
     { label: "", separator: true },
     ...(files.length
-      ? [{ label: `Open ${files.length === 1 ? "file" : `${files.length} files`} in new tabs`, action: () => void openAll(files) }]
+      ? [
+          {
+            label: `Open ${files.length === 1 ? "file" : `${files.length} files`} in new tabs`,
+            action: () => void openAll(files),
+          },
+        ]
       : []),
     { label: allBookmarked ? "Remove bookmarks" : "Bookmark all", action: () => void vault.toggleBookmarks(paths) },
-    ...(files.length ? [{ label: "Copy note links", action: () => void copyText(files.map(path => wikilinkFor(path)).join("\n")) }] : []),
+    ...(files.length
+      ? [{ label: "Copy note links", action: () => void copyText(files.map((path) => wikilinkFor(path)).join("\n")) }]
+      : []),
     ...(files.length ? [{ label: "New canvas from selection", action: () => void canvasFromFiles(files) }] : []),
     { label: "", separator: true },
     { label: "Move to…", action: () => pickFolderAndMove(paths) },
-    { label: `Move ${paths.length} items to Trash`, shortcut: "⌘⌫", danger: true, action: () => void deletePaths(paths) },
+    {
+      label: `Move ${paths.length} items to Trash`,
+      shortcut: "⌘⌫",
+      danger: true,
+      action: () => void deletePaths(paths),
+    },
   ];
 }
 
@@ -338,7 +402,7 @@ function TreeRow({
   const renaming = useVault((s) => s.renaming === entry.path);
   const selected = useVault((s) => s.selected.has(entry.path));
   const bookmarked = useVault((s) => s.bookmarks.includes(entry.path));
-  const folderColor = useVaultPreferences(s => entry.is_dir ? s.value.folder_colors[entry.path] : undefined);
+  const folderColor = useVaultPreferences((s) => (entry.is_dir ? s.value.folder_colors[entry.path] : undefined));
   const active = useWorkspace((s) => s.panes.find((p) => p.id === s.focused)?.active === entry.path);
 
   const onClick = (ev: MouseEvent) => {
@@ -356,9 +420,10 @@ function TreeRow({
     const vault = useVault.getState();
     const inSelection = vault.selected.has(entry.path) && vault.selected.size > 1;
     if (!inSelection) vault.select(entry.path, "single");
-    const x = ev.clientX, y = ev.clientY;
+    const x = ev.clientX,
+      y = ev.clientY;
     if (inSelection) return useUi.getState().showMenu(x, y, multiMenu(order.filter((p) => vault.selected.has(p))));
-    void singleMenu(entry).then(items => useUi.getState().showMenu(x, y, items));
+    void singleMenu(entry).then((items) => useUi.getState().showMenu(x, y, items));
   };
 
   return (
@@ -382,19 +447,21 @@ function TreeRow({
         ev.dataTransfer.effectAllowed = "copyMove";
       }}
       onClick={onClick}
-      onAuxClick={(ev) => ev.button === 1 && !entry.is_dir && void useWorkspace.getState().open(entry.path, { newTab: true })}
+      onAuxClick={(ev) =>
+        ev.button === 1 && !entry.is_dir && void useWorkspace.getState().open(entry.path, { newTab: true })
+      }
       onContextMenu={onMenu}
       title={entry.path}
       {...dropProps}
     >
       <span className="tree-icon">
-        {entry.is_dir ? (
-          <ChevronRight size={14} className={open ? "chev open" : "chev"} />
-        ) : (
-          kindIcon(entry.kind)
-        )}
+        {entry.is_dir ? <ChevronRight size={14} className={open ? "chev open" : "chev"} /> : kindIcon(entry.kind)}
       </span>
-      {renaming ? <RenameInput entry={entry} /> : <span className="tree-name">{entry.is_dir ? entry.name : displayName(entry)}</span>}
+      {renaming ? (
+        <RenameInput entry={entry} />
+      ) : (
+        <span className="tree-name">{entry.is_dir ? entry.name : displayName(entry)}</span>
+      )}
       {bookmarked && !renaming && <Bookmark size={11} className="tree-mark" aria-label="Bookmarked" />}
     </div>
   );

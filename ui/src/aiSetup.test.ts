@@ -2,9 +2,18 @@ import { expect, test } from "vitest";
 import { aiSetup } from "./aiSetup";
 
 test("Mosaic is user-scoped and follows the app without a pinned vault", () => {
-  const setup = aiSetup({ path: "/Applications/Mosaic.app/Contents/MacOS/mosaic", link: "/user/.local/bin/mosaic", installed: true });
-  expect(setup.claudeCode).toBe("claude mcp add --scope user mosaic -- /Applications/Mosaic.app/Contents/MacOS/mosaic mcp");
-  expect(JSON.parse(setup.desktop).mcpServers.mosaic).toEqual({ command: "/Applications/Mosaic.app/Contents/MacOS/mosaic", args: ["mcp"] });
+  const setup = aiSetup({
+    path: "/Applications/Mosaic.app/Contents/MacOS/mosaic",
+    link: "/user/.local/bin/mosaic",
+    installed: true,
+  });
+  expect(setup.claudeCode).toBe(
+    "claude mcp add --scope user mosaic -- /Applications/Mosaic.app/Contents/MacOS/mosaic mcp",
+  );
+  expect(JSON.parse(setup.desktop).mcpServers.mosaic).toEqual({
+    command: "/Applications/Mosaic.app/Contents/MacOS/mosaic",
+    args: ["mcp"],
+  });
   expect(setup.claudeCode).not.toContain("--vault");
   expect(aiSetup(null).claudeCode).toBe("claude mcp add --scope user mosaic -- mosaic mcp");
 });

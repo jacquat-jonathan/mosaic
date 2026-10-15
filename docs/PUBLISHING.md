@@ -70,17 +70,46 @@ No GitHub token is embedded in Mosaic. See the official [login instructions](htt
 
 ## 3. Configure the protected signing secret once
 
-```sh
-gh secret set MOSAIC_RELEASE_PRIVATE_KEY \
-  --repo jacquat-jonathan/mosaic \
-  < "/absolute/path/to/mosaic-release-private.pem"
-gh secret list --repo jacquat-jonathan/mosaic
-```
+Releases are built and signed by two jobs in `.github/workflows/release.yml`:
 
-This sends the PEM to the repository's encrypted Actions secret, without printing it or placing
-it in a command argument. Check that the secret name appears; never print its value.
-The build checks that this key matches the embedded public key before packaging.
-See [GitHub CLI secret setup](https://cli.github.com/manual/gh_secret_set).
+- **`build`** (macOS) installs every dependency, runs `scripts/check.sh`, builds the universal
+  app and packages the **unsigned** assets. It gets no secrets and can't publish.
+- **`sign`** (Linux) runs in the GitHub **environment** `release`, which holds the signing key.
+  It installs nothing and doesn't run anything the build produced: `scripts/sign-release.mjs` (Node
+  built-ins only) checks the archive against `manifest.json` and `SHA256SUMS`, writes
+  `manifest.sig` and publishes. A reviewer approves each run before it gets the key.
+
+Configure it in the repository's **Settings**:
+
+1. **Environments → New environment**, name it `release`.
+   - **Required reviewers**: add yourself. Leave "Prevent self-review" off while you are the only
+     maintainer, or no one could approve.
+   - **Deployment branches and tags → Selected branches and tags → Add rule**, type **Tag**,
+     pattern `v*`. Then only release tags can reach the key.
+   - **Environment secrets → Add secret**: `MOSAIC_RELEASE_PRIVATE_KEY`, the PEM's contents. Or:
+
+     ```sh
+     gh secret set MOSAIC_RELEASE_PRIVATE_KEY --env release \
+       --repo jacquat-jonathan/mosaic < "/absolute/path/to/mosaic-release-private.pem"
+     ```
+
+2. **Secrets and variables → Actions → Repository secrets**: delete the old repository-level
+   `MOSAIC_RELEASE_PRIVATE_KEY` once the environment secret exists. A repository secret is
+   available to every job; the environment secret only to the approved `sign` job.
+3. **Rules → Rulesets → New branch ruleset** for `main` (the default branch), Enforcement *Active*:
+   **Require a pull request before merging**, **Require status checks to pass** with the check
+   `check` (from `check.yml`; it can be picked once it has run), and **Block force pushes**.
+   This means changes reach `main` through pull requests. To keep pushing directly, add yourself
+   to the ruleset's **bypass list**: the check then still runs on every push, but doesn't block you.
+   Add a **tag ruleset** for `v*` that restricts creation, update and deletion to you (bypass list),
+   so a release tag can't be moved.
+4. **Actions → General → Workflow permissions**: *Read repository contents and packages
+   permissions*. Each job asks for more itself (`sign` asks for `contents: write`).
+5. **Code security → Dependabot**: turn on **Dependabot version updates** if it isn't already;
+   `.github/dependabot.yml` bumps the commit-pinned actions weekly.
+
+The `sign` job checks that the key matches one listed in `src-tauri/release-public-key.hex`.
+Never print the secret's value.
 
 ## 4. Run the existing release workflow on the tag
 
@@ -101,8 +130,9 @@ gh run watch RUN_ID --repo jacquat-jonathan/mosaic --exit-status
 
 Run on **v0.18.0**, not `main`: publication intentionally checks that the Git ref is the release
 tag. The [workflow dispatch command supports tag refs](https://cli.github.com/manual/gh_workflow_run).
-The runner tests, builds the universal app, signs the update manifest, uploads a draft release
-and publishes it only after all assets have uploaded. You need no local Rust/Node/pnpm build tools
+The `build` job tests, builds and packages the universal app; the `sign` job then waits for your
+approval (Actions → the run → **Review deployments** → `release` → Approve), signs the update
+manifest, uploads a draft release and publishes it only after all assets have uploaded. You need no local Rust/Node/pnpm build tools
 for this route. A missing/wrong signing key must fail the job; do not disable that check.
 
 If it fails, inspect the failed step before retrying. If a draft release already exists, check its
@@ -150,3 +180,44 @@ remain open, not completed by the local bundle-swap tests.
   Applications directory. The real installed app was not replaced.
 
 See `Ideation/Done.md` and `Ideation/Next steps.md` in the vault for milestone status.
+
+## Rotating the release key
+
+**Key history.** `39a9c21d…` signed 0.18.0 – 0.19.x; its private key was lost on 2026-10-16, so
+it was dropped without a standby to take over. `c4e17594…` signs from 0.20.0 on. Installs of 0.19
+and earlier trust only the lost key and need one manual download of 0.20.0 (the release notes say
+so). Sections 1 and 3 above describe the original 0.18.0 setup; the key they mention is the lost
+one.
+
+The app trusts every key listed in `src-tauri/release-public-key.hex` (one hex public key per
+line, `#` comments). Keep **two**: the current key, which signs releases, and a standby key, which
+signs nothing yet and is stored offline. Then a lost or leaked key can be retired without leaving
+installed copies unable to update.
+
+**Set up the standby key once, before the next release:**
+
+```sh
+node scripts/create-release-key.mjs --next
+```
+
+It writes a new private key to a protected temporary file and prints its public key; it uploads
+nothing. Move the private key to offline storage (an encrypted disk or password manager, not this
+repository and not GitHub), add the public key as a second line of `release-public-key.hex`
+(`<hex>  # standby, created YYYY-MM-DD`), and release as usual. From that release on, installs
+accept either key. The `sign` job warns while only one key is listed.
+
+**To rotate** (routinely, or at once if the current key may have leaked):
+
+1. Put the standby key in the `release` environment's `MOSAIC_RELEASE_PRIVATE_KEY` secret.
+2. In `release-public-key.hex`, remove the old key's line and mark the standby as current. Make a
+   new standby key with `--next` and add it as the second line.
+3. Release. That release is signed with the former standby key, which every install that has the
+   two-key list already trusts; from it on, the old key is no longer accepted.
+4. Destroy the old private key everywhere it was kept.
+
+Installs older than the first two-key release trust only the original key. To reach them after a
+compromise, they need a manual download of the DMG (say so in the release notes). That is why the
+standby key should ship as soon as possible.
+
+If the **standby** key leaks, replace it: drop its line, add a new `--next` key, release, still
+signing with the current key.

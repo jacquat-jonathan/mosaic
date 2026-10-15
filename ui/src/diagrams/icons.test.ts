@@ -9,7 +9,9 @@ test("every icon name in the shared format has an icon", () => {
 
 test("the format file's icon SVG (used by the Rust renderer) matches the bundled icons", () => {
   for (const name of ICON_NAMES) {
-    const inner = iconMarkup(name, "currentColor", 24)!.replace(/^<svg[^>]*>/, "").replace(/<\/svg>$/, "");
+    const inner = iconMarkup(name, "currentColor", 24)!
+      .replace(/^<svg[^>]*>/, "")
+      .replace(/<\/svg>$/, "");
     expect(inner, name).toBe((format.icons as Record<string, string>)[name]);
   }
 });

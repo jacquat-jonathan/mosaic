@@ -40,12 +40,15 @@ export function parseTable(source: string): TableModel {
   const lines = source.split("\n").filter((l) => l.trim());
   const header = splitRow(lines[0] ?? "");
   const width = header.length;
-  const fit = (cells: string[]) => [...cells.slice(0, width), ...Array(Math.max(0, width - cells.length)).fill("")];
+  const fitWidth = (cells: string[]) => [
+    ...cells.slice(0, width),
+    ...Array(Math.max(0, width - cells.length)).fill(""),
+  ];
   const rule = splitRow(lines[1] ?? "");
   return {
     header,
     align: header.map((_, i) => alignOf(rule[i] ?? "")),
-    rows: lines.slice(2).map((l) => fit(splitRow(l))),
+    rows: lines.slice(2).map((l) => fitWidth(splitRow(l))),
   };
 }
 
@@ -74,7 +77,11 @@ export function formatTable(t: TableModel): string {
   return [row(all[0]), `| ${rule.join(" | ")} |`, ...all.slice(1).map(row)].join("\n");
 }
 
-const clone = (t: TableModel): TableModel => ({ header: [...t.header], align: [...t.align], rows: t.rows.map((r) => [...r]) });
+const clone = (t: TableModel): TableModel => ({
+  header: [...t.header],
+  align: [...t.align],
+  rows: t.rows.map((r) => [...r]),
+});
 
 /** Inserts an empty body row at `at` (0 = first body row). */
 export function insertRow(t: TableModel, at: number): TableModel {

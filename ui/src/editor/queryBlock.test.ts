@@ -41,9 +41,21 @@ test("clicking a query header cycles ascending, descending and source order", ()
 test("task queries show tickable tasks, nested, with their note", () => {
   const task = (line: number, status: "open" | "done" | "moved", text: string, depth = 0) => ({
     ...row,
-    task: { line, status, mark: status === "done" ? "x" : status === "moved" ? ">" : " ", text, depth, parent: depth ? 2 : null, due: null },
+    task: {
+      line,
+      status,
+      mark: status === "done" ? "x" : status === "moved" ? ">" : " ",
+      text,
+      depth,
+      parent: depth ? 2 : null,
+      due: null,
+    },
   });
-  const html = queryTable({ columns: [], rows: [task(2, "open", "Write <report>"), task(3, "done", "Outline", 1), task(4, "moved", "Old")], total: 3 });
+  const html = queryTable({
+    columns: [],
+    rows: [task(2, "open", "Write <report>"), task(3, "done", "Outline", 1), task(4, "moved", "Old")],
+    total: 3,
+  });
   expect(html).toContain('data-query-sort="text"');
   expect(html).toContain(">Task</button>");
   expect(html).toContain('data-line="2" data-text="Write &lt;report&gt;"');

@@ -145,16 +145,10 @@ fn csv_row(values: &[&str]) -> String {
 
 impl Workspace {
     pub fn export_planner_json(&self) -> Result<String> {
-        self.planner
-            .lock()
-            .unwrap_or_else(|poison| poison.into_inner())
-            .export_json()
+        self.planner()?.export_json()
     }
 
     pub fn export_planner_csv(&self) -> Result<String> {
-        self.planner
-            .lock()
-            .unwrap_or_else(|poison| poison.into_inner())
-            .export_csv()
+        self.planner()?.export_csv()
     }
 }

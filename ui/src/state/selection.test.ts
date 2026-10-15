@@ -46,7 +46,11 @@ describe("moves and bookmarks", () => {
 
 describe("planner recovery", () => {
   it("is offered only for explicit integrity recovery errors", () => {
-    expect(isPlannerRecoveryError("planner database /vault/.mosaic/planner.sqlite3 failed its integrity check: malformed; restore the last backup explicitly")).toBe(true);
+    expect(
+      isPlannerRecoveryError(
+        "planner database /vault/.mosaic/planner.sqlite3 failed its integrity check: malformed; restore the last backup explicitly",
+      ),
+    ).toBe(true);
     expect(isPlannerRecoveryError("planner database schema is newer than this Mosaic version")).toBe(false);
     expect(isPlannerRecoveryError("restore the last backup explicitly")).toBe(false);
   });

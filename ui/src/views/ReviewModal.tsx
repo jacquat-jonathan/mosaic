@@ -14,7 +14,13 @@ import { ago } from "../time";
 export const proposalWho = (p: Proposal) => p.actor ?? (p.source === "cli" ? "mosaic command" : "an agent");
 
 export function proposalWhat(p: Proposal): string {
-  return p.action === "created" ? "wants to create" : p.action === "deleted" ? "wants to delete" : p.action === "renamed" ? "wants to rename" : "wants to change";
+  return p.action === "created"
+    ? "wants to create"
+    : p.action === "deleted"
+      ? "wants to delete"
+      : p.action === "renamed"
+        ? "wants to rename"
+        : "wants to change";
 }
 
 export function ReviewModal({ proposal, onClose }: { proposal: Proposal; onClose(): void }) {
@@ -54,15 +60,27 @@ export function ReviewModal({ proposal, onClose }: { proposal: Proposal; onClose
     if (proposed === null) return current.split("\n").map((text) => ({ op: "del" as const, text }));
     return diffLines(current, proposed);
   }, [proposed, current]);
-  const selectable = proposal.action === "edited" && !proposal.binary && typeof proposed === "string" && typeof current === "string";
-  const reviewLines = useMemo(() => selectable ? reviewHunks(current!, proposed!) : null, [selectable, current, proposed]);
-  const hunkCount = useMemo(() => reviewLines ? Math.max(-1, ...reviewLines.map(l => l.hunk ?? -1)) + 1 : 0, [reviewLines]);
-  useEffect(() => { if (hunkCount) setSelectedHunks(new Set(Array.from({ length: hunkCount }, (_, i) => i))); }, [proposal.id, hunkCount]);
+  const selectable =
+    proposal.action === "edited" && !proposal.binary && typeof proposed === "string" && typeof current === "string";
+  const reviewLines = useMemo(
+    () => (selectable ? reviewHunks(current!, proposed!) : null),
+    [selectable, current, proposed],
+  );
+  const hunkCount = useMemo(
+    () => (reviewLines ? Math.max(-1, ...reviewLines.map((l) => l.hunk ?? -1)) + 1 : 0),
+    [reviewLines],
+  );
+  useEffect(() => {
+    if (hunkCount) setSelectedHunks(new Set(Array.from({ length: hunkCount }, (_, i) => i)));
+  }, [proposal.id, hunkCount]);
   // What the person changed since the proposal: the file then → the file now.
-  const yours = useMemo(() => (typeof base === "string" && typeof current === "string" ? diffLines(base, current) : null), [base, current]);
+  const yours = useMemo(
+    () => (typeof base === "string" && typeof current === "string" ? diffLines(base, current) : null),
+    [base, current],
+  );
   const shown = useMemo(() => {
     const baseLines = showYours && yours ? yours : (reviewLines ?? lines);
-    return baseLines?.map(l => ({ ...l, hunk: (l as { hunk?: number | null }).hunk ?? null })) ?? null;
+    return baseLines?.map((l) => ({ ...l, hunk: (l as { hunk?: number | null }).hunk ?? null })) ?? null;
   }, [showYours, yours, reviewLines, lines]);
 
   const done = () => {
@@ -72,7 +90,8 @@ export function ReviewModal({ proposal, onClose }: { proposal: Proposal; onClose
   const accept = async (force: boolean) => {
     setError(null);
     try {
-      const partial = selectable && selectedHunks.size < hunkCount ? acceptHunks(current!, proposed!, selectedHunks) : null;
+      const partial =
+        selectable && selectedHunks.size < hunkCount ? acceptHunks(current!, proposed!, selectedHunks) : null;
       const path = await api.acceptProposal(proposal.id, force, partial);
       done();
       if (proposal.action !== "deleted") void useWorkspace.getState().open(path, { newTab: false });
@@ -94,7 +113,12 @@ export function ReviewModal({ proposal, onClose }: { proposal: Proposal; onClose
   const name = proposal.path.split("/").pop()!.replace(/\.md$/, "");
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
-      <div className="modal history review" role="dialog" aria-label={`Review the change to ${name}`} onMouseDown={(e) => e.stopPropagation()}>
+      <div
+        className="modal history review"
+        role="dialog"
+        aria-label={`Review the change to ${name}`}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
         <div className="history-head">
           <h2>
             {proposalWho(proposal)} {proposalWhat(proposal)} “{name}”
@@ -108,18 +132,31 @@ export function ReviewModal({ proposal, onClose }: { proposal: Proposal; onClose
           {proposal.action === "renamed"
             ? `Accepting renames it to ${proposal.to_path}.`
             : proposal.binary
-              ? proposal.action === "deleted" ? "Accepting moves this binary file to the Trash." : "Accepting adds this binary file."
-            : proposal.action === "deleted"
-            ? "Accepting moves the file to the Trash."
-            : proposal.action === "created"
-              ? "Accepting creates the file."
-              : "Red lines go, green lines come."}{" "}
+              ? proposal.action === "deleted"
+                ? "Accepting moves this binary file to the Trash."
+                : "Accepting adds this binary file."
+              : proposal.action === "deleted"
+                ? "Accepting moves the file to the Trash."
+                : proposal.action === "created"
+                  ? "Accepting creates the file."
+                  : "Red lines go, green lines come."}{" "}
           {proposal.binary
             ? "Binary changes are applied after your review."
             : "Accepted changes show in AI activity, with Undo."}
         </p>
-        {proposal.binary && <div className="history-diff"><p className="tree-empty">Binary files do not have a text diff.</p></div>}
-        {proposal.action === "renamed" && <div className="history-diff"><p><code>{proposal.path}</code> → <code>{proposal.to_path}</code>{proposal.update_links ? "; links will follow." : "."}</p></div>}
+        {proposal.binary && (
+          <div className="history-diff">
+            <p className="tree-empty">Binary files do not have a text diff.</p>
+          </div>
+        )}
+        {proposal.action === "renamed" && (
+          <div className="history-diff">
+            <p>
+              <code>{proposal.path}</code> → <code>{proposal.to_path}</code>
+              {proposal.update_links ? "; links will follow." : "."}
+            </p>
+          </div>
+        )}
         {conflict && (
           <div className="review-conflict" role="alert">
             <AlertTriangle size={16} />
@@ -142,23 +179,46 @@ export function ReviewModal({ proposal, onClose }: { proposal: Proposal; onClose
             </div>
           </div>
         )}
-        {!proposal.binary && proposal.action !== "renamed" && <div className="history-diff">
-          {shown && (
-            <pre className="diff">
-              {shown.map((l, i) => (
-                <div key={i} className={`diff-${l.op}`}>
-                  {!showYours && l.hunk !== null && (i === 0 || shown[i - 1].hunk !== l.hunk) && <input type="checkbox" className="diff-hunk" checked={selectedHunks.has(l.hunk)} aria-label={`Accept change ${l.hunk + 1}`} onChange={e => setSelectedHunks(s => { const next = new Set(s); if(e.target.checked) next.add(l.hunk!); else next.delete(l.hunk!); return next; })} />}
-                  <span className="diff-sign">{l.op === "add" ? "+" : l.op === "del" ? "−" : " "}</span>
-                  {l.text || " "}
-                </div>
-              ))}
-            </pre>
-          )}
-        </div>}
+        {!proposal.binary && proposal.action !== "renamed" && (
+          <div className="history-diff">
+            {shown && (
+              <pre className="diff">
+                {shown.map((l, i) => (
+                  <div key={i} className={`diff-${l.op}`}>
+                    {!showYours && l.hunk !== null && (i === 0 || shown[i - 1].hunk !== l.hunk) && (
+                      <input
+                        type="checkbox"
+                        className="diff-hunk"
+                        checked={selectedHunks.has(l.hunk)}
+                        aria-label={`Accept change ${l.hunk + 1}`}
+                        onChange={(e) =>
+                          setSelectedHunks((s) => {
+                            const next = new Set(s);
+                            if (e.target.checked) next.add(l.hunk!);
+                            else next.delete(l.hunk!);
+                            return next;
+                          })
+                        }
+                      />
+                    )}
+                    <span className="diff-sign">{l.op === "add" ? "+" : l.op === "del" ? "−" : " "}</span>
+                    {l.text || " "}
+                  </div>
+                ))}
+              </pre>
+            )}
+          </div>
+        )}
         {rejecting && (
           <label className="review-reason">
             Tell the agent why (optional; it sees this when it checks its proposals)
-            <textarea autoFocus value={reason} rows={2} onChange={(e) => setReason(e.target.value)} placeholder="e.g. keep the old wording" />
+            <textarea
+              autoFocus
+              value={reason}
+              rows={2}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="e.g. keep the old wording"
+            />
           </label>
         )}
         {error && <p className="error-text">{error}</p>}
@@ -175,8 +235,17 @@ export function ReviewModal({ proposal, onClose }: { proposal: Proposal; onClose
               <button onClick={() => setRejecting(true)}>
                 <X size={14} /> Reject…
               </button>
-              <button className={conflict ? "primary danger" : "primary"} disabled={lines === null || (selectable && selectedHunks.size === 0)} onClick={() => void accept(conflict)}>
-                <Check size={14} /> {conflict ? "Accept anyway" : selectable && selectedHunks.size < hunkCount ? `Accept ${selectedHunks.size} of ${hunkCount}` : "Accept"}
+              <button
+                className={conflict ? "primary danger" : "primary"}
+                disabled={lines === null || (selectable && selectedHunks.size === 0)}
+                onClick={() => void accept(conflict)}
+              >
+                <Check size={14} />{" "}
+                {conflict
+                  ? "Accept anyway"
+                  : selectable && selectedHunks.size < hunkCount
+                    ? `Accept ${selectedHunks.size} of ${hunkCount}`
+                    : "Accept"}
               </button>
             </>
           )}

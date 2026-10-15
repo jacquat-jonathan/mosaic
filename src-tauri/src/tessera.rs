@@ -5,7 +5,9 @@ use crate::{AppState, chat};
 use chrono::{Local, TimeZone};
 use mosaic_core::Error;
 use mosaic_core::agents::{Agent, EventTrigger};
-use mosaic_core::chat::{ALLOWED_TOOLS, ChatEvent, DISALLOWED_TOOLS, parse_line, system_prompt};
+use mosaic_core::chat::{
+    ChatEvent, allowed_tools, disallowed_tools, event_prompt, parse_line, system_prompt,
+};
 use mosaic_core::settings::{AgentRun, Settings, TesseraSettings};
 use serde::Serialize;
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -190,7 +192,7 @@ fn trigger_error(agent: &Agent) -> Option<String> {
     (!errors.is_empty()).then(|| errors.join(" · "))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn tessera_status(
     state: State<AppState>,
     tessera: State<TesseraState>,
@@ -226,7 +228,7 @@ pub fn tessera_status(
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn tessera_pause_all(app: AppHandle, state: State<AppState>, paused: bool) -> CmdResult<()> {
     let ws = state.get()?;
     let mut cfg = Settings::load().tessera(ws.vault.root());
@@ -238,7 +240,7 @@ pub fn tessera_pause_all(app: AppHandle, state: State<AppState>, paused: bool) -
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn tessera_pause_agent(
     app: AppHandle,
     state: State<AppState>,
@@ -258,7 +260,7 @@ pub fn tessera_pause_agent(
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn tessera_set_max_chain_depth(state: State<AppState>, depth: u8) -> CmdResult<()> {
     if depth > 10 {
         return Err(Error::Invalid(
@@ -271,13 +273,13 @@ pub fn tessera_set_max_chain_depth(state: State<AppState>, depth: u8) -> CmdResu
     save(ws.vault.root(), cfg)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn tessera_run(app: AppHandle, state: State<AppState>, name: String) -> CmdResult<u64> {
     let ws = state.get()?;
     start_agent(&app, &ws, &name, RunCause::Manual)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn tessera_test_event(
     app: AppHandle,
     state: State<AppState>,
@@ -863,11 +865,15 @@ fn launch(
         .arg("--mcp-config")
         .arg(mcp.to_string())
         .arg("--append-system-prompt")
-        .arg(system_prompt(&vault_name, cause.path(), &[], None))
+        .arg(
+            system_prompt(&vault_name, None, &[], None)
+                + &cause.path().map(event_prompt).unwrap_or_default(),
+        )
+        // The web only when the workflow opts in (`web: true`), for every trigger.
         .arg("--allowedTools")
-        .args(ALLOWED_TOOLS.split(' '))
+        .args(allowed_tools(agent.web))
         .arg("--disallowedTools")
-        .args(DISALLOWED_TOOLS.split(' '));
+        .args(disallowed_tools(agent.web));
     if let Some(model) = agent.model.as_deref() {
         command.arg("--model").arg(model);
     }

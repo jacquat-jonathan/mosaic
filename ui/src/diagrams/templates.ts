@@ -18,16 +18,44 @@ export interface DiagramTemplate {
 
 export const DIAGRAM_TEMPLATES: DiagramTemplate[] = [
   { id: "blank", label: "Blank", detail: "An empty diagram", stem: "Diagram", content: blank },
-  { id: "flowchart", label: "Flowchart", detail: "Start, steps, a decision with yes/no branches", stem: "Flowchart", content: flowchart },
-  { id: "4+1", label: "4+1 architecture views", detail: "Logical, process, development and physical views, tied by scenarios", stem: "Architecture views", content: fourPlusOne },
-  { id: "c4-context", label: "C4 system context", detail: "A person, your system and the systems around it", stem: "System context", content: c4Context },
-  { id: "c4-container", label: "C4 containers", detail: "The apps and data stores inside your system", stem: "Containers", content: c4Container },
+  {
+    id: "flowchart",
+    label: "Flowchart",
+    detail: "Start, steps, a decision with yes/no branches",
+    stem: "Flowchart",
+    content: flowchart,
+  },
+  {
+    id: "4+1",
+    label: "4+1 architecture views",
+    detail: "Logical, process, development and physical views, tied by scenarios",
+    stem: "Architecture views",
+    content: fourPlusOne,
+  },
+  {
+    id: "c4-context",
+    label: "C4 system context",
+    detail: "A person, your system and the systems around it",
+    stem: "System context",
+    content: c4Context,
+  },
+  {
+    id: "c4-container",
+    label: "C4 containers",
+    detail: "The apps and data stores inside your system",
+    stem: "Containers",
+    content: c4Container,
+  },
   ...umlTemplates(),
 ];
 
 /** The 14 UML diagram types, structural then behavioural, with the 4+1 view each usually serves. */
 function umlTemplates(): DiagramTemplate[] {
-  const files = import.meta.glob("./templates/uml/*.canvas", { query: "?raw", import: "default", eager: true }) as Record<string, string>;
+  const files = import.meta.glob("./templates/uml/*.canvas", {
+    query: "?raw",
+    import: "default",
+    eager: true,
+  }) as Record<string, string>;
   const types: [name: string, kind: string, view: string][] = [
     ["Class", "Structural", "logical view"],
     ["Object", "Structural", "logical view"],

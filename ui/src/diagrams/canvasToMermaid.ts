@@ -44,7 +44,8 @@ function nodeLine(id: string, n: CanvasNode): string {
   return `${id}${b[0]}"${text || " "}"${b[1]}`;
 }
 
-const inside = (n: CanvasNode, g: CanvasNode) => n.x >= g.x && n.y >= g.y && n.x + n.width <= g.x + g.width && n.y + n.height <= g.y + g.height;
+const inside = (n: CanvasNode, g: CanvasNode) =>
+  n.x >= g.x && n.y >= g.y && n.x + n.width <= g.x + g.width && n.y + n.height <= g.y + g.height;
 
 export function canvasToMermaid(doc: CanvasDoc): string {
   if (doc.nodes.some((n) => n.shape === "lifeline")) return sequenceToMermaid(doc);
@@ -91,7 +92,7 @@ function flowchartToMermaid(doc: CanvasDoc): string {
     const body = dashed ? "-.-" : thick ? (head ? "==" : "===") : head ? "--" : "---";
     lines.push(`  ${a} ${tail}${body}${head}${e.label ? `|"${label(e.label)}"|` : ""} ${b}`);
   }
-  return lines.join("\n") + "\n";
+  return `${lines.join("\n")}\n`;
 }
 
 const oneLine = (text: string) => label(text).replace(/<br>/g, " ");
@@ -124,7 +125,8 @@ function sequenceToMermaid(doc: CanvasDoc): string {
     if (swap) head = tail;
     const [a, b] = swap ? [to, from] : [from, to];
     const dashed = e.line === "dashed" || e.line === "dotted";
-    const arrow = head === "none" ? (dashed ? "-->" : "->") : head === "open" && !dashed ? "-)" : dashed ? "-->>" : "->>";
+    const arrow =
+      head === "none" ? (dashed ? "-->" : "->") : head === "open" && !dashed ? "-)" : dashed ? "-->>" : "->>";
     events.push({ y, order: 1, line: `${a}${arrow}${b}: ${oneLine(e.label ?? "")}`, indent: 0 });
   }
   const KEYWORDS = new Set(["alt", "opt", "loop", "par", "critical", "break", "rect"]);
@@ -146,7 +148,7 @@ function sequenceToMermaid(doc: CanvasDoc): string {
     lines.push(`${"  ".repeat(depth)}${ev.line}`);
     if (ev.indent > 0) depth++;
   }
-  return lines.join("\n") + "\n";
+  return `${lines.join("\n")}\n`;
 }
 
 /** A class member as Mermaid writes it: `+ total(): Money` → `+total() Money`. */
@@ -169,9 +171,18 @@ function classToMermaid(doc: CanvasDoc): string {
   const lines = ["classDiagram"];
   for (const c of classes) {
     const [head = "", ...parts] = (c.text ?? "").split(/^[ \t]*-{3,}[ \t]*$/m);
-    const headLines = head.split("\n").map((l) => l.trim()).filter(Boolean);
-    const stereotypes = headLines.filter((l) => /^(«.*»|<<.*>>)$/.test(l)).map((l) => l.replace(/^(«|<<)|(»|>>)$/g, ""));
-    const name = headLines.filter((l) => !/^(«.*»|<<.*>>)$/.test(l)).map((l) => l.replace(/[*_`]/g, "")).join(" ") || "Class";
+    const headLines = head
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean);
+    const stereotypes = headLines
+      .filter((l) => /^(«.*»|<<.*>>)$/.test(l))
+      .map((l) => l.replace(/^(«|<<)|(»|>>)$/g, ""));
+    const name =
+      headLines
+        .filter((l) => !/^(«.*»|<<.*>>)$/.test(l))
+        .map((l) => l.replace(/[*_`]/g, ""))
+        .join(" ") || "Class";
     let id = name.replace(/<([^>]*)>/g, "~$1~").replace(/[^\w~]/g, "_");
     for (let k = 2; used.has(id); k++) id = `${id}${k}`;
     used.add(id);
@@ -193,7 +204,9 @@ function classToMermaid(doc: CanvasDoc): string {
     const line = e.line === "dashed" || e.line === "dotted" ? ".." : "--";
     const card = (l: string | undefined) => (l ? ` "${l.replace(/"/g, "'")}"` : "");
     const text = e.label ? ` : ${oneLine(e.label)}` : "";
-    lines.push(`  ${ids.get(e.fromNode)}${card(e.fromLabel)} ${END_LEFT[fromEnd] ?? ""}${line}${END_RIGHT[toEnd] ?? ""}${card(e.toLabel)} ${ids.get(e.toNode)}${text}`);
+    lines.push(
+      `  ${ids.get(e.fromNode)}${card(e.fromLabel)} ${END_LEFT[fromEnd] ?? ""}${line}${END_RIGHT[toEnd] ?? ""}${card(e.toLabel)} ${ids.get(e.toNode)}${text}`,
+    );
   }
-  return lines.join("\n") + "\n";
+  return `${lines.join("\n")}\n`;
 }

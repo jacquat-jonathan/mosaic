@@ -11,5 +11,7 @@ test("daily notes are named by date, in their folder", () => {
 });
 
 test("templates get the date, weekday and time", () => {
-  expect(fillTemplate("# {{title}}\n{{weekday}} at {{ time }}\n{{unknown}}", day)).toBe("# 2026-10-02\nFriday at 09:05\n{{unknown}}");
+  expect(fillTemplate("# {{title}}\n{{weekday}} at {{ time }}\n{{unknown}}", day)).toBe(
+    "# 2026-10-02\nFriday at 09:05\n{{unknown}}",
+  );
 });

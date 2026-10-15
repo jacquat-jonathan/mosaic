@@ -64,7 +64,10 @@ export function siblingLines(text: string, line: number): number[] {
   const index = headings.findIndex((heading) => heading.line === line);
   if (index < 0) return [];
   const parent = parentIndex(headings, index);
-  const end = parent < 0 ? headings.length : headings.findIndex((heading, i) => i > parent && heading.level <= headings[parent].level);
+  const end =
+    parent < 0
+      ? headings.length
+      : headings.findIndex((heading, i) => i > parent && heading.level <= headings[parent].level);
   const limit = end < 0 ? headings.length : end;
   return headings
     .slice(parent + 1, limit)
@@ -136,7 +139,12 @@ function insertMovedBlock(text: string, at: number, block: string): SectionEdit 
 }
 
 /** Moves one section before/after a sibling while retaining its nested subsections and exact source. */
-export function moveSectionTo(text: string, fromLine: number, targetLine: number, place: "before" | "after"): SectionEdit | null {
+export function moveSectionTo(
+  text: string,
+  fromLine: number,
+  targetLine: number,
+  place: "before" | "after",
+): SectionEdit | null {
   if (fromLine === targetLine) return null;
   const siblings = siblingLines(text, fromLine);
   if (!siblings.includes(targetLine)) return null;

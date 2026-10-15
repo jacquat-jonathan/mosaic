@@ -31,7 +31,11 @@ function ReviewInbox() {
           </div>
           <div className="activity-meta">
             <span>{ago(p.updated)}</span>
-            {p.stale && <span className="review-stale" title="The file changed since the agent proposed this">changed since</span>}
+            {p.stale && (
+              <span className="review-stale" title="The file changed since the agent proposed this">
+                changed since
+              </span>
+            )}
             <span className="spacer" />
             <button className="primary" onClick={() => setOpen(p)}>
               <Eye size={13} /> Review
@@ -90,8 +94,8 @@ function Activity() {
   if (!items.length) {
     return (
       <div className="activity-empty panel-meta">
-        No changes by AI agents yet. When an agent (or the <code>mosaic</code> command) creates, edits, moves or deletes a file, it shows up
-        here, with one-click undo.
+        No changes by AI agents yet. When an agent (or the <code>mosaic</code> command) creates, edits, moves or deletes
+        a file, it shows up here, with one-click undo.
       </div>
     );
   }
@@ -110,16 +114,29 @@ function Activity() {
               <div className="activity-line">
                 <span className={`history-who source-${v.source}`}>{who(v)}</span> {what(v)}
               </div>
-              <button className="activity-path" title={v.path} disabled={gone} onClick={() => void useWorkspace.getState().open(v.path, { newTab: false })}>
+              <button
+                className="activity-path"
+                title={v.path}
+                disabled={gone}
+                onClick={() => void useWorkspace.getState().open(v.path, { newTab: false })}
+              >
                 {v.path.replace(/\.md$/, "")}
               </button>
               <div className="activity-meta">
                 <span>{ago(v.time)}</span>
                 <span className="spacer" />
-                <button title="Versions of this file" aria-label="File history" onClick={() => useUi.getState().openHistory(v.path, v.action === "renamed" ? undefined : v.id)}>
+                <button
+                  title="Versions of this file"
+                  aria-label="File history"
+                  onClick={() => useUi.getState().openHistory(v.path, v.action === "renamed" ? undefined : v.id)}
+                >
                   <HistoryIcon size={13} />
                 </button>
-                <button title={undone.has(v.id) ? "Undone" : "Undo this change"} disabled={undone.has(v.id)} onClick={() => void undo(v)}>
+                <button
+                  title={undone.has(v.id) ? "Undone" : "Undo this change"}
+                  disabled={undone.has(v.id)}
+                  onClick={() => void undo(v)}
+                >
                   <Undo2 size={13} /> {undone.has(v.id) ? "Undone" : "Undo"}
                 </button>
               </div>

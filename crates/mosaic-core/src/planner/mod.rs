@@ -407,10 +407,7 @@ impl PlannerStore {
 
 impl Workspace {
     pub fn planner_summary(&self) -> Result<PlannerSummary> {
-        self.planner
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .summary()
+        self.planner()?.summary()
     }
 
     pub fn planner_activity(
@@ -418,10 +415,7 @@ impl Workspace {
         entity_kind: &str,
         entity_id: &str,
     ) -> Result<Vec<ActivityEntry>> {
-        self.planner
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .activity(entity_kind, entity_id)
+        self.planner()?.activity(entity_kind, entity_id)
     }
 }
 

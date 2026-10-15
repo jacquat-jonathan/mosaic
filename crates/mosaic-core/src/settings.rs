@@ -4,6 +4,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use unicode_normalization::UnicodeNormalization;
 
 pub const APP_ID: &str = "dev.jona.mosaic";
 
@@ -148,12 +149,26 @@ impl From<AgentRule> for RawRule {
     }
 }
 
+/// A path in the form rules are matched in: NFC-normalized and lower-cased, because macOS
+/// volumes treat `Private`, `private` and the NFC and NFD spellings of `Café` as one name.
+pub fn path_key(path: &str) -> String {
+    path.nfc()
+        .collect::<String>()
+        .to_lowercase()
+        .nfc()
+        .collect()
+}
+
+/// Whether the rule path `rule` is `path` or a folder containing it (compared by `path_key`).
+pub fn rule_covers(rule: &str, path: &str) -> bool {
+    let (rule, path) = (path_key(rule), path_key(path));
+    rule.is_empty() || path == rule || path.starts_with(&format!("{rule}/"))
+}
+
 /// The strictest rule covering `path` (a rule on a folder covers everything inside it): hidden,
 /// then read-only, then review.
 pub fn access_for(rules: &[AgentRule], path: &str) -> Option<Access> {
-    let covered = |r: &&AgentRule| {
-        r.path.is_empty() || path == r.path || path.starts_with(&format!("{}/", r.path))
-    };
+    let covered = |r: &&AgentRule| rule_covers(&r.path, path);
     let found: Vec<Access> = rules.iter().filter(covered).map(|r| r.access).collect();
     [Access::Hidden, Access::ReadOnly, Access::Review]
         .into_iter()
@@ -250,7 +265,10 @@ impl Settings {
         self.agent_rules.get(root).cloned().unwrap_or_default()
     }
 
-    pub fn set_agent_rules(&mut self, root: &Path, rules: Vec<AgentRule>) {
+    pub fn set_agent_rules(&mut self, root: &Path, mut rules: Vec<AgentRule>) {
+        for r in &mut rules {
+            r.path = r.path.nfc().collect();
+        }
         if rules.is_empty() {
             self.agent_rules.remove(root);
         } else {
@@ -341,6 +359,9 @@ mod tests {
         let rules = s.agent_rules(Path::new("/v"));
         assert_eq!(access_for(&rules, "Private/x.md"), Some(Access::Hidden));
         assert_eq!(access_for(&rules, "Drafts/x.md"), Some(Access::ReadOnly));
+        assert_eq!(access_for(&rules, "private/X.md"), Some(Access::Hidden));
+        assert_eq!(access_for(&rules, "DRAFTS"), Some(Access::ReadOnly));
+        assert_eq!(access_for(&rules, "Privateer/x.md"), None);
         assert_eq!(s.bookmarks[Path::new("/v")], ["A.md"]);
 
         let saved: serde_json::Value = serde_json::to_value(&s).unwrap();

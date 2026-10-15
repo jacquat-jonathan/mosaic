@@ -565,6 +565,108 @@ fn folder_permissions_hide_and_protect_folders_from_agents() {
 }
 
 #[test]
+fn folder_rules_hold_under_another_spelling_of_the_path() {
+    let dir = fixture();
+    let root = std::fs::canonicalize(dir.path()).unwrap();
+    std::fs::create_dir_all(root.join("Private")).unwrap();
+    std::fs::write(root.join("Private/Secret.md"), "salary: 1").unwrap();
+    std::fs::write(root.join("Note.md"), "hi").unwrap();
+    std::fs::create_dir_all(root.join("Projects")).unwrap();
+    std::fs::write(root.join("Projects/x.md"), "# X\n").unwrap();
+    // "Café" in NFC (é = U+00E9).
+    std::fs::create_dir_all(root.join("Caf\u{e9}")).unwrap();
+    std::fs::write(root.join("Caf\u{e9}/Menu.md"), "soup").unwrap();
+    let settings = root.join(".test-settings");
+    std::fs::create_dir_all(&settings).unwrap();
+    let rules = json!({ "agent_rules": { root.to_str().unwrap(): [
+        { "path": "Private", "access": "hidden" },
+        { "path": "Note.md", "access": "read-only" },
+        { "path": "Projects", "access": "review" },
+        { "path": "Caf\u{e9}", "access": "hidden" }
+    ] } });
+    std::fs::write(settings.join("settings.json"), rules.to_string()).unwrap();
+    let mut c = Client::start(&root);
+
+    // Read: lower case and NFD ("e" + U+0301) still read as not found.
+    for path in [
+        "private/secret.md",
+        "PRIVATE/Secret.md",
+        "Cafe\u{301}/Menu.md",
+    ] {
+        let (err, payload) = c.call("read_file", json!({ "path": path }));
+        assert!(err, "{path}: {payload}");
+        assert_eq!(payload["code"], "not_found", "{path}");
+    }
+    // Write: a read-only file stays read-only under another case.
+    let (err, payload) = c.call(
+        "patch_file",
+        json!({ "path": "note.md", "find": "hi", "replace": "bye" }),
+    );
+    assert!(err, "{payload}");
+    assert_eq!(std::fs::read_to_string(root.join("Note.md")).unwrap(), "hi");
+    let (err, _) = c.call(
+        "create_file",
+        json!({ "path": "private/New.md", "content": "x" }),
+    );
+    assert!(err);
+    // Rename: can't move a hidden file out, or a file into a hidden folder.
+    let (err, _) = c.call(
+        "rename",
+        json!({ "from": "private/secret.md", "to": "Leak.md" }),
+    );
+    assert!(err);
+    assert!(root.join("Private/Secret.md").exists());
+    let (err, _) = c.call(
+        "rename",
+        json!({ "from": "Ideas.md", "to": "PRIVATE/Ideas.md" }),
+    );
+    assert!(err);
+    assert!(root.join("Ideas.md").exists());
+    // Review: a change under another case becomes a proposal, not a direct write.
+    let (err, w) = c.call(
+        "append_to_file",
+        json!({ "path": "projects/x.md", "content": "- y\n" }),
+    );
+    assert!(!err, "{w}");
+    assert!(w["review"].is_i64(), "{w}");
+    assert_eq!(
+        std::fs::read_to_string(root.join("Projects/x.md")).unwrap(),
+        "# X\n"
+    );
+}
+
+#[test]
+fn unreadable_settings_pause_agent_access_instead_of_dropping_the_rules() {
+    let dir = fixture();
+    let root = std::fs::canonicalize(dir.path()).unwrap();
+    std::fs::create_dir_all(root.join("Private")).unwrap();
+    std::fs::write(root.join("Private/Secret.md"), "zebra password").unwrap();
+    let settings = root.join(".test-settings");
+    std::fs::create_dir_all(&settings).unwrap();
+    // Half-written: the rules can't be known, so nothing may be read or changed.
+    let rules = json!({ "agent_rules": { root.to_str().unwrap(): [
+        { "path": "Private", "access": "hidden" }
+    ] } })
+    .to_string();
+    std::fs::write(settings.join("settings.json"), &rules[..rules.len() - 8]).unwrap();
+    let mut c = Client::start(&root);
+
+    for (tool, args) in [
+        ("read_file", json!({ "path": "Private/Secret.md" })),
+        ("search", json!({ "query": "zebra" })),
+        ("list_files", json!({})),
+        (
+            "append_to_file",
+            json!({ "path": "Ideas.md", "content": "x" }),
+        ),
+    ] {
+        let (err, payload) = c.call(tool, args);
+        assert!(err, "{tool}: {payload}");
+        assert_eq!(payload["code"], "denied", "{tool}: {payload}");
+    }
+}
+
+#[test]
 fn agents_move_several_files_and_add_images() {
     let dir = fixture();
     let mut c = Client::start(dir.path());

@@ -32,7 +32,19 @@ export function ContextMenu() {
 }
 
 /** One level of a menu, kept inside the window; items with `children` open a submenu on hover. */
-function MenuList({ items, x, y, onDone, flipFrom }: { items: MenuItem[]; x: number; y: number; onDone(): void; flipFrom?: number }) {
+function MenuList({
+  items,
+  x,
+  y,
+  onDone,
+  flipFrom,
+}: {
+  items: MenuItem[];
+  x: number;
+  y: number;
+  onDone(): void;
+  flipFrom?: number;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ left: x, top: y });
   const [sub, setSub] = useState<{ index: number; x: number; y: number; flip: number } | null>(null);
@@ -43,7 +55,8 @@ function MenuList({ items, x, y, onDone, flipFrom }: { items: MenuItem[]; x: num
     const r = el.getBoundingClientRect();
     let left = x;
     // A submenu that doesn't fit on the right opens to the left of its parent.
-    if (left + r.width > window.innerWidth - 6) left = flipFrom !== undefined ? flipFrom - r.width : window.innerWidth - r.width - 6;
+    if (left + r.width > window.innerWidth - 6)
+      left = flipFrom !== undefined ? flipFrom - r.width : window.innerWidth - r.width - 6;
     const top = Math.max(6, Math.min(y, window.innerHeight - r.height - 6));
     setPos({ left: Math.max(6, left), top });
   }, [x, y, flipFrom]);
@@ -88,7 +101,14 @@ function MenuList({ items, x, y, onDone, flipFrom }: { items: MenuItem[]; x: num
         )}
       </div>
       {sub && items[sub.index]?.children && (
-        <MenuList key={sub.index} items={items[sub.index].children!} x={sub.x} y={sub.y} flipFrom={sub.flip} onDone={onDone} />
+        <MenuList
+          key={sub.index}
+          items={items[sub.index].children!}
+          x={sub.x}
+          y={sub.y}
+          flipFrom={sub.flip}
+          onDone={onDone}
+        />
       )}
     </>
   );
@@ -158,10 +178,20 @@ export function PromptDialog() {
         }}
       >
         <h2>{p.title}</h2>
-        <input ref={input} className="text-input" defaultValue={p.value} placeholder={p.placeholder} onKeyDown={(e) => e.key === "Escape" && answer(null)} />
+        <input
+          ref={input}
+          className="text-input"
+          defaultValue={p.value}
+          placeholder={p.placeholder}
+          onKeyDown={(e) => e.key === "Escape" && answer(null)}
+        />
         <div className="modal-actions">
-          <button type="button" onClick={() => answer(null)}>Cancel</button>
-          <button type="submit" className="primary">OK</button>
+          <button type="button" onClick={() => answer(null)}>
+            Cancel
+          </button>
+          <button type="submit" className="primary">
+            OK
+          </button>
         </div>
       </form>
     </div>

@@ -238,8 +238,9 @@ custom source fields; saving configures the workflow without running or unpausin
 ```sh
 pnpm install
 pnpm dev               # run the app with hot reload
-scripts/check.sh       # rustfmt, clippy, Rust tests, TypeScript, Vitest
+scripts/check.sh       # rustfmt, clippy, Rust tests, TypeScript, Biome, Vitest (CI runs it on every push to main and PR)
 scripts/bench.sh       # search/index performance budgets (5,000 notes)
+pnpm --dir ui format   # format the UI with Biome
 pnpm --dir ui dev      # UI only, in a browser, against an in-memory mock vault
 ```
 
@@ -261,6 +262,8 @@ Push with `git push --follow-tags`. The release workflow needs the protected
 A Git tag alone is not a downloadable release and will not appear in binary **Check for updates**.
 See [publishing from your personal computer](docs/PUBLISHING.md) for the 0.18.0 handoff.
 
-The search index lives in `~/Library/Caches/mosaic/` and is rebuilt automatically. Mosaic writes your
-ordinary content plus app-owned per-vault metadata under `.mosaic/`; agents should use documented
+The search index lives in `~/Library/Caches/mosaic/` and is rebuilt automatically. Undo history and
+pending AI proposals live in `~/Library/Application Support/dev.jona.mosaic/vaults/<vault-id>/`, keyed
+by the id in the vault's `.mosaic/vault.json`, so they follow a moved or renamed vault (a copied vault
+gets a new id). Mosaic writes your ordinary content plus app-owned per-vault metadata under `.mosaic/`; agents should use documented
 file tools and never edit that internal directory directly.

@@ -2,7 +2,16 @@
 // end, a middle label and labels near each end (multiplicities like "1..*").
 
 import { useState } from "react";
-import { BaseEdge, EdgeLabelRenderer, getBezierPath, Position, useNodes, useStore, type EdgeProps, type Edge } from "@xyflow/react";
+import {
+  BaseEdge,
+  EdgeLabelRenderer,
+  getBezierPath,
+  Position,
+  useNodes,
+  useStore,
+  type EdgeProps,
+  type Edge,
+} from "@xyflow/react";
 import { midpoint, roundedPath, routeAround, type Box } from "../../diagrams/route";
 import { dashArray, isEnd, markerId, type EndName } from "../../diagrams/shapes";
 import type { CanvasEdge } from "./jsonCanvas";
@@ -60,8 +69,19 @@ export function DiagramEdge(props: EdgeProps<DiagramFlowEdge>) {
     // Every card is in the way except groups and frames, which connections may cross.
     const obstacles: Box[] = nodes
       .filter((n) => n.zIndex !== -1)
-      .map((n) => ({ x: n.position.x, y: n.position.y, width: n.measured?.width ?? n.width ?? 0, height: n.measured?.height ?? n.height ?? 0 }));
-    const pts = routeAround({ x: sourceX, y: sourceY }, outward[sourcePosition], { x: targetX, y: targetY }, outward[targetPosition], obstacles);
+      .map((n) => ({
+        x: n.position.x,
+        y: n.position.y,
+        width: n.measured?.width ?? n.width ?? 0,
+        height: n.measured?.height ?? n.height ?? 0,
+      }));
+    const pts = routeAround(
+      { x: sourceX, y: sourceY },
+      outward[sourcePosition],
+      { x: targetX, y: targetY },
+      outward[targetPosition],
+      obstacles,
+    );
     path = roundedPath(pts);
     ({ x: labelX, y: labelY } = midpoint(pts));
   } else {
@@ -83,22 +103,35 @@ export function DiagramEdge(props: EdgeProps<DiagramFlowEdge>) {
         path={path}
         markerStart={ends.from === "none" ? undefined : `url(#${markerId(ends.from, color)})`}
         markerEnd={ends.to === "none" ? undefined : `url(#${markerId(ends.to, color)})`}
-        style={{ stroke: color, strokeWidth: width, strokeDasharray: dashArray(edge.line as string | undefined, width) }}
+        style={{
+          stroke: color,
+          strokeWidth: width,
+          strokeDasharray: dashArray(edge.line as string | undefined, width),
+        }}
         interactionWidth={18}
       />
       <EdgeLabelRenderer>
         {showLabels && typeof label === "string" && label && (
-          <div className={`edge-label nodrag nopan ${cls ?? ""}`} style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}>
+          <div
+            className={`edge-label nodrag nopan ${cls ?? ""}`}
+            style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
+          >
             {label}
           </div>
         )}
         {showLabels && typeof edge.fromLabel === "string" && edge.fromLabel && (
-          <div className={`edge-end-label ${cls ?? ""}`} style={{ transform: `translate(-50%, -50%) translate(${from.x}px, ${from.y}px)` }}>
+          <div
+            className={`edge-end-label ${cls ?? ""}`}
+            style={{ transform: `translate(-50%, -50%) translate(${from.x}px, ${from.y}px)` }}
+          >
             {edge.fromLabel}
           </div>
         )}
         {showLabels && typeof edge.toLabel === "string" && edge.toLabel && (
-          <div className={`edge-end-label ${cls ?? ""}`} style={{ transform: `translate(-50%, -50%) translate(${to.x}px, ${to.y}px)` }}>
+          <div
+            className={`edge-end-label ${cls ?? ""}`}
+            style={{ transform: `translate(-50%, -50%) translate(${to.x}px, ${to.y}px)` }}
+          >
             {edge.toLabel}
           </div>
         )}

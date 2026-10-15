@@ -8,6 +8,7 @@ use notify_debouncer_full::{DebounceEventResult, Debouncer, RecommendedCache, ne
 use serde::Serialize;
 use std::collections::BTreeSet;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 /// ~100 ms keeps the change-to-screen budget well inside one second.
@@ -21,9 +22,21 @@ pub struct Changes {
     pub root_missing: bool,
 }
 
+/// How often a vault watcher marks the index as kept current (see `Workspace::heartbeat`).
+pub const HEARTBEAT: Duration = Duration::from_secs(2);
+
 /// Stops watching when dropped.
 pub struct Watcher {
     _debouncer: Debouncer<notify::RecommendedWatcher, RecommendedCache>,
+    stop: Option<Arc<AtomicBool>>,
+}
+
+impl Drop for Watcher {
+    fn drop(&mut self) {
+        if let Some(stop) = &self.stop {
+            stop.store(true, Ordering::Relaxed);
+        }
+    }
 }
 
 pub fn watch(ws: Arc<Workspace>, on_change: impl Fn(Changes) + Send + 'static) -> Result<Watcher> {
@@ -63,8 +76,18 @@ pub fn watch(ws: Arc<Workspace>, on_change: impl Fn(Changes) + Send + 'static) -
             path: root.display().to_string(),
             source: std::io::Error::other(e.to_string()),
         })?;
+    // While this watcher runs, other processes can rely on the index instead of walking the vault.
+    let stop = Arc::new(AtomicBool::new(false));
+    let beat = stop.clone();
+    std::thread::spawn(move || {
+        while !beat.load(Ordering::Relaxed) {
+            ws.heartbeat();
+            std::thread::park_timeout(HEARTBEAT);
+        }
+    });
     Ok(Watcher {
         _debouncer: debouncer,
+        stop: Some(stop),
     })
 }
 
@@ -93,6 +116,7 @@ pub fn watch_settings(on_change: impl Fn() + Send + 'static) -> Result<Watcher> 
         .map_err(|e| io(std::io::Error::other(e.to_string())))?;
     Ok(Watcher {
         _debouncer: debouncer,
+        stop: None,
     })
 }
 

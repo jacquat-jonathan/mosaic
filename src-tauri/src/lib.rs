@@ -41,6 +41,9 @@ impl AppState {
 struct VaultInfo {
     root: String,
     name: String,
+    /// Set when undo history and proposals can't be saved for this vault (shown as a banner).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    history_warning: Option<String>,
 }
 
 #[derive(Serialize, Clone)]
@@ -58,16 +61,19 @@ fn info(ws: &Workspace) -> VaultInfo {
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default(),
+        history_warning: ws.history_warning(),
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn open_vault(app: AppHandle, state: State<AppState>, path: String) -> CmdResult<VaultInfo> {
-    activate(app, &state, Workspace::open(&path)?)
+    let ws = Workspace::open(&path)?;
+    ws.open_planner()?;
+    activate(app, &state, ws)
 }
 
 /// Creates `<parent>/<name>` as a new, empty vault folder. The UI then opens it with `open_vault`.
-#[tauri::command]
+#[tauri::command(async)]
 fn create_vault(parent: String, name: String) -> CmdResult<VaultInfo> {
     let vault = mosaic_core::Vault::create_new(&parent, &name)?;
     let root = vault.root();
@@ -77,6 +83,7 @@ fn create_vault(parent: String, name: String) -> CmdResult<VaultInfo> {
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default(),
+        history_warning: None,
     })
 }
 
@@ -131,7 +138,7 @@ struct RecentVault {
     exists: bool,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn recent_vaults() -> Vec<RecentVault> {
     Settings::load()
         .recent_vaults
@@ -147,7 +154,7 @@ fn recent_vaults() -> Vec<RecentVault> {
         .collect()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn forget_vault(path: String) -> CmdResult<()> {
     Settings::update(|settings| {
         settings.forget_vault(std::path::Path::new(&path));
@@ -156,17 +163,17 @@ fn forget_vault(path: String) -> CmdResult<()> {
     .map_err(|e| Error::Io { path, source: e })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn get_bookmarks(state: State<AppState>) -> CmdResult<Vec<String>> {
     Ok(Settings::load().bookmarks(state.get()?.vault.root()))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn get_agent_rules(state: State<AppState>) -> CmdResult<Vec<AgentRule>> {
     Ok(Settings::load().agent_rules(state.get()?.vault.root()))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn set_agent_rules(state: State<AppState>, rules: Vec<AgentRule>) -> CmdResult<()> {
     let ws = state.get()?;
     Settings::update(|settings| {
@@ -179,7 +186,7 @@ fn set_agent_rules(state: State<AppState>, rules: Vec<AgentRule>) -> CmdResult<(
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn set_bookmarks(state: State<AppState>, paths: Vec<String>) -> CmdResult<()> {
     let ws = state.get()?;
     Settings::update(|settings| {
@@ -192,14 +199,14 @@ fn set_bookmarks(state: State<AppState>, paths: Vec<String>) -> CmdResult<()> {
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn copy_path(state: State<AppState>, from: String, to: String) -> CmdResult<Written> {
     state.get()?.copy(&from, &to)
 }
 
 /// Adds a file dropped from Finder. The bytes come as the raw request body (no JSON round trip for
 /// large images); the vault path comes URI-encoded in the `x-path` header.
-#[tauri::command]
+#[tauri::command(async)]
 fn import_file(state: State<AppState>, request: tauri::ipc::Request<'_>) -> CmdResult<Written> {
     let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
         return Err(Error::Invalid("import_file expects raw bytes".into()));
@@ -228,27 +235,27 @@ fn percent_decode(s: &str) -> Option<String> {
     String::from_utf8(out).ok()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn current_vault(state: State<AppState>) -> Option<VaultInfo> {
     state.get().ok().map(|ws| info(&ws))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn last_vault() -> Option<PathBuf> {
     Settings::load().last_vault.filter(|p| p.is_dir())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn list_dir(state: State<AppState>, dir: String, recursive: bool) -> CmdResult<Vec<Entry>> {
     state.get()?.list(&dir, recursive)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn read_file(state: State<AppState>, path: String) -> CmdResult<FileContent> {
     state.get()?.read(&path)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn create_file(
     state: State<AppState>,
     path: String,
@@ -262,17 +269,17 @@ fn create_file(
     ws.create(&path, &content)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn template_config(state: State<AppState>) -> CmdResult<mosaic_core::templates::TemplateConfig> {
     state.get()?.template_config()
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn vault_preferences(
     state: State<AppState>,
 ) -> CmdResult<mosaic_core::preferences::VaultPreferences> {
     state.get()?.vault_preferences()
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn set_vault_preferences(
     state: State<AppState>,
     patch: serde_json::Value,
@@ -284,40 +291,40 @@ fn set_vault_preferences(
     }
     ws.set_vault_preferences(patch)
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn set_template_config(
     state: State<AppState>,
     config: mosaic_core::templates::TemplateConfig,
 ) -> CmdResult<()> {
     state.get()?.set_template_config(config)
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn list_templates(
     state: State<AppState>,
     path: Option<String>,
 ) -> CmdResult<mosaic_core::templates::TemplateList> {
     state.get()?.list_templates(path.as_deref())
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn render_template(
     state: State<AppState>,
     request: mosaic_core::templates::TemplateRequest,
 ) -> CmdResult<mosaic_core::templates::TemplatePreview> {
     state.get()?.render_template(&request)
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn create_note(
     state: State<AppState>,
     request: mosaic_core::templates::TemplateRequest,
 ) -> CmdResult<mosaic_core::templates::CreatedNote> {
     state.get()?.create_note(&request)
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn template_starters() -> Vec<(&'static str, &'static str)> {
     mosaic_core::templates::STARTERS.to_vec()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn write_file(
     state: State<AppState>,
     path: String,
@@ -332,17 +339,17 @@ fn write_file(
     ws.write(&path, &content, expected_hash.as_deref())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn make_dir(state: State<AppState>, path: String) -> CmdResult<()> {
     state.get()?.mkdir(&path)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn rename_path(state: State<AppState>, from: String, to: String) -> CmdResult<Renamed> {
     state.get()?.rename(&from, &to, true)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn delete_path(state: State<AppState>, path: String) -> CmdResult<()> {
     state.get()?.delete(&path).map(|_| ())
 }
@@ -356,12 +363,12 @@ fn print_window(window: tauri::WebviewWindow) -> CmdResult<()> {
         .map_err(|e| Error::Invalid(format!("couldn't print: {e}")))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn unlinked_mentions(state: State<AppState>, path: String) -> CmdResult<Vec<Mention>> {
     state.get()?.unlinked_mentions(&path, 30)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn link_mention(
     state: State<AppState>,
     source: String,
@@ -372,17 +379,17 @@ fn link_mention(
     state.get()?.link_mention(&source, line, &text, &target)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn file_history(state: State<AppState>, path: String) -> CmdResult<Vec<Version>> {
     state.get()?.history(&path, 50)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn version_content(state: State<AppState>, id: i64) -> CmdResult<String> {
     state.get()?.version_content(id)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn restore_version(
     state: State<AppState>,
     path: String,
@@ -392,22 +399,22 @@ fn restore_version(
     state.get()?.restore(&path, id, expected_hash.as_deref())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn ai_activity(state: State<AppState>, limit: Option<usize>) -> CmdResult<Vec<Version>> {
     state.get()?.activity(limit.unwrap_or(200))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn undo_change(state: State<AppState>, id: i64) -> CmdResult<String> {
     state.get()?.undo(id)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn absolute_path(state: State<AppState>, path: String) -> CmdResult<String> {
     Ok(state.get()?.vault.resolve(&path)?.display().to_string())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn search(
     state: State<AppState>,
     query: String,
@@ -416,7 +423,7 @@ fn search(
     state.get()?.search(&query, limit.unwrap_or(50))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn proposals(
     state: State<AppState>,
     include_decided: Option<bool>,
@@ -426,17 +433,17 @@ fn proposals(
         .proposals(include_decided.unwrap_or(false), 200)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn proposal_content(state: State<AppState>, id: i64) -> CmdResult<Option<String>> {
     state.get()?.proposal_content(id)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn proposal_base(state: State<AppState>, id: i64) -> CmdResult<Option<String>> {
     state.get()?.proposal_base(id)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn accept_proposal(
     state: State<AppState>,
     id: i64,
@@ -448,22 +455,22 @@ fn accept_proposal(
         .accept_proposal_content(id, force.unwrap_or(false), content.as_deref())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn reject_proposal(state: State<AppState>, id: i64, reason: Option<String>) -> CmdResult<()> {
     state.get()?.reject_proposal(id, reason.as_deref())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn agents(state: State<AppState>) -> CmdResult<Vec<mosaic_core::agents::Agent>> {
     state.get()?.agents()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn mirror_agents(state: State<AppState>) -> CmdResult<mosaic_core::agents::MirrorReport> {
     state.get()?.mirror_agents()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn days(
     state: State<AppState>,
     from: String,
@@ -473,7 +480,7 @@ fn days(
     state.get()?.days(&from, &to, &today)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn carry_over(
     state: State<AppState>,
     day: String,
@@ -485,7 +492,7 @@ fn carry_over(
         .carry_over(&day, path.as_deref(), new_note.as_deref())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn set_task(
     state: State<AppState>,
     path: String,
@@ -496,7 +503,7 @@ fn set_task(
     state.get()?.set_task(&path, line, &text, done)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn set_task_workflow(
     state: State<AppState>,
     path: String,
@@ -510,7 +517,7 @@ fn set_task_workflow(
         .set_task_workflow(&path, line, &text, &expected_state, &next)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn query_notes(
     state: State<AppState>,
     query: String,
@@ -518,22 +525,22 @@ fn query_notes(
     state.get()?.query(&query)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn backlinks(state: State<AppState>, path: String) -> CmdResult<Vec<Backlink>> {
     state.get()?.backlinks(&path)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn tags(state: State<AppState>) -> CmdResult<Vec<TagCount>> {
     state.get()?.tags()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn aliases(state: State<AppState>) -> CmdResult<Vec<(String, String)>> {
     state.get()?.aliases()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn outline(state: State<AppState>, path: String) -> CmdResult<Outline> {
     state.get()?.outline(&path)
 }
@@ -557,7 +564,7 @@ fn cli_link() -> PathBuf {
     PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".local/bin/mosaic")
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn cli_info() -> CliInfo {
     let path = bundled_cli();
     let link = cli_link();
@@ -573,7 +580,7 @@ fn cli_info() -> CliInfo {
 }
 
 /// Symlinks the bundled CLI into ~/.local/bin (no admin rights needed).
-#[tauri::command]
+#[tauri::command(async)]
 fn install_cli() -> CmdResult<CliInfo> {
     let src = bundled_cli()
         .ok_or_else(|| Error::Invalid("the mosaic command isn't bundled in this build".into()))?;

@@ -87,7 +87,9 @@ function PaneView({ pane, topLeft, topRight }: { pane: Pane; topLeft: boolean; t
     <section
       className={`pane ${focused && multi ? "focused" : ""} ${dropping ? "drop" : ""} ${topLeft ? "top-left" : ""}`}
       style={{ flexGrow: pane.size ?? 1 }}
-      aria-label="Workspace pane" data-focus-region tabIndex={-1}
+      aria-label="Workspace pane"
+      data-focus-region
+      tabIndex={-1}
       onFocusCapture={() => useWorkspace.getState().focus(pane.id)}
       onMouseDownCapture={() => useWorkspace.getState().focus(pane.id)}
       onDragOver={(ev) => {
@@ -101,7 +103,12 @@ function PaneView({ pane, topLeft, topRight }: { pane: Pane; topLeft: boolean; t
     >
       <div className="tabbar">
         {topLeft && !left && (
-          <button className="bar-toggle" aria-label="Show sidebar" title={`Show sidebar (${shortcutOf("toggle-left")})`} onClick={() => useUi.getState().toggleLeftSidebar()}>
+          <button
+            className="bar-toggle"
+            aria-label="Show sidebar"
+            title={`Show sidebar (${shortcutOf("toggle-left")})`}
+            onClick={() => useUi.getState().toggleLeftSidebar()}
+          >
             <PanelLeftOpen size={16} />
           </button>
         )}
@@ -121,12 +128,35 @@ function PaneView({ pane, topLeft, topRight }: { pane: Pane; topLeft: boolean; t
         >
           <Columns2 size={16} />
         </button>
-        <button className="bar-toggle" aria-label="More workspace actions" aria-haspopup="menu" onClick={e => {
-          const r = e.currentTarget.getBoundingClientRect();
-          useWorkspace.getState().focus(pane.id);
-          const ids = ["add-property", "file-history", "export-html", "export-pdf", "move-file", "rename", "bookmark", "delete", "split-down"];
-          useUi.getState().showMenu(r.right - 220, r.bottom, commands().filter(c => ids.includes(c.id) && (c.when?.() ?? true)).map(c => ({ label: c.label, action: c.run, danger: c.id === "delete" })));
-        }}><MoreHorizontal size={16} /></button>
+        <button
+          className="bar-toggle"
+          aria-label="More workspace actions"
+          aria-haspopup="menu"
+          onClick={(e) => {
+            const r = e.currentTarget.getBoundingClientRect();
+            useWorkspace.getState().focus(pane.id);
+            const ids = [
+              "add-property",
+              "file-history",
+              "export-html",
+              "export-pdf",
+              "move-file",
+              "rename",
+              "bookmark",
+              "delete",
+              "split-down",
+            ];
+            useUi.getState().showMenu(
+              r.right - 220,
+              r.bottom,
+              commands()
+                .filter((c) => ids.includes(c.id) && (c.when?.() ?? true))
+                .map((c) => ({ label: c.label, action: c.run, danger: c.id === "delete" })),
+            );
+          }}
+        >
+          <MoreHorizontal size={16} />
+        </button>
         {topRight && contextKind(pane.active) && (
           <button
             className={`bar-toggle ${right ? "active" : ""}`}
@@ -168,22 +198,50 @@ function PaneView({ pane, topLeft, topRight }: { pane: Pane; topLeft: boolean; t
   );
 }
 
-function Tab({ pane, path, active, onDropAt }: { pane: Pane; path: string; active: boolean; onDropAt(ev: DragEvent): void }) {
+function Tab({
+  pane,
+  path,
+  active,
+  onDropAt,
+}: {
+  pane: Pane;
+  path: string;
+  active: boolean;
+  onDropAt(ev: DragEvent): void;
+}) {
   const dirty = useWorkspace((s) => s.buffers[path]?.dirty ?? false);
   const kind = useWorkspace((s) => s.buffers[path]?.kind) ?? kindOf(path);
   const special = isSpecialTab(path);
-  const chatTitle = useChat(s => s.chats[parseView(path).id]?.title);
-  const name = special && parseView(path).kind === "chat" && chatTitle ? chatTitle : special ? specialTabName(path) : displayName({ name: path.split("/").pop() ?? path, kind });
+  const chatTitle = useChat((s) => s.chats[parseView(path).id]?.title);
+  const name =
+    special && parseView(path).kind === "chat" && chatTitle
+      ? chatTitle
+      : special
+        ? specialTabName(path)
+        : displayName({ name: path.split("/").pop() ?? path, kind });
   const ws = useWorkspace.getState;
   return (
     <div
       className={`tab ${active ? "active" : ""}`}
-      role="tab" aria-selected={active} tabIndex={active ? 0 : -1}
-      onKeyDown={e => {
-        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); ws().activate(pane.id, path); }
+      role="tab"
+      aria-selected={active}
+      tabIndex={active ? 0 : -1}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          ws().activate(pane.id, path);
+        }
         if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) {
-          e.preventDefault(); const i = pane.tabs.indexOf(path); const at = e.key === "Home" ? 0 : e.key === "End" ? pane.tabs.length - 1 : (i + (e.key === "ArrowRight" ? 1 : -1) + pane.tabs.length) % pane.tabs.length;
-          ws().activate(pane.id, pane.tabs[at]); (e.currentTarget.parentElement?.children[at] as HTMLElement)?.focus();
+          e.preventDefault();
+          const i = pane.tabs.indexOf(path);
+          const at =
+            e.key === "Home"
+              ? 0
+              : e.key === "End"
+                ? pane.tabs.length - 1
+                : (i + (e.key === "ArrowRight" ? 1 : -1) + pane.tabs.length) % pane.tabs.length;
+          ws().activate(pane.id, pane.tabs[at]);
+          (e.currentTarget.parentElement?.children[at] as HTMLElement)?.focus();
         }
       }}
       title={special ? specialTabName(path) : path}
@@ -196,10 +254,25 @@ function Tab({ pane, path, active, onDropAt }: { pane: Pane; path: string; activ
         ev.preventDefault();
         useUi.getState().showMenu(ev.clientX, ev.clientY, [
           { label: "Close", shortcut: "⌘W", action: () => ws().closeTab(pane.id, path) },
-          { label: "Close others", action: () => pane.tabs.filter((t) => t !== path).forEach((t) => ws().closeTab(pane.id, t)) },
+          {
+            label: "Close others",
+            action: () => pane.tabs.filter((t) => t !== path).forEach((t) => ws().closeTab(pane.id, t)),
+          },
           { label: "", separator: true },
-          { label: "Split right", action: () => { ws().activate(pane.id, path); ws().split("row"); } },
-          { label: "Split down", action: () => { ws().activate(pane.id, path); ws().split("column"); } },
+          {
+            label: "Split right",
+            action: () => {
+              ws().activate(pane.id, path);
+              ws().split("row");
+            },
+          },
+          {
+            label: "Split down",
+            action: () => {
+              ws().activate(pane.id, path);
+              ws().split("column");
+            },
+          },
         ]);
       }}
     >
@@ -223,7 +296,9 @@ function EmptyPane() {
   const hasFiles = useVault((s) => s.entries.length > 0);
   return (
     <div className="empty">
-      <p>{hasFiles ? "Pick a file in the sidebar, or press ⌘N for a new note." : "Press ⌘N to create your first note."}</p>
+      <p>
+        {hasFiles ? "Pick a file in the sidebar, or press ⌘N for a new note." : "Press ⌘N to create your first note."}
+      </p>
     </div>
   );
 }

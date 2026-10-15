@@ -77,12 +77,25 @@ export function migrateLayout(value: unknown): { panes: Pane[]; direction: Split
   if (!value || typeof value !== "object") return null;
   const saved = value as { panes?: unknown; direction?: unknown; focused?: unknown };
   if (!Array.isArray(saved.panes)) return null;
-  const panes: Pane[] = saved.panes.filter(p => p && Array.isArray(p.tabs)).map((p, i) => {
-    const tabs: string[] = [...new Set<string>(p.tabs.filter((t: unknown): t is string => typeof t === "string" && !!t))];
-    return { id: typeof p.id === "string" ? p.id : `restored-${i}`, tabs, active: tabs.includes(p.active) ? p.active : tabs[0] ?? null, size: typeof p.size === "number" && Number.isFinite(p.size) && p.size > 0 ? p.size : 1 };
-  });
+  const panes: Pane[] = saved.panes
+    .filter((p) => p && Array.isArray(p.tabs))
+    .map((p, i) => {
+      const tabs: string[] = [
+        ...new Set<string>(p.tabs.filter((t: unknown): t is string => typeof t === "string" && !!t)),
+      ];
+      return {
+        id: typeof p.id === "string" ? p.id : `restored-${i}`,
+        tabs,
+        active: tabs.includes(p.active) ? p.active : (tabs[0] ?? null),
+        size: typeof p.size === "number" && Number.isFinite(p.size) && p.size > 0 ? p.size : 1,
+      };
+    });
   if (!panes.length) return null;
-  return { panes, direction: saved.direction === "column" ? "column" : "row", focused: panes.some(p => p.id === saved.focused) ? saved.focused as string : panes[0].id };
+  return {
+    panes,
+    direction: saved.direction === "column" ? "column" : "row",
+    focused: panes.some((p) => p.id === saved.focused) ? (saved.focused as string) : panes[0].id,
+  };
 }
 
 let paneSeq = 1;
@@ -111,7 +124,20 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
     // A view, not a file: an empty buffer so the tab shows (FileView draws the view).
     if (isSpecialTab(path)) {
       set((s) => ({
-        buffers: { ...s.buffers, [path]: { path, kind: "other", content: null, baseHash: "", dirty: false, conflict: null, deleted: false, error: null, version: 1 } },
+        buffers: {
+          ...s.buffers,
+          [path]: {
+            path,
+            kind: "other",
+            content: null,
+            baseHash: "",
+            dirty: false,
+            conflict: null,
+            deleted: false,
+            error: null,
+            version: 1,
+          },
+        },
       }));
       return;
     }
@@ -139,8 +165,15 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
         buffers: {
           ...s.buffers,
           [path]: {
-            path, kind: "other", content: null, baseHash: "", dirty: false, conflict: null,
-            deleted: isCoreError(e) && e.code === "not_found", error: errorMessage(e), version: 1,
+            path,
+            kind: "other",
+            content: null,
+            baseHash: "",
+            dirty: false,
+            conflict: null,
+            deleted: isCoreError(e) && e.code === "not_found",
+            error: errorMessage(e),
+            version: 1,
           },
         },
       }));
@@ -166,7 +199,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
 
     async open(path, opts = {}) {
       const paneId = opts.pane ?? get().focused;
-      const previous = get().panes.find(p => p.id === paneId)?.active ?? null;
+      const previous = get().panes.find((p) => p.id === paneId)?.active ?? null;
       if (previous !== path && !(await leaveDraft(previous))) return;
       set((s) => ({
         focused: paneId,
@@ -188,7 +221,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
 
     closeTab(paneId, path) {
       if (hasDraft(path)) {
-        void leaveDraft(path).then(ok => { if (ok) get().closeTab(paneId, path); });
+        void leaveDraft(path).then((ok) => {
+          if (ok) get().closeTab(paneId, path);
+        });
         return;
       }
       set((s) => ({
@@ -208,9 +243,16 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
     focus: (focused) => set({ focused }),
 
     activate(paneId, path) {
-      const previous = get().panes.find(p => p.id === paneId)?.active ?? null;
+      const previous = get().panes.find((p) => p.id === paneId)?.active ?? null;
       if (previous !== path && previous && hasDraft(previous)) {
-        void leaveDraft(previous).then(ok => { if (ok) set(s => ({ focused: paneId, panes: s.panes.map(p => p.id === paneId ? { ...p, active: path } : p) })); }); return;
+        void leaveDraft(previous).then((ok) => {
+          if (ok)
+            set((s) => ({
+              focused: paneId,
+              panes: s.panes.map((p) => (p.id === paneId ? { ...p, active: path } : p)),
+            }));
+        });
+        return;
       }
       set((s) => ({ focused: paneId, panes: s.panes.map((p) => (p.id === paneId ? { ...p, active: path } : p)) }));
     },
@@ -242,9 +284,16 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
     },
 
     closePane(paneId) {
-      const drafts = get().panes.find(p => p.id === paneId)?.tabs.filter(hasDraft) ?? [];
+      const drafts =
+        get()
+          .panes.find((p) => p.id === paneId)
+          ?.tabs.filter(hasDraft) ?? [];
       if (drafts.length) {
-        void (async () => { for(const path of drafts) if(!(await leaveDraft(path))) return; get().closePane(paneId); })(); return;
+        void (async () => {
+          for (const path of drafts) if (!(await leaveDraft(path))) return;
+          get().closePane(paneId);
+        })();
+        return;
       }
       set((s) => {
         if (s.panes.length === 1) return s;
@@ -279,7 +328,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
       if (!b || b.content === content) return;
       updateBuffer(path, { content, dirty: true });
       clearTimeout(saveTimers.get(path));
-      saveTimers.set(path, setTimeout(() => void get().save(path), AUTOSAVE_MS));
+      saveTimers.set(
+        path,
+        setTimeout(() => void get().save(path), AUTOSAVE_MS),
+      );
     },
 
     replaceContent(path, content) {
@@ -291,7 +343,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
     async save(path) {
       clearTimeout(saveTimers.get(path));
       const b = get().buffers[path];
-      if (!b || !b.dirty || b.content === null || b.conflict || b.deleted) return;
+      if (!b?.dirty || b.content === null || b.conflict || b.deleted) return;
       const content = b.content;
       saving.add(path);
       try {
@@ -331,7 +383,16 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
         set((s) => ({
           buffers: {
             ...s.buffers,
-            [path]: { ...now, content: disk.content, kind: disk.kind, baseHash: disk.hash, conflict: null, deleted: false, error: null, version: prev + 1 },
+            [path]: {
+              ...now,
+              content: disk.content,
+              kind: disk.kind,
+              baseHash: disk.hash,
+              conflict: null,
+              deleted: false,
+              error: null,
+              version: prev + 1,
+            },
           },
         }));
       } else {
@@ -418,13 +479,21 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
       if (!saved?.panes?.length) {
         if (!localStorage.getItem("mosaic:ui")) {
           const defaults = prefs();
-          useUi.setState({ sidebarWidth: defaults.sidebarWidth, rightWidth: defaults.contextWidth, leftSidebar: defaults.sidebarVisible, rightPanel: defaults.contextVisible });
+          useUi.setState({
+            sidebarWidth: defaults.sidebarWidth,
+            rightWidth: defaults.contextWidth,
+            leftSidebar: defaults.sidebarVisible,
+            rightPanel: defaults.contextVisible,
+          });
         }
         set({ panes: [{ id, tabs: [], active: null }], focused: id, buffers: {}, direction: "row" });
         return;
       }
       const panes = saved.panes.map((p) => ({ ...p, id: newPaneId() }));
-      const focusedIndex = Math.max(0, saved.panes.findIndex((p) => p.id === saved!.focused));
+      const focusedIndex = Math.max(
+        0,
+        saved.panes.findIndex((p) => p.id === saved!.focused),
+      );
       set({ panes, direction: saved.direction ?? "row", focused: panes[focusedIndex].id, buffers: {} });
       await Promise.all([...new Set(panes.map((p) => p.active).filter((a): a is string => !!a))].map(load));
       // Drop tabs whose files are gone.

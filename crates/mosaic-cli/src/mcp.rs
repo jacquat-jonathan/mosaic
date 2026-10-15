@@ -17,7 +17,8 @@ use rmcp::{ErrorData, RoleServer, ServerHandler, ServiceExt, tool, tool_handler,
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
+use std::time::{Duration, Instant};
 
 type ToolResult = Result<String, String>;
 
@@ -304,7 +305,14 @@ pub struct MosaicMcp {
     /// The MCP client's name, recorded with every change in the file history.
     actor: Arc<RwLock<Option<String>>>,
     tool_router: ToolRouter<Self>,
+    /// When this server last walked the vault, and which vault (it can follow the app's).
+    last_sync: Arc<Mutex<Option<(PathBuf, Instant)>>>,
 }
+
+/// The app's watcher marks the index every 2 s; older than this, it isn't running.
+const APP_HEARTBEAT_AGE: Duration = Duration::from_secs(5);
+/// Calls closer together than this share one walk of the vault.
+const RESYNC_AFTER: Duration = Duration::from_millis(500);
 
 /// The vault the app has open (the last one it opened), if it still exists.
 fn app_vault() -> Option<PathBuf> {
@@ -319,6 +327,7 @@ impl MosaicMcp {
             mode,
             actor: Arc::new(RwLock::new(None)),
             tool_router: Self::tool_router(),
+            last_sync: Default::default(),
         }
     }
 
@@ -366,8 +375,23 @@ impl MosaicMcp {
     }
 
     /// Picks up changes made by the app or other tools before answering index-backed questions.
+    /// Skipped while the app's watcher keeps this index current, and right after the last walk
+    /// (an agent's burst of calls), so a call costs a walk of the vault only when it's needed.
     fn fresh(&self) {
-        let _ = self.ws().sync(|_, _| {});
+        let ws = self.ws();
+        if ws.index().watched_within(APP_HEARTBEAT_AGE) {
+            return;
+        }
+        let mut last = self.last_sync.lock().unwrap_or_else(|p| p.into_inner());
+        if last
+            .as_ref()
+            .is_some_and(|(root, at)| root == ws.vault.root() && at.elapsed() < RESYNC_AFTER)
+        {
+            return;
+        }
+        if ws.sync(|_, _| {}).is_ok() {
+            *last = Some((ws.vault.root().to_path_buf(), Instant::now()));
+        }
     }
 
     #[tool(

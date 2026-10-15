@@ -51,7 +51,7 @@ const marked = new Marked({ gfm: true, breaks: false, extensions: [mathBlock, ma
 const escapeAttr = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
 
 function withWikiLinks(src: string, resolve?: (target: string) => string | null): string {
-  return src.replace(/(!?)\[\[([^\[\]\n]+?)\]\]/g, (_m, bang: string, inner: string) => {
+  return src.replace(/(!?)\[\[([^[\]\n]+?)\]\]/g, (_m, bang: string, inner: string) => {
     const l = parseWikiLink(inner);
     const resolved = resolve ? resolve(l.target) !== null : true;
     const cls = `md-wikilink${resolved ? "" : " unresolved"}${bang ? " embed" : ""}`;
@@ -73,11 +73,18 @@ export function markdownToHtml(src: string, resolve?: (target: string) => string
 
 /** `breaks`: every line break is kept (diagram shape labels are written line by line). */
 export function renderMarkdown(src: string, resolve?: (target: string) => string | null, breaks = false): string {
-  return DOMPurify.sanitize(markdownToHtml(src, resolve, breaks), { ADD_ATTR: ["data-target"], FORBID_TAGS: ["style", "iframe", "form"] });
+  return DOMPurify.sanitize(markdownToHtml(src, resolve, breaks), {
+    ADD_ATTR: ["data-target"],
+    FORBID_TAGS: ["style", "iframe", "form"],
+  });
 }
 
 /** Inline Markdown for table cells and labels, without a wrapping paragraph. */
-export const inlineMarkdownToHtml = (src: string, resolve?: (target: string) => string | null) => marked.parseInline(withWikiLinks(src, resolve), { async: false });
+export const inlineMarkdownToHtml = (src: string, resolve?: (target: string) => string | null) =>
+  marked.parseInline(withWikiLinks(src, resolve), { async: false });
 export function renderInlineMarkdown(src: string, resolve?: (target: string) => string | null): string {
-  return DOMPurify.sanitize(inlineMarkdownToHtml(src, resolve), { ADD_ATTR: ["data-target"], FORBID_TAGS: ["style", "iframe", "form"] });
+  return DOMPurify.sanitize(inlineMarkdownToHtml(src, resolve), {
+    ADD_ATTR: ["data-target"],
+    FORBID_TAGS: ["style", "iframe", "form"],
+  });
 }

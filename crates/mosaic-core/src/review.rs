@@ -249,9 +249,19 @@ impl Workspace {
     /// Whether this workspace's changes to `norm` become proposals (agents and the CLI, in a
     /// folder under review).
     pub(crate) fn in_review(&self, norm: &str) -> bool {
-        self.source() != Source::App
-            && (!self.change_allowed(norm)
-                || access_for(&self.rules(), norm) == Some(Access::Review))
+        if self.source() == Source::App {
+            return false;
+        }
+        // Matched against the on-disk spelling, so `projects/x.md` is reviewed like `Projects/x.md`.
+        let real = self
+            .vault
+            .canonical_rel(norm)
+            .unwrap_or_else(|_| norm.to_string());
+        // Unknown rules (unreadable settings) propose rather than write.
+        !self.change_allowed(&real)
+            || self
+                .rules()
+                .map_or(true, |r| access_for(&r, &real) == Some(Access::Review))
     }
 
     /// The file as the agent should see it: its pending proposal if there is one, else the disk.
@@ -512,7 +522,7 @@ impl Workspace {
 
     /// Proposals, with `stale` set when the file changed since. Agents see only paths they may see.
     pub fn proposals(&self, include_decided: bool, limit: usize) -> Result<Vec<Proposal>> {
-        let rules = self.rules();
+        let rules = self.rules()?;
         let mut list = self.hist().proposals(include_decided, limit)?;
         list.retain(|p| access_for(&rules, &p.path) != Some(Access::Hidden));
         for p in &mut list {
@@ -679,7 +689,7 @@ impl Workspace {
     /// The agent takes its own proposal back.
     pub fn withdraw_proposal(&self, id: i64) -> Result<()> {
         let p = self.pending(id)?;
-        if access_for(&self.rules(), &p.path) == Some(Access::Hidden) {
+        if access_for(&self.rules()?, &p.path) == Some(Access::Hidden) {
             return Err(Error::NotFound(format!("proposal {id}")));
         }
         self.hist().decide(id, "withdrawn", None)

@@ -214,44 +214,27 @@ impl Workspace {
         include_archived: bool,
         include_trashed: bool,
     ) -> Result<Vec<Epic>> {
-        self.planner
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
+        self.planner()?
             .list_epics(include_archived, include_trashed)
     }
 
     pub fn create_planner_epic(&self, input: CreateEpic) -> Result<Epic> {
-        self.planner
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .create_epic(input)
+        self.planner()?.create_epic(input)
     }
 
     pub fn update_planner_epic(&self, id: &str, input: UpdateEpic) -> Result<Epic> {
-        self.planner
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .update_epic(id, input)
+        self.planner()?.update_epic(id, input)
     }
 
     pub fn archive_planner_epic(&self, id: &str, expected_revision: i64) -> Result<Epic> {
-        self.planner
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .archive_epic(id, expected_revision)
+        self.planner()?.archive_epic(id, expected_revision)
     }
 
     pub fn restore_planner_epic(&self, id: &str, expected_revision: i64) -> Result<Epic> {
-        self.planner
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .restore_epic(id, expected_revision)
+        self.planner()?.restore_epic(id, expected_revision)
     }
 
     pub fn trash_planner_epic(&self, id: &str, expected_revision: i64) -> Result<Epic> {
-        self.planner
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .trash_epic(id, expected_revision)
+        self.planner()?.trash_epic(id, expected_revision)
     }
 }

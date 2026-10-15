@@ -12,4 +12,5 @@ bash scripts/prepare-sidecar.sh debug
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 pnpm --dir ui lint
+pnpm --dir ui exec biome ci .
 pnpm --dir ui test

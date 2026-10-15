@@ -27,7 +27,12 @@ const MAX_VISITS = 40000;
 export function routeAround(a: Pt, da: Pt, b: Pt, db: Pt, obstacles: Box[]): Pt[] {
   const s = { x: a.x + da.x * STUB, y: a.y + da.y * STUB };
   const e = { x: b.x + db.x * STUB, y: b.y + db.y * STUB };
-  const blocked = obstacles.map((o) => ({ x0: o.x - MARGIN, y0: o.y - MARGIN, x1: o.x + o.width + MARGIN, y1: o.y + o.height + MARGIN }));
+  const blocked = obstacles.map((o) => ({
+    x0: o.x - MARGIN,
+    y0: o.y - MARGIN,
+    x1: o.x + o.width + MARGIN,
+    y1: o.y + o.height + MARGIN,
+  }));
   const xs = [s.x, e.x, ...blocked.flatMap((o) => [o.x0, o.x1])];
   const ys = [s.y, e.y, ...blocked.flatMap((o) => [o.y0, o.y1])];
   const minX = Math.min(...xs) - 60;
@@ -38,7 +43,9 @@ export function routeAround(a: Pt, da: Pt, b: Pt, db: Pt, obstacles: Box[]): Pt[
   const free = (c: number, r: number) => {
     const x = minX + c * STEP;
     const y = minY + r * STEP;
-    return c >= 0 && r >= 0 && c < cols && r < rows && !blocked.some((o) => x > o.x0 && x < o.x1 && y > o.y0 && y < o.y1);
+    return (
+      c >= 0 && r >= 0 && c < cols && r < rows && !blocked.some((o) => x > o.x0 && x < o.x1 && y > o.y0 && y < o.y1)
+    );
   };
   const start = cell(s);
   const goal = cell(e);

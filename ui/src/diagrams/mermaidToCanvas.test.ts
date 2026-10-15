@@ -2,7 +2,9 @@ import { expect, test } from "vitest";
 import { classText, diagramKind, flowchartShapes, parseClassDiagram } from "./mermaidToCanvas";
 
 test("node shapes come from their brackets", () => {
-  const shapes = flowchartShapes("flowchart LR\n  A[Start] --> B{Ok?}\n  B -->|yes| C(Done)\n  B -.-> D[(DB)]\n  E((Circle)) --> F{{Hex}}\n  F --> G[/In/]\n  H([Pill]) & I[[Sub]]\n  J@{ shape: doc, label: \"Report\" }");
+  const shapes = flowchartShapes(
+    'flowchart LR\n  A[Start] --> B{Ok?}\n  B -->|yes| C(Done)\n  B -.-> D[(DB)]\n  E((Circle)) --> F{{Hex}}\n  F --> G[/In/]\n  H([Pill]) & I[[Sub]]\n  J@{ shape: doc, label: "Report" }',
+  );
   expect(Object.fromEntries(shapes)).toEqual({
     A: "rectangle",
     B: "diamond",
@@ -34,7 +36,16 @@ test("class diagrams: members, stereotypes and relations come from the source", 
   expect(classText(classes[1])).toBe("«interface»\n**Payable**\n---\n+ pay()");
   expect(classText(classes[4])).toBe("**Empty**");
   expect(relations).toEqual([
-    { from: "Order", to: "LineItem", fromEnd: "diamond", toEnd: "none", dashed: false, fromLabel: "1", toLabel: "1..*", label: "has" },
+    {
+      from: "Order",
+      to: "LineItem",
+      fromEnd: "diamond",
+      toEnd: "none",
+      dashed: false,
+      fromLabel: "1",
+      toLabel: "1..*",
+      label: "has",
+    },
     { from: "Order", to: "Payable", fromEnd: "none", toEnd: "triangle", dashed: true },
     { from: "Order", to: "Clock", fromEnd: "none", toEnd: "open", dashed: true },
   ]);

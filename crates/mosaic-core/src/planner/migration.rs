@@ -418,7 +418,7 @@ impl PlannerStore {
 
 impl Workspace {
     pub fn preview_markdown_planner_import(&self) -> Result<MarkdownImportPreview> {
-        let rules = self.rules();
+        let rules = self.rules()?;
         let tasks: Vec<TaskMeta> = self
             .reading()
             .tasks()?
@@ -436,7 +436,7 @@ impl Workspace {
             );
             structure.insert((task.path.clone(), task.line), (task.depth, task.parent));
         }
-        let planner = self.planner.lock().unwrap_or_else(|p| p.into_inner());
+        let planner = self.planner()?;
         let mut groups: BTreeMap<String, Vec<MarkdownImportCandidate>> = BTreeMap::new();
         for task in tasks {
             let block_id = block_id(&task.text);
@@ -519,9 +519,7 @@ impl Workspace {
         allow_duplicates: bool,
         timezone: &str,
     ) -> Result<MarkdownImportResult> {
-        self.planner
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
+        self.planner()?
             .import_markdown(preview, selected_fingerprints, allow_duplicates, timezone)
     }
 }

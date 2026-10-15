@@ -35,7 +35,10 @@ async function svgToPng(svg: string, scale = 2): Promise<Uint8Array> {
 export async function exportCanvas(canvasPath: string, doc: CanvasDoc, format: "svg" | "png"): Promise<string> {
   const svg = canvasToSvg(doc, false);
   const bytes = format === "svg" ? new TextEncoder().encode(svg) : await svgToPng(svg);
-  const stem = canvasPath.split("/").pop()!.replace(/\.canvas$/i, "");
+  const stem = canvasPath
+    .split("/")
+    .pop()!
+    .replace(/\.canvas$/i, "");
   const dir = parentOf(canvasPath);
   const written = await api.importFile(dir ? `${dir}/${stem}.${format}` : `${stem}.${format}`, bytes);
   await useWorkspace.getState().open(written.path, { newTab: true });

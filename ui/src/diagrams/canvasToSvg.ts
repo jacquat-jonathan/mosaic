@@ -3,7 +3,17 @@
 // (Markdown emphasis removed), so the file opens anywhere without fonts or scripts.
 
 import { colorOf, type CanvasDoc, type CanvasEdge, type CanvasNode, type Side } from "../viewers/canvas/jsonCanvas";
-import { CSS_SHAPES, OUTLINES, SOLID, dashArray, isEnd, isShape, LABELLESS, type EndName, type ShapeName } from "./shapes";
+import {
+  CSS_SHAPES,
+  OUTLINES,
+  SOLID,
+  dashArray,
+  isEnd,
+  isShape,
+  LABELLESS,
+  type EndName,
+  type ShapeName,
+} from "./shapes";
 import { iconMarkup } from "./icons";
 import { midpoint, roundedPath, routeAround } from "./route";
 import { timingSvg } from "./timing";
@@ -61,7 +71,7 @@ function wrap(lines: string[], width: number): string[] {
     }
     let cur = "";
     for (const word of line.split(" ")) {
-      if (cur && (cur + " " + word).length > max) {
+      if (cur && `${cur} ${word}`.length > max) {
         out.push(cur);
         cur = word;
       } else cur = cur ? `${cur} ${word}` : word;
@@ -71,14 +81,28 @@ function wrap(lines: string[], width: number): string[] {
   return out;
 }
 
-function textBlock(lines: string[], x: number, y: number, w: number, h: number, t: Theme, centred: boolean, bold = false): string {
+function textBlock(
+  lines: string[],
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  t: Theme,
+  centred: boolean,
+  bold = false,
+): string {
   const fit = Math.max(1, Math.floor((h - 8) / LINE));
-  const shown = wrap(lines, w - 16).filter((l, i, all) => l !== "" || (i > 0 && i < all.length - 1)).slice(0, fit);
+  const shown = wrap(lines, w - 16)
+    .filter((l, i, all) => l !== "" || (i > 0 && i < all.length - 1))
+    .slice(0, fit);
   const top = centred ? y + h / 2 - (shown.length * LINE) / 2 + LINE * 0.72 : y + 8 + LINE * 0.72;
   const anchor = centred ? `text-anchor="middle"` : "";
   const tx = centred ? x + w / 2 : x + 10;
   return shown
-    .map((l, i) => `<text x="${tx}" y="${(top + i * LINE).toFixed(1)}" ${anchor} font-size="${FONT}" fill="${t.fg}"${bold && i === 0 ? ' font-weight="600"' : ""}>${esc(l)}</text>`)
+    .map(
+      (l, i) =>
+        `<text x="${tx}" y="${(top + i * LINE).toFixed(1)}" ${anchor} font-size="${FONT}" fill="${t.fg}"${bold && i === 0 ? ' font-weight="600"' : ""}>${esc(l)}</text>`,
+    )
     .join("");
 }
 
@@ -106,7 +130,8 @@ function shapeSvg(n: CanvasNode, shape: ShapeName, t: Theme): string {
   } else if (radius !== undefined) {
     const solid = SOLID.has(shape);
     const f = solid ? stroke : shape === "frame" ? "none" : fill;
-    if (radius === "50%") body = `<ellipse cx="${x + w / 2}" cy="${y + h / 2}" rx="${w / 2}" ry="${h / 2}" fill="${f}" ${sw}/>`;
+    if (radius === "50%")
+      body = `<ellipse cx="${x + w / 2}" cy="${y + h / 2}" rx="${w / 2}" ry="${h / 2}" fill="${f}" ${sw}/>`;
     else {
       const r = radius === "9999px" ? h / 2 : parseFloat(radius) || 0;
       body = `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${r}" fill="${f}" ${sw}/>`;
@@ -122,14 +147,22 @@ function shapeSvg(n: CanvasNode, shape: ShapeName, t: Theme): string {
   const lines = plainLines(n.text ?? "");
   const icon = iconSvg(n, color ?? t.fg);
   if (icon.svg) return body + icon.svg + textBlock(lines, x, y + icon.height, w, h - icon.height, t, true);
-  if (shape === "timing") return body + timingSvg(n.text ?? "", x, y, w, h, { stroke: color ?? t.fg, fg: t.fg, muted: t.muted, grid: t.card });
+  if (shape === "timing")
+    return (
+      body + timingSvg(n.text ?? "", x, y, w, h, { stroke: color ?? t.fg, fg: t.fg, muted: t.muted, grid: t.card })
+    );
   if (shape === "class") {
     // Compartments: name (centred, bold), then members, divided by lines.
     const parts = (n.text ?? "").split(/^[ \t]*-{3,}[ \t]*$/m).map((p) => plainLines(p.trim()));
     let cy = y;
     const out: string[] = [body];
     parts.forEach((p, i) => {
-      const ph = i === 0 ? Math.max(34, p.length * LINE + 12) : i === parts.length - 1 ? y + h - cy : Math.max(LINE + 10, p.length * LINE + 10);
+      const ph =
+        i === 0
+          ? Math.max(34, p.length * LINE + 12)
+          : i === parts.length - 1
+            ? y + h - cy
+            : Math.max(LINE + 10, p.length * LINE + 10);
       if (i > 0) out.push(`<line x1="${x}" y1="${cy}" x2="${x + w}" y2="${cy}" stroke="${stroke}" stroke-width="2"/>`);
       out.push(textBlock(p, x, cy, w, ph, t, i === 0, i === 0));
       cy += ph;
@@ -154,7 +187,10 @@ function cardSvg(n: CanvasNode, t: Theme): string {
   const frame = `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="10" fill="${color ? `${color}14` : t.bg}" stroke="${color ?? t.card}" stroke-width="2"/>`;
   if (n.type === "file") {
     const name = (n.file ?? "").split("/").pop()!.replace(/\.md$/, "");
-    return frame + `<text x="${x + 10}" y="${y + 22}" font-size="13" font-weight="600" fill="${t.fg}">${esc(name)}</text><text x="${x + 10}" y="${y + 42}" font-size="12" fill="${t.muted}">${esc(n.file ?? "")}</text>`;
+    return (
+      frame +
+      `<text x="${x + 10}" y="${y + 22}" font-size="13" font-weight="600" fill="${t.fg}">${esc(name)}</text><text x="${x + 10}" y="${y + 42}" font-size="12" fill="${t.muted}">${esc(n.file ?? "")}</text>`
+    );
   }
   if (n.type === "link") return frame + textBlock([n.url ?? ""], x, y, w, h, { ...t, fg: t.muted }, true);
   const text = n.text ?? "";
@@ -204,7 +240,13 @@ function markerDef(end: EndName, color: string, id: string, bg: string): string 
   return `<marker id="${id}" viewBox="0 0 20 20" refX="${refX}" refY="10" markerWidth="16" markerHeight="16" markerUnits="userSpaceOnUse" orient="auto-start-reverse">${shapes[end] ?? ""}</marker>`;
 }
 
-function edgeSvg(e: CanvasEdge, byId: Map<string, CanvasNode>, t: Theme, markers: Map<string, string>, obstacles: CanvasNode[] = []): string {
+function edgeSvg(
+  e: CanvasEdge,
+  byId: Map<string, CanvasNode>,
+  t: Theme,
+  markers: Map<string, string>,
+  obstacles: CanvasNode[] = [],
+): string {
   const a = byId.get(e.fromNode);
   const b = byId.get(e.toNode);
   if (!a || !b) return "";
@@ -274,8 +316,18 @@ export function canvasToSvg(doc: CanvasDoc, dark = false): string {
   const markers = new Map<string, string>();
   const parts = [
     ...nodes.filter(behind).map((n) => (n.type === "group" ? groupSvg(n, t) : shapeSvg(n, "frame", t))),
-    ...doc.edges.map((e) => edgeSvg(e, byId, t, markers, nodes.filter((n) => !behind(n)))),
-    ...nodes.filter((n) => !behind(n)).map((n) => (n.type === "text" && isShape(n.shape) ? shapeSvg(n, n.shape, t) : cardSvg(n, t))),
+    ...doc.edges.map((e) =>
+      edgeSvg(
+        e,
+        byId,
+        t,
+        markers,
+        nodes.filter((n) => !behind(n)),
+      ),
+    ),
+    ...nodes
+      .filter((n) => !behind(n))
+      .map((n) => (n.type === "text" && isShape(n.shape) ? shapeSvg(n, n.shape, t) : cardSvg(n, t))),
   ];
   return [
     `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="${minX} ${minY} ${w} ${h}" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">`,

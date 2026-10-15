@@ -17,7 +17,9 @@ export function PdfViewer({ path, maxPages, compact }: { path: string; maxPages?
     (async () => {
       try {
         const url = await fileUrl(path);
-        const data = url.startsWith("data:") ? Uint8Array.from(atob(url.split(",")[1]), (c) => c.charCodeAt(0)) : undefined;
+        const data = url.startsWith("data:")
+          ? Uint8Array.from(atob(url.split(",")[1]), (c) => c.charCodeAt(0))
+          : undefined;
         task = pdfjs.getDocument(data ? { data } : { url });
         const loaded = await task.promise;
         if (live) setDoc(loaded);
@@ -31,12 +33,26 @@ export function PdfViewer({ path, maxPages, compact }: { path: string; maxPages?
     };
   }, [path]);
 
-  if (error) return <div className="empty"><p>Couldn't open this PDF: {error}</p></div>;
-  if (!doc) return <div className="empty"><p>Loading PDF…</p></div>;
+  if (error)
+    return (
+      <div className="empty">
+        <p>Couldn't open this PDF: {error}</p>
+      </div>
+    );
+  if (!doc)
+    return (
+      <div className="empty">
+        <p>Loading PDF…</p>
+      </div>
+    );
   const count = Math.min(doc.numPages, maxPages ?? doc.numPages);
   return (
     <div className={compact ? "pdf-viewer compact" : "pdf-viewer"}>
-      {!compact && <div className="pdf-meta">{doc.numPages} page{doc.numPages === 1 ? "" : "s"}</div>}
+      {!compact && (
+        <div className="pdf-meta">
+          {doc.numPages} page{doc.numPages === 1 ? "" : "s"}
+        </div>
+      )}
       {Array.from({ length: count }, (_, i) => (
         <PdfPage key={i} doc={doc} number={i + 1} />
       ))}
@@ -53,7 +69,9 @@ function PdfPage({ doc, number }: { doc: pdfjs.PDFDocumentProxy; number: number 
   useEffect(() => {
     const el = holder.current;
     if (!el || visible) return;
-    const io = new IntersectionObserver((es) => es.some((e) => e.isIntersecting) && setVisible(true), { rootMargin: "600px" });
+    const io = new IntersectionObserver((es) => es.some((e) => e.isIntersecting) && setVisible(true), {
+      rootMargin: "600px",
+    });
     io.observe(el);
     return () => io.disconnect();
   }, [visible]);

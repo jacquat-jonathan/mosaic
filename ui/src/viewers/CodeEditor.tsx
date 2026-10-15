@@ -14,9 +14,15 @@ function useLanguage(path: string): LanguageSupport | null | undefined {
   useEffect(() => {
     let live = true;
     const name = path.split("/").pop() ?? path;
-    const desc = languages.find((l) => l.extensions.some((e) => name.toLowerCase().endsWith(`.${e}`)) || l.filename?.test(name));
+    const desc = languages.find(
+      (l) => l.extensions.some((e) => name.toLowerCase().endsWith(`.${e}`)) || l.filename?.test(name),
+    );
     if (!desc) setLang(null);
-    else desc.load().then((l) => live && setLang(l), () => live && setLang(null));
+    else
+      desc.load().then(
+        (l) => live && setLang(l),
+        () => live && setLang(null),
+      );
     return () => {
       live = false;
     };
@@ -29,15 +35,25 @@ export function CodeEditor({ buffer, wrap }: { buffer: Buffer; wrap?: boolean })
   const path = buffer.path;
   const lang = useLanguage(path);
   const readOnly = (buffer.content?.length ?? 0) > LARGE_FILE_BYTES;
-  const numbers = useSettings(s => s.sourceLineNumbers);
+  const numbers = useSettings((s) => s.sourceLineNumbers);
   const extensions = useMemo(
-    () => (lang === undefined ? null : [codeExtensions(lang, (t) => useWorkspace.getState().edit(path, t), readOnly, wrap), numbers ? lineNumbers() : []]),
+    () =>
+      lang === undefined
+        ? null
+        : [
+            codeExtensions(lang, (t) => useWorkspace.getState().edit(path, t), readOnly, wrap),
+            numbers ? lineNumbers() : [],
+          ],
     [lang, path, readOnly, wrap, numbers],
   );
   if (!extensions) return null;
   return (
     <div className="code-scroll">
-      {readOnly && <div className="notice warn"><span>This file is larger than 5 MB and opened read-only.</span></div>}
+      {readOnly && (
+        <div className="notice warn">
+          <span>This file is larger than 5 MB and opened read-only.</span>
+        </div>
+      )}
       <CodeMirror className="code-editor" doc={buffer.content ?? ""} version={buffer.version} extensions={extensions} />
     </div>
   );

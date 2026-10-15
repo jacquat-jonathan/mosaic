@@ -53,7 +53,16 @@ interface Confirm {
   resolve(ok: boolean): void;
 }
 
-export type SettingsSection = "appearance" | "editor" | "vault" | "templates" | "calendar" | "workspace" | "ai" | "shortcuts" | "about";
+export type SettingsSection =
+  | "appearance"
+  | "editor"
+  | "vault"
+  | "templates"
+  | "calendar"
+  | "workspace"
+  | "ai"
+  | "shortcuts"
+  | "about";
 
 export type SidebarTab = "files" | "search" | "tags" | "bookmarks" | "activity";
 
@@ -77,12 +86,20 @@ export const clampPanel = (w: number) => Math.round(Math.max(PANEL_MIN, Math.min
 
 function loadPrefs(): Prefs {
   const defaults = appPrefs();
-  const d: Prefs = { destination: "notes", sidebarWidth: defaults.sidebarWidth, rightWidth: defaults.contextWidth, leftSidebar: defaults.sidebarVisible, rightPanel: defaults.contextVisible };
+  const d: Prefs = {
+    destination: "notes",
+    sidebarWidth: defaults.sidebarWidth,
+    rightWidth: defaults.contextWidth,
+    leftSidebar: defaults.sidebarVisible,
+    rightPanel: defaults.contextVisible,
+  };
   try {
     const saved = JSON.parse(localStorage.getItem(PREFS_KEY) ?? "null") as Partial<Prefs> | null;
     if (!saved) return d;
     return {
-      destination: ["notes", "find", "plan", "ai"].includes(saved.destination ?? "") ? saved.destination! : d.destination,
+      destination: ["notes", "find", "plan", "ai"].includes(saved.destination ?? "")
+        ? saved.destination!
+        : d.destination,
       sidebarWidth: typeof saved.sidebarWidth === "number" ? clampPanel(saved.sidebarWidth) : d.sidebarWidth,
       rightWidth: typeof saved.rightWidth === "number" ? clampPanel(saved.rightWidth) : d.rightWidth,
       leftSidebar: saved.leftSidebar ?? d.leftSidebar,
@@ -143,20 +160,40 @@ const prefs = loadPrefs();
 export const useUi = create<UiState>((set, get) => ({
   newNote: null,
   destination: prefs.destination,
-  selectDestination: (destination) => set((s) => ({ destination, leftSidebar: s.destination === destination ? !s.leftSidebar : true })),
-  openView: (kind, id) => { void useWorkspace.getState().open(viewPath(kind, id), { newTab: true }); },
+  selectDestination: (destination) =>
+    set((s) => ({ destination, leftSidebar: s.destination === destination ? !s.leftSidebar : true })),
+  openView: (kind, id) => {
+    void useWorkspace.getState().open(viewPath(kind, id), { newTab: true });
+  },
   sidebarTab: "files",
   searchQuery: "",
   searchFocus: 0,
   switcher: false,
   settings: null,
-  openSettings: (section = "appearance") => { set({ settings: section, menu: null, picker: null, ...(section === "ai" ? { destination: "ai" as const, leftSidebar: true } : {}) }); get().openView(section === "ai" ? "connections" : "settings"); },
+  openSettings: (section = "appearance") => {
+    set({
+      settings: section,
+      menu: null,
+      picker: null,
+      ...(section === "ai" ? { destination: "ai" as const, leftSidebar: true } : {}),
+    });
+    get().openView(section === "ai" ? "connections" : "settings");
+  },
   closeSettings: () => set({ settings: null }),
   history: null,
   openHistory: (path, focus) => set({ history: { path, focus }, menu: null, picker: null }),
   closeHistory: () => set({ history: null }),
   rightPanel: prefs.rightPanel,
-  showChat: () => { set({ destination: "ai", leftSidebar: true }); const active = useWorkspace.getState().activePath(); const note = active && !isSpecialTab(active) ? active : null; const id = useChat.getState().create(note ? [note] : []); const selected = note ? noteSelection(note) : null; if (selected && selected.text.length <= 20000) useChat.getState().update(id, { selection: { path: selected.path, text: selected.text } }); get().openView("chat", id); },
+  showChat: () => {
+    set({ destination: "ai", leftSidebar: true });
+    const active = useWorkspace.getState().activePath();
+    const note = active && !isSpecialTab(active) ? active : null;
+    const id = useChat.getState().create(note ? [note] : []);
+    const selected = note ? noteSelection(note) : null;
+    if (selected && selected.text.length <= 20000)
+      useChat.getState().update(id, { selection: { path: selected.path, text: selected.text } });
+    get().openView("chat", id);
+  },
   leftSidebar: prefs.leftSidebar,
   sidebarWidth: prefs.sidebarWidth,
   rightWidth: prefs.rightWidth,
@@ -166,10 +203,23 @@ export const useUi = create<UiState>((set, get) => ({
   picker: null,
   openPicker: (picker) => set({ picker, menu: null }),
   closePicker: () => set({ picker: null }),
-  setSidebarTab: (sidebarTab) => { set({ sidebarTab, destination: sidebarTab === "files" ? "notes" : sidebarTab === "activity" ? "ai" : "find", leftSidebar: true }); if (sidebarTab === "activity") get().openView("activity"); },
+  setSidebarTab: (sidebarTab) => {
+    set({
+      sidebarTab,
+      destination: sidebarTab === "files" ? "notes" : sidebarTab === "activity" ? "ai" : "find",
+      leftSidebar: true,
+    });
+    if (sidebarTab === "activity") get().openView("activity");
+  },
   setSearchQuery: (searchQuery) => set({ searchQuery }),
   showSearch: (q) =>
-    set((s) => ({ destination: "find", sidebarTab: "search", leftSidebar: true, searchQuery: q ?? s.searchQuery, searchFocus: s.searchFocus + 1 })),
+    set((s) => ({
+      destination: "find",
+      sidebarTab: "search",
+      leftSidebar: true,
+      searchQuery: q ?? s.searchQuery,
+      searchFocus: s.searchFocus + 1,
+    })),
   setSwitcher: (switcher) => set({ switcher }),
   toggleRightPanel: () => set((s) => ({ rightPanel: !s.rightPanel })),
   menu: null,
@@ -200,7 +250,13 @@ useUi.subscribe((s, prev) => {
   )
     return;
   try {
-    const p: Prefs = { destination: s.destination, sidebarWidth: s.sidebarWidth, rightWidth: s.rightWidth, leftSidebar: s.leftSidebar, rightPanel: s.rightPanel };
+    const p: Prefs = {
+      destination: s.destination,
+      sidebarWidth: s.sidebarWidth,
+      rightWidth: s.rightWidth,
+      leftSidebar: s.leftSidebar,
+      rightPanel: s.rightPanel,
+    };
     localStorage.setItem(PREFS_KEY, JSON.stringify(p));
   } catch {
     // Storage unavailable: sizes just aren't remembered.

@@ -35,12 +35,12 @@ fn changed(
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn planner_summary(state: State<AppState>) -> CmdResult<PlannerSummary> {
     state.get()?.planner_summary()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn planner_activity(
     state: State<AppState>,
     entity_kind: String,
@@ -49,7 +49,7 @@ pub(crate) fn planner_activity(
     state.get()?.planner_activity(&entity_kind, &entity_id)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn planner_epics(
     state: State<AppState>,
     include_archived: bool,
@@ -60,7 +60,7 @@ pub(crate) fn planner_epics(
         .planner_epics(include_archived, include_trashed)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn planner_tasks(
     state: State<AppState>,
     include_archived: bool,
@@ -71,7 +71,7 @@ pub(crate) fn planner_tasks(
         .planner_tasks(include_archived, include_trashed)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn planner_create_epic(
     app: AppHandle,
     state: State<AppState>,
@@ -83,7 +83,7 @@ pub(crate) fn planner_create_epic(
     Ok(epic)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn planner_update_epic(
     app: AppHandle,
     state: State<AppState>,
@@ -98,7 +98,7 @@ pub(crate) fn planner_update_epic(
 
 macro_rules! epic_lifecycle {
     ($name:ident, $method:ident) => {
-        #[tauri::command]
+        #[tauri::command(async)]
         pub(crate) fn $name(
             app: AppHandle,
             state: State<AppState>,
@@ -117,7 +117,7 @@ epic_lifecycle!(planner_archive_epic, archive_planner_epic);
 epic_lifecycle!(planner_restore_epic, restore_planner_epic);
 epic_lifecycle!(planner_trash_epic, trash_planner_epic);
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn planner_create_task(
     app: AppHandle,
     state: State<AppState>,
@@ -129,7 +129,7 @@ pub(crate) fn planner_create_task(
     Ok(task)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn planner_update_task(
     app: AppHandle,
     state: State<AppState>,
@@ -142,7 +142,7 @@ pub(crate) fn planner_update_task(
     Ok(task)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn planner_move_task(
     app: AppHandle,
     state: State<AppState>,
@@ -155,7 +155,7 @@ pub(crate) fn planner_move_task(
     Ok(task)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn planner_complete_task(
     app: AppHandle,
     state: State<AppState>,
@@ -177,7 +177,7 @@ pub(crate) fn planner_complete_task(
 
 macro_rules! task_lifecycle {
     ($name:ident, $method:ident) => {
-        #[tauri::command]
+        #[tauri::command(async)]
         pub(crate) fn $name(
             app: AppHandle,
             state: State<AppState>,
@@ -197,7 +197,7 @@ task_lifecycle!(planner_archive_task, archive_planner_task);
 task_lifecycle!(planner_restore_task, restore_planner_task);
 task_lifecycle!(planner_trash_task, trash_planner_task);
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn planner_work_sessions(
     state: State<AppState>,
     task_id: Option<String>,
@@ -208,7 +208,7 @@ pub(crate) fn planner_work_sessions(
         .planner_work_sessions(task_id.as_deref(), include_cancelled)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn planner_create_work_session(
     app: AppHandle,
     state: State<AppState>,
@@ -224,7 +224,7 @@ pub(crate) fn planner_create_work_session(
     Ok(session)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn planner_update_work_session(
     app: AppHandle,
     state: State<AppState>,
@@ -241,7 +241,7 @@ pub(crate) fn planner_update_work_session(
     Ok(session)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn planner_cancel_work_session(
     app: AppHandle,
     state: State<AppState>,
@@ -258,7 +258,7 @@ pub(crate) fn planner_cancel_work_session(
     Ok(session)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn planner_calendar_range(
     state: State<AppState>,
     from: String,
@@ -267,7 +267,7 @@ pub(crate) fn planner_calendar_range(
     state.get()?.planner_calendar_range(&from, &to)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn planner_events(
     state: State<AppState>,
     include_archived: bool,
@@ -278,7 +278,7 @@ pub(crate) fn planner_events(
         .planner_events(include_archived, include_trashed)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn planner_create_event(
     app: AppHandle,
     state: State<AppState>,
@@ -290,7 +290,7 @@ pub(crate) fn planner_create_event(
     Ok(event)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn planner_update_event(
     app: AppHandle,
     state: State<AppState>,
@@ -305,7 +305,7 @@ pub(crate) fn planner_update_event(
 
 macro_rules! event_lifecycle {
     ($name:ident, $method:ident) => {
-        #[tauri::command]
+        #[tauri::command(async)]
         pub(crate) fn $name(
             app: AppHandle,
             state: State<AppState>,
@@ -324,7 +324,7 @@ event_lifecycle!(planner_archive_event, archive_planner_event);
 event_lifecycle!(planner_restore_event, restore_planner_event);
 event_lifecycle!(planner_trash_event, trash_planner_event);
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn planner_cancel_event_occurrence(
     app: AppHandle,
     state: State<AppState>,
@@ -342,7 +342,7 @@ pub(crate) fn planner_cancel_event_occurrence(
     Ok(event)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn planner_replace_event_occurrence(
     app: AppHandle,
     state: State<AppState>,
@@ -362,14 +362,14 @@ pub(crate) fn planner_replace_event_occurrence(
     Ok(event)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn planner_migration_preview(
     state: State<AppState>,
 ) -> CmdResult<MarkdownImportPreview> {
     state.get()?.preview_markdown_planner_import()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn planner_import_markdown(
     app: AppHandle,
     state: State<AppState>,
@@ -391,7 +391,7 @@ pub(crate) fn planner_import_markdown(
     Ok(result)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn planner_ical_preview(
     state: State<AppState>,
     source_kind: String,
@@ -403,7 +403,7 @@ pub(crate) fn planner_ical_preview(
         .preview_planner_ical_import(&source_kind, &content, &fallback_timezone)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn planner_ical_import(
     app: AppHandle,
     state: State<AppState>,
@@ -417,12 +417,12 @@ pub(crate) fn planner_ical_import(
     Ok(result)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn planner_ical_export(state: State<AppState>) -> CmdResult<String> {
     state.get()?.export_planner_ical()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn planner_ical_export_file(state: State<AppState>, path: String) -> CmdResult<String> {
     let content = state.get()?.export_planner_ical()?;
     let destination = std::path::PathBuf::from(&path);
@@ -438,7 +438,7 @@ pub(crate) fn planner_ical_export_file(state: State<AppState>, path: String) -> 
     Ok(destination.display().to_string())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn planner_export(state: State<AppState>, format: String) -> CmdResult<String> {
     match format.as_str() {
         "json" => state.get()?.export_planner_json(),
@@ -447,7 +447,7 @@ pub(crate) fn planner_export(state: State<AppState>, format: String) -> CmdResul
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn planner_export_file(
     state: State<AppState>,
     format: String,
@@ -471,7 +471,7 @@ pub(crate) fn planner_export_file(
     Ok(destination.display().to_string())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn planner_restore_backup(path: String) -> CmdResult<String> {
     PlannerStore::restore_last_backup(std::path::Path::new(&path))
         .map(|restored| restored.display().to_string())

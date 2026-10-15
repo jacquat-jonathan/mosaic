@@ -1,5 +1,7 @@
-// Packages an already-built universal app. Private keys are generated artifacts, never committed.
-import { createHash, createPrivateKey, createPublicKey, sign, verify } from "node:crypto";
+// Packages an already-built universal app: the DMG, the update archive, its manifest and checksums.
+// It needs no key: scripts/sign-release.mjs signs the manifest, in CI in a separate protected job.
+// Locally, with MOSAIC_RELEASE_PRIVATE_KEY or MOSAIC_RELEASE_KEY_FILE set, it signs right after.
+import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, symlinkSync, readdirSync, lstatSync, realpathSync, createReadStream } from "node:fs";
 import { resolve, join, dirname } from "node:path";
 import { tmpdir } from "node:os";
@@ -11,11 +13,6 @@ const config = JSON.parse(readFileSync(join(root, "src-tauri/tauri.conf.json")))
 const version = config.version;
 assert.match(version, /^\d+\.\d+\.\d+$/);
 const bundle = resolve(process.argv[2] ?? join(root, "target/universal-apple-darwin/release/bundle/macos/Mosaic.app"));
-const pem = process.env.MOSAIC_RELEASE_PRIVATE_KEY ?? (process.env.MOSAIC_RELEASE_KEY_FILE ? readFileSync(process.env.MOSAIC_RELEASE_KEY_FILE) : null);
-assert(pem, "A release signing key is required; unsigned update assets must not be published");
-const privateKey = createPrivateKey(pem);
-const publicKey = createPublicKey(privateKey);
-assert.equal(publicKey.export({type:"spki",format:"der"}).subarray(-32).toString("hex"), readFileSync(join(root,"src-tauri/release-public-key.hex"),"utf8").trim(), "The release key must match the app's embedded trust root");
 const run = (cmd, args) => execFileSync(cmd, args, {encoding:"utf8", stdio:["ignore","pipe","pipe"]}).trim();
 const plist = field => run("/usr/bin/plutil", ["-extract", field, "raw", "-o", "-", join(bundle,"Contents/Info.plist")]);
 assert.equal(plist("CFBundleIdentifier"), config.identifier);
@@ -49,9 +46,10 @@ const sha = async path => { const hash=createHash("sha256"); for await(const chu
 const archiveHash = await sha(join(out,archive));
 const { statSync } = await import("node:fs");
 const manifest = Buffer.from(JSON.stringify({version,bundle_id:config.identifier,minimum_macos:"12.0",architectures:["arm64","x86_64"],archive,sha256:archiveHash,size:statSync(join(out,archive)).size,date,notes})+"\n");
-const signature = sign(null,manifest,privateKey); assert(verify(null,manifest,publicKey,signature));
 writeFileSync(join(out,"manifest.json"),manifest);
-writeFileSync(join(out,"manifest.sig"),signature.toString("base64"));
 writeFileSync(join(out,"SHA256SUMS"),`${await sha(join(out,dmg))}  ${dmg}\n${archiveHash}  ${archive}\n`);
 writeFileSync(join(out,"release-notes.md"),notes.map(note=>`- ${note}`).join("\n")+"\n\nDownload the universal DMG, drag Mosaic to Applications, and launch it there. macOS 12+; Intel and Apple Silicon. Ad-hoc signed, not Apple-notarized. See README for the app-specific first-launch approval.\n");
-console.log(`Packaged signed release assets: ${out}`);
+console.log(`Packaged release assets: ${out}`);
+if (process.env.MOSAIC_RELEASE_PRIVATE_KEY || process.env.MOSAIC_RELEASE_KEY_FILE)
+  execFileSync(process.execPath, [join(root, "scripts/sign-release.mjs"), out], { stdio: "inherit" });
+else console.log("Not signed yet: run scripts/sign-release.mjs before publishing.");

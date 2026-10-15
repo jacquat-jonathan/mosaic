@@ -1,8 +1,38 @@
-import { Compartment, EditorSelection, EditorState, Prec, type Extension, type SelectionRange } from "@codemirror/state";
-import { EditorView, ViewPlugin, type ViewUpdate, drawSelection, dropCursor, keymap, highlightSpecialChars, rectangularSelection } from "@codemirror/view";
+import {
+  Compartment,
+  EditorSelection,
+  EditorState,
+  Prec,
+  type Extension,
+  type SelectionRange,
+} from "@codemirror/state";
+import {
+  EditorView,
+  ViewPlugin,
+  type ViewUpdate,
+  drawSelection,
+  dropCursor,
+  keymap,
+  highlightSpecialChars,
+  rectangularSelection,
+} from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
-import { bracketMatching, indentOnInput, syntaxHighlighting, HighlightStyle, type LanguageSupport } from "@codemirror/language";
-import { closeBrackets, closeBracketsKeymap, autocompletion, completionKeymap, acceptCompletion, type CompletionContext, type CompletionResult } from "@codemirror/autocomplete";
+import {
+  bracketMatching,
+  indentOnInput,
+  syntaxHighlighting,
+  HighlightStyle,
+  type LanguageSupport,
+} from "@codemirror/language";
+import {
+  closeBrackets,
+  closeBracketsKeymap,
+  autocompletion,
+  completionKeymap,
+  acceptCompletion,
+  type CompletionContext,
+  type CompletionResult,
+} from "@codemirror/autocomplete";
 import { highlightSelectionMatches, search, searchKeymap } from "@codemirror/search";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { languages } from "@codemirror/language-data";
@@ -14,7 +44,6 @@ import { prefs, useSettings } from "../state/settings";
 import { slashCompletion, slashIcon } from "./slashMenu";
 import { sectionDrag } from "./sectionDrag";
 import { selectionFormatting } from "./selectionToolbar";
-
 
 const highlight = HighlightStyle.define([
   { tag: t.keyword, class: "tok-keyword" },
@@ -39,7 +68,12 @@ const highlight = HighlightStyle.define([
  * Markdown lines away. One key press must never cross more than one logical line; wrapped text still
  * uses CodeMirror's normal visual movement whenever it stays on this or the adjacent line.
  */
-export function clampVerticalTarget(state: EditorState, start: SelectionRange, moved: SelectionRange, forward: boolean): SelectionRange {
+export function clampVerticalTarget(
+  state: EditorState,
+  start: SelectionRange,
+  moved: SelectionRange,
+  forward: boolean,
+): SelectionRange {
   const from = state.doc.lineAt(start.head);
   const to = state.doc.lineAt(moved.head);
   if (Math.abs(to.number - from.number) <= 1) return moved;
@@ -49,15 +83,25 @@ export function clampVerticalTarget(state: EditorState, start: SelectionRange, m
 }
 
 function moveLine(view: EditorView, forward: boolean, extend: boolean): boolean {
-  const selection = EditorSelection.create(view.state.selection.ranges.map((original) => {
-    if (!extend && !original.empty) return EditorSelection.cursor(forward ? original.to : original.from);
-    let range = original;
-    if (extend && range.undirectional && (range.head >= range.anchor) !== forward) range = EditorSelection.range(range.head, range.anchor);
-    const moved = clampVerticalTarget(view.state, range, view.moveVertically(range, forward), forward);
-    return extend
-      ? EditorSelection.range(range.anchor, moved.head, moved.goalColumn ?? undefined, moved.bidiLevel ?? undefined, moved.assoc)
-      : moved;
-  }), view.state.selection.mainIndex);
+  const selection = EditorSelection.create(
+    view.state.selection.ranges.map((original) => {
+      if (!extend && !original.empty) return EditorSelection.cursor(forward ? original.to : original.from);
+      let range = original;
+      if (extend && range.undirectional && range.head >= range.anchor !== forward)
+        range = EditorSelection.range(range.head, range.anchor);
+      const moved = clampVerticalTarget(view.state, range, view.moveVertically(range, forward), forward);
+      return extend
+        ? EditorSelection.range(
+            range.anchor,
+            moved.head,
+            moved.goalColumn ?? undefined,
+            moved.bidiLevel ?? undefined,
+            moved.assoc,
+          )
+        : moved;
+    }),
+    view.state.selection.mainIndex,
+  );
   if (selection.eq(view.state.selection, true)) return false;
   view.dispatch({ selection, scrollIntoView: true, userEvent: "select" });
   return true;
@@ -111,7 +155,15 @@ function base(onChange: (text: string) => void): Extension {
     search({ top: true }),
     EditorState.allowMultipleSelections.of(true),
     syntaxHighlighting(highlight),
-    keymap.of([...stableVerticalKeys, ...closeBracketsKeymap, ...defaultKeymap, ...searchKeymap, ...historyKeymap, ...completionKeymap, indentWithTab]),
+    keymap.of([
+      ...stableVerticalKeys,
+      ...closeBracketsKeymap,
+      ...defaultKeymap,
+      ...searchKeymap,
+      ...historyKeymap,
+      ...completionKeymap,
+      indentWithTab,
+    ]),
     changeReporter(onChange),
   ];
 }
@@ -135,7 +187,11 @@ function wikiCompletion(ctx: CompletionContext): CompletionResult | null {
 }
 
 const spellcheck = new Compartment();
-export const spellcheckAttributes = (on: boolean) => ({ spellcheck: on ? "true" : "false", autocorrect: "off", autocapitalize: "off" });
+export const spellcheckAttributes = (on: boolean) => ({
+  spellcheck: on ? "true" : "false",
+  autocorrect: "off",
+  autocapitalize: "off",
+});
 const spellcheckAttrs = (on: boolean) => EditorView.contentAttributes.of(spellcheckAttributes(on));
 
 /** Applies the Spellcheck setting to editors that are already open. */
@@ -191,9 +247,10 @@ export function markdownExtensions(ctx: EditorContext, onChange: (text: string) 
     autocompletion({
       override: [wikiCompletion, slashCompletion],
       icons: false,
-      tooltipClass: state => /^\s*\/[\w -]*$/.test(state.doc.lineAt(state.selection.main.head).text) ? "cm-slash-menu" : "",
-      optionClass: completion => completion.type?.startsWith("mosaic-slash:") ? "cm-slash-option" : "",
-      addToOptions: [{ position: 20, render: completion => slashIcon(completion.type) }],
+      tooltipClass: (state) =>
+        /^\s*\/[\w -]*$/.test(state.doc.lineAt(state.selection.main.head).text) ? "cm-slash-menu" : "",
+      optionClass: (completion) => (completion.type?.startsWith("mosaic-slash:") ? "cm-slash-option" : ""),
+      addToOptions: [{ position: 20, render: (completion) => slashIcon(completion.type) }],
     }),
     Prec.highest(keymap.of([...completionKeymap, { key: "Tab", run: acceptCompletion }])),
     livePreview(),
@@ -206,11 +263,11 @@ export function markdownExtensions(ctx: EditorContext, onChange: (text: string) 
   ];
 }
 
-export function codeExtensions(lang: LanguageSupport | null, onChange: (text: string) => void, readOnly: boolean, wrap = false): Extension {
-  return [
-    base(onChange),
-    lang ?? [],
-    wrap ? EditorView.lineWrapping : [],
-    EditorState.readOnly.of(readOnly),
-  ];
+export function codeExtensions(
+  lang: LanguageSupport | null,
+  onChange: (text: string) => void,
+  readOnly: boolean,
+  wrap = false,
+): Extension {
+  return [base(onChange), lang ?? [], wrap ? EditorView.lineWrapping : [], EditorState.readOnly.of(readOnly)];
 }

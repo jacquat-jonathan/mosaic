@@ -3,27 +3,36 @@
 
 use crate::error::{Error, Result};
 use crate::history::{Action, History, Source, Version};
-use crate::index::{Backlink, Index, OutLink, SearchHit, SyncStats, TagCount};
+use crate::index::{Backlink, Index, OutLink, SearchHit, SyncPlan, SyncStats, TagCount};
 use crate::kind::FileKind;
 use crate::links::{FileSet, markdown_url_for, wiki_text_for};
 use crate::parse::{self, Heading, LinkKind};
 use crate::planner::PlannerStore;
-use crate::settings::{Access, AgentRule, SETTINGS_FILE, Settings, access_for};
+use crate::settings::{Access, AgentRule, SETTINGS_FILE, Settings, access_for, rule_covers};
 use crate::vault::{Entry, FileContent, Vault, Written, normalize};
 use regex::Regex;
 use serde::Serialize;
 use std::collections::{BTreeSet, HashMap};
-use std::sync::{Mutex, MutexGuard};
+use std::sync::{Mutex, MutexGuard, OnceLock};
 
 pub struct Workspace {
     pub vault: Vault,
-    pub(crate) planner: Mutex<PlannerStore>,
+    /// Opened on first use, so a damaged or newer planner never stops notes from working, and
+    /// a vault that never used it gets no `.mosaic/` folder. `None` root: in memory.
+    planner: OnceLock<std::result::Result<Mutex<PlannerStore>, String>>,
+    planner_root: Option<std::path::PathBuf>,
+    /// Set once a full sync finished: only then does the index reflect the whole vault.
+    synced: std::sync::atomic::AtomicBool,
     index: Mutex<Index>,
     /// A read-only connection to the same index for queries, so a long sync doesn't block search.
     /// `None` for an in-memory index (tests), where queries use `index`.
     reader: Option<Mutex<Index>>,
     /// Versions of every file changed through this workspace (see `history`).
-    history: Mutex<History>,
+    /// Opened on first use for `open` (from `history_root`), so reading notes creates nothing.
+    history: OnceLock<Mutex<History>>,
+    history_root: Option<std::path::PathBuf>,
+    /// Why the history is only in memory this session, when it couldn't be opened on disk.
+    history_problem: OnceLock<String>,
     /// Who changes files through this workspace: the app, the CLI or an agent.
     source: Source,
     /// The agent's name (MCP client), once known.
@@ -125,13 +134,16 @@ impl Workspace {
 
     fn with_history(vault: Vault, index: Index, history: History) -> Self {
         let reader = index.open_reader().map(Mutex::new);
-        let planner = PlannerStore::in_memory().expect("in-memory planner");
         Workspace {
             vault,
-            planner: Mutex::new(planner),
+            planner: OnceLock::new(),
+            planner_root: None,
+            synced: Default::default(),
             reader,
             index: Mutex::new(index),
-            history: Mutex::new(history),
+            history: OnceLock::from(Mutex::new(history)),
+            history_root: None,
+            history_problem: OnceLock::new(),
             source: Source::App,
             actor: Mutex::new(None),
             fixed_rules: None,
@@ -172,22 +184,30 @@ impl Workspace {
     }
 
     pub(crate) fn change_allowed(&self, path: &str) -> bool {
-        self.change_allowlist.as_ref().is_none_or(|allowed| {
-            allowed
-                .iter()
-                .any(|p| p.is_empty() || path == p || path.starts_with(&format!("{p}/")))
-        })
+        self.change_allowlist
+            .as_ref()
+            .is_none_or(|allowed| allowed.iter().any(|p| rule_covers(p, path)))
     }
 
-    /// Opens a vault with its index and history in the default cache location (in memory if that fails).
+    /// Opens a vault with its index in Caches (in memory if that fails) and its history in
+    /// Application Support (see `History::open_for`). If the history can't be opened, it's kept
+    /// in memory and `history_warning` says why.
     pub fn open(root: impl AsRef<std::path::Path>) -> Result<Self> {
         let vault = Vault::open(root)?;
         let index = Index::open_for(&vault).or_else(|_| Index::in_memory())?;
-        let history = History::open_for(vault.root()).or_else(|_| History::in_memory())?;
-        let planner = PlannerStore::open(vault.root())?;
-        let mut workspace = Self::with_history(vault, index, history);
-        workspace.planner = Mutex::new(planner);
+        let root = vault.root().to_path_buf();
+        let mut workspace = Self::new(vault, index);
+        workspace.history = OnceLock::new();
+        workspace.history_root = Some(root.clone());
+        workspace.planner_root = Some(root);
         Ok(workspace)
+    }
+
+    /// Why undo history and proposals won't outlast this session, if they won't. Opens the history
+    /// now: the app asks when a vault opens, to show it.
+    pub fn history_warning(&self) -> Option<String> {
+        drop(self.hist());
+        self.history_problem.get().cloned()
     }
 
     /// Who changes files through this workspace (recorded in the history). The app is the default.
@@ -210,7 +230,21 @@ impl Workspace {
     }
 
     pub(crate) fn hist(&self) -> MutexGuard<'_, History> {
-        self.history.lock().unwrap_or_else(|p| p.into_inner())
+        self.history
+            .get_or_init(|| {
+                let opened = match &self.history_root {
+                    Some(root) => History::open_for(root),
+                    None => History::in_memory(),
+                };
+                Mutex::new(opened.unwrap_or_else(|e| {
+                    let _ = self.history_problem.set(format!(
+                        "Undo history and AI proposals can't be saved for this vault, so changes from this session can't be undone after Mosaic quits: {e}"
+                    ));
+                    History::in_memory().expect("in-memory history")
+                }))
+            })
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
     }
 
     pub(crate) fn source(&self) -> Source {
@@ -221,14 +255,22 @@ impl Workspace {
         self.actor.lock().unwrap_or_else(|p| p.into_inner()).clone()
     }
 
-    /// The vault's folder rules for agents (Settings › AI). They never apply to the app.
-    pub(crate) fn rules(&self) -> Vec<AgentRule> {
+    /// The vault's folder rules for agents (Settings › AI). They never apply to the app. When
+    /// settings.json can't be read the rules are unknown, so agents are denied rather than let
+    /// through as if there were none.
+    pub(crate) fn rules(&self) -> Result<Vec<AgentRule>> {
         if self.source == Source::App {
-            Vec::new()
+            Ok(Vec::new())
         } else if let Some(rules) = &self.fixed_rules {
-            rules.clone()
+            Ok(rules.clone())
         } else {
-            Settings::load().agent_rules(self.vault.root())
+            Settings::try_load()
+                .map(|s| s.agent_rules(self.vault.root()))
+                .map_err(|_| {
+                    Error::Denied(
+                        "Mosaic's settings can't be read, so agent access is paused; ask the person to check Settings › AI".into(),
+                    )
+                })
         }
     }
 
@@ -239,7 +281,7 @@ impl Workspace {
     /// A hidden path reads as "not found", so agents can't tell it exists.
     pub(crate) fn check_read(&self, path: &str) -> Result<()> {
         let norm = normalize(path)?;
-        if Self::visible(&self.rules(), &norm) {
+        if Self::visible(&self.rules()?, &self.vault.canonical_rel(&norm)?) {
             Ok(())
         } else {
             Err(Error::NotFound(norm))
@@ -249,15 +291,18 @@ impl Workspace {
     /// Refuses changes to read-only or hidden paths — for a folder, to anything inside it too.
     fn check_write(&self, path: &str) -> Result<()> {
         let norm = normalize(path)?;
-        let rules = self.rules();
-        match access_for(&rules, &norm) {
+        let rules = self.rules()?;
+        // Rules are matched against the on-disk spelling: `private/x.md` opens `Private/x.md`.
+        let real = self.vault.canonical_rel(&norm)?;
+        match access_for(&rules, &real) {
             Some(Access::Hidden) => return Err(Error::NotFound(norm)),
             Some(Access::ReadOnly) => return Err(read_only(&norm)),
             Some(Access::Review) | None => {}
         }
-        if let Some(r) = rules.iter().find(|r| {
-            r.path.starts_with(&format!("{norm}/")) || (norm.is_empty() && !r.path.is_empty())
-        }) {
+        if let Some(r) = rules
+            .iter()
+            .find(|r| !rule_covers(&r.path, &real) && rule_covers(&real, &r.path))
+        {
             return Err(match r.access {
                 Access::ReadOnly => read_only(&r.path),
                 Access::Hidden => {
@@ -315,12 +360,55 @@ impl Workspace {
         self
     }
 
+    /// Opens the planner now rather than on first use: the app does, so a damaged database is
+    /// reported when the vault opens, where it can offer to restore the last backup.
+    pub fn open_planner(&self) -> Result<()> {
+        self.planner().map(drop)
+    }
+
+    /// The planner's store, opened the first time it's needed.
+    pub(crate) fn planner(&self) -> Result<MutexGuard<'_, PlannerStore>> {
+        let store = self.planner.get_or_init(|| {
+            match &self.planner_root {
+                Some(root) => PlannerStore::open(root),
+                None => PlannerStore::in_memory(),
+            }
+            .map(Mutex::new)
+            .map_err(|e| e.to_string())
+        });
+        match store {
+            Ok(m) => Ok(m.lock().unwrap_or_else(|p| p.into_inner())),
+            Err(e) => Err(Error::Invalid(format!("the planner is unavailable: {e}"))),
+        }
+    }
+
     pub fn index(&self) -> MutexGuard<'_, Index> {
         self.index.lock().unwrap_or_else(|p| p.into_inner())
     }
 
-    pub fn sync(&self, progress: impl FnMut(usize, usize)) -> Result<SyncStats> {
-        self.index().sync(&self.vault, progress)
+    /// Brings the index up to date with the disk. The vault is walked without the index lock, and
+    /// files are indexed in batches that each take it briefly, so a write made meanwhile (an
+    /// autosave) waits for one batch at most.
+    pub fn sync(&self, mut progress: impl FnMut(usize, usize)) -> Result<SyncStats> {
+        let known = self.index().known_files()?;
+        let plan = SyncPlan::new(&self.vault, known)?;
+        for batch in plan.batches() {
+            progress(batch.done, plan.total);
+            self.index()
+                .apply_sync(&self.vault, batch.changed, batch.removed)?;
+        }
+        progress(plan.total, plan.total);
+        self.synced
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+        Ok(plan.stats)
+    }
+
+    /// For a watcher keeping the index current: tells other processes they needn't walk the
+    /// vault themselves. Does nothing until the first full sync is done.
+    pub fn heartbeat(&self) {
+        if self.synced.load(std::sync::atomic::Ordering::Relaxed) {
+            self.index().mark_watched();
+        }
     }
 
     /// Re-indexes a path after a change made outside this API (file watcher). A change by another
@@ -341,7 +429,7 @@ impl Workspace {
 
     pub fn list(&self, dir: &str, recursive: bool) -> Result<Vec<Entry>> {
         self.check_read(dir)?;
-        let rules = self.rules();
+        let rules = self.rules()?;
         let mut entries = self.vault.list(dir, recursive)?;
         entries.retain(|e| Self::visible(&rules, &e.path));
         Ok(entries)
@@ -781,7 +869,7 @@ impl Workspace {
 
     /// Changes made by agents and the command line, newest first.
     pub fn activity(&self, limit: usize) -> Result<Vec<Version>> {
-        let rules = self.rules();
+        let rules = self.rules()?;
         let mut list = self.hist().activity(limit)?;
         list.retain(|v| Self::visible(&rules, &v.path));
         Ok(list)
@@ -866,7 +954,7 @@ impl Workspace {
     }
 
     pub fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchHit>> {
-        let rules = self.rules();
+        let rules = self.rules()?;
         if rules.is_empty() {
             return self.reading().search(query, limit);
         }
@@ -881,13 +969,13 @@ impl Workspace {
     /// what their folder rules let them see.
     pub fn query(&self, query: &str) -> Result<crate::query::QueryResult> {
         let q = crate::query::parse(query)?;
-        let rules = self.rules();
+        let rules = self.rules()?;
         q.run(&self.reading(), |p| Self::visible(&rules, p))
     }
 
     pub fn backlinks(&self, path: &str) -> Result<Vec<Backlink>> {
         self.check_read(path)?;
-        let rules = self.rules();
+        let rules = self.rules()?;
         let mut list = self.reading().backlinks(&normalize(path)?)?;
         list.retain(|b| Self::visible(&rules, &b.source));
         Ok(list)
@@ -895,7 +983,7 @@ impl Workspace {
 
     /// Tags with counts. With hidden folders, only notes agents can see are counted.
     pub fn tags(&self) -> Result<Vec<TagCount>> {
-        let rules = self.rules();
+        let rules = self.rules()?;
         let all = self.reading().tags()?;
         if !rules.iter().any(|r| r.access == Access::Hidden) {
             return Ok(all);
@@ -911,7 +999,7 @@ impl Workspace {
     }
 
     pub fn paths_with_tag(&self, tag: &str) -> Result<Vec<String>> {
-        let rules = self.rules();
+        let rules = self.rules()?;
         let mut paths = self.reading().paths_with_tag(tag)?;
         paths.retain(|p| Self::visible(&rules, p));
         Ok(paths)
@@ -936,7 +1024,7 @@ impl Workspace {
             .into_iter()
             .map(|b| b.source)
             .collect();
-        let rules = self.rules();
+        let rules = self.rules()?;
         let mut out = Vec::new();
         let mut seen = BTreeSet::new();
         for n in &names {
@@ -1036,7 +1124,7 @@ impl Workspace {
                 vec![],
             ),
         };
-        let rules = self.rules();
+        let rules = self.rules()?;
         let index = self.reading();
         let mut backlinks = index.backlinks(&file.path)?;
         backlinks.retain(|b| Self::visible(&rules, &b.source));
@@ -1122,7 +1210,7 @@ impl Workspace {
                 .map(|e| e.path)
                 .collect();
             // Links are rewritten in other notes; an agent may not change read-only ones that way.
-            let rules = self.rules();
+            let rules = self.rules()?;
             let blocked: Vec<&String> = sources
                 .iter()
                 .filter(|p| access_for(&rules, p).is_some())
@@ -1383,6 +1471,7 @@ fn settings_error(e: std::io::Error) -> Error {
 mod tests {
     use super::*;
     use crate::index::tests::fixture;
+    use std::time::Duration;
 
     fn ws() -> (tempfile::TempDir, Workspace) {
         let (d, v) = fixture();
@@ -1393,6 +1482,78 @@ mod tests {
 
     fn text(w: &Workspace, p: &str) -> String {
         w.read(p).unwrap().content.unwrap()
+    }
+
+    #[test]
+    fn the_app_heartbeat_tells_other_processes_the_index_is_current() {
+        let (d, v) = fixture();
+        let db = d.path().join(".cache/index.db");
+        std::fs::create_dir_all(db.parent().unwrap()).unwrap();
+        let w = Workspace::new(v, Index::open_at(&db).unwrap());
+        let other = Index::open_at(&db).unwrap();
+        // Not before the first full sync: the index may still be incomplete.
+        w.heartbeat();
+        assert!(!other.watched_within(Duration::from_secs(5)));
+        w.sync(|_, _| {}).unwrap();
+        w.heartbeat();
+        assert!(other.watched_within(Duration::from_secs(5)));
+        assert!(!other.watched_within(Duration::ZERO));
+        // An in-memory index has no heartbeat to share.
+        assert!(
+            !Index::in_memory()
+                .unwrap()
+                .watched_within(Duration::from_secs(5))
+        );
+    }
+
+    #[test]
+    fn a_history_that_cant_open_is_reported_not_silently_lost() {
+        let (d, _) = fixture();
+        std::fs::create_dir_all(d.path().join(".mosaic")).unwrap();
+        std::fs::write(d.path().join(".mosaic/vault.json"), "{ half").unwrap();
+        let w = Workspace::open(d.path()).unwrap();
+        let warning = w.history_warning().expect("a warning");
+        assert!(warning.contains("vault.json"), "{warning}");
+        // Notes still work, with history for this session only.
+        w.write("Ideas.md", "changed", None).unwrap();
+        assert!(!w.history("Ideas.md", 5).unwrap().is_empty());
+        assert_eq!(
+            std::fs::read_to_string(d.path().join(".mosaic/vault.json")).unwrap(),
+            "{ half"
+        );
+    }
+
+    #[test]
+    fn sync_lets_writes_in_between_batches() {
+        let (d, v) = fixture();
+        for i in 0..600 {
+            std::fs::write(d.path().join(format!("n{i}.md")), format!("# N{i}\n")).unwrap();
+        }
+        let w = Workspace::new(v, Index::in_memory().unwrap());
+        let mut calls = 0;
+        let stats = w
+            .sync(|done, total| {
+                calls += 1;
+                assert!(done <= total);
+                // Between batches the index is free, so an autosave doesn't wait for the whole walk.
+                assert!(w.index.try_lock().is_ok(), "index locked during progress");
+            })
+            .unwrap();
+        assert!(calls >= 3, "{calls} progress calls");
+        assert!(stats.indexed >= 600);
+        assert_eq!(w.search("N599", 5).unwrap()[0].path, "n599.md");
+        // Files that disappear while it runs aren't indexed as ghosts.
+        std::fs::write(d.path().join("gone.md"), "x").unwrap();
+        let again = w
+            .sync(|_, _| std::fs::remove_file(d.path().join("gone.md")).unwrap_or(()))
+            .unwrap();
+        assert_eq!(again.unchanged, stats.indexed);
+        assert!(
+            w.search("x", 5)
+                .unwrap()
+                .iter()
+                .all(|h| h.path != "gone.md")
+        );
     }
 
     #[test]

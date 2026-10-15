@@ -3,43 +3,87 @@ on:
   push:
     tags: ['v*']
   workflow_dispatch:
-permissions:
-  contents: write
+# Each job asks for what it needs. Third-party actions are pinned by commit; Dependabot bumps them.
+permissions: {}
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 jobs:
-  package:
+  # Installs every npm and Cargo dependency and runs their build scripts and tests, so it gets no
+  # secrets and can't publish. Its output is the unsigned release assets.
+  build:
     runs-on: macos-15
+    permissions:
+      contents: read
     env:
       MACOSX_DEPLOYMENT_TARGET: '12.0'
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: '24'
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
         with:
           version: '12'
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master, 2026-09-11
         with:
+          toolchain: stable
           targets: aarch64-apple-darwin,x86_64-apple-darwin
           components: clippy,rustfmt
+      - id: version
+        run: echo "version=$(node -p 'JSON.parse(require("fs").readFileSync("src-tauri/tauri.conf.json")).version')" >> "$GITHUB_OUTPUT"
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Test before publishing
         run: bash scripts/check.sh
       - name: Build universal app
         run: bash scripts/install.sh --universal --build-only
-      - name: Package and sign update manifest
+      - name: Package (unsigned)
+        run: node scripts/package-release.mjs
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-assets
+          path: target/releases/v${{ steps.version.outputs.version }}/
+          if-no-files-found: error
+          retention-days: 7
+
+  # Holds the release signing key, the trust root of every installed Mosaic's updates. It runs in
+  # the protected `release` environment (a reviewer approves each run), installs no dependencies
+  # and never executes what the build produced: sign-release.mjs only checks hashes and signs.
+  sign:
+    needs: build
+    runs-on: ubuntu-24.04
+    environment: release
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.build.outputs.version }}
+    steps:
+      - name: Release only the tag that matches the version
+        run: test "$GITHUB_REF" = "refs/tags/v$VERSION"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: '24'
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-assets
+          path: target/releases/v${{ env.VERSION }}
+      - name: Sign the update manifest
         env:
           MOSAIC_RELEASE_PRIVATE_KEY: ${{ secrets.MOSAIC_RELEASE_PRIVATE_KEY }}
-        run: node scripts/package-release.mjs
+        run: node scripts/sign-release.mjs "target/releases/v$VERSION"
       - name: Publish only complete release assets
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
-          version=$(node -p 'JSON.parse(require("fs").readFileSync("src-tauri/tauri.conf.json")).version')
-          test "$GITHUB_REF_NAME" = "v$version"
-          gh release create "v$version" --verify-tag --draft --title "Mosaic $version" --notes-file "target/releases/v$version/release-notes.md" "target/releases/v$version/"*.dmg "target/releases/v$version/"*.tar.gz "target/releases/v$version/manifest.json" "target/releases/v$version/manifest.sig" "target/releases/v$version/SHA256SUMS"
-          gh release edit "v$version" --draft=false
+          dir="target/releases/v$VERSION"
+          gh release create "v$VERSION" --verify-tag --draft --title "Mosaic $VERSION" --notes-file "$dir/release-notes.md" "$dir/"*.dmg "$dir/"*.tar.gz "$dir/manifest.json" "$dir/manifest.sig" "$dir/SHA256SUMS"
+          gh release edit "v$VERSION" --draft=false

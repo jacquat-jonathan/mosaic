@@ -1,6 +1,6 @@
 import { type Range } from "@codemirror/state";
 import { Decoration, EditorView, ViewPlugin, WidgetType, type DecorationSet, type ViewUpdate } from "@codemirror/view";
-import { moveSectionTo, parse } from "../views/outline";
+import { insertSiblingSection, moveSectionTo, parse } from "../views/outline";
 
 const SECTION_MIME = "application/x-mosaic-section";
 
@@ -12,6 +12,15 @@ class SectionHandleWidget extends WidgetType {
   }
 
   toDOM() {
+    const actions = document.createElement("span");
+    actions.className = "cm-section-actions";
+    const add = document.createElement("button");
+    add.type = "button";
+    add.className = "cm-section-add";
+    add.dataset.sectionLine = String(this.line);
+    add.title = "Click to add a section below";
+    add.setAttribute("aria-label", `Add a section after ${this.title}`);
+    add.textContent = "+";
     const button = document.createElement("button");
     button.type = "button";
     button.className = "cm-section-handle";
@@ -20,7 +29,8 @@ class SectionHandleWidget extends WidgetType {
     button.dataset.sectionLine = String(this.line);
     button.title = `Drag “${this.title}” to reorder this section`;
     button.setAttribute("aria-label", button.title);
-    return button;
+    actions.append(add, button);
+    return actions;
   }
 }
 
@@ -34,7 +44,7 @@ function decorations(view: EditorView): DecorationSet {
   return Decoration.set(ranges, true);
 }
 
-/** Drag handles beside headings let sections move without a trip to the outline panel. */
+/** AFFiNE-style add and drag controls beside every heading. */
 export const sectionDrag = ViewPlugin.fromClass(class {
   decorations: DecorationSet;
   private draggingLine: number | null = null;
@@ -47,6 +57,7 @@ export const sectionDrag = ViewPlugin.fromClass(class {
     view.dom.addEventListener("dragleave", this.onDragLeave);
     view.dom.addEventListener("drop", this.onDrop);
     view.dom.addEventListener("dragend", this.onDragEnd);
+    view.dom.addEventListener("click", this.onClick);
   }
 
   update(update: ViewUpdate) {
@@ -59,6 +70,7 @@ export const sectionDrag = ViewPlugin.fromClass(class {
     this.view.dom.removeEventListener("dragleave", this.onDragLeave);
     this.view.dom.removeEventListener("drop", this.onDrop);
     this.view.dom.removeEventListener("dragend", this.onDragEnd);
+    this.view.dom.removeEventListener("click", this.onClick);
   }
 
   private headingLine(event: DragEvent): HTMLElement | null {
@@ -119,6 +131,24 @@ export const sectionDrag = ViewPlugin.fromClass(class {
   };
 
   private onDragEnd = () => this.finishDrag();
+
+  private onClick = (event: MouseEvent) => {
+    const add = (event.target as HTMLElement | null)?.closest<HTMLElement>(".cm-section-add");
+    if (!add) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const line = Number(add.dataset.sectionLine);
+    const doc = this.view.state.doc.toString();
+    const edit = insertSiblingSection(doc, line);
+    if (!edit) return;
+    this.view.dispatch({
+      changes: { from: 0, to: doc.length, insert: edit.text },
+      selection: edit.select ?? { anchor: edit.focus },
+      scrollIntoView: true,
+      userEvent: "input.section",
+    });
+    this.view.focus();
+  };
 
   private finishDrag() {
     this.clearDrop();

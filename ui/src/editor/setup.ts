@@ -11,8 +11,9 @@ import { editorContext, type EditorContext } from "./context";
 import { livePreview } from "./livePreview";
 import "./blocks"; // registers the diagram renderers used by code blocks
 import { prefs, useSettings } from "../state/settings";
-import { slashCompletion } from "./slashMenu";
+import { slashCompletion, slashIcon } from "./slashMenu";
 import { sectionDrag } from "./sectionDrag";
+import { selectionFormatting } from "./selectionToolbar";
 
 
 const highlight = HighlightStyle.define([
@@ -187,10 +188,17 @@ export function markdownExtensions(ctx: EditorContext, onChange: (text: string) 
     editorContext.of(ctx),
     EditorView.lineWrapping,
     markdown({ base: markdownLanguage, codeLanguages: languages }),
-    autocompletion({ override: [wikiCompletion, slashCompletion], icons: false }),
+    autocompletion({
+      override: [wikiCompletion, slashCompletion],
+      icons: false,
+      tooltipClass: state => /^\s*\/[\w -]*$/.test(state.doc.lineAt(state.selection.main.head).text) ? "cm-slash-menu" : "",
+      optionClass: completion => completion.type?.startsWith("mosaic-slash:") ? "cm-slash-option" : "",
+      addToOptions: [{ position: 20, render: completion => slashIcon(completion.type) }],
+    }),
     Prec.highest(keymap.of([...completionKeymap, { key: "Tab", run: acceptCompletion }])),
     livePreview(),
     sectionDrag,
+    selectionFormatting,
     finderDrop,
     spellcheck.of(spellcheckAttrs(prefs().spellcheck)),
     spellcheckFollower,

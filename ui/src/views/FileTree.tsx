@@ -41,6 +41,7 @@ import { api, openInDefaultApp, revealInFinder } from "../ipc/api";
 import { shortcutOf } from "../commands";
 import { kindOf } from "../ipc/kinds";
 import { useVaultPreferences } from "../state/vaultPreferences";
+import { isQuietAttachment } from "../attachments";
 
 const DRAG_TYPE = "application/x-mosaic-path";
 
@@ -72,18 +73,20 @@ const OPEN_ON_HOVER_MS = 600;
 export function FileTree() {
   const entries = useVault((s) => s.entries);
   const expanded = useVault((s) => s.expanded);
+  const showAttachments = useVaultPreferences(s => s.value.show_attachments_in_tree);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const hoverTimer = useRef<{ dir: string; t: ReturnType<typeof setTimeout> } | null>(null);
 
   const children = useMemo(() => {
     const map = new Map<string, Entry[]>();
     for (const e of entries) {
+      if (!showAttachments && isQuietAttachment(e)) continue;
       const parent = parentOf(e.path);
       if (!map.has(parent)) map.set(parent, []);
       map.get(parent)!.push(e);
     }
     return map;
-  }, [entries]);
+  }, [entries, showAttachments]);
 
   const rows: { entry: Entry; depth: number }[] = [];
   const walk = (dir: string, depth: number) => {
@@ -228,11 +231,30 @@ function copyItems(entry: Entry): MenuItem {
   };
 }
 
-function singleMenu(entry: Entry): MenuItem[] {
+async function folderTemplateMenu(folder: string): Promise<MenuItem> {
+  try {
+    const effective = (await api.templates(`${folder}/Untitled.md`)).default;
+    const source = effective.rule_folder === null ? "No assigned folder default" : effective.rule_folder ? `Default from ${effective.rule_folder}` : "Default from vault root";
+    return {
+      label: "Default template",
+      detail: effective.template ?? "Blank",
+      children: [
+        { label: effective.template ?? "Blank", detail: source, disabled: true },
+        ...(effective.template ? [{ label: "Edit template", detail: effective.template, action: () => void useWorkspace.getState().open(effective.template!, { newTab: true }) }] : []),
+        { label: "Change default…", action: () => useUi.getState().openSettings("templates") },
+      ],
+    };
+  } catch {
+    return { label: "Default template…", detail: "Open template settings", action: () => useUi.getState().openSettings("templates") };
+  }
+}
+
+async function singleMenu(entry: Entry): Promise<MenuItem[]> {
   const vault = useVault.getState();
   const bookmarked = vault.bookmarks.includes(entry.path);
   const dir = entry.is_dir ? entry.path : parentOf(entry.path);
   const ws = useWorkspace.getState();
+  const template = entry.is_dir ? await folderTemplateMenu(entry.path) : null;
   return [
     ...(entry.is_dir
       ? [
@@ -240,6 +262,7 @@ function singleMenu(entry: Entry): MenuItem[] {
           { label: "", separator: true },
           { label: "Expand all", action: () => setExpandedDeep(entry.path, true) },
           { label: "Collapse all", action: () => setExpandedDeep(entry.path, false) },
+          template!,
         ]
       : [
           { label: "Open in new tab", shortcut: "⌥-click", action: () => void ws.open(entry.path, { newTab: true }) },
@@ -333,8 +356,9 @@ function TreeRow({
     const vault = useVault.getState();
     const inSelection = vault.selected.has(entry.path) && vault.selected.size > 1;
     if (!inSelection) vault.select(entry.path, "single");
-    const items = inSelection ? multiMenu(order.filter((p) => vault.selected.has(p))) : singleMenu(entry);
-    useUi.getState().showMenu(ev.clientX, ev.clientY, items);
+    const x = ev.clientX, y = ev.clientY;
+    if (inSelection) return useUi.getState().showMenu(x, y, multiMenu(order.filter((p) => vault.selected.has(p))));
+    void singleMenu(entry).then(items => useUi.getState().showMenu(x, y, items));
   };
 
   return (

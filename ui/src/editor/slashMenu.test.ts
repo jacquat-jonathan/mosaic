@@ -21,7 +21,8 @@ test("slash menu only opens in an empty Markdown block", () => {
 test("slash commands are grouped and include the agreed text, block, link and media helpers", () => {
   const options = completion("/")!.options;
   expect(options.map((option) => option.label)).toEqual(expect.arrayContaining(["Callout", "Math block", "Wikilink", "Web link", "Embed file"]));
-  expect(new Set(options.map((option) => option.section))).toEqual(new Set(["Text", "Blocks", "Links & media"]));
+  expect(new Set(options.map((option) => option.section))).toEqual(new Set(["Basic", "Blocks", "Links & media"]));
+  expect(options.every(option => option.type?.startsWith("mosaic-slash:"))).toBe(true);
 });
 
 test("placeholder-based commands select the text to replace", () => {

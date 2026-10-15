@@ -17,6 +17,8 @@ import { dayStamp } from "../daily";
 import { openDailyNote } from "../actions";
 import { type Days } from "../ipc/types";
 import { TaskList } from "./CalendarView";
+import { noteAttachments } from "../attachments";
+import { saveVaultPreferences, useVaultPreferences } from "../state/vaultPreferences";
 
 /** Context follows the focused workspace, independently of the selected destination. */
 export function RightPanel() {
@@ -56,6 +58,9 @@ function LinksPanel() {
   const active = useWorkspace((s) => s.panes.find((p) => p.id === s.focused)?.active ?? null);
   const content = useWorkspace((s) => (active ? s.buffers[active]?.content : null));
   const revision = useVault((s) => s.revision);
+  const entries = useVault((s) => s.entries);
+  const aliases = useVault((s) => s.aliases);
+  const showAttachments = useVaultPreferences(s => s.value.show_attachments_in_tree);
   const [backlinks, setBacklinks] = useState<Backlink[]>([]);
   const [dragLine, setDragLine] = useState<number | null>(null);
   const [dropLine, setDropLine] = useState<number | null>(null);
@@ -76,6 +81,7 @@ function LinksPanel() {
   }, [active, revision]);
 
   const headings = useMemo(() => (active?.endsWith(".md") && content ? parseMarkdownHeadings(content) : []), [active, content]);
+  const attachments = useMemo(() => active?.endsWith(".md") && typeof content === "string" ? noteAttachments(content, active, entries, aliases) : [], [active, content, entries, aliases]);
   const grouped = useMemo(() => {
     const m = new Map<string, Backlink[]>();
     for (const b of backlinks) {
@@ -95,6 +101,10 @@ function LinksPanel() {
         const fm=FRONTMATTER_RE.exec(content); const next=`---\n${yaml.trimEnd()}\n---`;
         useWorkspace.getState().replaceContent(active, fm ? next + content.slice(fm[0].length) : next + "\n\n" + content);
       }} onEditSource={()=>revealNotePosition(active, 1)} /></section>}
+      {active.endsWith(".md") && <section><h3>Attachments <span className="count">{attachments.length}</span></h3>
+        {attachments.length === 0 ? <p className="panel-meta">No local files are embedded in this note.</p> : attachments.map(path => <button className="attachment-link" key={path} title={path} onClick={event => void useWorkspace.getState().open(path,{newTab:event.metaKey})}>{path}</button>)}
+        {!showAttachments && attachments.length > 0 && <button className="panel-secondary" onClick={() => void saveVaultPreferences({show_attachments_in_tree:true}).catch(error => useVault.getState().setError(errorMessage(error)))}>Show attachments in file tree</button>}
+      </section>}
       <section>
         <h3>Backlinks <span className="count">{backlinks.length}</span></h3>
         {grouped.length === 0 && <p className="panel-meta">No other notes link here yet.</p>}

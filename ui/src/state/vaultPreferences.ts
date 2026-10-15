@@ -13,6 +13,7 @@ export interface VaultPreferences {
   new_note_folder: string;
   attachment_location: "next-to-note" | "folder";
   attachment_folder: string;
+  show_attachments_in_tree: boolean;
   link_style: "wiki" | "markdown";
   startup_note: string;
   folder_colors: Record<string, string>;
@@ -20,7 +21,7 @@ export interface VaultPreferences {
 }
 export const DEFAULT_VAULT_PREFS: VaultPreferences = {
   version: 1, agents_folder: "Agents", daily_folder: "Daily", daily_template: "", daily_format: "YYYY-MM-DD",
-  new_note_location: "current", new_note_folder: "", attachment_location: "next-to-note", attachment_folder: "",
+  new_note_location: "current", new_note_folder: "", attachment_location: "next-to-note", attachment_folder: "", show_attachments_in_tree: false,
   link_style: "wiki", startup_note: "", folder_colors: {},
 };
 export const useVaultPreferences = create<{ root: string | null; value: VaultPreferences; error: string | null }>(() => ({ root: null, value: DEFAULT_VAULT_PREFS, error: null }));

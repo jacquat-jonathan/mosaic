@@ -47,6 +47,12 @@ function VaultField({ name, label, hint, options, note = false }: { name: keyof 
     {options ? choose(label, path, options, v => void update(v)) : <><button disabled={busy || !root} aria-label={label} onClick={picker}>{path || (note ? "None" : "Vault root")}…</button>{!note && <button disabled={busy || !root} aria-label={`Set ${label.toLowerCase()} path`} onClick={() => void useUi.getState().askText({title:`Set ${label.toLowerCase()}`,value:path,placeholder:"Vault-relative folder"}).then(next => { if(next !== null) void update(next); })}>Set path…</button>}</>}
   </Field>{missing && <p className="notice warn">Missing: <code>{path}</code>. Choose a replacement{!note && <> or <button disabled={busy} onClick={() => void api.mkdir(path).then(() => useVault.getState().refresh()).catch(e => setError(String(e)))}>Create folder</button></>}.</p>}{error && <p className="error-text" role="alert">{error}</p>}</>;
 }
+function VaultToggle({ name, label, hint }: { name: keyof VaultPreferences; label: string; hint: string }) {
+  const value = useVaultPreferences(s => Boolean(s.value[name]));
+  const [busy, setBusy] = useState(false);
+  const update = async (next: boolean) => { if (busy) return; setBusy(true); try { await saveVaultPreferences({ [name]: next }); } catch(e) { useVault.getState().setError(String(e)); } finally { setBusy(false); } };
+  return <Field label={label} hint={hint} reset={() => void update(Boolean(DEFAULT_VAULT_PREFS[name]))}><input type="checkbox" aria-label={label} checked={value} disabled={busy} onChange={event => void update(event.target.checked)} /></Field>;
+}
 export function VaultFolders() {
   const vault = useVault(s => s.vault);
   const error = useVaultPreferences(s => s.error);
@@ -59,8 +65,9 @@ export function VaultFolders() {
     {useVaultPreferences(s => s.value.new_note_location) === "folder" && <VaultField name="new_note_folder" label="New notes folder" />}
     <VaultField name="attachment_location" label="New attachments go in" options={["next-to-note", "folder"]} hint="Pasted or inserted attachments only; existing files and tree imports are unchanged." />
     {useVaultPreferences(s => s.value.attachment_location) === "folder" && <VaultField name="attachment_folder" label="Attachments folder" />}
+    <VaultToggle name="show_attachments_in_tree" label="Show attachments in file tree" hint="Images and PDFs stay in the vault and remain available from Note details when hidden." />
     <FolderColors />
-    <button onClick={() => void useUi.getState().ask({ title: "Reset vault folders?", body: `Resets creation and discovery defaults for ${vault?.name}. Existing files, template assignments, permissions and history are kept.`, confirmLabel: "Reset section" }).then(ok => { if(ok) void saveVaultPreferences(Object.fromEntries(["agents_folder", "daily_folder", "daily_template", "new_note_location", "new_note_folder", "attachment_location", "attachment_folder", "folder_colors"].map(key => [key, DEFAULT_VAULT_PREFS[key as keyof VaultPreferences]]))).catch(e => useVault.getState().setError(String(e))); })}>Reset vault folders…</button>
+    <button onClick={() => void useUi.getState().ask({ title: "Reset vault folders?", body: `Resets creation and discovery defaults for ${vault?.name}. Existing files, template assignments, permissions and history are kept.`, confirmLabel: "Reset section" }).then(ok => { if(ok) void saveVaultPreferences(Object.fromEntries(["agents_folder", "daily_folder", "daily_template", "new_note_location", "new_note_folder", "attachment_location", "attachment_folder", "show_attachments_in_tree", "folder_colors"].map(key => [key, DEFAULT_VAULT_PREFS[key as keyof VaultPreferences]]))).catch(e => useVault.getState().setError(String(e))); })}>Reset vault folders…</button>
   </>;
 }
 function FolderColors() {

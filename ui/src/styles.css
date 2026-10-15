@@ -210,9 +210,9 @@ button.secondary { border: 1px solid var(--border); padding: 7px 14px; }
 .cm-panels { background: var(--bg-side); color: var(--fg); border-color: var(--border) !important; }
 .cm-panel.cm-search input, .cm-panel.cm-search button { font: inherit; }
 .cm-tooltip { background: var(--bg); color: var(--fg); border: 1px solid var(--border) !important; border-radius: 8px; box-shadow: var(--shadow); overflow: hidden; }
-.cm-editor .cm-tooltip.cm-tooltip-autocomplete { min-width: 280px; max-width: min(380px, calc(100vw - 24px)); padding: 4px; border: 0 !important; outline: 0; border-radius: 10px; box-shadow: 0 12px 32px rgba(0, 0, 0, .42); }
+.cm-tooltip.cm-tooltip-autocomplete { min-width: 280px; max-width: min(380px, calc(100vw - 24px)); padding: 4px; border: 0 !important; outline: 0 !important; border-radius: 10px; box-shadow: 0 12px 32px rgba(0, 0, 0, .42); }
 .cm-tooltip-autocomplete, .cm-tooltip-autocomplete > ul { background: var(--bg); color: var(--fg); }
-.cm-editor .cm-tooltip.cm-tooltip-autocomplete > ul { min-width: 272px; max-width: 372px; max-height: min(320px, 55vh); height: auto; padding: 0; outline: none !important; font-family: var(--font-ui) !important; font-size: 13px; line-height: 1.35; scrollbar-width: thin; scrollbar-color: var(--faint) transparent; }
+.cm-tooltip.cm-tooltip-autocomplete > ul { min-width: 272px; max-width: 372px; max-height: min(320px, 55vh); height: auto; padding: 0; border: 0 !important; outline: none !important; box-shadow: none !important; font-family: var(--font-ui) !important; font-size: 13px; line-height: 1.35; scrollbar-width: thin; scrollbar-color: var(--faint) transparent; }
 .cm-tooltip-autocomplete > ul::-webkit-scrollbar { width: 7px; }
 .cm-tooltip-autocomplete > ul::-webkit-scrollbar-track { background: transparent; }
 .cm-tooltip-autocomplete > ul::-webkit-scrollbar-thumb { background: var(--faint); border: 2px solid transparent; border-radius: 8px; background-clip: padding-box; }
@@ -221,7 +221,7 @@ button.secondary { border: 1px solid var(--border); padding: 7px 14px; }
 .cm-tooltip-autocomplete completion-section, .cm-completionSection { min-height: 0 !important; padding: 9px 8px 4px !important; border: 0 !important; color: var(--muted); background: transparent; font: 650 10px/1.2 var(--font-ui); letter-spacing: 0.06em; text-transform: uppercase; opacity: 1 !important; }
 .cm-completionLabel { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
 .cm-completionDetail { overflow: hidden; text-overflow: ellipsis; opacity: 1; margin: 0; color: var(--muted); font: 400 12px/1.35 var(--font-ui); font-style: normal !important; }
-.cm-editor .cm-tooltip.cm-tooltip-autocomplete.cm-slash-menu { min-width: 310px; max-width: min(390px, calc(100vw - 24px)); padding: 5px; border: 0 !important; }
+.cm-tooltip.cm-tooltip-autocomplete.cm-slash-menu { min-width: 310px; max-width: min(390px, calc(100vw - 24px)); padding: 5px; border: 0 !important; outline: 0 !important; }
 .cm-slash-menu ul li.cm-slash-option { display: grid; grid-template-columns: 34px minmax(0, 1fr); grid-template-rows: auto auto; align-items: center; gap: 0 9px; min-height: 48px; padding: 6px 8px !important; }
 .cm-slash-option .cm-slash-icon { grid-column: 1; grid-row: 1 / 3; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 6px; background: var(--bg-side); color: var(--muted); font: 600 11px/1 var(--font-ui); }
 .cm-slash-option .cm-completionLabel { grid-column: 2; grid-row: 1; align-self: end; font-weight: 550; }
@@ -242,14 +242,15 @@ button.secondary { border: 1px solid var(--border); padding: 7px 14px; }
 
 /* Markdown live preview: readable column, document typography */
 .md-editor .cm-scroller { min-width: 0; max-width: 100%; overflow-x: hidden; font: var(--note-size, 16px)/var(--note-leading, 1.7) var(--font-text); }
-.md-editor .cm-content { width: min(100%, var(--note-width, 760px)); min-width: 0; max-width: 100%; margin: 0 auto; padding: 32px clamp(16px, 4vw, 32px) 40vh; }
+.md-editor .cm-content { width: min(100%, var(--note-width, 760px)); min-width: 0; max-width: 100%; margin: 0 auto; padding: 32px clamp(40px, 5vw, 52px) 40vh; }
 .md-editor .cm-line { min-width: 0; padding: 0; overflow-wrap: anywhere; word-break: break-word; }
-.cm-section-actions { display: inline-flex; align-items: center; width: 40px; height: 24px; margin: 0 4px 0 -44px; vertical-align: middle; opacity: 0; }
-.cm-section-add, .cm-section-handle { width: 18px; height: 22px; margin: 0 1px; padding: 0; border: 0 !important; outline: 0; border-radius: 5px; background: transparent; color: var(--muted); box-shadow: none !important; }
-.cm-section-add { display: inline-grid; place-items: center; font: 500 16px/1 var(--font-ui); }
-.cm-section-handle { cursor: grab; }
-.cm-section-handle::before { content: ""; display: block; width: 12px; height: 16px; margin: auto; background: radial-gradient(circle, var(--muted) 1.2px, transparent 1.4px) 0 0 / 6px 5px; }
-.cm-section-line:hover .cm-section-actions, .cm-section-actions:focus-within, .cm-section-dragging .cm-section-actions { opacity: .78; }
+.cm-section-actions { display: inline-flex; align-items: center; width: 36px; height: 26px; margin: 0 4px 0 -40px; vertical-align: middle; }
+.cm-section-add, .cm-section-handle { height: 24px; margin: 0; padding: 0; border: 0 !important; outline: 0; border-radius: 6px; color: var(--muted); box-shadow: none !important; }
+.cm-section-add { display: inline-grid; place-items: center; width: 23px; background: var(--bg-side); font: 500 18px/1 var(--font-ui); opacity: 0; }
+.cm-section-handle { width: 13px; background: transparent; cursor: grab; opacity: 0; }
+.cm-section-handle::before { content: ""; display: block; width: 3px; height: 16px; margin: auto; border-radius: 2px; background: var(--muted); }
+.cm-section-line:hover .cm-section-add, .cm-section-actions:focus-within .cm-section-add, .cm-section-dragging .cm-section-add { opacity: .9; }
+.cm-section-line:hover .cm-section-handle, .cm-section-actions:focus-within .cm-section-handle, .cm-section-dragging .cm-section-handle { opacity: .78; }
 .cm-section-add:hover, .cm-section-add:focus-visible, .cm-section-handle:hover, .cm-section-handle:focus-visible { background: var(--bg-hover); color: var(--fg); opacity: 1; }
 .cm-section-handle:active { cursor: grabbing; }
 .cm-section-line.drop-before { box-shadow: inset 0 2px 0 var(--accent); }

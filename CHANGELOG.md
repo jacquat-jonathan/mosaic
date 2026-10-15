@@ -4,6 +4,7 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Checked on every change:** the full test suite now runs on GitHub for each push to `main` and each pull request, not only when a release is cut.
 - **Chats and workflows read only through Mosaic:** Claude no longer uses its own file tools, which could read hidden folders and files outside the vault; it reads with Mosaic's tools, so folder rules always apply. Workflows reach the web only when you tick **Can use the web** (`web: true`), and a run started by a new note treats that note as untrusted input.
 - **Folder rules fail closed:** if Mosaic's settings file is damaged or can't be read, agents are refused with a clear message instead of briefly seeing every folder as if no rules existed.
 - **Folder rules can't be sidestepped by spelling:** hidden, read-only and review folders now apply however an agent spells the path — `private/secret.md` is treated like `Private/Secret.md`, and accented names match in either Unicode form — and a link inside the vault is judged by where it points.

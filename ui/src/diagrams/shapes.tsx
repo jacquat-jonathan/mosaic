@@ -174,7 +174,13 @@ export function ShapeOutline({ shape, style }: { shape: ShapeName; style: ShapeS
       {decor && (
         // Small fixed-size UML icon in the top-right corner (from the format file, not stretched).
         <svg className="shape-icon" viewBox="0 0 18 18" aria-hidden>
-          <g fill={style.fill} stroke={stroke} strokeWidth="1.4" dangerouslySetInnerHTML={{ __html: decor }} />
+          <g
+            fill={style.fill}
+            stroke={stroke}
+            strokeWidth="1.4"
+            // biome-ignore lint/security/noDangerouslySetInnerHtml: icon markup from the bundled diagram format file
+            dangerouslySetInnerHTML={{ __html: decor }}
+          />
         </svg>
       )}
     </>

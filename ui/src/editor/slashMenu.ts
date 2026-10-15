@@ -1,5 +1,5 @@
-import { type CompletionContext, type CompletionResult, type Completion } from "@codemirror/autocomplete";
-import { EditorView } from "@codemirror/view";
+import type { CompletionContext, CompletionResult, Completion } from "@codemirror/autocomplete";
+import type { EditorView } from "@codemirror/view";
 import { syntaxTree } from "@codemirror/language";
 
 interface Insertion {

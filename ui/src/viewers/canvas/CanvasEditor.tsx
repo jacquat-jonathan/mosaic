@@ -190,14 +190,13 @@ function toFlow(doc: CanvasDoc, canvasPath: string, onText: CardData["onText"]):
 export function CanvasEditor({ buffer }: { buffer: Buffer }) {
   const [mode, setMode] = useState<"canvas" | "source">("canvas");
   const [toolsHost, setToolsHost] = useState<HTMLElement | null>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-parse only on external reloads; our own edits already live in the flow state
   const parsed = useMemo(() => {
     try {
       return { doc: parseCanvas(buffer.content ?? ""), error: null };
     } catch (e) {
       return { doc: null, error: e instanceof CanvasParseError ? e.message : String(e) };
     }
-    // Re-parse only on external reloads; our own edits already live in the flow state.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [buffer.version, buffer.path]);
 
   const showSource = mode === "source" || !parsed.doc;
@@ -340,6 +339,7 @@ function CanvasFlow({
     };
   }, [presenting, flow]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the key handler only needs registering when presenting starts or stops
   useEffect(() => {
     if (!presenting) return;
     const onKey = (e: KeyboardEvent) => {
@@ -362,7 +362,7 @@ function CanvasFlow({
       document.removeEventListener("fullscreenchange", onFullscreen);
       if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
     };
-  }, [presenting !== null]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [presenting !== null]);
   const markers = useMemo(() => {
     const seen = new Map<string, { end: EndName; color: string }>();
     for (const e of edges) {
@@ -435,7 +435,7 @@ function CanvasFlow({
     const moves = changes.filter((c) => c.type === "position");
     // The drag's last change (dragging: false) carries a position too: snap it as well, or it undoes the snap.
     const drag = moves.length === 1 && moves[0].type === "position" && moves[0].position ? moves[0] : null;
-    if (drag && drag.position && !groupDrag.current) {
+    if (drag?.position && !groupDrag.current) {
       const size = (n: FlowNode) => ({
         width: n.measured?.width ?? n.data.node.width,
         height: n.measured?.height ?? n.data.node.height,
@@ -1263,7 +1263,12 @@ function TextCard({
   return (
     <div className="canvas-text md-render nowheel" onDoubleClick={() => setEditing(true)} onClick={onClick}>
       {text ? (
-        <div key={body.key} ref={body.ref} dangerouslySetInnerHTML={{ __html: html }} />
+        <div
+          key={body.key}
+          ref={body.ref}
+          // biome-ignore lint/security/noDangerouslySetInnerHtml: renderMarkdown output, sanitized by DOMPurify
+          dangerouslySetInnerHTML={{ __html: html }}
+        />
       ) : (
         <span className="canvas-placeholder">Double-click to write</span>
       )}
@@ -1321,6 +1326,7 @@ function TimingCard({
       className="timing-svg"
       viewBox={`0 0 ${width} ${height}`}
       onDoubleClick={() => setEditing(true)}
+      // biome-ignore lint/security/noDangerouslySetInnerHtml: timingSvg escapes every label it draws
       dangerouslySetInnerHTML={{ __html: svg }}
     />
   );
@@ -1336,15 +1342,13 @@ function FileCard({ file, subpath }: { file: string; subpath?: string }) {
     if (!exists) return;
     if (kind === "image") void fileUrl(file).then((img) => live && setPreview({ img }));
     else if (kind === "markdown")
-      void api
-        .read(file)
-        .then(
-          (f) =>
-            live &&
-            setPreview({
-              html: renderMarkdown((f.content ?? "").replace(/^---\n[\s\S]*?\n---\n?/, "").slice(0, 4000)),
-            }),
-        );
+      void api.read(file).then(
+        (f) =>
+          live &&
+          setPreview({
+            html: renderMarkdown((f.content ?? "").replace(/^---\n[\s\S]*?\n---\n?/, "").slice(0, 4000)),
+          }),
+      );
     return () => {
       live = false;
     };
@@ -1365,7 +1369,13 @@ function FileCard({ file, subpath }: { file: string; subpath?: string }) {
         {!exists && <span className="canvas-placeholder">File not found: {file}</span>}
         {preview?.img && <img src={preview.img} alt={file} />}
         {preview?.html && (
-          <div key={body.key} ref={body.ref} className="md-render" dangerouslySetInnerHTML={{ __html: preview.html }} />
+          <div
+            key={body.key}
+            ref={body.ref}
+            className="md-render"
+            // biome-ignore lint/security/noDangerouslySetInnerHtml: renderMarkdown output, sanitized by DOMPurify
+            dangerouslySetInnerHTML={{ __html: preview.html }}
+          />
         )}
         {exists && !preview && kind !== "image" && kind !== "markdown" && (
           <span className="canvas-placeholder">{kind} file</span>

@@ -40,12 +40,15 @@ export function parseTable(source: string): TableModel {
   const lines = source.split("\n").filter((l) => l.trim());
   const header = splitRow(lines[0] ?? "");
   const width = header.length;
-  const fit = (cells: string[]) => [...cells.slice(0, width), ...Array(Math.max(0, width - cells.length)).fill("")];
+  const fitWidth = (cells: string[]) => [
+    ...cells.slice(0, width),
+    ...Array(Math.max(0, width - cells.length)).fill(""),
+  ];
   const rule = splitRow(lines[1] ?? "");
   return {
     header,
     align: header.map((_, i) => alignOf(rule[i] ?? "")),
-    rows: lines.slice(2).map((l) => fit(splitRow(l))),
+    rows: lines.slice(2).map((l) => fitWidth(splitRow(l))),
   };
 }
 

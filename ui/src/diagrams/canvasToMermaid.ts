@@ -92,7 +92,7 @@ function flowchartToMermaid(doc: CanvasDoc): string {
     const body = dashed ? "-.-" : thick ? (head ? "==" : "===") : head ? "--" : "---";
     lines.push(`  ${a} ${tail}${body}${head}${e.label ? `|"${label(e.label)}"|` : ""} ${b}`);
   }
-  return lines.join("\n") + "\n";
+  return `${lines.join("\n")}\n`;
 }
 
 const oneLine = (text: string) => label(text).replace(/<br>/g, " ");
@@ -148,7 +148,7 @@ function sequenceToMermaid(doc: CanvasDoc): string {
     lines.push(`${"  ".repeat(depth)}${ev.line}`);
     if (ev.indent > 0) depth++;
   }
-  return lines.join("\n") + "\n";
+  return `${lines.join("\n")}\n`;
 }
 
 /** A class member as Mermaid writes it: `+ total(): Money` → `+total() Money`. */
@@ -208,5 +208,5 @@ function classToMermaid(doc: CanvasDoc): string {
       `  ${ids.get(e.fromNode)}${card(e.fromLabel)} ${END_LEFT[fromEnd] ?? ""}${line}${END_RIGHT[toEnd] ?? ""}${card(e.toLabel)} ${ids.get(e.toNode)}${text}`,
     );
   }
-  return lines.join("\n") + "\n";
+  return `${lines.join("\n")}\n`;
 }

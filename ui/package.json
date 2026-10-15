@@ -8,7 +8,7 @@
     "lint": "tsc --noEmit",
     "test": "vitest run",
     "format": "biome format --write .",
-    "check:biome": "biome check ."
+    "check:biome": "biome ci ."
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.3",

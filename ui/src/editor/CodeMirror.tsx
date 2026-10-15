@@ -24,6 +24,7 @@ export function CodeMirror({
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the view is created once per set of extensions; later documents arrive through the next effect
   useEffect(() => {
     const v = new EditorView({ parent: host.current!, state: EditorState.create({ doc, extensions }) });
     view.current = v;
@@ -33,16 +34,14 @@ export function CodeMirror({
       onView?.(null);
       v.destroy();
     };
-    // Recreated only when the extensions change (e.g. a different file kind).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [extensions]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: only a new version from outside replaces the document; typing changes `doc` too
   useEffect(() => {
     const v = view.current;
     if (!v || v.state.doc.toString() === doc) return;
     const head = Math.min(v.state.selection.main.head, doc.length);
     v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: doc }, selection: { anchor: head } });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [version]);
 
   return <div ref={host} className={className} />;

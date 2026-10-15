@@ -71,7 +71,7 @@ function wrap(lines: string[], width: number): string[] {
     }
     let cur = "";
     for (const word of line.split(" ")) {
-      if (cur && (cur + " " + word).length > max) {
+      if (cur && `${cur} ${word}`.length > max) {
         out.push(cur);
         cur = word;
       } else cur = cur ? `${cur} ${word}` : word;

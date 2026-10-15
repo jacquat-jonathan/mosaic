@@ -26,7 +26,7 @@ Beta body.
 Gamma body.
 `;
 
-const lineOf = (text: string, heading: string) => text.split("\n").findIndex((line) => line === heading) + 1;
+const lineOf = (text: string, heading: string) => text.split("\n").indexOf(heading) + 1;
 
 describe("Markdown note sections", () => {
   it("parses heading offsets outside frontmatter and fenced code", () => {

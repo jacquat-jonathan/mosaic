@@ -79,7 +79,7 @@ export const useChat = create<ChatState>((set, get) => ({
     for (const c of Object.values(get().chats)) if (c.run !== null && c.run > 0) void api.chatStop(c.run);
     early.clear();
     pending.clear();
-    let chats: Record<string, Conversation> = {};
+    const chats: Record<string, Conversation> = {};
     let storageError: string | null = null;
     try {
       const saved = JSON.parse(localStorage.getItem(`mosaic:chats:${root}`) ?? "{}");

@@ -238,8 +238,9 @@ custom source fields; saving configures the workflow without running or unpausin
 ```sh
 pnpm install
 pnpm dev               # run the app with hot reload
-scripts/check.sh       # rustfmt, clippy, Rust tests, TypeScript, Vitest (CI runs it on every push to main and PR)
+scripts/check.sh       # rustfmt, clippy, Rust tests, TypeScript, Biome, Vitest (CI runs it on every push to main and PR)
 scripts/bench.sh       # search/index performance budgets (5,000 notes)
+pnpm --dir ui format   # format the UI with Biome
 pnpm --dir ui dev      # UI only, in a browser, against an in-memory mock vault
 ```
 

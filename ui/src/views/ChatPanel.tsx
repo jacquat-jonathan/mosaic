@@ -308,6 +308,7 @@ function Item({ item }: { item: ChatItem }) {
     case "text": {
       const { entries, aliases } = useVault.getState();
       const html = renderMarkdown(item.text, (t) => resolveLink(t, entries, null, aliases));
+      // biome-ignore lint/security/noDangerouslySetInnerHtml: renderMarkdown output, sanitized by DOMPurify
       return <div className="chat-msg assistant md-render" dangerouslySetInnerHTML={{ __html: html }} />;
     }
     case "tool":

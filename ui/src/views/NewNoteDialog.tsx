@@ -75,6 +75,7 @@ function Dialog({
       if (previous?.isConnected) previous.focus();
     };
   }, []);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `request` and `previewKey` are derived from the listed values
   useEffect(() => {
     let active = true;
     setPreview(null);

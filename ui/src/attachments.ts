@@ -30,7 +30,7 @@ export function noteAttachments(
     if (entry && entry.kind !== "markdown" && !found.includes(entry.path)) found.push(entry.path);
   };
   const targets: { index: number; target: string; markdown: boolean }[] = [];
-  for (const match of text.matchAll(/!\[\[([^\[\]\n]+?)\]\]/g))
+  for (const match of text.matchAll(/!\[\[([^[\]\n]+?)\]\]/g))
     targets.push({ index: match.index, target: parseWikiLink(match[1]).target, markdown: false });
   for (const match of text.matchAll(/!\[[^\]\n]*\]\(\s*(?:<([^>\n]+)>|([^\s)\n]+))(?:\s+["'][^\n)]*["'])?\s*\)/g))
     targets.push({ index: match.index, target: match[1] ?? match[2], markdown: true });

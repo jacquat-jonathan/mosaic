@@ -1,5 +1,5 @@
 import { EditorSelection, type Extension } from "@codemirror/state";
-import { EditorView, keymap, showTooltip, type Tooltip } from "@codemirror/view";
+import { type EditorView, keymap, showTooltip, type Tooltip } from "@codemirror/view";
 import { useUi } from "../state/ui";
 import { useVault } from "../state/vault";
 import { linkTextFor } from "../links";

@@ -660,6 +660,7 @@ function About() {
                       {r.notes.map((n, i) => (
                         <li
                           key={i}
+                          // biome-ignore lint/security/noDangerouslySetInnerHtml: renderInlineMarkdown output, sanitized by DOMPurify
                           dangerouslySetInnerHTML={{ __html: renderInlineMarkdown(n) }}
                           onClick={(e) => {
                             const link = (e.target as HTMLElement).closest("a");

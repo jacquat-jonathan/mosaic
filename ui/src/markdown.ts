@@ -51,7 +51,7 @@ const marked = new Marked({ gfm: true, breaks: false, extensions: [mathBlock, ma
 const escapeAttr = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
 
 function withWikiLinks(src: string, resolve?: (target: string) => string | null): string {
-  return src.replace(/(!?)\[\[([^\[\]\n]+?)\]\]/g, (_m, bang: string, inner: string) => {
+  return src.replace(/(!?)\[\[([^[\]\n]+?)\]\]/g, (_m, bang: string, inner: string) => {
     const l = parseWikiLink(inner);
     const resolved = resolve ? resolve(l.target) !== null : true;
     const cls = `md-wikilink${resolved ? "" : " unresolved"}${bang ? " embed" : ""}`;

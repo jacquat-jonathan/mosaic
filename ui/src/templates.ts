@@ -13,9 +13,10 @@ export function templateDefault(config: TemplateConfig, path: string) {
 }
 export function newNotePath(folder: string, name: string): string {
   const n = name.trim().replace(/\.md$/i, "");
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are what this refuses
   if (!n || /[\\/\u0000-\u001f]/.test(n) || n.startsWith(".") || n === "..")
     throw new Error("Enter a note name without slashes or a leading dot.");
-  return `${folder ? folder + "/" : ""}${n}.md`;
+  return `${folder ? `${folder}/` : ""}${n}.md`;
 }
 export function templateRequest(path: string, choice: string, timestamp: string): TemplateRequest {
   return {

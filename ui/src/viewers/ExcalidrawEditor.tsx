@@ -23,6 +23,7 @@ export const EMPTY_DRAWING = JSON.stringify(
 
 export function ExcalidrawEditor({ buffer }: { buffer: Buffer }) {
   const [mode, setMode] = useState<"draw" | "source">("draw");
+  // biome-ignore lint/correctness/useExhaustiveDependencies: only external reloads re-seed the drawing; our own edits live in Excalidraw's state
   const parsed = useMemo(() => {
     try {
       const text = buffer.content?.trim() ? buffer.content : EMPTY_DRAWING;
@@ -32,8 +33,6 @@ export function ExcalidrawEditor({ buffer }: { buffer: Buffer }) {
     } catch (e) {
       return { data: null, error: (e as Error).message };
     }
-    // Only external reloads re-seed the drawing; our own edits live in Excalidraw's state.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [buffer.version, buffer.path]);
   const lastWritten = useRef(buffer.content);
   const showSource = mode === "source" || !parsed.data;

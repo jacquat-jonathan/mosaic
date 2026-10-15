@@ -212,22 +212,20 @@ function VaultField({
     }
   };
   const picker = () =>
-    useUi
-      .getState()
-      .openPicker({
-        placeholder: `Choose ${label.toLowerCase()}`,
-        items: [
-          ...(!note && name !== "agents_folder"
-            ? [{ id: "", label: "Vault root" }]
-            : note
-              ? [{ id: "", label: "None" }]
-              : []),
-          ...entries
-            .filter((e) => (note ? !e.is_dir && e.path.endsWith(".md") : e.is_dir))
-            .map((e) => ({ id: e.path, label: e.path })),
-        ],
-        onPick: (item) => void update(item.id),
-      });
+    useUi.getState().openPicker({
+      placeholder: `Choose ${label.toLowerCase()}`,
+      items: [
+        ...(!note && name !== "agents_folder"
+          ? [{ id: "", label: "Vault root" }]
+          : note
+            ? [{ id: "", label: "None" }]
+            : []),
+        ...entries
+          .filter((e) => (note ? !e.is_dir && e.path.endsWith(".md") : e.is_dir))
+          .map((e) => ({ id: e.path, label: e.path })),
+      ],
+      onPick: (item) => void update(item.id),
+    });
   const missing = !options && !!path && !entries.some((e) => e.path === path);
   return (
     <>
@@ -438,13 +436,11 @@ function FolderColors() {
       <summary>Folder colors · optional vault metadata</summary>
       <button
         onClick={() =>
-          useUi
-            .getState()
-            .openPicker({
-              placeholder: "Choose a folder to color",
-              items: entries.filter((e) => e.is_dir).map((e) => ({ id: e.path, label: e.path })),
-              onPick: (item) => setFolder(item.id),
-            })
+          useUi.getState().openPicker({
+            placeholder: "Choose a folder to color",
+            items: entries.filter((e) => e.is_dir).map((e) => ({ id: e.path, label: e.path })),
+            onPick: (item) => setFolder(item.id),
+          })
         }
       >
         {folder || "Choose folder"}…

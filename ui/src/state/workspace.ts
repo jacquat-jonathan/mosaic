@@ -343,7 +343,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
     async save(path) {
       clearTimeout(saveTimers.get(path));
       const b = get().buffers[path];
-      if (!b || !b.dirty || b.content === null || b.conflict || b.deleted) return;
+      if (!b?.dirty || b.content === null || b.conflict || b.deleted) return;
       const content = b.content;
       saving.add(path);
       try {

@@ -15,6 +15,7 @@ export function EventArchiveDialog({ onChange, onClose }: { onChange(): Promise<
       setError(errorMessage(reason));
     }
   };
+  // biome-ignore lint/correctness/useExhaustiveDependencies: loads once when the dialog opens
   useEffect(() => {
     void load();
   }, []);

@@ -1,5 +1,12 @@
-import { type Range } from "@codemirror/state";
-import { Decoration, EditorView, ViewPlugin, WidgetType, type DecorationSet, type ViewUpdate } from "@codemirror/view";
+import type { Range } from "@codemirror/state";
+import {
+  Decoration,
+  type EditorView,
+  ViewPlugin,
+  WidgetType,
+  type DecorationSet,
+  type ViewUpdate,
+} from "@codemirror/view";
 import { insertSiblingSection, moveSectionTo, parse } from "../views/outline";
 
 const SECTION_MIME = "application/x-mosaic-section";

@@ -15,7 +15,7 @@ import { PropertiesEditor } from "../editor/PropertiesEditor";
 import { FRONTMATTER_RE } from "../editor/livePreview";
 import { dayStamp } from "../daily";
 import { openDailyNote } from "../actions";
-import { type Days } from "../ipc/types";
+import type { Days } from "../ipc/types";
 import { TaskList } from "./CalendarView";
 import { noteAttachments } from "../attachments";
 import { saveVaultPreferences, useVaultPreferences } from "../state/vaultPreferences";
@@ -211,7 +211,7 @@ function LinksPanel() {
               const next = `---\n${yaml.trimEnd()}\n---`;
               useWorkspace
                 .getState()
-                .replaceContent(active, fm ? next + content.slice(fm[0].length) : next + "\n\n" + content);
+                .replaceContent(active, fm ? next + content.slice(fm[0].length) : `${next}\n\n${content}`);
             }}
             onEditSource={() => revealNotePosition(active, 1)}
           />

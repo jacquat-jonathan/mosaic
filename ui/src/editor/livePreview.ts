@@ -1,7 +1,14 @@
 // Obsidian-style live preview: Markdown syntax is hidden and rendered everywhere except where the
 // selection is, so the file on disk stays plain Markdown while the screen reads like a document.
 
-import { EditorState, StateEffect, StateField, type Extension, type Range, type Transaction } from "@codemirror/state";
+import {
+  type EditorState,
+  StateEffect,
+  StateField,
+  type Extension,
+  type Range,
+  type Transaction,
+} from "@codemirror/state";
 import { Decoration, EditorView, ViewPlugin, type DecorationSet, type ViewUpdate } from "@codemirror/view";
 import { syntaxTree } from "@codemirror/language";
 import type { SyntaxNode } from "@lezer/common";

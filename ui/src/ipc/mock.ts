@@ -473,7 +473,7 @@ function mockAgents(): Agent[] {
   return [...files.entries()]
     .filter(
       ([p]) =>
-        p.startsWith(folder + "/") &&
+        p.startsWith(`${folder}/`) &&
         (/^[^/]+\.md$/i.test(p.slice(folder.length + 1)) || /^[^/]+\/SKILL\.md$/i.test(p.slice(folder.length + 1))),
     )
     .map(([path, f]) => {
@@ -1380,29 +1380,27 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
       return String(a.path);
     case "planner_export": {
       if (a.format === "json")
-        return (
-          JSON.stringify(
-            {
-              format_version: 1,
-              exported_at: plannerNow(),
-              summary: await mockInvoke("planner_summary", {}),
-              epics: plannerEpics,
-              tasks: plannerTasks,
-              work_sessions: plannerWorkSessions,
-              events: plannerEvents.filter((item) => !item.series_id),
-              activity: plannerActivities,
-            },
-            null,
-            2,
-          ) + "\n"
-        );
+        return `${JSON.stringify(
+          {
+            format_version: 1,
+            exported_at: plannerNow(),
+            summary: await mockInvoke("planner_summary", {}),
+            epics: plannerEpics,
+            tasks: plannerTasks,
+            work_sessions: plannerWorkSessions,
+            events: plannerEvents.filter((item) => !item.series_id),
+            activity: plannerActivities,
+          },
+          null,
+          2,
+        )}\n`;
       if (a.format === "csv")
         return (
           "entity_type,id,parent_id,epic_id,status,title,start,end,due_date,estimate_minutes,archived_at,trashed_at\r\n" +
           plannerTasks
             .map(
               (item) =>
-                `\"task\",\"${item.id}\",\"${item.parent_id ?? ""}\",\"${item.epic_id ?? ""}\",\"${item.status}\",\"${item.title.replaceAll('"', '""')}\",\"\",\"\",\"${item.due_date ?? ""}\",\"${item.estimate_minutes ?? ""}\",\"${item.archived_at ?? ""}\",\"${item.trashed_at ?? ""}\"`,
+                `"task","${item.id}","${item.parent_id ?? ""}","${item.epic_id ?? ""}","${item.status}","${item.title.replaceAll('"', '""')}","","","${item.due_date ?? ""}","${item.estimate_minutes ?? ""}","${item.archived_at ?? ""}","${item.trashed_at ?? ""}"`,
             )
             .join("\r\n") +
           "\r\n"

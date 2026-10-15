@@ -4,6 +4,7 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Consistently formatted, linted UI code:** the interface code is formatted and checked by Biome on every change, which catches React hook dependency mistakes before they reach a release.
 - **Undo history that lasts:** undo history and pending AI proposals move out of the Caches folder, which macOS and cleaning tools may empty, into Application Support. They now follow a vault you move or rename, a copied vault starts its own history, and if the history can't be saved Mosaic says so in a banner instead of quietly keeping it only until you quit. Existing history is moved over the first time you open each vault.
 - **Faster AI tool calls on large vaults:** while Mosaic is open, agents' searches and queries use the index the app already keeps current instead of re-scanning every file first, and a quick run of calls shares one scan.
 - **Notes don't depend on the planner:** `mosaic` commands and AI agents work on notes even when the planner's database is damaged, and no longer create a `.mosaic` folder in vaults that don't use the planner. The planner also waits briefly instead of failing when two windows use it at once.

@@ -27,6 +27,7 @@ export function TaskEditor({
   const [busy, setBusy] = useState(false),
     [error, setError] = useState<string | null>(null),
     [conflict, setConflict] = useState(false);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the form resets only when another task, or a newer revision of it, arrives
   useEffect(() => {
     setTitle(task.title);
     setDescription(task.description);
@@ -68,23 +69,19 @@ export function TaskEditor({
     );
     if (!future.length) return "cancel" as const;
     if (
-      await useUi
-        .getState()
-        .ask({
-          title: "Cancel future work sessions?",
-          body: `${future.length} future session${future.length === 1 ? "" : "s"} can be cancelled now.`,
-          confirmLabel: "Cancel sessions",
-        })
+      await useUi.getState().ask({
+        title: "Cancel future work sessions?",
+        body: `${future.length} future session${future.length === 1 ? "" : "s"} can be cancelled now.`,
+        confirmLabel: "Cancel sessions",
+      })
     )
       return "cancel" as const;
     if (
-      await useUi
-        .getState()
-        .ask({
-          title: "Keep future work sessions?",
-          body: "They will remain visible after this task is completed.",
-          confirmLabel: "Keep sessions",
-        })
+      await useUi.getState().ask({
+        title: "Keep future work sessions?",
+        body: "They will remain visible after this task is completed.",
+        confirmLabel: "Keep sessions",
+      })
     )
       return "keep" as const;
     return null;
@@ -95,13 +92,11 @@ export function TaskEditor({
       const open = tasks.some((item) => item.parent_id === task.id && item.status !== "done" && !item.archived_at);
       if (
         open &&
-        !(await useUi
-          .getState()
-          .ask({
-            title: "Complete task with unfinished subtasks?",
-            body: "The subtasks will remain incomplete.",
-            confirmLabel: "Complete task",
-          }))
+        !(await useUi.getState().ask({
+          title: "Complete task with unfinished subtasks?",
+          body: "The subtasks will remain incomplete.",
+          confirmLabel: "Complete task",
+        }))
       )
         return;
       const policy = await futurePolicy();
@@ -136,13 +131,11 @@ export function TaskEditor({
     let parent = task.parent_id;
     if (parent && epicId !== task.epic_id) {
       if (
-        !(await useUi
-          .getState()
-          .ask({
-            title: "Promote this subtask?",
-            body: "Moving it to another epic makes it a top-level task.",
-            confirmLabel: "Promote and move",
-          }))
+        !(await useUi.getState().ask({
+          title: "Promote this subtask?",
+          body: "Moving it to another epic makes it a top-level task.",
+          confirmLabel: "Promote and move",
+        }))
       )
         return;
       parent = null;
@@ -164,13 +157,11 @@ export function TaskEditor({
   };
   const trash = async () => {
     if (
-      !(await useUi
-        .getState()
-        .ask({
-          title: "Delete task?",
-          body: "It will move to Deleted and remain recoverable.",
-          confirmLabel: "Delete",
-        }))
+      !(await useUi.getState().ask({
+        title: "Delete task?",
+        body: "It will move to Deleted and remain recoverable.",
+        confirmLabel: "Delete",
+      }))
     )
       return;
     await run(() => api.trashPlannerTask(task.id, task.revision));
@@ -196,13 +187,11 @@ export function TaskEditor({
   const promote = async () => {
     if (
       !task.parent_id ||
-      !(await useUi
-        .getState()
-        .ask({
-          title: "Promote subtask?",
-          body: "It will become a top-level task in the same epic.",
-          confirmLabel: "Promote",
-        }))
+      !(await useUi.getState().ask({
+        title: "Promote subtask?",
+        body: "It will become a top-level task in the same epic.",
+        confirmLabel: "Promote",
+      }))
     )
       return;
     await run(() =>

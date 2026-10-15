@@ -114,7 +114,7 @@ async function sandboxedDoc(path: string, html: string, scripts: boolean): Promi
   csp.content = htmlPreviewCsp(scripts);
   doc.head.prepend(base);
   doc.head.prepend(csp);
-  return "<!doctype html>\n" + doc.documentElement.outerHTML;
+  return `<!doctype html>\n${doc.documentElement.outerHTML}`;
 }
 
 export function HtmlViewer({ buffer }: { buffer: Buffer }) {

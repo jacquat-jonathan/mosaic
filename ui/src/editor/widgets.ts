@@ -1,4 +1,4 @@
-import { EditorView, WidgetType } from "@codemirror/view";
+import { type EditorView, WidgetType } from "@codemirror/view";
 import { createElement, type ReactElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { renderMath } from "./render";
@@ -225,7 +225,7 @@ export class NoteEmbedWidget extends WidgetType {
     const el = document.createElement("div");
     el.className = "cm-embed-note";
     const head = document.createElement("div");
-    head.className = "cm-embed-note-title cm-wikilink" + (this.path ? "" : " unresolved");
+    head.className = `cm-embed-note-title cm-wikilink${this.path ? "" : " unresolved"}`;
     head.textContent = this.target;
     head.dataset.target = this.target;
     el.appendChild(head);

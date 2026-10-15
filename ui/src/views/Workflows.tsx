@@ -448,20 +448,19 @@ export function WorkflowForm({ agent, onDone }: { agent?: Agent; onDone?: () => 
   const unregister = useRef<(() => void) | null>(null);
   const discard = async () => {
     if (!dirty) return true;
-    const ok = await useUi
-      .getState()
-      .ask({
-        title: "Discard workflow changes?",
-        body: "Your draft has not been saved. The agent source is unchanged.",
-        confirmLabel: "Discard changes",
-        danger: true,
-      });
+    const ok = await useUi.getState().ask({
+      title: "Discard workflow changes?",
+      body: "Your draft has not been saved. The agent source is unchanged.",
+      confirmLabel: "Discard changes",
+      danger: true,
+    });
     if (ok) {
       setDirty(false);
       unregister.current?.();
     }
     return ok;
   };
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `discard` is recreated with `dirty`, which is listed
   useEffect(() => {
     if (!dirty) return;
     unregister.current = registerDraft(draftPath, discard);
@@ -475,6 +474,7 @@ export function WorkflowForm({ agent, onDone }: { agent?: Agent; onDone?: () => 
       window.removeEventListener("beforeunload", beforeUnload);
     };
   }, [dirty, draftPath]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the form is reset only when another agent is chosen
   useEffect(() => {
     let live = true;
     setSource(null);

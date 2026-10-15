@@ -139,23 +139,19 @@ export function BoardView() {
       );
     if (!future.length) return "cancel" as const;
     if (
-      await useUi
-        .getState()
-        .ask({
-          title: "Cancel future work sessions?",
-          body: `${future.length} future session${future.length === 1 ? "" : "s"} can be cancelled now.`,
-          confirmLabel: "Cancel sessions",
-        })
+      await useUi.getState().ask({
+        title: "Cancel future work sessions?",
+        body: `${future.length} future session${future.length === 1 ? "" : "s"} can be cancelled now.`,
+        confirmLabel: "Cancel sessions",
+      })
     )
       return "cancel" as const;
     if (
-      await useUi
-        .getState()
-        .ask({
-          title: "Keep future work sessions?",
-          body: "They will remain visible after this task is completed.",
-          confirmLabel: "Keep sessions",
-        })
+      await useUi.getState().ask({
+        title: "Keep future work sessions?",
+        body: "They will remain visible after this task is completed.",
+        confirmLabel: "Keep sessions",
+      })
     )
       return "keep" as const;
     return null;
@@ -199,13 +195,11 @@ export function BoardView() {
         const open = tasks.some((item) => item.parent_id === current.id && item.status !== "done" && !item.archived_at);
         if (
           open &&
-          !(await useUi
-            .getState()
-            .ask({
-              title: "Complete task with unfinished subtasks?",
-              body: "The subtasks will remain incomplete.",
-              confirmLabel: "Complete task",
-            }))
+          !(await useUi.getState().ask({
+            title: "Complete task with unfinished subtasks?",
+            body: "The subtasks will remain incomplete.",
+            confirmLabel: "Complete task",
+          }))
         )
           return;
         const policy = await futurePolicy(current.id);
@@ -244,13 +238,11 @@ export function BoardView() {
   };
   const archiveEpic = async (epic: PlannerEpic) => {
     if (
-      !(await useUi
-        .getState()
-        .ask({
-          title: "Archive epic?",
-          body: "Its tasks stay linked to it and remain recoverable.",
-          confirmLabel: "Archive",
-        }))
+      !(await useUi.getState().ask({
+        title: "Archive epic?",
+        body: "Its tasks stay linked to it and remain recoverable.",
+        confirmLabel: "Archive",
+      }))
     )
       return;
     try {
@@ -262,13 +254,11 @@ export function BoardView() {
   };
   const trashEpic = async (epic: PlannerEpic) => {
     if (
-      !(await useUi
-        .getState()
-        .ask({
-          title: "Delete epic?",
-          body: "It will move to Deleted and remain recoverable.",
-          confirmLabel: "Delete",
-        }))
+      !(await useUi.getState().ask({
+        title: "Delete epic?",
+        body: "It will move to Deleted and remain recoverable.",
+        confirmLabel: "Delete",
+      }))
     )
       return;
     try {

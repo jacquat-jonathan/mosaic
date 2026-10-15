@@ -8,7 +8,7 @@ use crate::kind::FileKind;
 use crate::links::{FileSet, markdown_url_for, wiki_text_for};
 use crate::parse::{self, Heading, LinkKind};
 use crate::planner::PlannerStore;
-use crate::settings::{Access, AgentRule, SETTINGS_FILE, Settings, access_for};
+use crate::settings::{Access, AgentRule, SETTINGS_FILE, Settings, access_for, rule_covers};
 use crate::vault::{Entry, FileContent, Vault, Written, normalize};
 use regex::Regex;
 use serde::Serialize;
@@ -172,11 +172,9 @@ impl Workspace {
     }
 
     pub(crate) fn change_allowed(&self, path: &str) -> bool {
-        self.change_allowlist.as_ref().is_none_or(|allowed| {
-            allowed
-                .iter()
-                .any(|p| p.is_empty() || path == p || path.starts_with(&format!("{p}/")))
-        })
+        self.change_allowlist
+            .as_ref()
+            .is_none_or(|allowed| allowed.iter().any(|p| rule_covers(p, path)))
     }
 
     /// Opens a vault with its index and history in the default cache location (in memory if that fails).
@@ -239,7 +237,7 @@ impl Workspace {
     /// A hidden path reads as "not found", so agents can't tell it exists.
     pub(crate) fn check_read(&self, path: &str) -> Result<()> {
         let norm = normalize(path)?;
-        if Self::visible(&self.rules(), &norm) {
+        if Self::visible(&self.rules(), &self.vault.canonical_rel(&norm)?) {
             Ok(())
         } else {
             Err(Error::NotFound(norm))
@@ -250,14 +248,17 @@ impl Workspace {
     fn check_write(&self, path: &str) -> Result<()> {
         let norm = normalize(path)?;
         let rules = self.rules();
-        match access_for(&rules, &norm) {
+        // Rules are matched against the on-disk spelling: `private/x.md` opens `Private/x.md`.
+        let real = self.vault.canonical_rel(&norm)?;
+        match access_for(&rules, &real) {
             Some(Access::Hidden) => return Err(Error::NotFound(norm)),
             Some(Access::ReadOnly) => return Err(read_only(&norm)),
             Some(Access::Review) | None => {}
         }
-        if let Some(r) = rules.iter().find(|r| {
-            r.path.starts_with(&format!("{norm}/")) || (norm.is_empty() && !r.path.is_empty())
-        }) {
+        if let Some(r) = rules
+            .iter()
+            .find(|r| !rule_covers(&r.path, &real) && rule_covers(&real, &r.path))
+        {
             return Err(match r.access {
                 Access::ReadOnly => read_only(&r.path),
                 Access::Hidden => {

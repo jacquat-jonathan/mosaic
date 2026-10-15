@@ -249,9 +249,15 @@ impl Workspace {
     /// Whether this workspace's changes to `norm` become proposals (agents and the CLI, in a
     /// folder under review).
     pub(crate) fn in_review(&self, norm: &str) -> bool {
-        self.source() != Source::App
-            && (!self.change_allowed(norm)
-                || access_for(&self.rules(), norm) == Some(Access::Review))
+        if self.source() == Source::App {
+            return false;
+        }
+        // Matched against the on-disk spelling, so `projects/x.md` is reviewed like `Projects/x.md`.
+        let real = self
+            .vault
+            .canonical_rel(norm)
+            .unwrap_or_else(|_| norm.to_string());
+        !self.change_allowed(&real) || access_for(&self.rules(), &real) == Some(Access::Review)
     }
 
     /// The file as the agent should see it: its pending proposal if there is one, else the disk.

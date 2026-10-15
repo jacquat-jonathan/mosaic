@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Folder rules can't be sidestepped by spelling:** hidden, read-only and review folders now apply however an agent spells the path — `private/secret.md` is treated like `Private/Secret.md`, and accented names match in either Unicode form — and a link inside the vault is judged by where it points.
+
 ## 0.19.0 — 2026-10-15
 
 - **Faster note shaping:** reorder sibling heading sections from the editor or Outline by dragging, or use ⌥↑/⌥↓ in the Outline; nested subsections move with their parent and numbered headings are renumbered. The adjacent + action creates a same-level section, while the compact slash menu groups its choices, adds callouts, math, links and embeds, and calls checklist items Checkboxes.

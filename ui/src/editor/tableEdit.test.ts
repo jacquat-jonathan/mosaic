@@ -1,5 +1,14 @@
 import { expect, test } from "vitest";
-import { deleteColumn, deleteRow, formatTable, insertColumn, insertRow, parseTable, setAlign, setCell } from "./tableEdit";
+import {
+  deleteColumn,
+  deleteRow,
+  formatTable,
+  insertColumn,
+  insertRow,
+  parseTable,
+  setAlign,
+  setCell,
+} from "./tableEdit";
 
 const src = "| Name | Qty |\n|:--|--:|\n| Apple | 3 |\n| Kiwi |\n";
 
@@ -7,7 +16,10 @@ test("parses cells and alignment, padding short rows", () => {
   const t = parseTable(src);
   expect(t.header).toEqual(["Name", "Qty"]);
   expect(t.align).toEqual(["left", "right"]);
-  expect(t.rows).toEqual([["Apple", "3"], ["Kiwi", ""]]);
+  expect(t.rows).toEqual([
+    ["Apple", "3"],
+    ["Kiwi", ""],
+  ]);
 });
 
 test("writes aligned Markdown back, escaping pipes", () => {
@@ -20,7 +32,11 @@ test("writes aligned Markdown back, escaping pipes", () => {
 test("rows and columns are added and removed", () => {
   let t = parseTable(src);
   t = insertRow(t, 1);
-  expect(t.rows).toEqual([["Apple", "3"], ["", ""], ["Kiwi", ""]]);
+  expect(t.rows).toEqual([
+    ["Apple", "3"],
+    ["", ""],
+    ["Kiwi", ""],
+  ]);
   t = deleteRow(t, 0);
   expect(t.rows.map((r) => r[0])).toEqual(["", "Kiwi"]);
   t = insertColumn(t, 1);

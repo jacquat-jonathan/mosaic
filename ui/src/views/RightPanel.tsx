@@ -22,35 +22,118 @@ import { saveVaultPreferences, useVaultPreferences } from "../state/vaultPrefere
 
 /** Context follows the focused workspace, independently of the selected destination. */
 export function RightPanel() {
-  const active = useWorkspace(s => s.panes.find(p=>p.id === s.focused)?.active ?? null);
+  const active = useWorkspace((s) => s.panes.find((p) => p.id === s.focused)?.active ?? null);
   const kind = contextKind(active);
   if (!active || !kind) return null;
   const id = parseView(active).id;
-  return <aside className="right-panel" aria-label="Workspace context" data-focus-region tabIndex={-1}>
-    <header className="context-head"><strong>{kind === "note" ? "Note details" : `${kind[0].toUpperCase()}${kind.slice(1)} details`}</strong><button aria-label="Close context panel" onClick={()=>useUi.getState().toggleRightPanel()}>×</button></header>
-    {kind === "note" ? <LinksPanel key={active} /> : kind === "chat" ? <ChatContext id={id} /> : kind === "workflow" ? <WorkflowContext name={id} /> : kind === "run" ? <RunDetail id={id} compact /> : <CalendarContext />}
-  </aside>;
+  return (
+    <aside className="right-panel" aria-label="Workspace context" data-focus-region tabIndex={-1}>
+      <header className="context-head">
+        <strong>{kind === "note" ? "Note details" : `${kind[0].toUpperCase()}${kind.slice(1)} details`}</strong>
+        <button aria-label="Close context panel" onClick={() => useUi.getState().toggleRightPanel()}>
+          ×
+        </button>
+      </header>
+      {kind === "note" ? (
+        <LinksPanel key={active} />
+      ) : kind === "chat" ? (
+        <ChatContext id={id} />
+      ) : kind === "workflow" ? (
+        <WorkflowContext name={id} />
+      ) : kind === "run" ? (
+        <RunDetail id={id} compact />
+      ) : (
+        <CalendarContext />
+      )}
+    </aside>
+  );
 }
 function ChatContext({ id }: { id: string }) {
-  const chat = useChat(s => s.chats[id]);
+  const chat = useChat((s) => s.chats[id]);
   if (!chat) return <p className="panel-meta">Chat unavailable.</p>;
-  const last = [...chat.items].reverse().find(i => i.kind === "user");
-  return <div className="context-content"><h3>Attachments</h3>{chat.attached.length ? chat.attached.map(p=><button key={p} onClick={()=>void useWorkspace.getState().open(p,{newTab:true})}>{p}</button>) : <p>No attached files.</p>}
-    {(chat.selection || last?.selection) && <><h3>Selection</h3><blockquote>{(chat.selection || last?.selection)?.text}</blockquote></>}
-    <dl><dt>Provider</dt><dd>Claude Code</dd><dt>Model</dt><dd>{chat.model || "Default"}</dd><dt>Session</dt><dd>{chat.session || "Not started"}</dd><dt>Cost</dt><dd>${chat.cost.toFixed(2)}</dd><dt>Status</dt><dd>{chat.run !== null ? "Running" : chat.noMosaic ? "Tools disconnected" : "Ready"}</dd></dl>
-    {last && <><h3>Last message context</h3>{last.context.map(p=><p key={p}>{p}</p>)}</>}
-  </div>;
+  const last = [...chat.items].reverse().find((i) => i.kind === "user");
+  return (
+    <div className="context-content">
+      <h3>Attachments</h3>
+      {chat.attached.length ? (
+        chat.attached.map((p) => (
+          <button key={p} onClick={() => void useWorkspace.getState().open(p, { newTab: true })}>
+            {p}
+          </button>
+        ))
+      ) : (
+        <p>No attached files.</p>
+      )}
+      {(chat.selection || last?.selection) && (
+        <>
+          <h3>Selection</h3>
+          <blockquote>{(chat.selection || last?.selection)?.text}</blockquote>
+        </>
+      )}
+      <dl>
+        <dt>Provider</dt>
+        <dd>Claude Code</dd>
+        <dt>Model</dt>
+        <dd>{chat.model || "Default"}</dd>
+        <dt>Session</dt>
+        <dd>{chat.session || "Not started"}</dd>
+        <dt>Cost</dt>
+        <dd>${chat.cost.toFixed(2)}</dd>
+        <dt>Status</dt>
+        <dd>{chat.run !== null ? "Running" : chat.noMosaic ? "Tools disconnected" : "Ready"}</dd>
+      </dl>
+      {last && (
+        <>
+          <h3>Last message context</h3>
+          {last.context.map((p) => (
+            <p key={p}>{p}</p>
+          ))}
+        </>
+      )}
+    </div>
+  );
 }
 function CalendarContext() {
-  const day = usePlanning(s=>s.selectedDay);
-  const revision = useVault(s=>s.revision);
-  const [data,setData] = useState<Days | null>(null);
-  const [error,setError] = useState<string | null>(null);
-  const [tick,setTick] = useState(0);
-  useEffect(()=>{let live=true;setData(null);setError(null);void api.days(day,day,dayStamp()).then(d=>live&&setData(d),e=>live&&setError(errorMessage(e)));return()=>{live=false;};},[day,revision,tick]);
-  return <div className="context-content"><h3>{day}</h3><button onClick={()=>void openDailyNote(new Date(`${day}T12:00`),{newTab:true})}>Open daily note</button>{error&&<p className="error-text">{error}</p>}
-    {data && <><p>{data.days[0]?.tasks.filter(t=>t.status === "open").length ?? 0} open tasks</p><h3>Overdue</h3><TaskList tasks={data.overdue} showNote onTick={(t,done)=>void api.setTask(t.path,t.line,t.text,done).then(()=>setTick(n=>n+1),e=>setError(errorMessage(e)))} /></>}
-  </div>;
+  const day = usePlanning((s) => s.selectedDay);
+  const revision = useVault((s) => s.revision);
+  const [data, setData] = useState<Days | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    let live = true;
+    setData(null);
+    setError(null);
+    void api.days(day, day, dayStamp()).then(
+      (d) => live && setData(d),
+      (e) => live && setError(errorMessage(e)),
+    );
+    return () => {
+      live = false;
+    };
+  }, [day, revision, tick]);
+  return (
+    <div className="context-content">
+      <h3>{day}</h3>
+      <button onClick={() => void openDailyNote(new Date(`${day}T12:00`), { newTab: true })}>Open daily note</button>
+      {error && <p className="error-text">{error}</p>}
+      {data && (
+        <>
+          <p>{data.days[0]?.tasks.filter((t) => t.status === "open").length ?? 0} open tasks</p>
+          <h3>Overdue</h3>
+          <TaskList
+            tasks={data.overdue}
+            showNote
+            onTick={(t, done) =>
+              void api.setTask(t.path, t.line, t.text, done).then(
+                () => setTick((n) => n + 1),
+                (e) => setError(errorMessage(e)),
+              )
+            }
+          />
+        </>
+      )}
+    </div>
+  );
 }
 
 /** Backlinks and outline of the active note. */
@@ -60,7 +143,7 @@ function LinksPanel() {
   const revision = useVault((s) => s.revision);
   const entries = useVault((s) => s.entries);
   const aliases = useVault((s) => s.aliases);
-  const showAttachments = useVaultPreferences(s => s.value.show_attachments_in_tree);
+  const showAttachments = useVaultPreferences((s) => s.value.show_attachments_in_tree);
   const [backlinks, setBacklinks] = useState<Backlink[]>([]);
   const [dragLine, setDragLine] = useState<number | null>(null);
   const [dropLine, setDropLine] = useState<number | null>(null);
@@ -72,7 +155,10 @@ function LinksPanel() {
     }
     let live = true;
     const t = setTimeout(() => {
-      api.backlinks(active).then((b) => live && setBacklinks(b), () => live && setBacklinks([]));
+      api.backlinks(active).then(
+        (b) => live && setBacklinks(b),
+        () => live && setBacklinks([]),
+      );
     }, 150);
     return () => {
       live = false;
@@ -80,8 +166,15 @@ function LinksPanel() {
     };
   }, [active, revision]);
 
-  const headings = useMemo(() => (active?.endsWith(".md") && content ? parseMarkdownHeadings(content) : []), [active, content]);
-  const attachments = useMemo(() => active?.endsWith(".md") && typeof content === "string" ? noteAttachments(content, active, entries, aliases) : [], [active, content, entries, aliases]);
+  const headings = useMemo(
+    () => (active?.endsWith(".md") && content ? parseMarkdownHeadings(content) : []),
+    [active, content],
+  );
+  const attachments = useMemo(
+    () =>
+      active?.endsWith(".md") && typeof content === "string" ? noteAttachments(content, active, entries, aliases) : [],
+    [active, content, entries, aliases],
+  );
   const grouped = useMemo(() => {
     const m = new Map<string, Backlink[]>();
     for (const b of backlinks) {
@@ -93,24 +186,81 @@ function LinksPanel() {
     return [...m];
   }, [backlinks]);
 
-  if (!active) return <div className="links-panel"><div className="panel-meta">No file open.</div></div>;
-  if (isSpecialTab(active)) return <div className="links-panel"><div className="panel-meta">Backlinks and the outline show for notes.</div></div>;
+  if (!active)
+    return (
+      <div className="links-panel">
+        <div className="panel-meta">No file open.</div>
+      </div>
+    );
+  if (isSpecialTab(active))
+    return (
+      <div className="links-panel">
+        <div className="panel-meta">Backlinks and the outline show for notes.</div>
+      </div>
+    );
   return (
     <div className="links-panel">
-      {active.endsWith(".md") && content !== null && content !== undefined && <section><h3>Properties</h3><PropertiesEditor key={content.match(FRONTMATTER_RE)?.[1] ?? ""} yaml={content.match(FRONTMATTER_RE)?.[1] ?? ""} onChange={yaml=>{
-        const fm=FRONTMATTER_RE.exec(content); const next=`---\n${yaml.trimEnd()}\n---`;
-        useWorkspace.getState().replaceContent(active, fm ? next + content.slice(fm[0].length) : next + "\n\n" + content);
-      }} onEditSource={()=>revealNotePosition(active, 1)} /></section>}
-      {active.endsWith(".md") && <section><h3>Attachments <span className="count">{attachments.length}</span></h3>
-        {attachments.length === 0 ? <p className="panel-meta">No local files are embedded in this note.</p> : attachments.map(path => <button className="attachment-link" key={path} title={path} onClick={event => void useWorkspace.getState().open(path,{newTab:event.metaKey})}>{path}</button>)}
-        {!showAttachments && attachments.length > 0 && <button className="panel-secondary" onClick={() => void saveVaultPreferences({show_attachments_in_tree:true}).catch(error => useVault.getState().setError(errorMessage(error)))}>Show attachments in file tree</button>}
-      </section>}
+      {active.endsWith(".md") && content !== null && content !== undefined && (
+        <section>
+          <h3>Properties</h3>
+          <PropertiesEditor
+            key={content.match(FRONTMATTER_RE)?.[1] ?? ""}
+            yaml={content.match(FRONTMATTER_RE)?.[1] ?? ""}
+            onChange={(yaml) => {
+              const fm = FRONTMATTER_RE.exec(content);
+              const next = `---\n${yaml.trimEnd()}\n---`;
+              useWorkspace
+                .getState()
+                .replaceContent(active, fm ? next + content.slice(fm[0].length) : next + "\n\n" + content);
+            }}
+            onEditSource={() => revealNotePosition(active, 1)}
+          />
+        </section>
+      )}
+      {active.endsWith(".md") && (
+        <section>
+          <h3>
+            Attachments <span className="count">{attachments.length}</span>
+          </h3>
+          {attachments.length === 0 ? (
+            <p className="panel-meta">No local files are embedded in this note.</p>
+          ) : (
+            attachments.map((path) => (
+              <button
+                className="attachment-link"
+                key={path}
+                title={path}
+                onClick={(event) => void useWorkspace.getState().open(path, { newTab: event.metaKey })}
+              >
+                {path}
+              </button>
+            ))
+          )}
+          {!showAttachments && attachments.length > 0 && (
+            <button
+              className="panel-secondary"
+              onClick={() =>
+                void saveVaultPreferences({ show_attachments_in_tree: true }).catch((error) =>
+                  useVault.getState().setError(errorMessage(error)),
+                )
+              }
+            >
+              Show attachments in file tree
+            </button>
+          )}
+        </section>
+      )}
       <section>
-        <h3>Backlinks <span className="count">{backlinks.length}</span></h3>
+        <h3>
+          Backlinks <span className="count">{backlinks.length}</span>
+        </h3>
         {grouped.length === 0 && <p className="panel-meta">No other notes link here yet.</p>}
         {grouped.map(([source, links]) => (
           <div key={source} className="backlink">
-            <button className="backlink-source" onClick={(e) => void useWorkspace.getState().open(source, { newTab: e.metaKey })}>
+            <button
+              className="backlink-source"
+              onClick={(e) => void useWorkspace.getState().open(source, { newTab: e.metaKey })}
+            >
               {source.replace(/\.md$/, "")}
             </button>
             {links.map((l, i) =>
@@ -223,18 +373,26 @@ function UnlinkedMentions({ path, revision }: { path: string; revision: number }
     <section>
       <h3>
         <button className="section-toggle" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
-          {open ? "▾" : "▸"} Unlinked mentions {mentions && open ? <span className="count">{mentions.length}</span> : null}
+          {open ? "▾" : "▸"} Unlinked mentions{" "}
+          {mentions && open ? <span className="count">{mentions.length}</span> : null}
         </button>
       </h3>
       {open && mentions?.length === 0 && <p className="panel-meta">No other notes mention this one without a link.</p>}
       {open &&
         mentions?.map((m) => (
           <div key={`${m.source}:${m.line}`} className="backlink mention">
-            <button className="backlink-source" onClick={(e) => void useWorkspace.getState().open(m.source, { newTab: e.metaKey })}>
+            <button
+              className="backlink-source"
+              onClick={(e) => void useWorkspace.getState().open(m.source, { newTab: e.metaKey })}
+            >
               {m.source.replace(/\.md$/, "")}
             </button>
             <div className="backlink-context">{m.context}</div>
-            <button className="mention-link" title={`Turn “${m.text}” into a link to this note`} onClick={() => void link(m)}>
+            <button
+              className="mention-link"
+              title={`Turn “${m.text}” into a link to this note`}
+              onClick={() => void link(m)}
+            >
               Link
             </button>
           </div>

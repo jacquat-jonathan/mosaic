@@ -66,7 +66,8 @@ export function parseCanvas(text: string): CanvasDoc {
   } catch (e) {
     throw new CanvasParseError(`Not valid JSON: ${(e as Error).message}`);
   }
-  if (!data || typeof data !== "object" || Array.isArray(data)) throw new CanvasParseError("A canvas must be a JSON object.");
+  if (!data || typeof data !== "object" || Array.isArray(data))
+    throw new CanvasParseError("A canvas must be a JSON object.");
   const doc = data as Partial<CanvasDoc>;
   const nodes = Array.isArray(doc.nodes) ? doc.nodes : [];
   const edges = Array.isArray(doc.edges) ? doc.edges : [];

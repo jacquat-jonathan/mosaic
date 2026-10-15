@@ -1,7 +1,8 @@
 import { expect, test } from "vitest";
 import { readProps, removeProp, renameProp, setProp } from "./properties";
 
-const yaml = "# a comment\ntags: [project, mosaic]\ndue: 2026-10-02\ndone: false\ncount: 3\ntitle: Plan\nmeta: {a: 1}\n";
+const yaml =
+  "# a comment\ntags: [project, mosaic]\ndue: 2026-10-02\ndone: false\ncount: 3\ntitle: Plan\nmeta: {a: 1}\n";
 
 test("reads each property with its kind", () => {
   expect(readProps(yaml).map((p) => [p.key, p.kind, p.value])).toEqual([

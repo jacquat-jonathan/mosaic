@@ -11,7 +11,12 @@ const vault = files(...shared.files);
 const aliases = shared.aliases as [string, string][];
 
 test("parses target, heading, block and alias", () => {
-  expect(parseWikiLink("Note#Heading|Shown")).toEqual({ target: "Note", heading: "Heading", block: null, alias: "Shown" });
+  expect(parseWikiLink("Note#Heading|Shown")).toEqual({
+    target: "Note",
+    heading: "Heading",
+    block: null,
+    alias: "Shown",
+  });
   expect(parseWikiLink("Note^abc")).toEqual({ target: "Note", heading: null, block: "abc", alias: null });
   expect(linkLabel(parseWikiLink("a/b/Note#H"))).toBe("Note › H");
 });

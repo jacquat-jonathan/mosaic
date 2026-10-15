@@ -41,10 +41,10 @@ const HIGHLIGHT_RE = /==(?!\s)([^=\n]+?)(?<!\s)==/g;
 export function selectionTouches(state: EditorState, from: number, to: number): boolean {
   return state.selection.ranges.some((r) =>
     r.empty
-      // A caret at the start belongs to this span; a caret at the end belongs to what follows it.
-      // Treating both boundaries as inside made adjacent live-preview spans repeatedly reveal and
-      // hide while the person moved with the arrow keys, which visually displaced the caret.
-      ? r.head >= from && r.head < to
+      ? // A caret at the start belongs to this span; a caret at the end belongs to what follows it.
+        // Treating both boundaries as inside made adjacent live-preview spans repeatedly reveal and
+        // hide while the person moved with the arrow keys, which visually displaced the caret.
+        r.head >= from && r.head < to
       : r.from < to && r.to > from,
   );
 }
@@ -121,7 +121,12 @@ function buildBlocks(state: EditorState): Blocks {
     const to = lineFrom + text.length;
     code.push({ from, to });
     if (!selectionTouches(state, from, to)) {
-      out.push(Decoration.replace({ widget: new MathWidget(doc.sliceString(open.bodyFrom, Math.max(open.bodyFrom, lineFrom - 1)), true), block: true }).range(from, to));
+      out.push(
+        Decoration.replace({
+          widget: new MathWidget(doc.sliceString(open.bodyFrom, Math.max(open.bodyFrom, lineFrom - 1)), true),
+          block: true,
+        }).range(from, to),
+      );
       blocked.push({ from, to });
     }
     open = null;
@@ -132,7 +137,11 @@ function buildBlocks(state: EditorState): Blocks {
       const { name, from, to } = ref;
       if (to <= bodyStart) return false;
       switch (name) {
-        case "Document": case "BulletList": case "OrderedList": case "ListItem": case "Blockquote":
+        case "Document":
+        case "BulletList":
+        case "OrderedList":
+        case "ListItem":
+        case "Blockquote":
           return undefined;
         case "FencedCode": {
           if (from < bodyStart || inside(blocked, from, to)) return false;
@@ -146,12 +155,23 @@ function buildBlocks(state: EditorState): Blocks {
             const bodyTo = end.number - start.number >= 2 ? doc.line(end.number - 1).to : start.to;
             const body = doc.sliceString(bodyFrom, bodyTo);
             if (!selectionTouches(state, start.from, end.to)) {
-              out.push(Decoration.replace({ widget: new RenderedBlockWidget(lang, body, ctx, undefined, undefined, { from: bodyFrom, to: bodyTo }), block: true }).range(start.from, end.to));
+              out.push(
+                Decoration.replace({
+                  widget: new RenderedBlockWidget(lang, body, ctx, undefined, undefined, {
+                    from: bodyFrom,
+                    to: bodyTo,
+                  }),
+                  block: true,
+                }).range(start.from, end.to),
+              );
               blocked.push({ from: start.from, to: end.to });
             } else {
               // Editing the block: its source shows, with a live preview underneath that keeps the
               // last good drawing while the source has an error.
-              const widget = new RenderedBlockWidget(lang, body, ctx, undefined, `${ctx.path}:${start.number}`, { from: bodyFrom, to: bodyTo });
+              const widget = new RenderedBlockWidget(lang, body, ctx, undefined, `${ctx.path}:${start.number}`, {
+                from: bodyFrom,
+                to: bodyTo,
+              });
               out.push(Decoration.widget({ widget, block: true, side: 1 }).range(end.to));
             }
           }
@@ -163,12 +183,19 @@ function buildBlocks(state: EditorState): Blocks {
           if (!selectionTouches(state, from, to)) {
             const start = doc.lineAt(from).from;
             const end = doc.lineAt(to).to;
-            out.push(Decoration.replace({ widget: new TableWidget(doc.sliceString(start, end)), block: true }).range(start, end));
+            out.push(
+              Decoration.replace({ widget: new TableWidget(doc.sliceString(start, end)), block: true }).range(
+                start,
+                end,
+              ),
+            );
             blocked.push({ from: start, to: end });
           }
           return false;
         }
-        case "CodeBlock": case "HTMLBlock": case "CommentBlock":
+        case "CodeBlock":
+        case "HTMLBlock":
+        case "CommentBlock":
           code.push({ from, to });
           return false;
         default:
@@ -199,7 +226,11 @@ function buildInline(state: EditorState, blocks: Blocks, rangeFrom: number, rang
   }
 
   // Wikilinks look like nested reference links to CommonMark; find them first so the tree pass leaves them alone.
-  const wikiMatches = [...text.matchAll(WIKI_RE)].map((m) => ({ m, from: from0 + m.index!, to: from0 + m.index! + m[0].length }));
+  const wikiMatches = [...text.matchAll(WIKI_RE)].map((m) => ({
+    m,
+    from: from0 + m.index!,
+    to: from0 + m.index! + m[0].length,
+  }));
   const wikiSpans: Span[] = wikiMatches.map(({ from, to }) => ({ from, to }));
   const lines = (from: number, to: number, cls: string) => {
     for (let p = Math.max(from, from0); p <= Math.min(to, to0); ) {
@@ -219,9 +250,14 @@ function buildInline(state: EditorState, blocks: Blocks, rangeFrom: number, rang
       if (from < bodyStart || inside(blocked, from, to)) return false;
       const node = ref.node;
       switch (name) {
-        case "ATXHeading1": case "ATXHeading2": case "ATXHeading3":
-        case "ATXHeading4": case "ATXHeading5": case "ATXHeading6":
-        case "SetextHeading1": case "SetextHeading2":
+        case "ATXHeading1":
+        case "ATXHeading2":
+        case "ATXHeading3":
+        case "ATXHeading4":
+        case "ATXHeading5":
+        case "ATXHeading6":
+        case "SetextHeading1":
+        case "SetextHeading2":
           out.push(line(`cm-h cm-h${name.slice(-1)}`).range(doc.lineAt(from).from));
           break;
         case "HeaderMark": {
@@ -234,10 +270,17 @@ function buildInline(state: EditorState, blocks: Blocks, rangeFrom: number, rang
           }
           break;
         }
-        case "Emphasis": out.push(mark("cm-em").range(from, to)); break;
-        case "StrongEmphasis": out.push(mark("cm-strong").range(from, to)); break;
-        case "Strikethrough": out.push(mark("cm-strike").range(from, to)); break;
-        case "EmphasisMark": case "StrikethroughMark":
+        case "Emphasis":
+          out.push(mark("cm-em").range(from, to));
+          break;
+        case "StrongEmphasis":
+          out.push(mark("cm-strong").range(from, to));
+          break;
+        case "Strikethrough":
+          out.push(mark("cm-strike").range(from, to));
+          break;
+        case "EmphasisMark":
+        case "StrikethroughMark":
           if (!selectionTouches(state, node.parent!.from, node.parent!.to)) out.push(hide.range(from, to));
           break;
         case "InlineCode":
@@ -255,7 +298,8 @@ function buildInline(state: EditorState, blocks: Blocks, rangeFrom: number, rang
           if (inside(wikiSpans, from, to)) return false;
           decorateImage(state, ctx, node, out, code);
           return false;
-        case "URL": case "Autolink":
+        case "URL":
+        case "Autolink":
           code.push({ from, to });
           out.push(mark("cm-link", { "data-href": doc.sliceString(from, to).replace(/^<|>$/g, "") }).range(from, to));
           return false;
@@ -298,8 +342,17 @@ function buildInline(state: EditorState, blocks: Blocks, rangeFrom: number, rang
         case "FencedCode": {
           const start = doc.lineAt(from);
           const end = doc.lineAt(to);
-          for (let n = Math.max(start.number, doc.lineAt(from0).number); n <= Math.min(end.number, doc.lineAt(to0).number); n++) {
-            const cls = n === start.number ? "cm-codeblock cm-codeblock-begin" : n === end.number ? "cm-codeblock cm-codeblock-end" : "cm-codeblock";
+          for (
+            let n = Math.max(start.number, doc.lineAt(from0).number);
+            n <= Math.min(end.number, doc.lineAt(to0).number);
+            n++
+          ) {
+            const cls =
+              n === start.number
+                ? "cm-codeblock cm-codeblock-begin"
+                : n === end.number
+                  ? "cm-codeblock cm-codeblock-end"
+                  : "cm-codeblock";
             out.push(line(cls).range(doc.line(n).from));
           }
           if (!selectionTouches(state, start.from, end.to)) {
@@ -316,10 +369,16 @@ function buildInline(state: EditorState, blocks: Blocks, rangeFrom: number, rang
           lines(from, to, "cm-table-src");
           return false;
         case "Comment":
-          if (/^<!--\s*mosaic:state=(new|blocked|in-progress|in-qa|done)\s*-->$/.test(doc.sliceString(from, to)) && !lineTouches(state, from)) out.push(hide.range(from, to));
+          if (
+            /^<!--\s*mosaic:state=(new|blocked|in-progress|in-qa|done)\s*-->$/.test(doc.sliceString(from, to)) &&
+            !lineTouches(state, from)
+          )
+            out.push(hide.range(from, to));
           code.push({ from, to });
           return false;
-        case "HTMLBlock": case "CommentBlock": case "HTMLTag":
+        case "HTMLBlock":
+        case "CommentBlock":
+        case "HTMLTag":
           code.push({ from, to });
           return false;
       }
@@ -345,14 +404,20 @@ function buildInline(state: EditorState, blocks: Blocks, rangeFrom: number, rang
         kind === "image"
           ? new ImageWidget(resolved, link.target, embedWidth(link.alias), ctx)
           : kind === "pdf" && resolved
-            ? new ReactWidget(`pdf:${resolved}`, () => createElement(PdfViewer, { path: resolved, maxPages: 3, compact: true }), "cm-embed-pdf")
+            ? new ReactWidget(
+                `pdf:${resolved}`,
+                () => createElement(PdfViewer, { path: resolved, maxPages: 3, compact: true }),
+                "cm-embed-pdf",
+              )
             : kind === "canvas" && resolved
               ? new CanvasEmbedWidget(resolved, link.target, ctx)
               : new NoteEmbedWidget(resolved, link.target, ctx);
       out.push(Decoration.replace({ widget }).range(from, to));
     } else {
       const target = m[2].split("|")[0];
-      out.push(Decoration.replace({ widget: new LinkWidget(linkLabel(link), target, resolved !== null) }).range(from, to));
+      out.push(
+        Decoration.replace({ widget: new LinkWidget(linkLabel(link), target, resolved !== null) }).range(from, to),
+      );
     }
   }
   for (const m of text.matchAll(TAG_RE)) {
@@ -392,7 +457,13 @@ function decorateLink(state: EditorState, node: SyntaxNode, out: Range<Decoratio
   }
 }
 
-function decorateImage(state: EditorState, ctx: EditorContext, node: SyntaxNode, out: Range<Decoration>[], code: Span[]) {
+function decorateImage(
+  state: EditorState,
+  ctx: EditorContext,
+  node: SyntaxNode,
+  out: Range<Decoration>[],
+  code: Span[],
+) {
   const doc = state.doc;
   code.push({ from: node.from, to: node.to });
   if (selectionTouches(state, node.from, node.to)) return;
@@ -410,7 +481,11 @@ function decorateImage(state: EditorState, ctx: EditorContext, node: SyntaxNode,
 export const refreshPreview = StateEffect.define<null>();
 
 const needsRebuild = (tr: Transaction) =>
-  tr.docChanged || !!tr.selection || syntaxTree(tr.state) !== syntaxTree(tr.startState) || tr.reconfigured || tr.effects.some((e) => e.is(refreshPreview));
+  tr.docChanged ||
+  !!tr.selection ||
+  syntaxTree(tr.state) !== syntaxTree(tr.startState) ||
+  tr.reconfigured ||
+  tr.effects.some((e) => e.is(refreshPreview));
 
 const blockField = StateField.define<Blocks>({
   create: buildBlocks,

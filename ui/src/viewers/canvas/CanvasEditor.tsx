@@ -1,5 +1,14 @@
 import { createPortal } from "react-dom";
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent as ReactMouseEvent } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type DragEvent,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -78,7 +87,12 @@ import { errorMessage } from "../../ipc/types";
 const TREE_DRAG = "application/x-mosaic-path";
 const DEFAULT_EDGE_COLOR = "#8a8f9c";
 const SIDES: Side[] = ["top", "right", "bottom", "left"];
-const POS: Record<Side, Position> = { top: Position.Top, right: Position.Right, bottom: Position.Bottom, left: Position.Left };
+const POS: Record<Side, Position> = {
+  top: Position.Top,
+  right: Position.Right,
+  bottom: Position.Bottom,
+  left: Position.Left,
+};
 
 type CardData = { node: CanvasNode; canvasPath: string; onText(id: string, text: string): void };
 type FlowNode = Node<CardData>;
@@ -96,7 +110,9 @@ function bestSides(a: CanvasNode, b: CanvasNode): [Side, Side] {
  * point isn't the middle of the side.
  */
 function portsOf(n: CanvasNode | undefined): number[] {
-  return n?.shape === "lifeline" || n?.shape === "frame" ? [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9] : [0.25, 0.5, 0.75];
+  return n?.shape === "lifeline" || n?.shape === "frame"
+    ? [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+    : [0.25, 0.5, 0.75];
 }
 
 const handleId = (side: Side, offset: number) => (offset === 0.5 ? side : `${side}:${offset}`);
@@ -134,7 +150,15 @@ function toFlowEdge(e: CanvasEdge, byId: Map<string, CanvasNode>): Edge {
 const EDGE_TYPES = { diagram: DiagramEdge };
 
 /** A card showing a network / cloud icon with its name. */
-const iconCard = (icon: string): Partial<CanvasNode> & Pick<CanvasNode, "type"> => ({ type: "text", text: iconLabel(icon), shape: "rectangle", border: "none", icon, width: 120, height: 110 });
+const iconCard = (icon: string): Partial<CanvasNode> & Pick<CanvasNode, "type"> => ({
+  type: "text",
+  text: iconLabel(icon),
+  shape: "rectangle",
+  border: "none",
+  icon,
+  width: 120,
+  height: 110,
+});
 
 /** Sets an optional field, removing it when the value is the default, so files stay minimal. */
 function withField<T extends object>(item: T, key: string, value: unknown, fallback?: unknown): T {
@@ -180,8 +204,19 @@ export function CanvasEditor({ buffer }: { buffer: Buffer }) {
   return (
     <div className="viewer">
       <Toolbar>
-        <Segmented<"canvas" | "source"> value={showSource ? "source" : "canvas"} onChange={setMode} options={[{ value: "canvas", label: "Canvas" }, { value: "source", label: "Source" }]} />
-        {parsed.error && <span className="toolbar-error">Can't display this canvas: {parsed.error}. The file is left untouched — fix it in Source.</span>}
+        <Segmented<"canvas" | "source">
+          value={showSource ? "source" : "canvas"}
+          onChange={setMode}
+          options={[
+            { value: "canvas", label: "Canvas" },
+            { value: "source", label: "Source" },
+          ]}
+        />
+        {parsed.error && (
+          <span className="toolbar-error">
+            Can't display this canvas: {parsed.error}. The file is left untouched — fix it in Source.
+          </span>
+        )}
         <span className="spacer" />
         <span ref={setToolsHost} />
       </Toolbar>
@@ -196,7 +231,15 @@ export function CanvasEditor({ buffer }: { buffer: Buffer }) {
   );
 }
 
-function CanvasFlow({ path, doc: initial, toolsHost }: { path: string; doc: CanvasDoc; toolsHost: HTMLElement | null }) {
+function CanvasFlow({
+  path,
+  doc: initial,
+  toolsHost,
+}: {
+  path: string;
+  doc: CanvasDoc;
+  toolsHost: HTMLElement | null;
+}) {
   const flow = useReactFlow<FlowNode, Edge>();
   const docRef = useRef<CanvasDoc>(initial);
   const onText = useCallback((id: string, text: string) => {
@@ -213,13 +256,20 @@ function CanvasFlow({ path, doc: initial, toolsHost }: { path: string; doc: Canv
   const dark = useDark();
 
   // Presenting: full window, stepping through groups and frames; connections keep flowing.
-  const [presenting, setPresenting] = useState<{ steps: { x: number; y: number; width: number; height: number; label: string }[]; index: number } | null>(null);
+  const [presenting, setPresenting] = useState<{
+    steps: { x: number; y: number; width: number; height: number; label: string }[];
+    index: number;
+  } | null>(null);
   const hostRef = useRef<HTMLDivElement>(null);
 
   // Hovering a card animates its connections in their direction of travel and dims the rest.
   const [hovered, setHovered] = useState<string | null>(null);
   const shown = useMemo(() => {
-    if (presenting) return { nodes, edges: edges.map((e) => ({ ...e, data: { ...(e.data as DiagramEdgeData), flow: "on" as const } })) };
+    if (presenting)
+      return {
+        nodes,
+        edges: edges.map((e) => ({ ...e, data: { ...(e.data as DiagramEdgeData), flow: "on" as const } })),
+      };
     if (!hovered) return { nodes, edges };
     const near = new Set([hovered]);
     const flowEdges = edges.map((e) => {
@@ -229,11 +279,19 @@ function CanvasFlow({ path, doc: initial, toolsHost }: { path: string; doc: Canv
     });
     // Nothing to follow: leave the canvas as it is.
     if (near.size === 1) return { nodes, edges };
-    return { nodes: nodes.map((n) => (near.has(n.id) || n.type === "group-card" ? n : { ...n, className: "node-dim" })), edges: flowEdges };
+    return {
+      nodes: nodes.map((n) => (near.has(n.id) || n.type === "group-card" ? n : { ...n, className: "node-dim" })),
+      edges: flowEdges,
+    };
   }, [hovered, nodes, edges, presenting]);
 
   const present = () => {
-    const sized = nodesRef.current.map((n) => ({ ...n.position, width: n.measured?.width ?? n.data.node.width, height: n.measured?.height ?? n.data.node.height, node: n.data.node }));
+    const sized = nodesRef.current.map((n) => ({
+      ...n.position,
+      width: n.measured?.width ?? n.data.node.width,
+      height: n.measured?.height ?? n.data.node.height,
+      node: n.data.node,
+    }));
     const frames = sized.filter((n) => n.node.type === "group" || n.node.shape === "frame");
     // Reading order: rows top to bottom (cards within 40 px count as one row), then left to right.
     frames.sort((a, b) => (Math.abs(a.y - b.y) < 40 ? a.x - b.x : a.y - b.y));
@@ -241,11 +299,23 @@ function CanvasFlow({ path, doc: initial, toolsHost }: { path: string; doc: Canv
       ? (() => {
           const x = Math.min(...sized.map((n) => n.x));
           const y = Math.min(...sized.map((n) => n.y));
-          return { x, y, width: Math.max(...sized.map((n) => n.x + n.width)) - x, height: Math.max(...sized.map((n) => n.y + n.height)) - y, label: "" };
+          return {
+            x,
+            y,
+            width: Math.max(...sized.map((n) => n.x + n.width)) - x,
+            height: Math.max(...sized.map((n) => n.y + n.height)) - y,
+            label: "",
+          };
         })()
       : null;
     const steps = frames.length
-      ? frames.map((f) => ({ x: f.x, y: f.y, width: f.width, height: f.height, label: f.node.type === "group" ? (f.node.label ?? "") : plainLines(f.node.text ?? "")[0] ?? "" }))
+      ? frames.map((f) => ({
+          x: f.x,
+          y: f.y,
+          width: f.width,
+          height: f.height,
+          label: f.node.type === "group" ? (f.node.label ?? "") : (plainLines(f.node.text ?? "")[0] ?? ""),
+        }))
       : all
         ? [all]
         : [];
@@ -273,7 +343,8 @@ function CanvasFlow({ path, doc: initial, toolsHost }: { path: string; doc: Canv
   useEffect(() => {
     if (!presenting) return;
     const onKey = (e: KeyboardEvent) => {
-      const go = (d: number) => setPresenting((p) => (p ? { ...p, index: Math.min(p.steps.length - 1, Math.max(0, p.index + d)) } : p));
+      const go = (d: number) =>
+        setPresenting((p) => (p ? { ...p, index: Math.min(p.steps.length - 1, Math.max(0, p.index + d)) } : p));
       if (["ArrowRight", "ArrowDown", "PageDown", " "].includes(e.key)) go(1);
       else if (["ArrowLeft", "ArrowUp", "PageUp"].includes(e.key)) go(-1);
       else if (e.key === "Home") setPresenting((p) => (p ? { ...p, index: 0 } : p));
@@ -311,7 +382,10 @@ function CanvasFlow({ path, doc: initial, toolsHost }: { path: string; doc: Canv
     const outNodes: CanvasNode[] = [];
     // Keep the original order for existing nodes, then append new ones.
     const flowById = new Map(nodesRef.current.map((n) => [n.id, n]));
-    const ids = [...prev.nodes.map((n) => n.id).filter((id) => flowById.has(id)), ...nodesRef.current.map((n) => n.id).filter((id) => !prevNodes.has(id))];
+    const ids = [
+      ...prev.nodes.map((n) => n.id).filter((id) => flowById.has(id)),
+      ...nodesRef.current.map((n) => n.id).filter((id) => !prevNodes.has(id)),
+    ];
     for (const id of ids) {
       const f = flowById.get(id)!;
       const base = { ...(prevNodes.get(id) ?? {}), ...f.data.node };
@@ -348,55 +422,64 @@ function CanvasFlow({ path, doc: initial, toolsHost }: { path: string; doc: Canv
   commitRef.current = commit;
 
   // Dragging a group carries the cards inside it, like Obsidian.
-  const groupDrag = useRef<{ id: string; start: { x: number; y: number }; members: Map<string, { x: number; y: number }> } | null>(null);
+  const groupDrag = useRef<{
+    id: string;
+    start: { x: number; y: number };
+    members: Map<string, { x: number; y: number }>;
+  } | null>(null);
 
   // Alignment guides while one card is dragged (not a group carrying its cards, not a multi-selection).
   const [guides, setGuides] = useState<{ x?: number; y?: number }>({});
 
-  const onNodesChange = useCallback(
-    (changes: NodeChange<FlowNode>[]) => {
-      const moves = changes.filter((c) => c.type === "position");
-      // The drag's last change (dragging: false) carries a position too: snap it as well, or it undoes the snap.
-      const drag = moves.length === 1 && moves[0].type === "position" && moves[0].position ? moves[0] : null;
-      if (drag && drag.position && !groupDrag.current) {
-        const size = (n: FlowNode) => ({ width: n.measured?.width ?? n.data.node.width, height: n.measured?.height ?? n.data.node.height });
-        const me = nodesRef.current.find((n) => n.id === drag.id);
-        if (me) {
-          const others = nodesRef.current.filter((n) => n.id !== drag.id && n.type !== "group-card").map((n) => ({ ...n.position, ...size(n) }));
-          const a = align({ ...drag.position, ...size(me) }, others);
-          drag.position = { x: a.x, y: a.y };
-          setGuides(drag.dragging ? { x: a.guideX, y: a.guideY } : {});
-        }
-      } else if (moves.length) setGuides({});
-      setNodes((ns) => {
-        let next = applyNodeChanges(changes, ns);
-        const g = groupDrag.current;
-        if (g) {
-          const group = next.find((n) => n.id === g.id);
-          if (group) {
-            const dx = group.position.x - g.start.x;
-            const dy = group.position.y - g.start.y;
-            next = next.map((n) => {
-              const p = g.members.get(n.id);
-              return p ? { ...n, position: { x: p.x + dx, y: p.y + dy } } : n;
-            });
-          }
-        }
-        return next;
+  const onNodesChange = useCallback((changes: NodeChange<FlowNode>[]) => {
+    const moves = changes.filter((c) => c.type === "position");
+    // The drag's last change (dragging: false) carries a position too: snap it as well, or it undoes the snap.
+    const drag = moves.length === 1 && moves[0].type === "position" && moves[0].position ? moves[0] : null;
+    if (drag && drag.position && !groupDrag.current) {
+      const size = (n: FlowNode) => ({
+        width: n.measured?.width ?? n.data.node.width,
+        height: n.measured?.height ?? n.data.node.height,
       });
-      const done = changes.some(
-        (c) => c.type === "remove" || (c.type === "position" && c.dragging === false) || (c.type === "dimensions" && c.resizing === false),
-      );
-      if (done) {
-        if (changes.some((c) => c.type === "remove")) {
-          const removed = new Set(changes.filter((c) => c.type === "remove").map((c) => c.id));
-          setEdges((es) => es.filter((e) => !removed.has(e.source) && !removed.has(e.target)));
-        }
-        queueMicrotask(() => commitRef.current());
+      const me = nodesRef.current.find((n) => n.id === drag.id);
+      if (me) {
+        const others = nodesRef.current
+          .filter((n) => n.id !== drag.id && n.type !== "group-card")
+          .map((n) => ({ ...n.position, ...size(n) }));
+        const a = align({ ...drag.position, ...size(me) }, others);
+        drag.position = { x: a.x, y: a.y };
+        setGuides(drag.dragging ? { x: a.guideX, y: a.guideY } : {});
       }
-    },
-    [],
-  );
+    } else if (moves.length) setGuides({});
+    setNodes((ns) => {
+      let next = applyNodeChanges(changes, ns);
+      const g = groupDrag.current;
+      if (g) {
+        const group = next.find((n) => n.id === g.id);
+        if (group) {
+          const dx = group.position.x - g.start.x;
+          const dy = group.position.y - g.start.y;
+          next = next.map((n) => {
+            const p = g.members.get(n.id);
+            return p ? { ...n, position: { x: p.x + dx, y: p.y + dy } } : n;
+          });
+        }
+      }
+      return next;
+    });
+    const done = changes.some(
+      (c) =>
+        c.type === "remove" ||
+        (c.type === "position" && c.dragging === false) ||
+        (c.type === "dimensions" && c.resizing === false),
+    );
+    if (done) {
+      if (changes.some((c) => c.type === "remove")) {
+        const removed = new Set(changes.filter((c) => c.type === "remove").map((c) => c.id));
+        setEdges((es) => es.filter((e) => !removed.has(e.source) && !removed.has(e.target)));
+      }
+      queueMicrotask(() => commitRef.current());
+    }
+  }, []);
 
   const onEdgesChange = useCallback((changes: EdgeChange[]) => {
     setEdges((es) => applyEdgeChanges(changes, es));
@@ -407,7 +490,13 @@ function CanvasFlow({ path, doc: initial, toolsHost }: { path: string; doc: Canv
     if (!c.source || !c.target || c.source === c.target) return;
     const src = parseHandle(c.sourceHandle);
     const tgt = parseHandle(c.targetHandle);
-    const edge: CanvasEdge = { id: newId(), fromNode: c.source, toNode: c.target, fromSide: src?.side, toSide: tgt?.side };
+    const edge: CanvasEdge = {
+      id: newId(),
+      fromNode: c.source,
+      toNode: c.target,
+      fromSide: src?.side,
+      toSide: tgt?.side,
+    };
     if (src && src.offset !== 0.5) edge.fromOffset = src.offset;
     if (tgt && tgt.offset !== 0.5) edge.toOffset = tgt.offset;
     const byId = new Map(nodesRef.current.map((n) => [n.id, n.data.node]));
@@ -420,7 +509,14 @@ function CanvasFlow({ path, doc: initial, toolsHost }: { path: string; doc: Canv
       const center = at ?? flow.screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
       const width = partial.width ?? (partial.type === "group" ? 560 : 260);
       const height = partial.height ?? (partial.type === "group" ? 380 : partial.type === "file" ? 300 : 120);
-      const node: CanvasNode = { id: newId(), x: Math.round(center.x - width / 2), y: Math.round(center.y - height / 2), width, height, ...partial };
+      const node: CanvasNode = {
+        id: newId(),
+        x: Math.round(center.x - width / 2),
+        y: Math.round(center.y - height / 2),
+        width,
+        height,
+        ...partial,
+      };
       const fn: FlowNode = {
         id: node.id,
         type: node.type === "group" ? "group-card" : "card",
@@ -442,21 +538,28 @@ function CanvasFlow({ path, doc: initial, toolsHost }: { path: string; doc: Canv
   );
 
   const setNodeField = (id: string, patch: Partial<CanvasNode>) => {
-    setNodes((ns) => ns.map((n) => (n.id === id ? { ...n, data: { ...n.data, node: { ...n.data.node, ...patch } } } : n)));
+    setNodes((ns) =>
+      ns.map((n) => (n.id === id ? { ...n, data: { ...n.data, node: { ...n.data.node, ...patch } } } : n)),
+    );
     queueMicrotask(() => commitRef.current());
   };
 
   const colorItems = (apply: (c: string | undefined) => void): MenuItem[] => [
     { label: "No colour", action: () => apply(undefined) },
-    ...Object.keys(PRESET_COLORS).map((k) => ({ label: `● ${["Red", "Orange", "Yellow", "Green", "Cyan", "Purple"][Number(k) - 1]}`, action: () => apply(k) })),
+    ...Object.keys(PRESET_COLORS).map((k) => ({
+      label: `● ${["Red", "Orange", "Yellow", "Green", "Cyan", "Purple"][Number(k) - 1]}`,
+      action: () => apply(k),
+    })),
   ];
 
   const onNodeContextMenu = (e: ReactMouseEvent, n: FlowNode) => {
     e.preventDefault();
     const node = n.data.node;
     const items: MenuItem[] = [];
-    if (node.type === "file" && node.file) items.push({ label: "Open file", action: () => void useWorkspace.getState().open(node.file!, { newTab: true }) });
-    if (node.type === "link" && node.url) items.push({ label: "Open link in browser", action: () => void openExternal(node.url!) });
+    if (node.type === "file" && node.file)
+      items.push({ label: "Open file", action: () => void useWorkspace.getState().open(node.file!, { newTab: true }) });
+    if (node.type === "link" && node.url)
+      items.push({ label: "Open link in browser", action: () => void openExternal(node.url!) });
     if (node.type === "group")
       items.push({
         label: "Rename group",
@@ -468,7 +571,11 @@ function CanvasFlow({ path, doc: initial, toolsHost }: { path: string; doc: Canv
     if (node.type === "text") {
       const shape = isShape(node.shape) ? node.shape : undefined;
       const setNode = (key: string, value: unknown, fallback?: unknown) => {
-        setNodes((ns) => ns.map((x) => (x.id === node.id ? { ...x, data: { ...x.data, node: withField(x.data.node, key, value, fallback) } } : x)));
+        setNodes((ns) =>
+          ns.map((x) =>
+            x.id === node.id ? { ...x, data: { ...x.data, node: withField(x.data.node, key, value, fallback) } } : x,
+          ),
+        );
         queueMicrotask(() => commitRef.current());
       };
       items.push({
@@ -477,7 +584,11 @@ function CanvasFlow({ path, doc: initial, toolsHost }: { path: string; doc: Canv
           { label: "Card (no shape)", checked: !shape, action: () => setNode("shape", undefined) },
           ...SHAPE_GROUPS.map((g) => ({
             label: g,
-            children: SHAPES.filter((sh) => sh.group === g).map((sh) => ({ label: sh.label, checked: shape === sh.name, action: () => setNode("shape", sh.name) })),
+            children: SHAPES.filter((sh) => sh.group === g).map((sh) => ({
+              label: sh.label,
+              checked: shape === sh.name,
+              action: () => setNode("shape", sh.name),
+            })),
           })),
         ],
       });
@@ -485,16 +596,27 @@ function CanvasFlow({ path, doc: initial, toolsHost }: { path: string; doc: Canv
         label: "Icon",
         children: [
           { label: "No icon", checked: !node.icon, action: () => setNode("icon", undefined) },
-          ...ICON_NAMES.map((name) => ({ label: iconLabel(name), checked: node.icon === name, action: () => setNode("icon", name) })),
+          ...ICON_NAMES.map((name) => ({
+            label: iconLabel(name),
+            checked: node.icon === name,
+            action: () => setNode("icon", name),
+          })),
         ],
       });
       if (shape)
         items.push({
           label: "Border",
-          children: BORDERS.map((b) => ({ label: b[0].toUpperCase() + b.slice(1), checked: (node.border ?? "solid") === b, action: () => setNode("border", b, "solid") })),
+          children: BORDERS.map((b) => ({
+            label: b[0].toUpperCase() + b.slice(1),
+            checked: (node.border ?? "solid") === b,
+            action: () => setNode("border", b, "solid"),
+          })),
         });
     }
-    items.push({ label: "Colour", children: colorItems((c) => setNodeField(node.id, { color: c })) }, { label: "", separator: true });
+    items.push(
+      { label: "Colour", children: colorItems((c) => setNodeField(node.id, { color: c })) },
+      { label: "", separator: true },
+    );
     items.push({ label: "Delete", danger: true, action: () => onNodesChange([{ type: "remove", id: node.id }]) });
     useUi.getState().showMenu(e.clientX, e.clientY, items);
   };
@@ -519,16 +641,22 @@ function CanvasFlow({ path, doc: initial, toolsHost }: { path: string; doc: Canv
       {
         label: "Edit label",
         action: async () => {
-          const label = await useUi.getState().askText({ title: "Connection label", value: typeof edge.label === "string" ? edge.label : "" });
+          const label = await useUi
+            .getState()
+            .askText({ title: "Connection label", value: typeof edge.label === "string" ? edge.label : "" });
           if (label !== null) setEdgeField({ label: label || undefined });
         },
       },
       {
         label: "Labels at the ends…",
         action: async () => {
-          const fromLabel = await useUi.getState().askText({ title: "Label at the start (e.g. 1)", value: current.fromLabel ?? "" });
+          const fromLabel = await useUi
+            .getState()
+            .askText({ title: "Label at the start (e.g. 1)", value: current.fromLabel ?? "" });
           if (fromLabel === null) return;
-          const toLabel = await useUi.getState().askText({ title: "Label at the end (e.g. 1..*)", value: current.toLabel ?? "" });
+          const toLabel = await useUi
+            .getState()
+            .askText({ title: "Label at the end (e.g. 1..*)", value: current.toLabel ?? "" });
           if (toLabel === null) return;
           setEdgeField({ fromLabel: fromLabel || undefined, toLabel: toLabel || undefined });
         },
@@ -539,23 +667,43 @@ function CanvasFlow({ path, doc: initial, toolsHost }: { path: string; doc: Canv
           ["Curved", "curved"],
           ["Straight", "straight"],
           ["Around cards", "orthogonal"],
-        ].map(([label, r]) => ({ label, checked: (current.route ?? "curved") === r, action: () => setEdgeField({ route: r }, { route: "curved" }) })),
+        ].map(([label, r]) => ({
+          label,
+          checked: (current.route ?? "curved") === r,
+          action: () => setEdgeField({ route: r }, { route: "curved" }),
+        })),
       },
       {
         label: "Line",
-        children: LINES.map((l) => ({ label: l[0].toUpperCase() + l.slice(1), checked: (current.line ?? "solid") === l, action: () => setEdgeField({ line: l }, { line: "solid" }) })),
+        children: LINES.map((l) => ({
+          label: l[0].toUpperCase() + l.slice(1),
+          checked: (current.line ?? "solid") === l,
+          action: () => setEdgeField({ line: l }, { line: "solid" }),
+        })),
       },
       {
         label: "Start",
-        children: ENDS.map((x) => ({ label: x.label, checked: ends.from === x.name, action: () => setEdgeField({ fromEnd: x.name }, { fromEnd: "none" }) })),
+        children: ENDS.map((x) => ({
+          label: x.label,
+          checked: ends.from === x.name,
+          action: () => setEdgeField({ fromEnd: x.name }, { fromEnd: "none" }),
+        })),
       },
       {
         label: "End",
-        children: ENDS.map((x) => ({ label: x.label, checked: ends.to === x.name, action: () => setEdgeField({ toEnd: x.name }, { toEnd: "arrow" }) })),
+        children: ENDS.map((x) => ({
+          label: x.label,
+          checked: ends.to === x.name,
+          action: () => setEdgeField({ toEnd: x.name }, { toEnd: "arrow" }),
+        })),
       },
       {
         label: "Reverse direction",
-        action: () => setEdgeField({ fromEnd: ends.to, toEnd: ends.from, fromLabel: current.toLabel, toLabel: current.fromLabel }, { fromEnd: "none", toEnd: "arrow" }),
+        action: () =>
+          setEdgeField(
+            { fromEnd: ends.to, toEnd: ends.from, fromLabel: current.toLabel, toLabel: current.fromLabel },
+            { fromEnd: "none", toEnd: "arrow" },
+          ),
       },
       {
         label: "Thickness",
@@ -563,7 +711,11 @@ function CanvasFlow({ path, doc: initial, toolsHost }: { path: string; doc: Canv
           ["Thin", 1],
           ["Normal", 2],
           ["Thick", 4],
-        ].map(([label, w]) => ({ label: label as string, checked: (current.thickness ?? 2) === w, action: () => setEdgeField({ thickness: w as number }, { thickness: 2 }) })),
+        ].map(([label, w]) => ({
+          label: label as string,
+          checked: (current.thickness ?? 2) === w,
+          action: () => setEdgeField({ thickness: w as number }, { thickness: 2 }),
+        })),
       },
       { label: "Colour", children: colorItems((c) => setEdgeField({ color: c })) },
       { label: "", separator: true },
@@ -588,9 +740,19 @@ function CanvasFlow({ path, doc: initial, toolsHost }: { path: string; doc: Canv
       // Copied next to the canvas, then one file card each, fanned out from the drop point.
       e.preventDefault();
       const pos = flow.screenToFlowPosition({ x: e.clientX, y: e.clientY });
-      void importDropped(droppedItems(e.dataTransfer), vaultPrefs().attachment_location === "folder" ? vaultPrefs().attachment_folder : parentOf(path)).then((paths) => {
-        const dirs = new Set(useVault.getState().entries.filter((x) => x.is_dir).map((x) => x.path));
-        paths.filter((p) => !dirs.has(p)).forEach((p, i) => addNode({ type: "file", file: p }, { x: pos.x + i * 40, y: pos.y + i * 40 }));
+      void importDropped(
+        droppedItems(e.dataTransfer),
+        vaultPrefs().attachment_location === "folder" ? vaultPrefs().attachment_folder : parentOf(path),
+      ).then((paths) => {
+        const dirs = new Set(
+          useVault
+            .getState()
+            .entries.filter((x) => x.is_dir)
+            .map((x) => x.path),
+        );
+        paths
+          .filter((p) => !dirs.has(p))
+          .forEach((p, i) => addNode({ type: "file", file: p }, { x: pos.x + i * 40, y: pos.y + i * 40 }));
       });
       return;
     }
@@ -603,7 +765,9 @@ function CanvasFlow({ path, doc: initial, toolsHost }: { path: string; doc: Canv
   };
 
   const addFile = async () => {
-    const p = await useUi.getState().askText({ title: "Add a file card", value: "", placeholder: "Vault path or note name, e.g. Projects/Plan" });
+    const p = await useUi
+      .getState()
+      .askText({ title: "Add a file card", value: "", placeholder: "Vault path or note name, e.g. Projects/Plan" });
     if (!p) return;
     const resolved = resolveLink(p, useVault.getState().entries, path) ?? p;
     addNode({ type: "file", file: resolved });
@@ -620,12 +784,27 @@ function CanvasFlow({ path, doc: initial, toolsHost }: { path: string; doc: Canv
       const w = n.measured?.width ?? nd.width;
       const h = n.measured?.height ?? nd.height;
       if (nd.shape !== "bar" || (direction === "LR") === h > w) return n;
-      return { ...n, width: h, height: w, measured: { width: h, height: w }, data: { ...n.data, node: { ...nd, width: h, height: w } } };
+      return {
+        ...n,
+        width: h,
+        height: w,
+        measured: { width: h, height: w },
+        data: { ...n.data, node: { ...nd, width: h, height: w } },
+      };
     });
     const turned = new Map(chosen.map((n) => [n.id, n]));
     nodesRef.current = nodesRef.current.map((n) => turned.get(n.id) ?? n);
-    const boxes = chosen.map((n) => ({ id: n.id, ...n.position, width: n.measured?.width ?? n.data.node.width, height: n.measured?.height ?? n.data.node.height }));
-    const pos = autoLayout(boxes, edgesRef.current.map((e) => ({ from: e.source, to: e.target })), direction);
+    const boxes = chosen.map((n) => ({
+      id: n.id,
+      ...n.position,
+      width: n.measured?.width ?? n.data.node.width,
+      height: n.measured?.height ?? n.data.node.height,
+    }));
+    const pos = autoLayout(
+      boxes,
+      edgesRef.current.map((e) => ({ from: e.source, to: e.target })),
+      direction,
+    );
     nodesRef.current = nodesRef.current.map((n) => {
       const p = pos.get(n.id);
       return p ? { ...n, position: p, data: { ...n.data, node: { ...n.data.node, ...p } } } : n;
@@ -651,10 +830,16 @@ function CanvasFlow({ path, doc: initial, toolsHost }: { path: string; doc: Canv
     <div
       ref={hostRef}
       className={`canvas-host ${presenting ? "presenting" : ""}`}
-      onDragOver={(e) => (e.dataTransfer.types.includes(TREE_DRAG) || e.dataTransfer.types.includes(SHAPE_DRAG) || isFinderDrag(e.dataTransfer)) && e.preventDefault()}
+      onDragOver={(e) =>
+        (e.dataTransfer.types.includes(TREE_DRAG) ||
+          e.dataTransfer.types.includes(SHAPE_DRAG) ||
+          isFinderDrag(e.dataTransfer)) &&
+        e.preventDefault()
+      }
       onDrop={onDrop}
       onDoubleClick={(e) => {
-        if ((e.target as HTMLElement).classList.contains("react-flow__pane")) addNode({ type: "text", text: "" }, flow.screenToFlowPosition({ x: e.clientX, y: e.clientY }));
+        if ((e.target as HTMLElement).classList.contains("react-flow__pane"))
+          addNode({ type: "text", text: "" }, flow.screenToFlowPosition({ x: e.clientX, y: e.clientY }));
       }}
     >
       {tools && (
@@ -674,13 +859,18 @@ function CanvasFlow({ path, doc: initial, toolsHost }: { path: string; doc: Canv
               {
                 label: "Copy as Mermaid",
                 action: () => {
-                  void navigator.clipboard.writeText(canvasToMermaid(docRef.current)).catch((e) => useVault.getState().setError(`Couldn't copy: ${errorMessage(e)}`));
+                  void navigator.clipboard
+                    .writeText(canvasToMermaid(docRef.current))
+                    .catch((e) => useVault.getState().setError(`Couldn't copy: ${errorMessage(e)}`));
                 },
               },
               { label: "Present", action: present },
               ...(["svg", "png"] as const).map((format) => ({
                 label: `Export as ${format.toUpperCase()}`,
-                action: () => void exportCanvas(path, docRef.current, format).catch((e) => useVault.getState().setError(`Couldn't export: ${errorMessage(e)}`)),
+                action: () =>
+                  void exportCanvas(path, docRef.current, format).catch((e) =>
+                    useVault.getState().setError(`Couldn't export: ${errorMessage(e)}`),
+                  ),
               })),
             ])
           }
@@ -720,7 +910,8 @@ function CanvasFlow({ path, doc: initial, toolsHost }: { path: string; doc: Canv
             if (m.id === n.id) continue;
             const mw = m.measured?.width ?? m.data.node.width;
             const mh = m.measured?.height ?? m.data.node.height;
-            if (m.position.x >= x0 && m.position.y >= y0 && m.position.x + mw <= x0 + w && m.position.y + mh <= y0 + h) members.set(m.id, { ...m.position });
+            if (m.position.x >= x0 && m.position.y >= y0 && m.position.x + mw <= x0 + w && m.position.y + mh <= y0 + h)
+              members.set(m.id, { ...m.position });
           }
           groupDrag.current = { id: n.id, start: { ...n.position }, members };
         }}
@@ -739,8 +930,12 @@ function CanvasFlow({ path, doc: initial, toolsHost }: { path: string; doc: Canv
       >
         <Background gap={24} />
         <ViewportPortal>
-          {guides.x !== undefined && <div className="align-guide vertical" style={{ transform: `translateX(${guides.x}px)` }} />}
-          {guides.y !== undefined && <div className="align-guide horizontal" style={{ transform: `translateY(${guides.y}px)` }} />}
+          {guides.x !== undefined && (
+            <div className="align-guide vertical" style={{ transform: `translateX(${guides.x}px)` }} />
+          )}
+          {guides.y !== undefined && (
+            <div className="align-guide horizontal" style={{ transform: `translateY(${guides.y}px)` }} />
+          )}
         </ViewportPortal>
         {!presenting && <Controls showInteractive={false} />}
         {!presenting && <MiniMap pannable zoomable />}
@@ -773,7 +968,9 @@ function CanvasTools({
   const [palette, setPalette] = useState<DOMRect | null>(null);
   return createPortal(
     <span className="canvas-tools">
-      <button onClick={onCard} title="Add a text card (or double-click the canvas)"><Plus size={14} /> Card</button>
+      <button onClick={onCard} title="Add a text card (or double-click the canvas)">
+        <Plus size={14} /> Card
+      </button>
       <button
         title="Add a shape: click one, or drag it onto the canvas"
         aria-expanded={!!palette}
@@ -792,8 +989,12 @@ function CanvasTools({
           }}
         />
       )}
-      <button onClick={onFile} title="Add a note or file (or drag one from the sidebar)"><FileText size={14} /> File</button>
-      <button onClick={onGroup}><SquareDashed size={14} /> Group</button>
+      <button onClick={onFile} title="Add a note or file (or drag one from the sidebar)">
+        <FileText size={14} /> File
+      </button>
+      <button onClick={onGroup}>
+        <SquareDashed size={14} /> Group
+      </button>
       <button
         title="Arrange the selected cards (or all) along their connections"
         onClick={(e) => {
@@ -806,8 +1007,14 @@ function CanvasTools({
       >
         <Network size={14} /> Layout
       </button>
-      <button onClick={onFit} title="Fit to view"><Maximize size={14} /></button>
-      <button onClick={(e) => onMore(e.currentTarget.getBoundingClientRect())} title="More: copy as Mermaid, export, present" aria-label="More">
+      <button onClick={onFit} title="Fit to view">
+        <Maximize size={14} />
+      </button>
+      <button
+        onClick={(e) => onMore(e.currentTarget.getBoundingClientRect())}
+        title="More: copy as Mermaid, export, present"
+        aria-label="More"
+      >
         <Ellipsis size={14} />
       </button>
     </span>,
@@ -843,17 +1050,32 @@ function Handles({ node }: { node: CanvasNode }) {
 const Card = memo(function Card({ data, selected }: NodeProps<FlowNode>) {
   const n = data.node;
   const color = colorOf(n.color);
-  if (n.type === "text" && isShape(n.shape)) return <ShapeCard data={data} selected={selected} shape={n.shape} color={color} />;
+  if (n.type === "text" && isShape(n.shape))
+    return <ShapeCard data={data} selected={selected} shape={n.shape} color={color} />;
   return (
-    <div className={`canvas-card ${selected ? "selected" : ""}`} style={color ? { borderColor: color, ["--card-tint" as string]: color } : undefined}>
-      <NodeResizer isVisible={selected} minWidth={120} minHeight={60} lineClassName="canvas-resize-line" handleClassName="canvas-resize-handle" />
+    <div
+      className={`canvas-card ${selected ? "selected" : ""}`}
+      style={color ? { borderColor: color, ["--card-tint" as string]: color } : undefined}
+    >
+      <NodeResizer
+        isVisible={selected}
+        minWidth={120}
+        minHeight={60}
+        lineClassName="canvas-resize-line"
+        handleClassName="canvas-resize-handle"
+      />
       <Handles node={n} />
       {n.type === "text" && n.icon && ICONS[n.icon] && <CardIcon name={n.icon} color={color} />}
-      {n.type === "text" && <TextCard id={n.id} text={n.text ?? ""} onText={data.onText} canvasPath={data.canvasPath} />}
+      {n.type === "text" && (
+        <TextCard id={n.id} text={n.text ?? ""} onText={data.onText} canvasPath={data.canvasPath} />
+      )}
       {n.type === "file" && <FileCard file={n.file ?? ""} subpath={n.subpath} />}
       {n.type === "link" && <LinkCard url={n.url ?? ""} />}
       {!KNOWN_NODE_TYPES.includes(n.type) && (
-        <div className="canvas-unknown" title="Mosaic can't show this card yet. It is kept as is when the canvas is saved.">
+        <div
+          className="canvas-unknown"
+          title="Mosaic can't show this card yet. It is kept as is when the canvas is saved."
+        >
           Unsupported card type “{n.type}”
         </div>
       )}
@@ -871,22 +1093,61 @@ function CardIcon({ name, color }: { name: string; color: string | undefined }) 
 }
 
 /** A text card drawn as a diagram shape: the outline behind, the Markdown text centred on top. */
-function ShapeCard({ data, selected, shape, color }: { data: CardData; selected: boolean; shape: ShapeName; color: string | undefined }) {
+function ShapeCard({
+  data,
+  selected,
+  shape,
+  color,
+}: {
+  data: CardData;
+  selected: boolean;
+  shape: ShapeName;
+  color: string | undefined;
+}) {
   const n = data.node;
-  const style = { stroke: color ?? "var(--shape-stroke)", fill: color ? `color-mix(in srgb, ${color} 14%, var(--bg))` : "var(--bg)", border: n.border as string | undefined };
+  const style = {
+    stroke: color ?? "var(--shape-stroke)",
+    fill: color ? `color-mix(in srgb, ${color} 14%, var(--bg))` : "var(--bg)",
+    border: n.border as string | undefined,
+  };
   const css = cssShape(shape, style);
   return (
-    <div className={`canvas-shape shape-${shape} ${selected ? "selected" : ""} ${css ? "css-shape" : ""}`} style={css ?? undefined}>
-      <NodeResizer isVisible={selected} minWidth={60} minHeight={40} lineClassName="canvas-resize-line" handleClassName="canvas-resize-handle" />
+    <div
+      className={`canvas-shape shape-${shape} ${selected ? "selected" : ""} ${css ? "css-shape" : ""}`}
+      style={css ?? undefined}
+    >
+      <NodeResizer
+        isVisible={selected}
+        minWidth={60}
+        minHeight={40}
+        lineClassName="canvas-resize-line"
+        handleClassName="canvas-resize-handle"
+      />
       <Handles node={n} />
       {!css && <ShapeOutline shape={shape} style={style} />}
       {n.icon && ICONS[n.icon] && <CardIcon name={n.icon} color={color} />}
       {shape === "timing" ? (
-        <TimingCard id={n.id} text={n.text ?? ""} width={n.width} height={n.height} stroke={color} onText={data.onText} />
-      ) : !LABELLESS.has(shape) && (
-        <div className="shape-text">
-          <TextCard id={n.id} text={n.text ?? ""} onText={data.onText} canvasPath={data.canvasPath} compartments={shape === "class"} lineBreaks />
-        </div>
+        <TimingCard
+          id={n.id}
+          text={n.text ?? ""}
+          width={n.width}
+          height={n.height}
+          stroke={color}
+          onText={data.onText}
+        />
+      ) : (
+        !LABELLESS.has(shape) && (
+          <div className="shape-text">
+            <TextCard
+              id={n.id}
+              text={n.text ?? ""}
+              onText={data.onText}
+              canvasPath={data.canvasPath}
+              compartments={shape === "class"}
+              lineBreaks
+            />
+          </div>
+        )
       )}
     </div>
   );
@@ -896,10 +1157,23 @@ const GroupCard = memo(function GroupCard({ data, selected }: NodeProps<FlowNode
   const n = data.node;
   const color = colorOf(n.color);
   return (
-    <div className={`canvas-group ${selected ? "selected" : ""}`} style={color ? { borderColor: color, background: `${color}14` } : undefined}>
-      <NodeResizer isVisible={selected} minWidth={160} minHeight={100} lineClassName="canvas-resize-line" handleClassName="canvas-resize-handle" />
+    <div
+      className={`canvas-group ${selected ? "selected" : ""}`}
+      style={color ? { borderColor: color, background: `${color}14` } : undefined}
+    >
+      <NodeResizer
+        isVisible={selected}
+        minWidth={160}
+        minHeight={100}
+        lineClassName="canvas-resize-line"
+        handleClassName="canvas-resize-handle"
+      />
       <Handles node={n} />
-      {n.label && <div className="canvas-group-label" style={color ? { color } : undefined}>{n.label}</div>}
+      {n.label && (
+        <div className="canvas-group-label" style={color ? { color } : undefined}>
+          {n.label}
+        </div>
+      )}
     </div>
   );
 });
@@ -988,16 +1262,40 @@ function TextCard({
   }
   return (
     <div className="canvas-text md-render nowheel" onDoubleClick={() => setEditing(true)} onClick={onClick}>
-      {text ? <div key={body.key} ref={body.ref} dangerouslySetInnerHTML={{ __html: html }} /> : <span className="canvas-placeholder">Double-click to write</span>}
+      {text ? (
+        <div key={body.key} ref={body.ref} dangerouslySetInnerHTML={{ __html: html }} />
+      ) : (
+        <span className="canvas-placeholder">Double-click to write</span>
+      )}
     </div>
   );
 }
 
 /** A timing diagram: lanes drawn from the card's text; double-click to edit the lanes. */
-function TimingCard({ id, text, width, height, stroke, onText }: { id: string; text: string; width: number; height: number; stroke: string | undefined; onText(id: string, t: string): void }) {
+function TimingCard({
+  id,
+  text,
+  width,
+  height,
+  stroke,
+  onText,
+}: {
+  id: string;
+  text: string;
+  width: number;
+  height: number;
+  stroke: string | undefined;
+  onText(id: string, t: string): void;
+}) {
   const [editing, setEditing] = useState(false);
   const svg = useMemo(
-    () => timingSvg(text, 0, 0, width, height, { stroke: stroke ?? "var(--fg)", fg: "var(--fg)", muted: "var(--muted)", grid: "var(--border)" }),
+    () =>
+      timingSvg(text, 0, 0, width, height, {
+        stroke: stroke ?? "var(--fg)",
+        fg: "var(--fg)",
+        muted: "var(--muted)",
+        grid: "var(--border)",
+      }),
     [text, width, height, stroke],
   );
   if (editing) {
@@ -1018,7 +1316,14 @@ function TimingCard({ id, text, width, height, stroke, onText }: { id: string; t
       />
     );
   }
-  return <svg className="timing-svg" viewBox={`0 0 ${width} ${height}`} onDoubleClick={() => setEditing(true)} dangerouslySetInnerHTML={{ __html: svg }} />;
+  return (
+    <svg
+      className="timing-svg"
+      viewBox={`0 0 ${width} ${height}`}
+      onDoubleClick={() => setEditing(true)}
+      dangerouslySetInnerHTML={{ __html: svg }}
+    />
+  );
 }
 
 function FileCard({ file, subpath }: { file: string; subpath?: string }) {
@@ -1030,7 +1335,16 @@ function FileCard({ file, subpath }: { file: string; subpath?: string }) {
     let live = true;
     if (!exists) return;
     if (kind === "image") void fileUrl(file).then((img) => live && setPreview({ img }));
-    else if (kind === "markdown") void api.read(file).then((f) => live && setPreview({ html: renderMarkdown((f.content ?? "").replace(/^---\n[\s\S]*?\n---\n?/, "").slice(0, 4000)) }));
+    else if (kind === "markdown")
+      void api
+        .read(file)
+        .then(
+          (f) =>
+            live &&
+            setPreview({
+              html: renderMarkdown((f.content ?? "").replace(/^---\n[\s\S]*?\n---\n?/, "").slice(0, 4000)),
+            }),
+        );
     return () => {
       live = false;
     };
@@ -1039,15 +1353,23 @@ function FileCard({ file, subpath }: { file: string; subpath?: string }) {
   const body = useRenderedBlocks(preview?.html ?? "", file);
   return (
     <div className="canvas-file">
-      <button className="canvas-file-title nodrag" onClick={(e) => void useWorkspace.getState().open(file, { newTab: e.metaKey })} title={file}>
+      <button
+        className="canvas-file-title nodrag"
+        onClick={(e) => void useWorkspace.getState().open(file, { newTab: e.metaKey })}
+        title={file}
+      >
         {name}
         {subpath ? ` ${subpath}` : ""}
       </button>
       <div className="canvas-file-body nowheel">
         {!exists && <span className="canvas-placeholder">File not found: {file}</span>}
         {preview?.img && <img src={preview.img} alt={file} />}
-        {preview?.html && <div key={body.key} ref={body.ref} className="md-render" dangerouslySetInnerHTML={{ __html: preview.html }} />}
-        {exists && !preview && kind !== "image" && kind !== "markdown" && <span className="canvas-placeholder">{kind} file</span>}
+        {preview?.html && (
+          <div key={body.key} ref={body.ref} className="md-render" dangerouslySetInnerHTML={{ __html: preview.html }} />
+        )}
+        {exists && !preview && kind !== "image" && kind !== "markdown" && (
+          <span className="canvas-placeholder">{kind} file</span>
+        )}
       </div>
     </div>
   );

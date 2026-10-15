@@ -8,7 +8,6 @@ export function renderMath(src: string, display: boolean): string {
   return katex.renderToString(src, { displayMode: display, throwOnError: false, output: "htmlAndMathml" });
 }
 
-
 let mermaidReady: Promise<typeof import("mermaid").default> | null = null;
 let mermaidTheme = "";
 const mermaidCache = new Map<string, string>();

@@ -129,7 +129,17 @@ export const useVault = create<VaultState>((set, get) => {
       try {
         if (!(await leaveAllDrafts())) return;
         const vault = await api.openVault(path);
-        set({ vault, entries: [], expanded: new Set(), renaming: null, error: null, offline: false, selected: new Set(), anchor: null, bookmarks: [] });
+        set({
+          vault,
+          entries: [],
+          expanded: new Set(),
+          renaming: null,
+          error: null,
+          offline: false,
+          selected: new Set(),
+          anchor: null,
+          bookmarks: [],
+        });
         await loadVaultPreferences(vault.root);
         await get().refresh();
         set({ bookmarks: await api.bookmarks().catch(() => []) });
@@ -139,17 +149,24 @@ export const useVault = create<VaultState>((set, get) => {
         listenToChat();
         await useWorkspace.getState().restoreLayout(vault.root);
         if (prefs().startup === "today") useUi.getState().openView("today");
-        if (prefs().startup === "note" && vaultPrefs().startup_note && get().entries.some(e => e.path === vaultPrefs().startup_note && !e.is_dir)) {
-          await useWorkspace.getState().open(vaultPrefs().startup_note, {newTab:true});
+        if (
+          prefs().startup === "note" &&
+          vaultPrefs().startup_note &&
+          get().entries.some((e) => e.path === vaultPrefs().startup_note && !e.is_dir)
+        ) {
+          await useWorkspace.getState().open(vaultPrefs().startup_note, { newTab: true });
         }
       } catch (e) {
         const message = errorMessage(e);
-        if (isPlannerRecoveryError(message) && await useUi.getState().ask({
-          title: "Restore planner backup?",
-          body: "Mosaic could not open this vault's planner database. Restore the last valid planner backup? The damaged database will be preserved for recovery, and Markdown files will not be changed.",
-          confirmLabel: "Restore backup",
-          danger: true,
-        })) {
+        if (
+          isPlannerRecoveryError(message) &&
+          (await useUi.getState().ask({
+            title: "Restore planner backup?",
+            body: "Mosaic could not open this vault's planner database. Restore the last valid planner backup? The damaged database will be preserved for recovery, and Markdown files will not be changed.",
+            confirmLabel: "Restore backup",
+            danger: true,
+          }))
+        ) {
           try {
             await api.restorePlannerBackup(path);
             await get().openVault(path);
@@ -168,7 +185,9 @@ export const useVault = create<VaultState>((set, get) => {
         const [entries, aliases] = await Promise.all([api.list("", true), api.aliases().catch(() => [])]);
         const paths = new Set(entries.map((e) => e.path));
         set((s) => {
-          const selected = [...s.selected].every((p) => paths.has(p)) ? s.selected : new Set([...s.selected].filter((p) => paths.has(p)));
+          const selected = [...s.selected].every((p) => paths.has(p))
+            ? s.selected
+            : new Set([...s.selected].filter((p) => paths.has(p)));
           return { entries, aliases, revision: s.revision + 1, selected };
         });
       } catch (e) {
@@ -270,11 +289,17 @@ export const useVault = create<VaultState>((set, get) => {
       const i = from ? order.indexOf(from) : -1;
       const next = order[Math.max(0, Math.min(order.length - 1, i < 0 ? 0 : i + delta))];
       if (!next) return null;
-      if (extend && s.anchor && order.includes(s.anchor)) set({ selected: new Set(rangeBetween(order, s.anchor, next)), cursor: next });
+      if (extend && s.anchor && order.includes(s.anchor))
+        set({ selected: new Set(rangeBetween(order, s.anchor, next)), cursor: next });
       else get().select(next, "single");
       return next;
     },
-    setSelection: (paths) => set({ selected: new Set(paths), anchor: paths[paths.length - 1] ?? null, cursor: paths[paths.length - 1] ?? null }),
+    setSelection: (paths) =>
+      set({
+        selected: new Set(paths),
+        anchor: paths[paths.length - 1] ?? null,
+        cursor: paths[paths.length - 1] ?? null,
+      }),
     clearSelection: () => set({ selected: new Set(), anchor: null, cursor: null }),
 
     async setBookmarks(paths) {
@@ -295,7 +320,9 @@ export const useVault = create<VaultState>((set, get) => {
     async toggleBookmarks(paths) {
       const b = get().bookmarks;
       const all = paths.every((p) => b.includes(p));
-      await get().setBookmarks(all ? b.filter((p) => !paths.includes(p)) : [...b, ...paths.filter((p) => !b.includes(p))]);
+      await get().setBookmarks(
+        all ? b.filter((p) => !paths.includes(p)) : [...b, ...paths.filter((p) => !b.includes(p))],
+      );
     },
   };
 });

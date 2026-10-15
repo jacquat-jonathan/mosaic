@@ -70,7 +70,12 @@ function History({ path, focus }: { path: string; focus?: number }) {
   const name = path.split("/").pop()!.replace(/\.md$/, "");
   return (
     <div className="modal-backdrop" onMouseDown={close}>
-      <div className="modal history" role="dialog" aria-label={`History of ${name}`} onMouseDown={(e) => e.stopPropagation()}>
+      <div
+        className="modal history"
+        role="dialog"
+        aria-label={`History of ${name}`}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
         <div className="history-head">
           <h2>History of “{name}”</h2>
           <button className="icon" aria-label="Close" onClick={close}>
@@ -78,7 +83,9 @@ function History({ path, focus }: { path: string; focus?: number }) {
           </button>
         </div>
         {versions && versions.length === 0 && (
-          <p className="settings-note">No versions yet. Mosaic keeps one each time this file is changed by you, the command line or an AI agent.</p>
+          <p className="settings-note">
+            No versions yet. Mosaic keeps one each time this file is changed by you, the command line or an AI agent.
+          </p>
         )}
         {versions && versions.length > 0 && (
           <div className="history-body">
@@ -102,7 +109,9 @@ function History({ path, focus }: { path: string; focus?: number }) {
             <div className="history-diff">
               {chosen && (
                 <p className="settings-note">
-                  {current ? "From this version to the file as it is now: red lines would come back, green lines would go." : "The file doesn't exist now (it was deleted or moved). Restore brings this version back."}
+                  {current
+                    ? "From this version to the file as it is now: red lines would come back, green lines would go."
+                    : "The file doesn't exist now (it was deleted or moved). Restore brings this version back."}
                 </p>
               )}
               {same && <p className="ok-text">This version is the same as the file now.</p>}
@@ -122,7 +131,11 @@ function History({ path, focus }: { path: string; focus?: number }) {
         {error && <p className="error-text">{error}</p>}
         <div className="modal-actions">
           <button onClick={close}>Close</button>
-          <button className="primary" disabled={selected === null || same || content === null} onClick={() => void restore()}>
+          <button
+            className="primary"
+            disabled={selected === null || same || content === null}
+            onClick={() => void restore()}
+          >
             <RotateCcw size={14} /> Restore this version
           </button>
         </div>

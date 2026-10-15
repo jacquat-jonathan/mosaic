@@ -6,7 +6,6 @@ import { api } from "../ipc/api";
 import { parentOf } from "../state/vault";
 import { isDark } from "../theme";
 
-
 function resolveRelative(fromFile: string, rel: string): string {
   const parts = parentOf(fromFile).split("/").filter(Boolean);
   for (const seg of rel.replace(/^\//, "").split("/")) {
@@ -23,16 +22,25 @@ async function inlineData(spec: unknown, fromFile: string): Promise<void> {
   const data = obj.data as Record<string, unknown> | undefined;
   if (data && typeof data.url === "string") {
     const url = data.url;
-    if (/^[a-z][a-z0-9+.-]*:|^\/\//i.test(url)) throw new Error(`Remote data isn't loaded (Mosaic works offline): ${url}`);
+    if (/^[a-z][a-z0-9+.-]*:|^\/\//i.test(url))
+      throw new Error(`Remote data isn't loaded (Mosaic works offline): ${url}`);
     const path = resolveRelative(fromFile, decodeURI(url));
     const text = (await api.read(path)).content ?? "";
     const type = (data.format as { type?: string } | undefined)?.type ?? (/\.(csv|tsv)$/i.test(path) ? "csv" : "json");
     const values =
       type === "csv" || type === "tsv"
-        ? Papa.parse(text, { header: true, dynamicTyping: true, skipEmptyLines: true, delimiter: type === "tsv" ? "\t" : "" }).data
+        ? Papa.parse(text, {
+            header: true,
+            dynamicTyping: true,
+            skipEmptyLines: true,
+            delimiter: type === "tsv" ? "\t" : "",
+          }).data
         : JSON.parse(text);
     const property = (data.format as { property?: string } | undefined)?.property;
-    obj.data = { ...Object.fromEntries(Object.entries(data).filter(([k]) => k !== "url" && k !== "format")), values: property ? values[property] : values };
+    obj.data = {
+      ...Object.fromEntries(Object.entries(data).filter(([k]) => k !== "url" && k !== "format")),
+      values: property ? values[property] : values,
+    };
   }
   for (const v of Object.values(obj)) {
     if (Array.isArray(v)) for (const item of v) await inlineData(item, fromFile);

@@ -31,11 +31,31 @@ test("a clear line stays straight", () => {
 });
 
 test("helpers: simplify, rounded corners, midpoint", () => {
-  expect(simplify([{ x: 0, y: 0 }, { x: 5, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 5 }])).toEqual([
+  expect(
+    simplify([
+      { x: 0, y: 0 },
+      { x: 5, y: 0 },
+      { x: 10, y: 0 },
+      { x: 10, y: 0 },
+      { x: 10, y: 5 },
+    ]),
+  ).toEqual([
     { x: 0, y: 0 },
     { x: 10, y: 0 },
     { x: 10, y: 5 },
   ]);
-  expect(roundedPath([{ x: 0, y: 0 }, { x: 20, y: 0 }, { x: 20, y: 20 }])).toBe("M0,0 L12,0 Q20,0 20,8 L20,20");
-  expect(midpoint([{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }])).toEqual({ x: 10, y: 0 });
+  expect(
+    roundedPath([
+      { x: 0, y: 0 },
+      { x: 20, y: 0 },
+      { x: 20, y: 20 },
+    ]),
+  ).toBe("M0,0 L12,0 Q20,0 20,8 L20,20");
+  expect(
+    midpoint([
+      { x: 0, y: 0 },
+      { x: 10, y: 0 },
+      { x: 10, y: 10 },
+    ]),
+  ).toEqual({ x: 10, y: 0 });
 });

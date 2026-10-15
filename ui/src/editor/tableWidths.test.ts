@@ -3,18 +3,27 @@ import { fitTableWidths, resizeTableColumn, loadTableWidths, saveTableWidths, ta
 afterEach(() => vi.unstubAllGlobals());
 test("widths persist by vault, note and table, with invalid storage rejected", () => {
   const values = new Map<string, string>();
-  vi.stubGlobal("localStorage", { getItem: (k: string) => values.get(k) ?? null, setItem: (k: string, v: string) => values.set(k, v), removeItem: (k: string) => values.delete(k) });
+  vi.stubGlobal("localStorage", {
+    getItem: (k: string) => values.get(k) ?? null,
+    setItem: (k: string, v: string) => values.set(k, v),
+    removeItem: (k: string) => values.delete(k),
+  });
   const key = tableWidthKey("/vault", "Note.md", 0);
   saveTableWidths(key, [60.25, 250.6, 1500]);
   expect(loadTableWidths(key, 3)).toEqual([60.25, 250.6, 1500]);
   expect(loadTableWidths(key, 2)).toBeNull();
   expect(loadTableWidths(tableWidthKey("/other", "Note.md", 0), 3)).toBeNull();
   expect(loadTableWidths(tableWidthKey("/vault", "Note.md", 1), 3)).toBeNull();
-  values.set(key, '["bad",200,300]'); expect(loadTableWidths(key, 3)).toBeNull();
-  values.set(key, '[0,200,300]'); expect(loadTableWidths(key, 3)).toBeNull();
-  values.set(key, '[-10,200,300]'); expect(loadTableWidths(key, 3)).toBeNull();
-  values.set(key, 'oops'); expect(loadTableWidths(key, 3)).toBeNull();
-  saveTableWidths(key, null); expect(values.has(key)).toBe(false);
+  values.set(key, '["bad",200,300]');
+  expect(loadTableWidths(key, 3)).toBeNull();
+  values.set(key, "[0,200,300]");
+  expect(loadTableWidths(key, 3)).toBeNull();
+  values.set(key, "[-10,200,300]");
+  expect(loadTableWidths(key, 3)).toBeNull();
+  values.set(key, "oops");
+  expect(loadTableWidths(key, 3)).toBeNull();
+  saveTableWidths(key, null);
+  expect(values.has(key)).toBe(false);
 });
 
 test("resizing changes only the selected column and can grow the table up to its viewport", () => {
@@ -48,7 +57,14 @@ test("invalid resize requests leave widths unchanged", () => {
   expect(resizeTableColumn([100, 200], 0, NaN, 400)).toEqual([100, 200]);
 });
 test("unavailable storage leaves resizing usable", () => {
-  vi.stubGlobal("localStorage", { getItem() { throw new Error("Blocked"); }, setItem() { throw new Error("Full"); } });
+  vi.stubGlobal("localStorage", {
+    getItem() {
+      throw new Error("Blocked");
+    },
+    setItem() {
+      throw new Error("Full");
+    },
+  });
   expect(loadTableWidths("key", 2)).toBeNull();
   expect(() => saveTableWidths("key", [100, 200])).not.toThrow();
 });

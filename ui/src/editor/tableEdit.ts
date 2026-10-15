@@ -74,7 +74,11 @@ export function formatTable(t: TableModel): string {
   return [row(all[0]), `| ${rule.join(" | ")} |`, ...all.slice(1).map(row)].join("\n");
 }
 
-const clone = (t: TableModel): TableModel => ({ header: [...t.header], align: [...t.align], rows: t.rows.map((r) => [...r]) });
+const clone = (t: TableModel): TableModel => ({
+  header: [...t.header],
+  align: [...t.align],
+  rows: t.rows.map((r) => [...r]),
+});
 
 /** Inserts an empty body row at `at` (0 = first body row). */
 export function insertRow(t: TableModel, at: number): TableModel {

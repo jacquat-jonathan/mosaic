@@ -14,7 +14,15 @@ const KINDS: { kind: PropKind; label: string }[] = [
   { kind: "number", label: "Number" },
 ];
 
-export function PropertiesEditor({ yaml, onChange, onEditSource }: { yaml: string; onChange(yaml: string): void; onEditSource(): void }) {
+export function PropertiesEditor({
+  yaml,
+  onChange,
+  onEditSource,
+}: {
+  yaml: string;
+  onChange(yaml: string): void;
+  onEditSource(): void;
+}) {
   const [error, setError] = useState<string | null>(null);
   // "Add a property" (⌘;) opens the form, also on a panel it just created.
   const [adding, setAdding] = useState(takeAddOnMount);
@@ -55,7 +63,12 @@ export function PropertiesEditor({ yaml, onChange, onEditSource }: { yaml: strin
           <div className="cm-prop-value">
             <ValueField prop={p} onSet={(v) => apply((y) => setProp(y, p.key, v))} onEditSource={onEditSource} />
           </div>
-          <button className="props-remove" aria-label={`Remove ${p.key}`} title="Remove this property" onClick={() => apply((y) => removeProp(y, p.key))}>
+          <button
+            className="props-remove"
+            aria-label={`Remove ${p.key}`}
+            title="Remove this property"
+            onClick={() => apply((y) => removeProp(y, p.key))}
+          >
             <X size={13} />
           </button>
         </div>
@@ -106,15 +119,34 @@ function enterBlurs(e: KeyboardEvent<HTMLInputElement>) {
 function ValueField({ prop, onSet, onEditSource }: { prop: Prop; onSet(v: unknown): void; onEditSource(): void }) {
   switch (prop.kind) {
     case "checkbox":
-      return <input type="checkbox" aria-label={prop.key} checked={!!prop.value} onChange={(e) => onSet(e.target.checked)} />;
+      return (
+        <input type="checkbox" aria-label={prop.key} checked={!!prop.value} onChange={(e) => onSet(e.target.checked)} />
+      );
     case "date":
-      return <input type="date" className="props-input" aria-label={prop.key} value={String(prop.value ?? "").slice(0, 10)} onChange={(e) => e.target.value && onSet(e.target.value)} />;
+      return (
+        <input
+          type="date"
+          className="props-input"
+          aria-label={prop.key}
+          value={String(prop.value ?? "").slice(0, 10)}
+          onChange={(e) => e.target.value && onSet(e.target.value)}
+        />
+      );
     case "number":
-      return <TextField value={String(prop.value ?? "")} label={prop.key} type="number" onCommit={(t) => onSet(t === "" ? null : Number(t))} />;
+      return (
+        <TextField
+          value={String(prop.value ?? "")}
+          label={prop.key}
+          type="number"
+          onCommit={(t) => onSet(t === "" ? null : Number(t))}
+        />
+      );
     case "list":
       return <ListField items={(prop.value as unknown[]).map((v) => String(v ?? ""))} label={prop.key} onSet={onSet} />;
     case "text":
-      return <TextField value={prop.value === null ? "" : String(prop.value)} label={prop.key} onCommit={(t) => onSet(t)} />;
+      return (
+        <TextField value={prop.value === null ? "" : String(prop.value)} label={prop.key} onCommit={(t) => onSet(t)} />
+      );
     default:
       return (
         <button className="props-link" onClick={onEditSource} title="This value is nested; edit it as YAML">
@@ -124,7 +156,17 @@ function ValueField({ prop, onSet, onEditSource }: { prop: Prop; onSet(v: unknow
   }
 }
 
-function TextField({ value, label, type = "text", onCommit }: { value: string; label: string; type?: string; onCommit(v: string): void }) {
+function TextField({
+  value,
+  label,
+  type = "text",
+  onCommit,
+}: {
+  value: string;
+  label: string;
+  type?: string;
+  onCommit(v: string): void;
+}) {
   const [text, setText] = useState(value);
   return (
     <input
@@ -143,7 +185,10 @@ function TextField({ value, label, type = "text", onCommit }: { value: string; l
 function ListField({ items, label, onSet }: { items: string[]; label: string; onSet(v: string[]): void }) {
   const [draft, setDraft] = useState("");
   const add = () => {
-    const parts = draft.split(",").map((s) => s.trim()).filter(Boolean);
+    const parts = draft
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
     if (parts.length) onSet([...items, ...parts]);
     setDraft("");
   };
@@ -175,7 +220,15 @@ function ListField({ items, label, onSet }: { items: string[]; label: string; on
   );
 }
 
-function AddProperty({ taken, onAdd, onCancel }: { taken: string[]; onAdd(key: string, kind: PropKind): void; onCancel(): void }) {
+function AddProperty({
+  taken,
+  onAdd,
+  onCancel,
+}: {
+  taken: string[];
+  onAdd(key: string, kind: PropKind): void;
+  onCancel(): void;
+}) {
   const [key, setKey] = useState("");
   const [kind, setKind] = useState<PropKind>("text");
   const clash = taken.includes(key.trim());

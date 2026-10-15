@@ -57,7 +57,8 @@ export function parseCsv(text: string, path: string): CsvDoc {
   });
   const rows = res.data;
   const trailingNewline = body.endsWith("\n");
-  if (trailingNewline && rows.length && rows[rows.length - 1].length === 1 && rows[rows.length - 1][0] === "") rows.pop();
+  if (trailingNewline && rows.length && rows[rows.length - 1].length === 1 && rows[rows.length - 1][0] === "")
+    rows.pop();
   return { rows, delimiter: res.meta.delimiter || ",", newline, bom, trailingNewline };
 }
 
@@ -85,7 +86,10 @@ export function CsvEditor({ buffer }: { buffer: Buffer }) {
     rows.splice(at, 0, Array(width).fill(""));
     commit(rows);
   };
-  const addColumn = () => commit(doc.rows.map((row, i) => [...row, ...Array(width - row.length).fill(""), i === 0 ? `column ${width + 1}` : ""]));
+  const addColumn = () =>
+    commit(
+      doc.rows.map((row, i) => [...row, ...Array(width - row.length).fill(""), i === 0 ? `column ${width + 1}` : ""]),
+    );
   const deleteRow = (r: number) => commit(doc.rows.filter((_, i) => i !== r));
   const deleteColumn = (c: number) => commit(doc.rows.map((row) => row.filter((_, i) => i !== c)));
 
@@ -104,15 +108,27 @@ export function CsvEditor({ buffer }: { buffer: Buffer }) {
   return (
     <div className="viewer">
       <Toolbar>
-        <Segmented<"table" | "source"> value={mode} onChange={setMode} options={[{ value: "table", label: "Table" }, { value: "source", label: "Source" }]} />
+        <Segmented<"table" | "source">
+          value={mode}
+          onChange={setMode}
+          options={[
+            { value: "table", label: "Table" },
+            { value: "source", label: "Source" },
+          ]}
+        />
         <span className="toolbar-meta">
-          {Math.max(0, doc.rows.length - 1)} rows · {width} columns · delimiter “{doc.delimiter === "\t" ? "tab" : doc.delimiter}”
+          {Math.max(0, doc.rows.length - 1)} rows · {width} columns · delimiter “
+          {doc.delimiter === "\t" ? "tab" : doc.delimiter}”
         </span>
         <span className="spacer" />
         {mode === "table" && (
           <>
-            <button onClick={() => addRow(doc.rows.length)}><Plus size={14} /> Row</button>
-            <button onClick={addColumn}><Plus size={14} /> Column</button>
+            <button onClick={() => addRow(doc.rows.length)}>
+              <Plus size={14} /> Row
+            </button>
+            <button onClick={addColumn}>
+              <Plus size={14} /> Column
+            </button>
           </>
         )}
       </Toolbar>

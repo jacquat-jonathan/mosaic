@@ -9,11 +9,7 @@ import { useUi } from "../state/ui";
 /** Renders `**match**` markers from the core as highlighted text. */
 export function Snippet({ text }: { text: string }) {
   const parts = text.split("**");
-  return (
-    <>
-      {parts.map((p, i) => (i % 2 === 1 ? <mark key={i}>{p}</mark> : <span key={i}>{p}</span>))}
-    </>
-  );
+  return <>{parts.map((p, i) => (i % 2 === 1 ? <mark key={i}>{p}</mark> : <span key={i}>{p}</span>))}</>;
 }
 
 export function SearchPanel() {
@@ -74,7 +70,11 @@ export function SearchPanel() {
         {query.trim() && <BookmarkSearch query={query.trim()} />}
       </label>
       <div className="panel-meta">
-        {indexing ? `Indexing ${indexing.done} / ${indexing.total}…` : query.trim() && took !== null ? `${hits.length} result${hits.length === 1 ? "" : "s"} · ${Math.round(took)} ms` : ""}
+        {indexing
+          ? `Indexing ${indexing.done} / ${indexing.total}…`
+          : query.trim() && took !== null
+            ? `${hits.length} result${hits.length === 1 ? "" : "s"} · ${Math.round(took)} ms`
+            : ""}
       </div>
       <div className="results">
         {hits.map((h) => (

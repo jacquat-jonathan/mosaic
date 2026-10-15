@@ -39,7 +39,14 @@ export function RenderedSourceViewer({
   return (
     <div className="viewer">
       <Toolbar>
-        <Segmented<"view" | "source"> value={mode} onChange={setMode} options={[{ value: "view", label }, { value: "source", label: "Source" }]} />
+        <Segmented<"view" | "source">
+          value={mode}
+          onChange={setMode}
+          options={[
+            { value: "view", label },
+            { value: "source", label: "Source" },
+          ]}
+        />
         {error && mode === "view" && <span className="toolbar-error">{error}</span>}
       </Toolbar>
       {mode === "source" ? (

@@ -1,11 +1,61 @@
 // Typed access to the backend. Inside Tauri this goes through `invoke`; in a plain browser (UI
 // development and tests) it falls back to an in-memory mock vault.
 
-import type { Backlink, CliInfo, Entry, FileContent, IndexProgress, RecentVault, Renamed, SearchHit, TagCount, UpdateCheck, UpdateDone, UpdateStatus, Version, VaultInfo, Written, AgentRule, Mention, QueryResult, Proposal, Days, CarryOver, Agent, ChatEvent, ClaudeInfo, TesseraStatus } from "./types";
+import type {
+  Backlink,
+  CliInfo,
+  Entry,
+  FileContent,
+  IndexProgress,
+  RecentVault,
+  Renamed,
+  SearchHit,
+  TagCount,
+  UpdateCheck,
+  UpdateDone,
+  UpdateStatus,
+  Version,
+  VaultInfo,
+  Written,
+  AgentRule,
+  Mention,
+  QueryResult,
+  Proposal,
+  Days,
+  CarryOver,
+  Agent,
+  ChatEvent,
+  ClaudeInfo,
+  TesseraStatus,
+} from "./types";
 import { mockInvoke } from "./mock";
 import type { VaultPreferences } from "../state/vaultPreferences";
 import type { TemplateConfig, TemplateList, TemplatePreview, TemplateRequest } from "./types";
-import type { CalendarOverlayRange, CalendarSubscription, CreatePlannerEpic, CreatePlannerEvent, CreatePlannerTask, CreatePlannerWorkSession, IcalImportPreview, IcalImportResult, MarkdownImportPreview, MarkdownImportResult, MovePlannerTask, PlannerActivityEntry, PlannerCalendarRange, PlannerChanged, PlannerEpic, PlannerEvent, PlannerSummary, PlannerTask, PlannerWorkSession, UpdatePlannerEpic, UpdatePlannerEvent, UpdatePlannerTask, UpdatePlannerWorkSession } from "./types";
+import type {
+  CalendarOverlayRange,
+  CalendarSubscription,
+  CreatePlannerEpic,
+  CreatePlannerEvent,
+  CreatePlannerTask,
+  CreatePlannerWorkSession,
+  IcalImportPreview,
+  IcalImportResult,
+  MarkdownImportPreview,
+  MarkdownImportResult,
+  MovePlannerTask,
+  PlannerActivityEntry,
+  PlannerCalendarRange,
+  PlannerChanged,
+  PlannerEpic,
+  PlannerEvent,
+  PlannerSummary,
+  PlannerTask,
+  PlannerWorkSession,
+  UpdatePlannerEpic,
+  UpdatePlannerEvent,
+  UpdatePlannerTask,
+  UpdatePlannerWorkSession,
+} from "./types";
 
 export const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
@@ -37,14 +87,17 @@ export const api = {
   importFile,
   list: (dir = "", recursive = false) => call<Entry[]>("list_dir", { dir, recursive }),
   read: (path: string) => call<FileContent>("read_file", { path }),
-  create: (path: string, content = "", root?: string) => call<Written>("create_file", { path, content, root: root ?? null }),
+  create: (path: string, content = "", root?: string) =>
+    call<Written>("create_file", { path, content, root: root ?? null }),
   templateConfig: () => call<TemplateConfig>("template_config"),
   vaultPreferences: () => call<VaultPreferences>("vault_preferences"),
-  setVaultPreferences: (root: string, patch: Partial<VaultPreferences>) => call<void>("set_vault_preferences", { root, patch }),
+  setVaultPreferences: (root: string, patch: Partial<VaultPreferences>) =>
+    call<void>("set_vault_preferences", { root, patch }),
   setTemplateConfig: (config: TemplateConfig) => call<void>("set_template_config", { config }),
   templates: (path: string | null = null) => call<TemplateList>("list_templates", { path }),
   renderTemplate: (request: TemplateRequest) => call<TemplatePreview>("render_template", { request }),
-  createNote: (request: TemplateRequest) => call<Written & { template: string | null; rule_folder: string | null }>("create_note", { request }),
+  createNote: (request: TemplateRequest) =>
+    call<Written & { template: string | null; rule_folder: string | null }>("create_note", { request }),
   templateStarters: () => call<[string, string][]>("template_starters"),
   write: (path: string, content: string, expectedHash?: string | null, root?: string) =>
     call<Written>("write_file", { path, content, expectedHash: expectedHash ?? null, root: root ?? null }),
@@ -66,7 +119,17 @@ export const api = {
     agent: string | null,
     selection: { path: string; text: string } | null,
     model: string | null,
-  ) => call<number>("chat_send", { message, session, context, active, agent, selectionPath: selection?.path ?? null, selectionText: selection?.text ?? null, model }),
+  ) =>
+    call<number>("chat_send", {
+      message,
+      session,
+      context,
+      active,
+      agent,
+      selectionPath: selection?.path ?? null,
+      selectionText: selection?.text ?? null,
+      model,
+    }),
   chatStop: (run: number) => call<void>("chat_stop", { run }),
   /** The agents in the vault's Agents/ folder. */
   agents: () => call<Agent[]>("agents", {}),
@@ -81,62 +144,115 @@ export const api = {
   /** Each day's tasks from `from` to `to` (2026-10-04; at most 62 days), and overdue dated tasks. */
   days: (from: string, to: string, today: string) => call<Days>("days", { from, to, today }),
   /** Moves the open tasks of the last daily note before `day` into `path` (created with `newNote`). */
-  carryOver: (day: string, path: string | null, newNote: string | null) => call<CarryOver>("carry_over", { day, path, newNote }),
+  carryOver: (day: string, path: string | null, newNote: string | null) =>
+    call<CarryOver>("carry_over", { day, path, newNote }),
   /** Ticks or unticks the task on `line` of a note; `conflict` when that line changed. */
-  setTask: (path: string, line: number, text: string, done: boolean) => call<Written>("set_task", { path, line, text, done }),
-  setTaskWorkflow: (path: string, line: number, text: string, expectedState: string, next: string) => call<Written>("set_task_workflow", { path, line, text, expectedState, next }),
+  setTask: (path: string, line: number, text: string, done: boolean) =>
+    call<Written>("set_task", { path, line, text, done }),
+  setTaskWorkflow: (path: string, line: number, text: string, expectedState: string, next: string) =>
+    call<Written>("set_task_workflow", { path, line, text, expectedState, next }),
   plannerSummary: () => call<PlannerSummary>("planner_summary"),
-  plannerActivity: (entityKind: "epic" | "task" | "event", entityId: string) => call<PlannerActivityEntry[]>("planner_activity", { entityKind, entityId }),
-  plannerEpics: (includeArchived = false, includeTrashed = false) => call<PlannerEpic[]>("planner_epics", { includeArchived, includeTrashed }),
-  plannerTasks: (includeArchived = false, includeTrashed = false) => call<PlannerTask[]>("planner_tasks", { includeArchived, includeTrashed }),
+  plannerActivity: (entityKind: "epic" | "task" | "event", entityId: string) =>
+    call<PlannerActivityEntry[]>("planner_activity", { entityKind, entityId }),
+  plannerEpics: (includeArchived = false, includeTrashed = false) =>
+    call<PlannerEpic[]>("planner_epics", { includeArchived, includeTrashed }),
+  plannerTasks: (includeArchived = false, includeTrashed = false) =>
+    call<PlannerTask[]>("planner_tasks", { includeArchived, includeTrashed }),
   createPlannerEpic: (input: CreatePlannerEpic) => call<PlannerEpic>("planner_create_epic", { input }),
   updatePlannerEpic: (id: string, input: UpdatePlannerEpic) => call<PlannerEpic>("planner_update_epic", { id, input }),
-  archivePlannerEpic: (id: string, expectedRevision: number) => call<PlannerEpic>("planner_archive_epic", { id, expectedRevision }),
-  restorePlannerEpic: (id: string, expectedRevision: number) => call<PlannerEpic>("planner_restore_epic", { id, expectedRevision }),
-  trashPlannerEpic: (id: string, expectedRevision: number) => call<PlannerEpic>("planner_trash_epic", { id, expectedRevision }),
+  archivePlannerEpic: (id: string, expectedRevision: number) =>
+    call<PlannerEpic>("planner_archive_epic", { id, expectedRevision }),
+  restorePlannerEpic: (id: string, expectedRevision: number) =>
+    call<PlannerEpic>("planner_restore_epic", { id, expectedRevision }),
+  trashPlannerEpic: (id: string, expectedRevision: number) =>
+    call<PlannerEpic>("planner_trash_epic", { id, expectedRevision }),
   createPlannerTask: (input: CreatePlannerTask) => call<PlannerTask>("planner_create_task", { input }),
   updatePlannerTask: (id: string, input: UpdatePlannerTask) => call<PlannerTask>("planner_update_task", { id, input }),
   movePlannerTask: (id: string, input: MovePlannerTask) => call<PlannerTask>("planner_move_task", { id, input }),
-  completePlannerTask: (id: string, expectedRevision: number, allowIncompleteSubtasks: boolean, futureSessions: "cancel" | "keep" = "cancel") => call<PlannerTask>("planner_complete_task", { id, expectedRevision, allowIncompleteSubtasks, futureSessions }),
-  reopenPlannerTask: (id: string, expectedRevision: number) => call<PlannerTask>("planner_reopen_task", { id, expectedRevision }),
-  archivePlannerTask: (id: string, expectedRevision: number) => call<PlannerTask>("planner_archive_task", { id, expectedRevision }),
-  restorePlannerTask: (id: string, expectedRevision: number) => call<PlannerTask>("planner_restore_task", { id, expectedRevision }),
-  trashPlannerTask: (id: string, expectedRevision: number) => call<PlannerTask>("planner_trash_task", { id, expectedRevision }),
-  plannerWorkSessions: (taskId: string | null = null, includeCancelled = false) => call<PlannerWorkSession[]>("planner_work_sessions", { taskId, includeCancelled }),
-  createPlannerWorkSession: (input: CreatePlannerWorkSession) => call<PlannerWorkSession>("planner_create_work_session", { input }),
-  updatePlannerWorkSession: (id: string, input: UpdatePlannerWorkSession) => call<PlannerWorkSession>("planner_update_work_session", { id, input }),
-  cancelPlannerWorkSession: (id: string, expectedRevision: number) => call<PlannerWorkSession>("planner_cancel_work_session", { id, expectedRevision }),
-  plannerCalendarRange: (from: string, to: string) => call<PlannerCalendarRange>("planner_calendar_range", { from, to }),
-  plannerEvents: (includeArchived = false, includeTrashed = false) => call<PlannerEvent[]>("planner_events", { includeArchived, includeTrashed }),
+  completePlannerTask: (
+    id: string,
+    expectedRevision: number,
+    allowIncompleteSubtasks: boolean,
+    futureSessions: "cancel" | "keep" = "cancel",
+  ) => call<PlannerTask>("planner_complete_task", { id, expectedRevision, allowIncompleteSubtasks, futureSessions }),
+  reopenPlannerTask: (id: string, expectedRevision: number) =>
+    call<PlannerTask>("planner_reopen_task", { id, expectedRevision }),
+  archivePlannerTask: (id: string, expectedRevision: number) =>
+    call<PlannerTask>("planner_archive_task", { id, expectedRevision }),
+  restorePlannerTask: (id: string, expectedRevision: number) =>
+    call<PlannerTask>("planner_restore_task", { id, expectedRevision }),
+  trashPlannerTask: (id: string, expectedRevision: number) =>
+    call<PlannerTask>("planner_trash_task", { id, expectedRevision }),
+  plannerWorkSessions: (taskId: string | null = null, includeCancelled = false) =>
+    call<PlannerWorkSession[]>("planner_work_sessions", { taskId, includeCancelled }),
+  createPlannerWorkSession: (input: CreatePlannerWorkSession) =>
+    call<PlannerWorkSession>("planner_create_work_session", { input }),
+  updatePlannerWorkSession: (id: string, input: UpdatePlannerWorkSession) =>
+    call<PlannerWorkSession>("planner_update_work_session", { id, input }),
+  cancelPlannerWorkSession: (id: string, expectedRevision: number) =>
+    call<PlannerWorkSession>("planner_cancel_work_session", { id, expectedRevision }),
+  plannerCalendarRange: (from: string, to: string) =>
+    call<PlannerCalendarRange>("planner_calendar_range", { from, to }),
+  plannerEvents: (includeArchived = false, includeTrashed = false) =>
+    call<PlannerEvent[]>("planner_events", { includeArchived, includeTrashed }),
   createPlannerEvent: (input: CreatePlannerEvent) => call<PlannerEvent>("planner_create_event", { input }),
-  updatePlannerEvent: (id: string, input: UpdatePlannerEvent) => call<PlannerEvent>("planner_update_event", { id, input }),
-  archivePlannerEvent: (id: string, expectedRevision: number) => call<PlannerEvent>("planner_archive_event", { id, expectedRevision }),
-  restorePlannerEvent: (id: string, expectedRevision: number) => call<PlannerEvent>("planner_restore_event", { id, expectedRevision }),
-  trashPlannerEvent: (id: string, expectedRevision: number) => call<PlannerEvent>("planner_trash_event", { id, expectedRevision }),
-  cancelPlannerEventOccurrence: (seriesId: string, expectedRevision: number, occurrenceKey: string) => call<PlannerEvent>("planner_cancel_event_occurrence", { seriesId, expectedRevision, occurrenceKey }),
-  replacePlannerEventOccurrence: (seriesId: string, expectedRevision: number, occurrenceKey: string, input: CreatePlannerEvent) => call<PlannerEvent>("planner_replace_event_occurrence", { seriesId, expectedRevision, occurrenceKey, input }),
+  updatePlannerEvent: (id: string, input: UpdatePlannerEvent) =>
+    call<PlannerEvent>("planner_update_event", { id, input }),
+  archivePlannerEvent: (id: string, expectedRevision: number) =>
+    call<PlannerEvent>("planner_archive_event", { id, expectedRevision }),
+  restorePlannerEvent: (id: string, expectedRevision: number) =>
+    call<PlannerEvent>("planner_restore_event", { id, expectedRevision }),
+  trashPlannerEvent: (id: string, expectedRevision: number) =>
+    call<PlannerEvent>("planner_trash_event", { id, expectedRevision }),
+  cancelPlannerEventOccurrence: (seriesId: string, expectedRevision: number, occurrenceKey: string) =>
+    call<PlannerEvent>("planner_cancel_event_occurrence", { seriesId, expectedRevision, occurrenceKey }),
+  replacePlannerEventOccurrence: (
+    seriesId: string,
+    expectedRevision: number,
+    occurrenceKey: string,
+    input: CreatePlannerEvent,
+  ) => call<PlannerEvent>("planner_replace_event_occurrence", { seriesId, expectedRevision, occurrenceKey, input }),
   plannerMigrationPreview: () => call<MarkdownImportPreview>("planner_migration_preview"),
-  importMarkdownToPlanner: (preview: MarkdownImportPreview, selectedFingerprints: string[], allowDuplicates: boolean, timezone: string) => call<MarkdownImportResult>("planner_import_markdown", { preview, selectedFingerprints, allowDuplicates, timezone }),
-  previewPlannerIcal: (content: string, sourceKind = "ics-file", fallbackTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC") => call<IcalImportPreview>("planner_ical_preview", { content, sourceKind, fallbackTimezone }),
-  importPlannerIcal: (preview: IcalImportPreview, selectedKeys: string[], allowDuplicates: boolean) => call<IcalImportResult>("planner_ical_import", { preview, selectedKeys, allowDuplicates }),
+  importMarkdownToPlanner: (
+    preview: MarkdownImportPreview,
+    selectedFingerprints: string[],
+    allowDuplicates: boolean,
+    timezone: string,
+  ) =>
+    call<MarkdownImportResult>("planner_import_markdown", { preview, selectedFingerprints, allowDuplicates, timezone }),
+  previewPlannerIcal: (
+    content: string,
+    sourceKind = "ics-file",
+    fallbackTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+  ) => call<IcalImportPreview>("planner_ical_preview", { content, sourceKind, fallbackTimezone }),
+  importPlannerIcal: (preview: IcalImportPreview, selectedKeys: string[], allowDuplicates: boolean) =>
+    call<IcalImportResult>("planner_ical_import", { preview, selectedKeys, allowDuplicates }),
   exportPlannerIcal: () => call<string>("planner_ical_export"),
   exportPlannerIcalFile: (path: string) => call<string>("planner_ical_export_file", { path }),
   exportPlanner: (format: "json" | "csv") => call<string>("planner_export", { format }),
   exportPlannerFile: (format: "json" | "csv", path: string) => call<string>("planner_export_file", { format, path }),
   restorePlannerBackup: (path: string) => call<string>("planner_restore_backup", { path }),
   calendarSubscriptions: () => call<CalendarSubscription[]>("calendar_subscriptions"),
-  addCalendarSubscription: (name: string, url: string, color: string, refreshMinutes: number) => call<CalendarSubscription>("add_calendar_subscription", { name, url, color, refreshMinutes }),
-  updateCalendarSubscription: (id: string, name: string, color: string, visible: boolean, refreshMinutes: number) => call<CalendarSubscription>("update_calendar_subscription", { id, name, color, visible, refreshMinutes }),
+  addCalendarSubscription: (name: string, url: string, color: string, refreshMinutes: number) =>
+    call<CalendarSubscription>("add_calendar_subscription", { name, url, color, refreshMinutes }),
+  updateCalendarSubscription: (id: string, name: string, color: string, visible: boolean, refreshMinutes: number) =>
+    call<CalendarSubscription>("update_calendar_subscription", { id, name, color, visible, refreshMinutes }),
   removeCalendarSubscription: (id: string) => call<void>("remove_calendar_subscription", { id }),
-  refreshCalendarSubscriptions: (force = false) => call<CalendarSubscription[]>("refresh_calendar_subscriptions", { force }),
-  calendarOverlayRange: (from: string, to: string, timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC") => call<CalendarOverlayRange>("calendar_overlay_range", { from, to, timezone }),
+  refreshCalendarSubscriptions: (force = false) =>
+    call<CalendarSubscription[]>("refresh_calendar_subscriptions", { force }),
+  calendarOverlayRange: (
+    from: string,
+    to: string,
+    timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+  ) => call<CalendarOverlayRange>("calendar_overlay_range", { from, to, timezone }),
   /** Agents' proposals in folders under review: pending first, then recent decisions. */
   proposals: (includeDecided = false) => call<Proposal[]>("proposals", { includeDecided }),
   /** The proposed content (null for a deletion). */
   proposalContent: (id: number) => call<string | null>("proposal_content", { id }),
   /** The file as it was when the agent proposed (to show what the person changed since). */
   proposalBase: (id: number) => call<string | null>("proposal_base", { id }),
-  acceptProposal: (id: number, force = false, content: string | null = null) => call<string>("accept_proposal", { id, force, content }),
+  acceptProposal: (id: number, force = false, content: string | null = null) =>
+    call<string>("accept_proposal", { id, force, content }),
   rejectProposal: (id: number, reason: string | null) => call<void>("reject_proposal", { id, reason }),
   backlinks: (path: string) => call<Backlink[]>("backlinks", { path }),
   tags: () => call<TagCount[]>("tags"),
@@ -150,10 +266,12 @@ export const api = {
   agentRules: () => call<AgentRule[]>("get_agent_rules", {}),
   printWindow: () => (inTauri ? call<void>("print_window", {}) : Promise.resolve(window.print())),
   unlinkedMentions: (path: string) => call<Mention[]>("unlinked_mentions", { path }),
-  linkMention: (source: string, line: number, text: string, target: string) => call<Written>("link_mention", { source, line, text, target }),
+  linkMention: (source: string, line: number, text: string, target: string) =>
+    call<Written>("link_mention", { source, line, text, target }),
   setAgentRules: (rules: AgentRule[]) => call<void>("set_agent_rules", { rules }),
   versionContent: (id: number) => call<string>("version_content", { id }),
-  restoreVersion: (path: string, id: number, expectedHash: string | null) => call<Written>("restore_version", { path, id, expectedHash }),
+  restoreVersion: (path: string, id: number, expectedHash: string | null) =>
+    call<Written>("restore_version", { path, id, expectedHash }),
   aiActivity: () => call<Version[]>("ai_activity", {}),
   undoChange: (id: number) => call<string>("undo_change", { id }),
   startUpdate: () => call<void>("start_update"),
@@ -242,7 +360,8 @@ export async function onChatEvent(cb: (run: number, event: ChatEvent) => void): 
 }
 
 export const onTesseraChanged = (cb: () => void) => listenTo<void>("tessera-changed", cb);
-export const onPlannerChanged = (cb: (change: PlannerChanged) => void) => listenTo<PlannerChanged>("planner-changed", cb);
+export const onPlannerChanged = (cb: (change: PlannerChanged) => void) =>
+  listenTo<PlannerChanged>("planner-changed", cb);
 
 /** Subscribes to changes of the app's settings file (e.g. an agent added a bookmark). */
 export async function onSettingsChanged(cb: () => void): Promise<() => void> {

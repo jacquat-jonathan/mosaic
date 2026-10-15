@@ -10,7 +10,15 @@ import { ICONS, ICON_NAMES, iconLabel } from "../../diagrams/icons";
 export const SHAPE_DRAG = "application/x-mosaic-shape";
 export type PaletteItem = { shape: ShapeName } | { icon: string };
 
-export function ShapePalette({ anchor, onPick, onClose }: { anchor: DOMRect; onPick(item: PaletteItem): void; onClose(): void }) {
+export function ShapePalette({
+  anchor,
+  onPick,
+  onClose,
+}: {
+  anchor: DOMRect;
+  onPick(item: PaletteItem): void;
+  onClose(): void;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const onDown = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && onClose();
@@ -39,11 +47,19 @@ export function ShapePalette({ anchor, onPick, onClose }: { anchor: DOMRect; onP
     </button>
   );
   return createPortal(
-    <div ref={ref} className="shape-palette" style={{ top: anchor.bottom + 6, left: Math.max(8, Math.min(anchor.left - 200, window.innerWidth - 470)) }}>
+    <div
+      ref={ref}
+      className="shape-palette"
+      style={{ top: anchor.bottom + 6, left: Math.max(8, Math.min(anchor.left - 200, window.innerWidth - 470)) }}
+    >
       {SHAPE_GROUPS.map((g) => (
         <section key={g}>
           <h4>{g}</h4>
-          <div className="palette-grid">{SHAPES.filter((s) => s.group === g).map((s) => tile({ shape: s.name }, s.label, <ShapePreview shape={s.name} />))}</div>
+          <div className="palette-grid">
+            {SHAPES.filter((s) => s.group === g).map((s) =>
+              tile({ shape: s.name }, s.label, <ShapePreview shape={s.name} />),
+            )}
+          </div>
         </section>
       ))}
       <section>

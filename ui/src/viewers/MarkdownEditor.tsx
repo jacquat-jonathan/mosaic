@@ -30,7 +30,8 @@ export const LARGE_FILE_BYTES = 5 * 1024 * 1024;
 
 export function editorContextFor(path: string): EditorContext {
   const entries = () => useVault.getState().entries;
-  const resolve = (target: string, markdown = false) => resolveLink(target, entries(), path, useVault.getState().aliases, markdown);
+  const resolve = (target: string, markdown = false) =>
+    resolveLink(target, entries(), path, useVault.getState().aliases, markdown);
   return {
     path,
     resolve,
@@ -44,7 +45,7 @@ export function editorContextFor(path: string): EditorContext {
       const name = target.split(/[#^|]/)[0].trim();
       if (!name) return;
       if (!/\.[a-z0-9]+$/i.test(name) || name.toLowerCase().endsWith(".md")) {
-        await newNote(parentOf(name),baseName(name),newTab);
+        await newNote(parentOf(name), baseName(name), newTab);
         return;
       }
       const created = await newFileOfKind("", name, /\.[a-z0-9]+$/i.test(name) ? "" : "md", "");
@@ -59,17 +60,38 @@ export function editorContextFor(path: string): EditorContext {
       if (!images.length) return null;
       const dir = vaultPrefs().attachment_location === "folder" ? vaultPrefs().attachment_folder : parentOf(path);
       return Promise.all(
-        images.map(async (f, i) => (await api.importFile(dir ? `${dir}/${pastedName(f, i)}` : pastedName(f, i), new Uint8Array(await f.arrayBuffer()))).path),
-      ).then(paths => embedsFor(paths, path), (e) => {
-        useVault.getState().setError(`Couldn't save the pasted image: ${errorMessage(e)}`);
-        return "";
-      });
+        images.map(
+          async (f, i) =>
+            (
+              await api.importFile(
+                dir ? `${dir}/${pastedName(f, i)}` : pastedName(f, i),
+                new Uint8Array(await f.arrayBuffer()),
+              )
+            ).path,
+        ),
+      ).then(
+        (paths) => embedsFor(paths, path),
+        (e) => {
+          useVault.getState().setError(`Couldn't save the pasted image: ${errorMessage(e)}`);
+          return "";
+        },
+      );
     },
     importDrop(dt) {
       if (!isFinderDrag(dt)) return null;
-      return importDropped(droppedItems(dt), vaultPrefs().attachment_location === "folder" ? vaultPrefs().attachment_folder : parentOf(path)).then((paths) => {
-        const dirs = new Set(entries().filter((e) => e.is_dir).map((e) => e.path));
-        return embedsFor(paths.filter((p) => !dirs.has(p)), path);
+      return importDropped(
+        droppedItems(dt),
+        vaultPrefs().attachment_location === "folder" ? vaultPrefs().attachment_folder : parentOf(path),
+      ).then((paths) => {
+        const dirs = new Set(
+          entries()
+            .filter((e) => e.is_dir)
+            .map((e) => e.path),
+        );
+        return embedsFor(
+          paths.filter((p) => !dirs.has(p)),
+          path,
+        );
       });
     },
     async openAsDiagram(source) {
@@ -115,7 +137,11 @@ export function MarkdownEditor({ buffer }: { buffer: Buffer }) {
 
   return (
     <div className="md-scroll">
-      {readOnly && <div className="notice warn"><span>This file is larger than 5 MB and opened read-only.</span></div>}
+      {readOnly && (
+        <div className="notice warn">
+          <span>This file is larger than 5 MB and opened read-only.</span>
+        </div>
+      )}
       <CodeMirror
         className="md-editor"
         doc={buffer.content ?? ""}

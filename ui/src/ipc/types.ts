@@ -51,14 +51,7 @@ export interface RecentVault extends VaultInfo {
 }
 
 export interface CoreError {
-  code:
-    | "not_found"
-    | "already_exists"
-    | "conflict"
-    | "invalid_path"
-    | "not_text"
-    | "invalid"
-    | "io";
+  code: "not_found" | "already_exists" | "conflict" | "invalid_path" | "not_text" | "invalid" | "io";
   message: string;
   current_hash: string | null;
 }
@@ -153,7 +146,17 @@ export interface AgentRun {
 export interface TesseraStatus {
   paused: boolean;
   max_chain_depth: number;
-  agents: { name: string; title: string; schedule: string | null; on: string[]; model: string | null; paused: boolean; running: boolean; queued: number; error: string | null }[];
+  agents: {
+    name: string;
+    title: string;
+    schedule: string | null;
+    on: string[];
+    model: string | null;
+    paused: boolean;
+    running: boolean;
+    queued: number;
+    error: string | null;
+  }[];
   runs: AgentRun[];
 }
 
@@ -203,7 +206,16 @@ export interface PlannerSummary {
   is_empty: boolean;
 }
 
-export interface PlannerActivityEntry { id: number; entity_kind: string; entity_id: string; occurred_at: string; action: string; summary: string; before: unknown | null; after: unknown | null }
+export interface PlannerActivityEntry {
+  id: number;
+  entity_kind: string;
+  entity_id: string;
+  occurred_at: string;
+  action: string;
+  summary: string;
+  before: unknown | null;
+  after: unknown | null;
+}
 
 export interface PlannerEpic {
   id: string;
@@ -236,30 +248,208 @@ export interface PlannerTask {
   trashed_at: string | null;
 }
 
-export interface CreatePlannerEpic { title: string; description: string; color: string }
-export interface UpdatePlannerEpic { expected_revision: number; title?: string | null; description?: string | null; color?: string | null; position?: number | null }
-export interface CreatePlannerTask { epic_id: string | null; parent_id: string | null; title: string; description: string; status: PlannerTaskStatus; due_date: string | null; estimate_minutes: number | null }
-export interface UpdatePlannerTask { expected_revision: number; title?: string | null; description?: string | null; due_date?: string | null; clear_due_date: boolean; estimate_minutes?: number | null; clear_estimate: boolean }
-export interface MovePlannerTask { expected_revision: number; epic_id: string | null; parent_id: string | null; status: PlannerTaskStatus; position: number }
+export interface CreatePlannerEpic {
+  title: string;
+  description: string;
+  color: string;
+}
+export interface UpdatePlannerEpic {
+  expected_revision: number;
+  title?: string | null;
+  description?: string | null;
+  color?: string | null;
+  position?: number | null;
+}
+export interface CreatePlannerTask {
+  epic_id: string | null;
+  parent_id: string | null;
+  title: string;
+  description: string;
+  status: PlannerTaskStatus;
+  due_date: string | null;
+  estimate_minutes: number | null;
+}
+export interface UpdatePlannerTask {
+  expected_revision: number;
+  title?: string | null;
+  description?: string | null;
+  due_date?: string | null;
+  clear_due_date: boolean;
+  estimate_minutes?: number | null;
+  clear_estimate: boolean;
+}
+export interface MovePlannerTask {
+  expected_revision: number;
+  epic_id: string | null;
+  parent_id: string | null;
+  status: PlannerTaskStatus;
+  position: number;
+}
 
-export interface PlannerWorkSession { id: string; task_id: string; all_day: boolean; start_value: string; end_value: string; timezone: string; state: "planned" | "cancelled"; revision: number; created_at: string; updated_at: string }
-export interface CreatePlannerWorkSession { task_id: string; all_day: boolean; start_value: string; end_value: string; timezone: string }
-export interface UpdatePlannerWorkSession { expected_revision: number; all_day: boolean; start_value: string; end_value: string; timezone: string }
-export interface PlannerEvent { id: string; series_id: string | null; title: string; description: string; location: string; meeting_url: string | null; participants: string[]; epic_id: string | null; color: string | null; all_day: boolean; start_value: string; end_value: string; timezone: string; recurrence_rule: string | null; revision: number; created_at: string; updated_at: string; archived_at: string | null; trashed_at: string | null }
-export interface CreatePlannerEvent { title: string; description: string; location: string; meeting_url: string | null; participants: string[]; epic_id: string | null; color: string | null; all_day: boolean; start_value: string; end_value: string; timezone: string; recurrence_rule: string | null }
-export interface UpdatePlannerEvent extends CreatePlannerEvent { expected_revision: number }
-export interface EventOccurrence { event_id: string; series_id: string; occurrence_key: string; title: string; description: string; location: string; meeting_url: string | null; participants: string[]; epic_id: string | null; color: string | null; all_day: boolean; start_value: string; end_value: string; timezone: string; recurring: boolean }
-export interface CalendarWorkSession { session: PlannerWorkSession; task_title: string; task_status: PlannerTaskStatus; epic_id: string | null; color: string | null }
-export interface DueMarker { task_id: string; title: string; date: string; status: PlannerTaskStatus; epic_id: string | null; color: string | null }
-export interface DayWorkload { date: string; minutes: number }
-export interface PlannerCalendarRange { from: string; to: string; events: EventOccurrence[]; work_sessions: CalendarWorkSession[]; due_markers: DueMarker[]; unscheduled_tasks: PlannerTask[]; workload: DayWorkload[] }
+export interface PlannerWorkSession {
+  id: string;
+  task_id: string;
+  all_day: boolean;
+  start_value: string;
+  end_value: string;
+  timezone: string;
+  state: "planned" | "cancelled";
+  revision: number;
+  created_at: string;
+  updated_at: string;
+}
+export interface CreatePlannerWorkSession {
+  task_id: string;
+  all_day: boolean;
+  start_value: string;
+  end_value: string;
+  timezone: string;
+}
+export interface UpdatePlannerWorkSession {
+  expected_revision: number;
+  all_day: boolean;
+  start_value: string;
+  end_value: string;
+  timezone: string;
+}
+export interface PlannerEvent {
+  id: string;
+  series_id: string | null;
+  title: string;
+  description: string;
+  location: string;
+  meeting_url: string | null;
+  participants: string[];
+  epic_id: string | null;
+  color: string | null;
+  all_day: boolean;
+  start_value: string;
+  end_value: string;
+  timezone: string;
+  recurrence_rule: string | null;
+  revision: number;
+  created_at: string;
+  updated_at: string;
+  archived_at: string | null;
+  trashed_at: string | null;
+}
+export interface CreatePlannerEvent {
+  title: string;
+  description: string;
+  location: string;
+  meeting_url: string | null;
+  participants: string[];
+  epic_id: string | null;
+  color: string | null;
+  all_day: boolean;
+  start_value: string;
+  end_value: string;
+  timezone: string;
+  recurrence_rule: string | null;
+}
+export interface UpdatePlannerEvent extends CreatePlannerEvent {
+  expected_revision: number;
+}
+export interface EventOccurrence {
+  event_id: string;
+  series_id: string;
+  occurrence_key: string;
+  title: string;
+  description: string;
+  location: string;
+  meeting_url: string | null;
+  participants: string[];
+  epic_id: string | null;
+  color: string | null;
+  all_day: boolean;
+  start_value: string;
+  end_value: string;
+  timezone: string;
+  recurring: boolean;
+}
+export interface CalendarWorkSession {
+  session: PlannerWorkSession;
+  task_title: string;
+  task_status: PlannerTaskStatus;
+  epic_id: string | null;
+  color: string | null;
+}
+export interface DueMarker {
+  task_id: string;
+  title: string;
+  date: string;
+  status: PlannerTaskStatus;
+  epic_id: string | null;
+  color: string | null;
+}
+export interface DayWorkload {
+  date: string;
+  minutes: number;
+}
+export interface PlannerCalendarRange {
+  from: string;
+  to: string;
+  events: EventOccurrence[];
+  work_sessions: CalendarWorkSession[];
+  due_markers: DueMarker[];
+  unscheduled_tasks: PlannerTask[];
+  workload: DayWorkload[];
+}
 
-export interface IcalImportCandidate { key: string; source_uid: string; recurrence_id: string; title: string; all_day: boolean; start_value: string; end_value: string; timezone: string; recurrence_rule: string | null; duplicate: boolean; event: CreatePlannerEvent }
-export interface IcalImportPreview { planner_revision: number; source_kind: string; candidates: IcalImportCandidate[]; duplicates: number }
-export interface IcalImportResult { planner_revision: number; imported_event_ids: string[]; skipped_duplicates: string[] }
-export interface CalendarSubscription { id: string; name: string; color: string; visible: boolean; refresh_minutes: number; last_success: string | null; last_error: string | null; has_cache: boolean }
-export interface CalendarOverlayOccurrence { source_id: string; source_name: string; uid: string; title: string; description: string; location: string; meeting_url: string | null; all_day: boolean; start_value: string; end_value: string; timezone: string; occurrence_key: string; color: string | null; read_only: true }
-export interface CalendarOverlayRange { subscriptions: CalendarSubscription[]; occurrences: CalendarOverlayOccurrence[] }
+export interface IcalImportCandidate {
+  key: string;
+  source_uid: string;
+  recurrence_id: string;
+  title: string;
+  all_day: boolean;
+  start_value: string;
+  end_value: string;
+  timezone: string;
+  recurrence_rule: string | null;
+  duplicate: boolean;
+  event: CreatePlannerEvent;
+}
+export interface IcalImportPreview {
+  planner_revision: number;
+  source_kind: string;
+  candidates: IcalImportCandidate[];
+  duplicates: number;
+}
+export interface IcalImportResult {
+  planner_revision: number;
+  imported_event_ids: string[];
+  skipped_duplicates: string[];
+}
+export interface CalendarSubscription {
+  id: string;
+  name: string;
+  color: string;
+  visible: boolean;
+  refresh_minutes: number;
+  last_success: string | null;
+  last_error: string | null;
+  has_cache: boolean;
+}
+export interface CalendarOverlayOccurrence {
+  source_id: string;
+  source_name: string;
+  uid: string;
+  title: string;
+  description: string;
+  location: string;
+  meeting_url: string | null;
+  all_day: boolean;
+  start_value: string;
+  end_value: string;
+  timezone: string;
+  occurrence_key: string;
+  color: string | null;
+  read_only: true;
+}
+export interface CalendarOverlayRange {
+  subscriptions: CalendarSubscription[];
+  occurrences: CalendarOverlayOccurrence[];
+}
 
 export interface MarkdownImportCandidate {
   source_path: string;
@@ -278,10 +468,28 @@ export interface MarkdownImportCandidate {
   default_selected: boolean;
   duplicate: boolean;
 }
-export interface MarkdownImportGroup { source_path: string; tasks: MarkdownImportCandidate[] }
-export interface MarkdownImportPreview { planner_revision: number; groups: MarkdownImportGroup[]; candidates: number; selected_by_default: number; duplicates: number }
-export interface MarkdownImportResult { planner_revision: number; imported_epic_ids: string[]; imported_task_ids: string[]; skipped_duplicates: string[] }
-export interface PlannerChanged { root: string; revision: number; affected_ids: string[] }
+export interface MarkdownImportGroup {
+  source_path: string;
+  tasks: MarkdownImportCandidate[];
+}
+export interface MarkdownImportPreview {
+  planner_revision: number;
+  groups: MarkdownImportGroup[];
+  candidates: number;
+  selected_by_default: number;
+  duplicates: number;
+}
+export interface MarkdownImportResult {
+  planner_revision: number;
+  imported_epic_ids: string[];
+  imported_task_ids: string[];
+  skipped_duplicates: string[];
+}
+export interface PlannerChanged {
+  root: string;
+  revision: number;
+  affected_ids: string[];
+}
 
 export interface QueryRow {
   path: string;
@@ -428,8 +636,31 @@ export interface UpdateDone {
   cancelled: boolean;
   error: string | null;
 }
-export interface TemplateRule { folder: string; template: string | null }
-export interface TemplateConfig { version: number; folder: string; rules: TemplateRule[] }
-export interface TemplateList { templates: { path: string; name: string }[]; default: { template: string | null; rule_folder: string | null } }
-export interface TemplateRequest { path: string; template?: string | null; blank?: boolean; timestamp?: string | null; expected_template_hash?: string | null }
-export interface TemplatePreview { path: string; content: string; template: string | null; template_hash: string | null; rule_folder: string | null; context: { title: string; date: string; time: string; weekday: string; timestamp: string } }
+export interface TemplateRule {
+  folder: string;
+  template: string | null;
+}
+export interface TemplateConfig {
+  version: number;
+  folder: string;
+  rules: TemplateRule[];
+}
+export interface TemplateList {
+  templates: { path: string; name: string }[];
+  default: { template: string | null; rule_folder: string | null };
+}
+export interface TemplateRequest {
+  path: string;
+  template?: string | null;
+  blank?: boolean;
+  timestamp?: string | null;
+  expected_template_hash?: string | null;
+}
+export interface TemplatePreview {
+  path: string;
+  content: string;
+  template: string | null;
+  template_hash: string | null;
+  rule_folder: string | null;
+  context: { title: string; date: string; time: string; weekday: string; timestamp: string };
+}

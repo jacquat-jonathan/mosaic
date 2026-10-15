@@ -10,7 +10,9 @@ import path from "node:path";
 function excalidrawFonts(): Plugin {
   const src = path.resolve(__dirname, "node_modules/@excalidraw/excalidraw/dist/prod/fonts");
   const files = (dir: string): string[] =>
-    fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? files(path.join(dir, e.name)) : [path.join(dir, e.name)]));
+    fs
+      .readdirSync(dir, { withFileTypes: true })
+      .flatMap((e) => (e.isDirectory() ? files(path.join(dir, e.name)) : [path.join(dir, e.name)]));
   return {
     name: "excalidraw-fonts",
     configureServer(server) {
@@ -23,7 +25,11 @@ function excalidrawFonts(): Plugin {
     },
     generateBundle() {
       for (const f of files(src)) {
-        this.emitFile({ type: "asset", fileName: `excalidraw-assets/fonts/${path.relative(src, f)}`, source: fs.readFileSync(f) });
+        this.emitFile({
+          type: "asset",
+          fileName: `excalidraw-assets/fonts/${path.relative(src, f)}`,
+          source: fs.readFileSync(f),
+        });
       }
     },
   };

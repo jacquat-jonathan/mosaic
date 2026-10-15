@@ -73,11 +73,18 @@ export function markdownToHtml(src: string, resolve?: (target: string) => string
 
 /** `breaks`: every line break is kept (diagram shape labels are written line by line). */
 export function renderMarkdown(src: string, resolve?: (target: string) => string | null, breaks = false): string {
-  return DOMPurify.sanitize(markdownToHtml(src, resolve, breaks), { ADD_ATTR: ["data-target"], FORBID_TAGS: ["style", "iframe", "form"] });
+  return DOMPurify.sanitize(markdownToHtml(src, resolve, breaks), {
+    ADD_ATTR: ["data-target"],
+    FORBID_TAGS: ["style", "iframe", "form"],
+  });
 }
 
 /** Inline Markdown for table cells and labels, without a wrapping paragraph. */
-export const inlineMarkdownToHtml = (src: string, resolve?: (target: string) => string | null) => marked.parseInline(withWikiLinks(src, resolve), { async: false });
+export const inlineMarkdownToHtml = (src: string, resolve?: (target: string) => string | null) =>
+  marked.parseInline(withWikiLinks(src, resolve), { async: false });
 export function renderInlineMarkdown(src: string, resolve?: (target: string) => string | null): string {
-  return DOMPurify.sanitize(inlineMarkdownToHtml(src, resolve), { ADD_ATTR: ["data-target"], FORBID_TAGS: ["style", "iframe", "form"] });
+  return DOMPurify.sanitize(inlineMarkdownToHtml(src, resolve), {
+    ADD_ATTR: ["data-target"],
+    FORBID_TAGS: ["style", "iframe", "form"],
+  });
 }

@@ -3,7 +3,11 @@ import { Excalidraw, serializeAsJSON } from "@excalidraw/excalidraw";
 import "@excalidraw/excalidraw/index.css";
 import { useDark } from "../theme";
 
-type Scene = { elements: readonly { version: number }[]; appState?: Record<string, unknown>; files?: Record<string, unknown> };
+type Scene = {
+  elements: readonly { version: number }[];
+  appState?: Record<string, unknown>;
+  files?: Record<string, unknown>;
+};
 
 /** Loaded lazily: Excalidraw is large. Saves only when the drawing itself changes, not on selection/scroll. */
 export default function ExcalidrawCanvas({ initial, onSave }: { initial: Scene; onSave(json: string): void }) {
@@ -12,7 +16,12 @@ export default function ExcalidrawCanvas({ initial, onSave }: { initial: Scene; 
   return (
     <div className="excalidraw-host">
       <Excalidraw
-        initialData={{ elements: initial.elements as never, appState: { ...(initial.appState ?? {}), collaborators: new Map() } as never, files: (initial.files ?? {}) as never, scrollToContent: true }}
+        initialData={{
+          elements: initial.elements as never,
+          appState: { ...(initial.appState ?? {}), collaborators: new Map() } as never,
+          files: (initial.files ?? {}) as never,
+          scrollToContent: true,
+        }}
         theme={dark ? "dark" : "light"}
         UIOptions={{ canvasActions: { loadScene: false, saveToActiveFile: false, export: false, saveAsImage: true } }}
         onChange={(elements, appState, files) => {

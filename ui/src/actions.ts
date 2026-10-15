@@ -57,12 +57,22 @@ export async function moveAllInto(paths: string[], dir: string) {
 /** "Move to…": pick a destination folder, then move `paths` there. */
 export function pickFolderAndMove(paths: string[]) {
   const targets = topLevel(paths);
-  const folders = useVault.getState().entries.filter((e) => e.is_dir).map((e) => e.path);
+  const folders = useVault
+    .getState()
+    .entries.filter((e) => e.is_dir)
+    .map((e) => e.path);
   const allowed = ["", ...folders].filter((d) => targets.some((p) => canMoveInto(p, d)));
-  const what = targets.length === 1 ? `“${displayName({ name: baseName(targets[0]), kind: kindOf(targets[0]) })}”` : `${targets.length} items`;
+  const what =
+    targets.length === 1
+      ? `“${displayName({ name: baseName(targets[0]), kind: kindOf(targets[0]) })}”`
+      : `${targets.length} items`;
   useUi.getState().openPicker({
     placeholder: `Move ${what} to…`,
-    items: allowed.map((d) => ({ id: d, label: d ? baseName(d) : "Vault root", detail: d && parentOf(d) ? parentOf(d) : undefined })),
+    items: allowed.map((d) => ({
+      id: d,
+      label: d ? baseName(d) : "Vault root",
+      detail: d && parentOf(d) ? parentOf(d) : undefined,
+    })),
     hint: "↵ move · esc cancel",
     onPick: (item) => void moveAllInto(targets, item.id),
   });
@@ -79,17 +89,23 @@ export async function deletePaths(paths: string[]) {
   const ws = useWorkspace.getState();
   const under = (b: string) => targets.some((p) => b === p || b.startsWith(`${p}/`));
   const dirty = Object.values(ws.buffers).some((b) => b.dirty && under(b.path));
-  const ok = !prefs().confirmTrash && !dirty ? true : await useUi.getState().ask({
-    title: `Move ${targets.length} items to the Trash?`,
-    body: "They will be moved to the macOS Trash." + (dirty ? " Some have unsaved changes, which will be lost." : " You can restore them from there."),
-    confirmLabel: "Move to Trash",
-    danger: true,
-  });
+  const ok =
+    !prefs().confirmTrash && !dirty
+      ? true
+      : await useUi.getState().ask({
+          title: `Move ${targets.length} items to the Trash?`,
+          body:
+            "They will be moved to the macOS Trash." +
+            (dirty ? " Some have unsaved changes, which will be lost." : " You can restore them from there."),
+          confirmLabel: "Move to Trash",
+          danger: true,
+        });
   if (!ok) return;
   for (const p of targets) {
     if (!(await useVault.getState().remove(p))) break;
     for (const b of Object.values(useWorkspace.getState().buffers)) {
-      if (b.path === p || b.path.startsWith(`${p}/`)) useWorkspace.setState((s) => ({ buffers: { ...s.buffers, [b.path]: { ...b, dirty: false } } }));
+      if (b.path === p || b.path.startsWith(`${p}/`))
+        useWorkspace.setState((s) => ({ buffers: { ...s.buffers, [b.path]: { ...b, dirty: false } } }));
     }
     useWorkspace.getState().deleted(p);
   }
@@ -99,7 +115,11 @@ export async function deletePaths(paths: string[]) {
 /** Copies a file next to itself as "Name 1.ext" and starts renaming the copy. */
 export async function duplicatePath(path: string) {
   const name = baseName(path);
-  const ext = name.toLowerCase().endsWith(".vl.json") ? "vl.json" : name.includes(".") ? name.slice(name.lastIndexOf(".") + 1) : "";
+  const ext = name.toLowerCase().endsWith(".vl.json")
+    ? "vl.json"
+    : name.includes(".")
+      ? name.slice(name.lastIndexOf(".") + 1)
+      : "";
   const stem = ext ? name.slice(0, -(ext.length + 1)) : name;
   const vault = useVault.getState();
   const target = uniquePath(new Set(vault.entries.map((e) => e.path.toLowerCase())), parentOf(path), stem, ext);
@@ -118,15 +138,24 @@ export function wikilinkFor(path: string, from = useWorkspace.getState().activeP
   if (vaultPrefs().link_style === "markdown") {
     const parts = parentOf(from).split("/").filter(Boolean);
     const target = path.split("/");
-    while(parts.length && target.length && parts[0] === target[0]) { parts.shift(); target.shift(); }
-    const relative = [...parts.map(() => ".."), ...target].map(segment => encodeURIComponent(segment).replaceAll("(", "%28").replaceAll(")", "%29")).join("/");
-    const label = baseName(path).replace(/\.md$/i, "").replace(/[\\[\]]/g, "\\$&");
+    while (parts.length && target.length && parts[0] === target[0]) {
+      parts.shift();
+      target.shift();
+    }
+    const relative = [...parts.map(() => ".."), ...target]
+      .map((segment) => encodeURIComponent(segment).replaceAll("(", "%28").replaceAll(")", "%29"))
+      .join("/");
+    const label = baseName(path)
+      .replace(/\.md$/i, "")
+      .replace(/[\\[\]]/g, "\\$&");
     return `[${label}](${relative})`;
   }
   const name = baseName(path);
   const md = kindOf(path) === "markdown";
   const bare = md ? name.replace(/\.(md|markdown)$/i, "") : name;
-  const clash = useVault.getState().entries.some((e) => !e.is_dir && e.path !== path && e.name.toLowerCase() === name.toLowerCase());
+  const clash = useVault
+    .getState()
+    .entries.some((e) => !e.is_dir && e.path !== path && e.name.toLowerCase() === name.toLowerCase());
   const target = clash ? (md ? path.replace(/\.(md|markdown)$/i, "") : path) : bare;
   return `[[${target}]]`;
 }
@@ -145,7 +174,11 @@ export function revealInTree(path: string) {
   vault.revealParents(path);
   vault.setSelection([path]);
   useUi.getState().setSidebarTab("files");
-  requestAnimationFrame(() => requestAnimationFrame(() => document.querySelector(`[data-path="${CSS.escape(path)}"]`)?.scrollIntoView({ block: "nearest" })));
+  requestAnimationFrame(() =>
+    requestAnimationFrame(() =>
+      document.querySelector(`[data-path="${CSS.escape(path)}"]`)?.scrollIntoView({ block: "nearest" }),
+    ),
+  );
 }
 
 /** Expands or collapses a folder and every folder inside it. */
@@ -189,21 +222,25 @@ export async function createVault() {
 
 export async function deletePath(path: string, isDir: boolean) {
   const ws = useWorkspace.getState();
-  const dirty = Object.values(ws.buffers).some(
-    (b) => b.dirty && (b.path === path || b.path.startsWith(`${path}/`)),
-  );
-  const ok = !prefs().confirmTrash && !dirty ? true : await useUi.getState().ask({
-    title: `Move “${isDir ? baseName(path) : displayName({ name: baseName(path), kind: kindOf(path) })}” to the Trash?`,
-    body:
-      (isDir ? "The folder and everything in it will be moved to the macOS Trash." : "The file will be moved to the macOS Trash.") +
-      (dirty ? " It has unsaved changes, which will be lost." : " You can restore it from there."),
-    confirmLabel: "Move to Trash",
-    danger: true,
-  });
+  const dirty = Object.values(ws.buffers).some((b) => b.dirty && (b.path === path || b.path.startsWith(`${path}/`)));
+  const ok =
+    !prefs().confirmTrash && !dirty
+      ? true
+      : await useUi.getState().ask({
+          title: `Move “${isDir ? baseName(path) : displayName({ name: baseName(path), kind: kindOf(path) })}” to the Trash?`,
+          body:
+            (isDir
+              ? "The folder and everything in it will be moved to the macOS Trash."
+              : "The file will be moved to the macOS Trash.") +
+            (dirty ? " It has unsaved changes, which will be lost." : " You can restore it from there."),
+          confirmLabel: "Move to Trash",
+          danger: true,
+        });
   if (!ok) return;
   if (await useVault.getState().remove(path)) {
     for (const b of Object.values(useWorkspace.getState().buffers)) {
-      if (b.path === path || b.path.startsWith(`${path}/`)) useWorkspace.setState((s) => ({ buffers: { ...s.buffers, [b.path]: { ...b, dirty: false } } }));
+      if (b.path === path || b.path.startsWith(`${path}/`))
+        useWorkspace.setState((s) => ({ buffers: { ...s.buffers, [b.path]: { ...b, dirty: false } } }));
     }
     ws.deleted(path);
   }
@@ -213,7 +250,13 @@ const CHART_TEMPLATE = JSON.stringify(
   {
     $schema: "https://vega.github.io/schema/vega-lite/v5.json",
     description: "Edit the data or point data.url at a CSV/JSON file in the vault.",
-    data: { values: [ { item: "A", value: 28 }, { item: "B", value: 55 }, { item: "C", value: 43 } ] },
+    data: {
+      values: [
+        { item: "A", value: 28 },
+        { item: "B", value: 55 },
+        { item: "C", value: 43 },
+      ],
+    },
     mark: "bar",
     encoding: { x: { field: "item", type: "nominal" }, y: { field: "value", type: "quantitative" } },
   },
@@ -295,7 +338,15 @@ export function openCalendar() {
 /** A canvas with one file card per file, on a grid of three columns, in selection order. */
 export function canvasOfFiles(files: string[], id: () => string): string {
   const cols = Math.min(3, files.length);
-  const nodes = files.map((file, i) => ({ id: id(), type: "file", file, x: (i % cols) * 340, y: Math.floor(i / cols) * 280, width: 300, height: 240 }));
+  const nodes = files.map((file, i) => ({
+    id: id(),
+    type: "file",
+    file,
+    x: (i % cols) * 340,
+    y: Math.floor(i / cols) * 280,
+    width: 300,
+    height: 240,
+  }));
   return JSON.stringify({ nodes, edges: [] }, null, "\t");
 }
 
@@ -315,7 +366,9 @@ export async function newDiagram(dir: string) {
     hint: "↵ create · esc cancel",
     onPick: (item) => {
       const t = DIAGRAM_TEMPLATES.find((x) => x.id === item.id)!;
-      void newFileOfKind(dir, t.stem, "canvas", t.content).then((path) => path && useVault.getState().setRenaming(path));
+      void newFileOfKind(dir, t.stem, "canvas", t.content).then(
+        (path) => path && useVault.getState().setRenaming(path),
+      );
     },
   });
 }
@@ -332,7 +385,8 @@ export function droppedItems(dt: DataTransfer): (FileSystemEntry | File)[] {
 }
 
 const entryFile = (e: FileSystemFileEntry) => new Promise<File>((ok, fail) => e.file(ok, fail));
-const readBatch = (r: FileSystemDirectoryReader) => new Promise<FileSystemEntry[]>((ok, fail) => r.readEntries(ok, fail));
+const readBatch = (r: FileSystemDirectoryReader) =>
+  new Promise<FileSystemEntry[]>((ok, fail) => r.readEntries(ok, fail));
 
 /**
  * Copies files and folders dropped from Finder into `dir`. Taken names get " 1", " 2"… (nothing is

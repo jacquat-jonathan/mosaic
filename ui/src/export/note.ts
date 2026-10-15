@@ -15,13 +15,19 @@ const escapeHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;")
 
 /** A light, readable page; KaTeX's HTML layer is hidden so browsers show its MathML (no fonts needed). */
 const RULES: [selector: string, declarations: string][] = [
-  ["body", 'font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; color: #1f2328; background: #fff; max-width: 760px; margin: 40px auto; padding: 0 24px'],
+  [
+    "body",
+    'font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; color: #1f2328; background: #fff; max-width: 760px; margin: 40px auto; padding: 0 24px',
+  ],
   ["h1, h2, h3, h4", "line-height: 1.25; margin: 1.4em 0 0.5em"],
   ["h1", "font-size: 2em"],
   ["h2", "font-size: 1.5em"],
   ["h3", "font-size: 1.2em"],
   ["a, .link", "color: #2f6feb; text-decoration: none"],
-  ["code", "font: 0.9em ui-monospace, SFMono-Regular, Menlo, monospace; background: #f3f4f6; padding: 0.1em 0.35em; border-radius: 4px"],
+  [
+    "code",
+    "font: 0.9em ui-monospace, SFMono-Regular, Menlo, monospace; background: #f3f4f6; padding: 0.1em 0.35em; border-radius: 4px",
+  ],
   ["pre", "background: #f6f8fa; padding: 12px 16px; border-radius: 8px; overflow: auto"],
   ["pre code", "background: none; padding: 0"],
   ["blockquote", "margin: 1em 0; padding: 0 1em; color: #57606a; border-left: 3px solid #d0d7de"],
@@ -30,7 +36,10 @@ const RULES: [selector: string, declarations: string][] = [
   ["img, svg", "max-width: 100%; height: auto"],
   [".md-diagram, .embed-canvas", "margin: 1em 0; text-align: center"],
   [".katex-html", "display: none"],
-  [".properties", "font-size: 0.9em; color: #57606a; border: 1px solid #d0d7de; border-radius: 8px; padding: 8px 14px; margin-bottom: 24px"],
+  [
+    ".properties",
+    "font-size: 0.9em; color: #57606a; border: 1px solid #d0d7de; border-radius: 8px; padding: 8px 14px; margin-bottom: 24px",
+  ],
   [".properties dt", "float: left; clear: left; width: 120px; font-weight: 600"],
   [".properties dd", "margin: 0 0 0 130px"],
   [".embed-note", "border-left: 3px solid #d0d7de; padding-left: 1em; margin: 1em 0"],
@@ -97,9 +106,14 @@ async function noteBody(path: string, text: string, depth = 0): Promise<string> 
       const kind = kindOf(resolved);
       if (kind === "image") {
         const data = await asDataUrl(resolved);
-        span.outerHTML = data ? `<img src="${data}" alt="${escapeHtml(parseWikiLink(target).target)}">` : `<span class="missing">${escapeHtml(target)}</span>`;
+        span.outerHTML = data
+          ? `<img src="${data}" alt="${escapeHtml(parseWikiLink(target).target)}">`
+          : `<span class="missing">${escapeHtml(target)}</span>`;
       } else if (kind === "canvas") {
-        const [{ parseCanvas }, { canvasToSvg }] = await Promise.all([import("../viewers/canvas/jsonCanvas"), import("../diagrams/canvasToSvg")]);
+        const [{ parseCanvas }, { canvasToSvg }] = await Promise.all([
+          import("../viewers/canvas/jsonCanvas"),
+          import("../diagrams/canvasToSvg"),
+        ]);
         span.outerHTML = `<div class="embed-canvas">${canvasToSvg(parseCanvas((await api.read(resolved)).content ?? ""), false)}</div>`;
       } else if (kind === "markdown" && depth < 1) {
         const inner = await noteBody(resolved, (await api.read(resolved)).content ?? "", depth + 1);
@@ -159,7 +173,8 @@ export async function printNote(path: string): Promise<void> {
   root.addEventListener("click", (e) => {
     const act = (e.target as HTMLElement).closest<HTMLElement>("[data-act]")?.dataset.act;
     if (act === "close") close();
-    if (act === "print") void api.printWindow().catch((err) => useVault.getState().setError(String(err?.message ?? err)));
+    if (act === "print")
+      void api.printWindow().catch((err) => useVault.getState().setError(String(err?.message ?? err)));
   });
   const onKey = (e: KeyboardEvent) => {
     if (e.key === "Escape") {

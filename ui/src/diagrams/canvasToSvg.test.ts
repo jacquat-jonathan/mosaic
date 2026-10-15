@@ -2,8 +2,14 @@ import { expect, test } from "vitest";
 import { canvasToSvg, plainLines } from "./canvasToSvg";
 
 test("labels lose Markdown but keep their words", () => {
-  expect(plainLines("# Title\n**bold** and [[Note|alias]]\n- item <b>x</b>")).toEqual(["Title", "bold and alias", "• item x"]);
-  expect(plainLines("`~/Library/Caches/mosaic/<hash>/` and ~~old~~")).toEqual(["~/Library/Caches/mosaic/<hash>/ and old"]);
+  expect(plainLines("# Title\n**bold** and [[Note|alias]]\n- item <b>x</b>")).toEqual([
+    "Title",
+    "bold and alias",
+    "• item x",
+  ]);
+  expect(plainLines("`~/Library/Caches/mosaic/<hash>/` and ~~old~~")).toEqual([
+    "~/Library/Caches/mosaic/<hash>/ and old",
+  ]);
 });
 
 test("draws shapes, groups, connections with arrowheads and escaped labels", () => {

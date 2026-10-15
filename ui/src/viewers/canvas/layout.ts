@@ -11,7 +11,11 @@ export interface LayoutBox {
   height: number;
 }
 
-export function autoLayout(boxes: LayoutBox[], links: { from: string; to: string }[], direction: "TB" | "LR"): Map<string, { x: number; y: number }> {
+export function autoLayout(
+  boxes: LayoutBox[],
+  links: { from: string; to: string }[],
+  direction: "TB" | "LR",
+): Map<string, { x: number; y: number }> {
   const g = new Graph();
   g.setGraph({ rankdir: direction, nodesep: 60, ranksep: 90, marginx: 0, marginy: 0 });
   g.setDefaultEdgeLabel(() => ({}));
@@ -28,5 +32,7 @@ export function autoLayout(boxes: LayoutBox[], links: { from: string; to: string
   });
   const minX = Math.min(...placed.map((p) => p.x));
   const minY = Math.min(...placed.map((p) => p.y));
-  return new Map(placed.map((p) => [p.id, { x: Math.round(p.x - minX + originX), y: Math.round(p.y - minY + originY) }]));
+  return new Map(
+    placed.map((p) => [p.id, { x: Math.round(p.x - minX + originX), y: Math.round(p.y - minY + originY) }]),
+  );
 }

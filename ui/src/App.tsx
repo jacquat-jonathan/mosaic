@@ -1,11 +1,33 @@
 import { useEffect, useState } from "react";
-import { FilePlus, FolderPlus, FolderOpen, Files, Search, Shapes, Bot, ChevronDown, ChevronsDownUp, PanelLeftClose, Settings as Gear, CalendarDays } from "lucide-react";
+import {
+  FilePlus,
+  FolderPlus,
+  FolderOpen,
+  Files,
+  Search,
+  Shapes,
+  Bot,
+  ChevronDown,
+  ChevronsDownUp,
+  PanelLeftClose,
+  Settings as Gear,
+  CalendarDays,
+} from "lucide-react";
 import { api, onIndexProgress, pickFolder, revealInFinder } from "./ipc/api";
 import { useVault } from "./state/vault";
 import { FileTree } from "./views/FileTree";
 import { Workspace } from "./views/Workspace";
 import { ConfirmDialog, ContextMenu, ErrorToast, PromptDialog } from "./views/Overlays";
-import { createVault, newNote, newNoteDir, NEW_KINDS, newOfKind, openDailyNote, openVaultFolder, revealInTree } from "./actions";
+import {
+  createVault,
+  newNote,
+  newNoteDir,
+  NEW_KINDS,
+  newOfKind,
+  openDailyNote,
+  openVaultFolder,
+  revealInTree,
+} from "./actions";
 import { useShortcuts } from "./shortcuts";
 import { RIGHT_DEFAULT, SIDEBAR_DEFAULT, useUi, type MenuItem, type Destination } from "./state/ui";
 import { RightPanel } from "./views/RightPanel";
@@ -130,7 +152,11 @@ async function showVaultMenu(anchor: DOMRect) {
       ? [
           {
             label: "Remove from list",
-            children: others.map<MenuItem>((v) => ({ label: v.name, detail: v.exists ? undefined : "Folder not found", action: () => void api.forgetVault(v.root) })),
+            children: others.map<MenuItem>((v) => ({
+              label: v.name,
+              detail: v.exists ? undefined : "Folder not found",
+              action: () => void api.forgetVault(v.root),
+            })),
           },
         ]
       : []),
@@ -149,27 +175,51 @@ function Main() {
   const indexing = useVault((s) => s.indexing);
   const offline = useVault((s) => s.offline);
   const pendingReviews = useReview((s) => s.pending.length);
-  const chatAttention = useChat(s => Object.values(s.chats).filter(c => c.run === null && (c.items.at(-1)?.kind === "error" || c.noMosaic)).length);
+  const chatAttention = useChat(
+    (s) =>
+      Object.values(s.chats).filter((c) => c.run === null && (c.items.at(-1)?.kind === "error" || c.noMosaic)).length,
+  );
   const attention = useAttention((s) => s.count);
-  const active = useWorkspace((s) => s.panes.find(p => p.id === s.focused)?.active ?? null);
+  const active = useWorkspace((s) => s.panes.find((p) => p.id === s.focused)?.active ?? null);
   useEffect(() => startAttention(), [vault.root]);
   useEffect(() => {
     let current = true;
-    void api.updateStatus().then((status) => { if (current) setVersion(status.version); }, () => {});
-    return () => { current = false; };
+    void api.updateStatus().then(
+      (status) => {
+        if (current) setVersion(status.version);
+      },
+      () => {},
+    );
+    return () => {
+      current = false;
+    };
   }, []);
   const ui = useUi.getState;
   useEffect(() => {
     const context = window.matchMedia("(max-width: 1100px)");
     const area = window.matchMedia("(max-width: 800px)");
-    const collapseContext = () => { if (context.matches) useUi.setState({ rightPanel: false }); };
-    const collapseArea = () => { if (area.matches) useUi.setState({ leftSidebar: false }); };
-    collapseContext(); collapseArea();
-    context.addEventListener("change", collapseContext); area.addEventListener("change", collapseArea);
-    return () => { context.removeEventListener("change", collapseContext); area.removeEventListener("change", collapseArea); };
+    const collapseContext = () => {
+      if (context.matches) useUi.setState({ rightPanel: false });
+    };
+    const collapseArea = () => {
+      if (area.matches) useUi.setState({ leftSidebar: false });
+    };
+    collapseContext();
+    collapseArea();
+    context.addEventListener("change", collapseContext);
+    area.addEventListener("change", collapseArea);
+    return () => {
+      context.removeEventListener("change", collapseContext);
+      area.removeEventListener("change", collapseArea);
+    };
   }, []);
   useEffect(() => {
-    if (active && !isSpecialTab(active) && useVault.getState().entries.some(entry => entry.path === active && !entry.is_dir)) revealInTree(active);
+    if (
+      active &&
+      !isSpecialTab(active) &&
+      useVault.getState().entries.some((entry) => entry.path === active && !entry.is_dir)
+    )
+      revealInTree(active);
     if (window.matchMedia("(max-width: 800px)").matches) useUi.setState({ leftSidebar: false });
   }, [active]);
   // Agents' proposals arrive from another process: check for them while this vault is open.
@@ -177,126 +227,186 @@ function Main() {
   return (
     <div className={`shell ${left ? "" : "no-left"}`}>
       <header className="window-chrome" data-tauri-drag-region>
-        <span className="window-title" data-tauri-drag-region>Mosaic — {vault.name}</span>
-        <span className="window-version" data-tauri-drag-region>v{version || "—"}</span>
+        <span className="window-title" data-tauri-drag-region>
+          Mosaic — {vault.name}
+        </span>
+        <span className="window-version" data-tauri-drag-region>
+          v{version || "—"}
+        </span>
       </header>
       <div className="shell-body">
-      <nav className="icon-bar" aria-label="Destinations" data-focus-region tabIndex={-1}>
-        <div role="tablist" aria-orientation="vertical" className="icon-bar-group">
-          {TABS.map((t, index) => (
-            <button
-              key={t.id}
-              data-section={t.section}
-              data-section-start={index > 0 && TABS[index - 1].section !== t.section ? "true" : undefined}
-              role="tab"
-              aria-selected={tab === t.id}
-              tabIndex={tab === t.id ? 0 : -1}
-              onKeyDown={e => {
-                if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) return;
-                e.preventDefault(); const i = TABS.indexOf(t); const at = e.key === "Home" ? 0 : e.key === "End" ? TABS.length - 1 : (i + (e.key === "ArrowDown" ? 1 : -1) + TABS.length) % TABS.length;
-                useUi.setState({ destination: TABS[at].id, leftSidebar: true }); (e.currentTarget.parentElement?.children[at] as HTMLElement)?.focus();
-              }}
-              aria-label={t.label}
-              title={left && tab === t.id ? `${t.label} — click to hide the sidebar` : t.label}
-              className={tab === t.id ? "active" : ""}
-              onClick={() => ui().selectDestination(t.id)}
-            >
-              <t.icon size={18} />
-              {t.id === "ai" && pendingReviews + attention + chatAttention > 0 && <span className="tab-badge" aria-label={`${pendingReviews + attention + chatAttention} need attention`}>{pendingReviews + attention + chatAttention}</span>}
-            </button>
-          ))}
-        </div>
-        <button data-section="Settings" data-section-start="true" className={active === "mosaic:settings" ? "active" : ""} aria-pressed={active === "mosaic:settings"} title={`Settings (${shortcutOf("settings")})`} aria-label="Settings" onClick={() => ui().openSettings()}>
-          <Gear size={18} />
-        </button>
-      </nav>
-      {left && (
-        <aside className="sidebar" style={{ width: sidebarWidth }} aria-label={`${tab} sidebar`} data-focus-region tabIndex={-1}>
-          <div className="sidebar-head">
-            <button
-              className="vault-name"
-              title={`${vault.root}\nSwitch, open or create a vault`}
-              aria-haspopup="menu"
-              onClick={(e) => void showVaultMenu(e.currentTarget.getBoundingClientRect())}
-            >
-              <span>{vault.name}</span>
-              <ChevronDown size={13} />
-            </button>
-            <button className="head-button" aria-label="Hide sidebar" title={`Hide sidebar (${shortcutOf("toggle-left")})`} onClick={() => ui().toggleLeftSidebar()}>
-              <PanelLeftClose size={16} />
-            </button>
+        <nav className="icon-bar" aria-label="Destinations" data-focus-region tabIndex={-1}>
+          <div role="tablist" aria-orientation="vertical" className="icon-bar-group">
+            {TABS.map((t, index) => (
+              <button
+                key={t.id}
+                data-section={t.section}
+                data-section-start={index > 0 && TABS[index - 1].section !== t.section ? "true" : undefined}
+                role="tab"
+                aria-selected={tab === t.id}
+                tabIndex={tab === t.id ? 0 : -1}
+                onKeyDown={(e) => {
+                  if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) return;
+                  e.preventDefault();
+                  const i = TABS.indexOf(t);
+                  const at =
+                    e.key === "Home"
+                      ? 0
+                      : e.key === "End"
+                        ? TABS.length - 1
+                        : (i + (e.key === "ArrowDown" ? 1 : -1) + TABS.length) % TABS.length;
+                  useUi.setState({ destination: TABS[at].id, leftSidebar: true });
+                  (e.currentTarget.parentElement?.children[at] as HTMLElement)?.focus();
+                }}
+                aria-label={t.label}
+                title={left && tab === t.id ? `${t.label} — click to hide the sidebar` : t.label}
+                className={tab === t.id ? "active" : ""}
+                onClick={() => ui().selectDestination(t.id)}
+              >
+                <t.icon size={18} />
+                {t.id === "ai" && pendingReviews + attention + chatAttention > 0 && (
+                  <span
+                    className="tab-badge"
+                    aria-label={`${pendingReviews + attention + chatAttention} need attention`}
+                  >
+                    {pendingReviews + attention + chatAttention}
+                  </span>
+                )}
+              </button>
+            ))}
           </div>
-          {tab === "notes" && (
-            <>
-              <div className="tree-toolbar">
-                <button aria-label="New note" title={`New note (${shortcutOf("new-note")})`} onClick={() => void newNote(newNoteDir())}>
-                  <FilePlus size={15} />
-                </button>
-                <button
-                  aria-label="New…"
-                  title="New diagram, drawing, chart or graph"
-                  onClick={(e) => {
-                    const r = e.currentTarget.getBoundingClientRect();
-                    ui().showMenu(r.left, r.bottom + 4, NEW_KINDS.map((k) => ({ label: k.label, action: () => void newOfKind("", k) })));
-                  }}
-                >
-                  <Shapes size={15} />
-                </button>
-                <button aria-label="New folder" title={`New folder (${shortcutOf("new-folder")})`} onClick={() => void useVault.getState().newFolder("")}>
-                  <FolderPlus size={15} />
-                </button>
-                <button aria-label="Today's note" title={`Open today's daily note (${shortcutOf("daily-note")})`} onClick={() => void openDailyNote()}>
-                  <CalendarDays size={15} />
-                </button>
-                <span className="spacer" />
-                <button aria-label="Collapse all folders" title="Collapse all folders" onClick={() => useVault.setState({ expanded: new Set() })}>
-                  <ChevronsDownUp size={15} />
-                </button>
+          <button
+            data-section="Settings"
+            data-section-start="true"
+            className={active === "mosaic:settings" ? "active" : ""}
+            aria-pressed={active === "mosaic:settings"}
+            title={`Settings (${shortcutOf("settings")})`}
+            aria-label="Settings"
+            onClick={() => ui().openSettings()}
+          >
+            <Gear size={18} />
+          </button>
+        </nav>
+        {left && (
+          <aside
+            className="sidebar"
+            style={{ width: sidebarWidth }}
+            aria-label={`${tab} sidebar`}
+            data-focus-region
+            tabIndex={-1}
+          >
+            <div className="sidebar-head">
+              <button
+                className="vault-name"
+                title={`${vault.root}\nSwitch, open or create a vault`}
+                aria-haspopup="menu"
+                onClick={(e) => void showVaultMenu(e.currentTarget.getBoundingClientRect())}
+              >
+                <span>{vault.name}</span>
+                <ChevronDown size={13} />
+              </button>
+              <button
+                className="head-button"
+                aria-label="Hide sidebar"
+                title={`Hide sidebar (${shortcutOf("toggle-left")})`}
+                onClick={() => ui().toggleLeftSidebar()}
+              >
+                <PanelLeftClose size={16} />
+              </button>
+            </div>
+            {tab === "notes" && (
+              <>
+                <div className="tree-toolbar">
+                  <button
+                    aria-label="New note"
+                    title={`New note (${shortcutOf("new-note")})`}
+                    onClick={() => void newNote(newNoteDir())}
+                  >
+                    <FilePlus size={15} />
+                  </button>
+                  <button
+                    aria-label="New…"
+                    title="New diagram, drawing, chart or graph"
+                    onClick={(e) => {
+                      const r = e.currentTarget.getBoundingClientRect();
+                      ui().showMenu(
+                        r.left,
+                        r.bottom + 4,
+                        NEW_KINDS.map((k) => ({ label: k.label, action: () => void newOfKind("", k) })),
+                      );
+                    }}
+                  >
+                    <Shapes size={15} />
+                  </button>
+                  <button
+                    aria-label="New folder"
+                    title={`New folder (${shortcutOf("new-folder")})`}
+                    onClick={() => void useVault.getState().newFolder("")}
+                  >
+                    <FolderPlus size={15} />
+                  </button>
+                  <button
+                    aria-label="Today's note"
+                    title={`Open today's daily note (${shortcutOf("daily-note")})`}
+                    onClick={() => void openDailyNote()}
+                  >
+                    <CalendarDays size={15} />
+                  </button>
+                  <span className="spacer" />
+                  <button
+                    aria-label="Collapse all folders"
+                    title="Collapse all folders"
+                    onClick={() => useVault.setState({ expanded: new Set() })}
+                  >
+                    <ChevronsDownUp size={15} />
+                  </button>
+                </div>
+                <FileTree />
+              </>
+            )}
+            {tab !== "notes" && <AreaSidebar destination={tab} />}
+            {indexing && (
+              <div className="status">
+                Indexing {indexing.done.toLocaleString()} / {indexing.total.toLocaleString()}
               </div>
-              <FileTree />
-            </>
-          )}
-          {tab !== "notes" && <AreaSidebar destination={tab} />}
-          {indexing && (
-            <div className="status">
-              Indexing {indexing.done.toLocaleString()} / {indexing.total.toLocaleString()}
+            )}
+            <Resizer
+              side="right"
+              label="Resize sidebar"
+              width={sidebarWidth}
+              onResize={(w) => ui().setSidebarWidth(w)}
+              onReset={() => ui().setSidebarWidth(SIDEBAR_DEFAULT)}
+            />
+          </aside>
+        )}
+        <main className="main">
+          {offline && (
+            <div className="notice warn" role="alert">
+              <span>
+                The vault folder is unavailable (disk ejected or folder moved). Unsaved changes are kept in memory.
+              </span>
+              <button onClick={() => void useVault.getState().openVault(vault.root)}>Retry</button>
             </div>
           )}
-          <Resizer
-            side="right"
-            label="Resize sidebar"
-            width={sidebarWidth}
-            onResize={(w) => ui().setSidebarWidth(w)}
-            onReset={() => ui().setSidebarWidth(SIDEBAR_DEFAULT)}
-          />
-        </aside>
-      )}
-      <main className="main">
-        {offline && (
-          <div className="notice warn" role="alert">
-            <span>The vault folder is unavailable (disk ejected or folder moved). Unsaved changes are kept in memory.</span>
-            <button onClick={() => void useVault.getState().openVault(vault.root)}>Retry</button>
+          {vault.history_warning && (
+            <div className="notice warn" role="alert">
+              <span>{vault.history_warning}</span>
+            </div>
+          )}
+          <Workspace />
+        </main>
+        {right && contextKind(active) && (
+          <div className="right-wrap" style={{ width: rightWidth }}>
+            <Resizer
+              side="left"
+              label="Resize right panel"
+              width={rightWidth}
+              onResize={(w) => ui().setRightWidth(w)}
+              onReset={() => ui().setRightWidth(RIGHT_DEFAULT)}
+            />
+            <RightPanel key={active} />
           </div>
         )}
-        {vault.history_warning && (
-          <div className="notice warn" role="alert">
-            <span>{vault.history_warning}</span>
-          </div>
-        )}
-        <Workspace />
-      </main>
-      {right && contextKind(active) && (
-        <div className="right-wrap" style={{ width: rightWidth }}>
-          <Resizer
-            side="left"
-            label="Resize right panel"
-            width={rightWidth}
-            onResize={(w) => ui().setRightWidth(w)}
-            onReset={() => ui().setRightWidth(RIGHT_DEFAULT)}
-          />
-          <RightPanel key={active} />
-        </div>
-      )}
       </div>
     </div>
   );

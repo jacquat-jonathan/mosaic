@@ -90,7 +90,12 @@ export function moveNoteSection(path: string, line: number, direction: -1 | 1): 
 }
 
 /** Drops a heading section before/after another sibling, as one undoable editor change. */
-export function dropNoteSection(path: string, fromLine: number, targetLine: number, place: "before" | "after"): boolean {
+export function dropNoteSection(
+  path: string,
+  fromLine: number,
+  targetLine: number,
+  place: "before" | "after",
+): boolean {
   const view = views.get(path);
   if (!view) return false;
   return applySectionEdit(path, moveSectionTo(view.state.doc.toString(), fromLine, targetLine, place));

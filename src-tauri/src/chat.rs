@@ -4,7 +4,7 @@
 
 use crate::{AppState, bundled_cli};
 use mosaic_core::Error;
-use mosaic_core::chat::{ALLOWED_TOOLS, ChatEvent, DISALLOWED_TOOLS, parse_line, system_prompt};
+use mosaic_core::chat::{ChatEvent, allowed_tools, disallowed_tools, parse_line, system_prompt};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
@@ -159,10 +159,11 @@ pub fn chat_send(
         &context,
         selection_path.as_deref().zip(selection_text.as_deref()),
     ))
+    // A chat is attended, so it keeps the web; it reads the vault only through Mosaic.
     .arg("--allowedTools")
-    .args(ALLOWED_TOOLS.split(' '))
+    .args(allowed_tools(true))
     .arg("--disallowedTools")
-    .args(DISALLOWED_TOOLS.split(' '));
+    .args(disallowed_tools(true));
     if let Some(model) = model.filter(|m| !m.trim().is_empty()) {
         cmd.arg("--model").arg(model);
     }

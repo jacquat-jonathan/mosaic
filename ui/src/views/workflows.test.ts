@@ -8,6 +8,12 @@ test("workflow editing preserves unrelated frontmatter and the source body", () 
   expect(edited).toContain("custom: keep me"); expect(edited).toContain("name: weekly-review"); expect(edited).toContain("schedule: fri 17:00"); expect(edited).toContain("on:"); expect(edited).toContain("model: sonnet"); expect(edited).not.toContain("may_change"); expect(edited).toContain("may-change:"); expect(edited).toContain("# Instructions\nKeep this.\n");
   const manual=workflowContent(edited,null,[],null,[]); expect(manual).not.toContain("schedule:"); expect(manual).not.toContain("on:"); expect(manual).not.toContain("model:"); expect(manual).toContain("may-change: []");
 });
+test("web access is written only when the workflow opts in", () => {
+  const on=workflowContent("---\nname: research\n---\nBody\n",null,[],null,[],undefined,true);
+  expect(on).toContain("web: true");
+  expect(workflowContent(on,null,[],null,[],undefined,false)).not.toContain("web:");
+  expect(workflowContent("---\nname: x\n---\nBody\n",null,[],null,[])).not.toContain("web:");
+});
 test("invalid YAML fails rather than silently replacing the agent", () => { expect(()=>workflowContent("---\nfield: [broken\n---\nBody",null,[],null,[])).toThrow(); });
 test("existing custom schedules, events, models and exact instruction whitespace survive", () => {
   const source = "---\nname: identity\nretry: {future: true}\n# retain this comment\n---\n\n  Instructions\n\n";

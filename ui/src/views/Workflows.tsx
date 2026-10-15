@@ -53,7 +53,7 @@ export function WorkflowContext({ name }: { name: string }) {
   const needsReview = status?.runs.some(r => r.agent === name && pendingForRun(r, pending).length);
   const automatic = !!agent.schedule || !!agent.on?.length;
   const state = scheduled?.running || latest?.status === "running" ? "Running" : scheduled?.queued ? "Queued" : scheduled?.paused || (automatic && status?.paused) ? "Paused" : scheduled?.error ? "Failed" : needsReview ? "Needs review" : latest ? runState(latest) : "Ready";
-  return <div className="context-content"><h3>{agent.title}</h3><dl><dt>Agent</dt><dd>{agent.name}</dd><dt>Trigger</dt><dd>{workflowTrigger(agent)}</dd><dt>Model</dt><dd>{agent.model || "Claude Code default"}</dd><dt>Allowed folders</dt><dd>{agent.may_change.join(", ") || "All changes require review"}</dd><dt>Status</dt><dd>{state}</dd></dl><button onClick={() => void useWorkspace.getState().open(agent.path, { newTab: true })}>Edit source</button></div>;
+  return <div className="context-content"><h3>{agent.title}</h3><dl><dt>Agent</dt><dd>{agent.name}</dd><dt>Trigger</dt><dd>{workflowTrigger(agent)}</dd><dt>Model</dt><dd>{agent.model || "Claude Code default"}</dd><dt>Allowed folders</dt><dd>{agent.may_change.join(", ") || "All changes require review"}</dd><dt>Web</dt><dd>{agent.web ? "Can use the web" : "No web access"}</dd><dt>Status</dt><dd>{state}</dd></dl><button onClick={() => void useWorkspace.getState().open(agent.path, { newTab: true })}>Edit source</button></div>;
 }
 export function Workflows({ name, runsOnly = false, agentsOnly = false }: { name?: string; runsOnly?: boolean; agentsOnly?: boolean }) {
   const { status, agents, error, refresh } = useAttention();
@@ -115,7 +115,7 @@ export function Workflows({ name, runsOnly = false, agentsOnly = false }: { name
       const state = running ? "Running" : schedule?.queued ? `Queued · ${schedule.queued}` : schedule?.paused || (automatic && status?.paused) ? "Paused" : schedule?.error ? "Failed" : needsReview ? "Needs review" : latest ? runState(latest) : "Ready";
       return <article className="workflow-card" key={a.name}>
         <header><button className="workflow-title" onClick={() => useUi.getState().openView("workflow", a.name)}>{a.title}</button><span className="state-label">{state}</span></header>
-        <p>{a.description}</p><dl><dt>Agent</dt><dd>{a.name}</dd><dt>Trigger</dt><dd>{workflowTrigger(a)}</dd><dt>Model</dt><dd>{a.model || "Claude Code default"}</dd><dt>May change without review</dt><dd>{a.may_change.join(", ") || "None — review every change"}</dd></dl>
+        <p>{a.description}</p><dl><dt>Agent</dt><dd>{a.name}</dd><dt>Trigger</dt><dd>{workflowTrigger(a)}</dd><dt>Model</dt><dd>{a.model || "Claude Code default"}</dd><dt>May change without review</dt><dd>{a.may_change.join(", ") || "None — review every change"}</dd><dt>Web</dt><dd>{a.web ? "Can use the web" : "No web access"}</dd></dl>
         {schedule?.error && <p className="error-text">{schedule.error}</p>}
         {latest && <button onClick={() => useUi.getState().openView("run", String(latest.id))}>Last run: {runState(latest, needsReview)} · {new Date(latest.started * 1000).toLocaleString()}</button>}
         <footer><button className="primary" disabled={running || !!busy || !!schedule?.error} onClick={() => void act(a.name, async () => { const id = await api.tesseraRun(a.name); useUi.getState().openView("run", String(id)); })}>Run now</button>
@@ -130,7 +130,7 @@ export function Workflows({ name, runsOnly = false, agentsOnly = false }: { name
   </div>;
 }
 
-export function workflowContent(source: string, schedule: string | null, events: string[], model: string | null, folders: string[], instructions?: string): string {
+export function workflowContent(source: string, schedule: string | null, events: string[], model: string | null, folders: string[], instructions?: string, web = false): string {
   const fm = FRONTMATTER_RE.exec(source);
   const doc = parseDocument(fm?.[1] ?? "");
   if (doc.errors.length) throw new Error("Fix the agent's YAML in its source before using the form.");
@@ -138,6 +138,7 @@ export function workflowContent(source: string, schedule: string | null, events:
   if (events.length === 1) doc.set("on", events[0]); else if (events.length) doc.set("on", events); else doc.delete("on");
   if (model) doc.set("model", model); else doc.delete("model");
   doc.delete("may_change"); doc.set("may-change", folders);
+  if (web) doc.set("web", true); else doc.delete("web");
   const body = instructions === undefined ? source.slice(fm?.[0].length ?? 0) : `\n${instructions.trim()}\n`;
   return `---\n${doc.toString()}---${instructions === undefined && fm ? body : `\n${body}`}`;
 }
@@ -160,6 +161,7 @@ export function WorkflowForm({ agent, onDone }: { agent?: Agent; onDone?: () => 
   const [model, setModel] = useState("");
   const [review, setReview] = useState(true);
   const [allowed, setAllowed] = useState<string[]>([]);
+  const [web, setWeb] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const saveLock = useRef(false);
@@ -183,9 +185,9 @@ export function WorkflowForm({ agent, onDone }: { agent?: Agent; onDone?: () => 
   }, [dirty, draftPath]);
   useEffect(() => {
     let live = true; setSource(null); setError(null);
-    if (!chosen) { setInstructions(""); setScheduleEnabled(false); setScheduleKind("daily"); setEventEnabled(false); setEventFolders([]); setOtherEvents([]); setModel(""); setAllowed([]); setReview(true); return; }
+    if (!chosen) { setInstructions(""); setScheduleEnabled(false); setScheduleKind("daily"); setEventEnabled(false); setEventFolders([]); setOtherEvents([]); setModel(""); setAllowed([]); setReview(true); setWeb(false); return; }
     setInstructions(chosen.instructions); setAllowed(chosen.may_change); setReview(!chosen.may_change.length);
-    setModel(chosen.model ?? "");
+    setModel(chosen.model ?? ""); setWeb(chosen.web);
     const parsedEvents=(chosen.on ?? []).map(raw=>[raw,eventFolder(raw)] as const);
     setEventFolders(parsedEvents.map(([,folder])=>folder).filter((f): f is string => f !== null));
     setEventEnabled(parsedEvents.some(([,folder]) => folder !== null));
@@ -216,12 +218,12 @@ export function WorkflowForm({ agent, onDone }: { agent?: Agent; onDone?: () => 
         if (!source || source.path !== chosen.path) throw new Error("Wait for the agent to load.");
         const buffer = useWorkspace.getState().buffers[chosen.path];
         if (buffer?.dirty || buffer?.conflict) throw new Error("Save the open agent source and resolve conflicts before editing its workflow.");
-        await api.write(chosen.path, workflowContent(source.content, schedule, events, model || null, review ? [] : allowed, instructions === chosen.instructions ? undefined : instructions), source.hash, initialRoot); path = chosen.path;
+        await api.write(chosen.path, workflowContent(source.content, schedule, events, model || null, review ? [] : allowed, instructions === chosen.instructions ? undefined : instructions, web), source.hash, initialRoot); path = chosen.path;
         await useWorkspace.getState().externalChange(path);
       } else {
         const name = title.trim(); if (!name || /[\\/:*?"<>|]/.test(name)) throw new Error("Enter a title without file path characters.");
         path = uniquePath(new Set(useVault.getState().entries.map(e=>e.path.toLowerCase())), vaultPrefs().agents_folder, name, "md");
-        await api.create(path, workflowContent("", schedule, events, model || null, review ? [] : allowed, instructions), initialRoot);
+        await api.create(path, workflowContent("", schedule, events, model || null, review ? [] : allowed, instructions, web), initialRoot);
       }
       await api.mirrorAgents(); await useVault.getState().refresh(); await useAttention.getState().refresh();
       const result = useAttention.getState().agents.find(a => a.path === path);
@@ -250,6 +252,7 @@ export function WorkflowForm({ agent, onDone }: { agent?: Agent; onDone?: () => 
         <label>Model<select value={model} onChange={e=>setModel(e.target.value)}><option value="">Claude Code default</option><option value="sonnet">Sonnet</option><option value="opus">Opus</option><option value="haiku">Haiku</option>{model && !["sonnet","opus","haiku"].includes(model) && <option value={model}>{model}</option>}</select></label>
         <label>Review behavior<select value={review ? "all" : "folders"} onChange={e=>setReview(e.target.value === "all")}><option value="all">Review every change — recommended</option><option value="folders">Allow changes in selected folders</option></select></label>
         {!review && <FolderChoices label="May change without review" value={allowed} onChange={v => { setAllowed(v); setDirty(true); }} />}<p>Outside these folders, changes require review. Stricter vault permissions always apply.</p>
+        <label className="folder-choice"><input type="checkbox" checked={web} onChange={e=>setWeb(e.target.checked)} />Can use the web (search and fetch pages)</label><p>Off by default. A run started by a new note treats that note as untrusted input; web access lets it send what it reads elsewhere.</p>
       </section>
       {chosen && <details className="workflow-section"><summary>Advanced · agent source</summary><p><code>{chosen.path}</code></p>{!!otherEvents.length && <p className="notice warn">Custom events preserved: {otherEvents.join(", ")}</p>}{scheduleKind === "custom" && <p>Custom schedule preserved: {custom}</p>}<button type="button" onClick={() => void useWorkspace.getState().open(chosen.path, {newTab:true})}>Edit source</button></details>}
       {root !== initialRoot && <p className="error-text" role="alert">The vault changed. Reopen this form before saving.</p>}

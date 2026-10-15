@@ -5,7 +5,9 @@ use crate::{AppState, chat};
 use chrono::{Local, TimeZone};
 use mosaic_core::Error;
 use mosaic_core::agents::{Agent, EventTrigger};
-use mosaic_core::chat::{ALLOWED_TOOLS, ChatEvent, DISALLOWED_TOOLS, parse_line, system_prompt};
+use mosaic_core::chat::{
+    ChatEvent, allowed_tools, disallowed_tools, event_prompt, parse_line, system_prompt,
+};
 use mosaic_core::settings::{AgentRun, Settings, TesseraSettings};
 use serde::Serialize;
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -863,11 +865,15 @@ fn launch(
         .arg("--mcp-config")
         .arg(mcp.to_string())
         .arg("--append-system-prompt")
-        .arg(system_prompt(&vault_name, cause.path(), &[], None))
+        .arg(
+            system_prompt(&vault_name, None, &[], None)
+                + &cause.path().map(event_prompt).unwrap_or_default(),
+        )
+        // The web only when the workflow opts in (`web: true`), for every trigger.
         .arg("--allowedTools")
-        .args(ALLOWED_TOOLS.split(' '))
+        .args(allowed_tools(agent.web))
         .arg("--disallowedTools")
-        .args(DISALLOWED_TOOLS.split(' '));
+        .args(disallowed_tools(agent.web));
     if let Some(model) = agent.model.as_deref() {
         command.arg("--model").arg(model);
     }

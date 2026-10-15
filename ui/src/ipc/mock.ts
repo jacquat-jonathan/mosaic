@@ -234,7 +234,7 @@ function mockAgents(): Agent[] {
     const body=f.content.slice(fm?.[0].length ?? 0).trim();
     const allowed=props["may-change"] ?? props.may_change;
     const events=props.on;
-    return {name:String(props.name ?? title).toLowerCase().replace(/[^\p{L}\p{N}]+/gu,"-").replace(/^-|-$/g,""),title,path,skill_folder:skill,description:String(props.description ?? body.split("\n").find(l=>l.trim()) ?? title),schedule:typeof props.schedule === "string" ? props.schedule : null,on:Array.isArray(events) ? events.map(String) : typeof events === "string" ? [events] : [],model:typeof props.model === "string" ? props.model : null,may_change:Array.isArray(allowed) ? allowed.map(String) : typeof allowed === "string" ? [allowed] : [],instructions:body};
+    return {name:String(props.name ?? title).toLowerCase().replace(/[^\p{L}\p{N}]+/gu,"-").replace(/^-|-$/g,""),title,path,skill_folder:skill,description:String(props.description ?? body.split("\n").find(l=>l.trim()) ?? title),schedule:typeof props.schedule === "string" ? props.schedule : null,on:Array.isArray(events) ? events.map(String) : typeof events === "string" ? [events] : [],model:typeof props.model === "string" ? props.model : null,may_change:Array.isArray(allowed) ? allowed.map(String) : typeof allowed === "string" ? [allowed] : [],web:props.web === true || ["true","yes","on"].includes(String(props.web).toLowerCase()),instructions:body};
   });
 }
 

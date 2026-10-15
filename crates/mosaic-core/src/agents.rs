@@ -5,8 +5,8 @@
 //! `Agents/Weekly review/SKILL.md` (which may hold other files the skill uses). Both have the same
 //! shape: `name` and `description` in the frontmatter (the name defaults to the file or folder name,
 //! the description to the first line of text), the instructions below. Mosaic's own fields:
-//! `schedule` / `on` (when it runs on its own), `model`, and `may-change` (folders it may write
-//! without review).
+//! `schedule` / `on` (when it runs on its own), `model`, `may-change` (folders it may write
+//! without review) and `web` (its workflow runs may use web search and fetch; off by default).
 //!
 //! So Claude treats them as agents rather than documents, they're published as MCP prompts (slash
 //! commands in Claude Code) and mirrored into the vault's `.claude/skills/`, where Claude Code
@@ -42,6 +42,8 @@ pub struct Agent {
     pub model: Option<String>,
     /// Folders it may change without review.
     pub may_change: Vec<String>,
+    /// Whether its runs may use web search and fetch (`web: true`). Off unless the person opts in.
+    pub web: bool,
     /// The body: what the agent does.
     pub instructions: String,
 }
@@ -80,6 +82,8 @@ struct Front {
     model: Option<String>,
     #[serde(rename = "may-change", alias = "may_change")]
     may_change: Option<serde_norway::Value>,
+    /// A value, not a bool: `web: yes` mustn't make the whole frontmatter unreadable.
+    web: Option<serde_norway::Value>,
 }
 
 /// A validated event trigger from an agent's `on:` frontmatter.
@@ -182,6 +186,13 @@ pub fn parse_agent(path: &str, title: &str, skill_folder: bool, text: &str) -> A
             .into_iter()
             .map(|f| f.trim_matches('/').to_string())
             .collect(),
+        web: match &front.web {
+            Some(serde_norway::Value::Bool(b)) => *b,
+            Some(serde_norway::Value::String(s)) => {
+                matches!(s.trim().to_lowercase().as_str(), "true" | "yes" | "on")
+            }
+            _ => false,
+        },
         instructions,
     }
 }
@@ -365,7 +376,7 @@ mod tests {
             ),
             (
                 "Agents/Inbox triage/SKILL.md",
-                "---\nname: triage\non: created in Inbox/\n---\nSort meeting notes into projects.\n",
+                "---\nname: triage\non: created in Inbox/\nweb: true\n---\nSort meeting notes into projects.\n",
             ),
             ("Agents/Inbox triage/reference.md", "Not an agent"),
             ("Agents/Deep/Nested/x.md", "Not an agent"),
@@ -394,9 +405,11 @@ mod tests {
         );
         assert_eq!(wr.on, ["created in Daily/", "created in Projects/"]);
         assert_eq!(wr.may_change, ["Daily", "Reviews"]);
+        assert!(!wr.web, "web access is opt-in");
         assert_eq!(a[0].description, "Sort meeting notes into projects.");
         assert_eq!(a[0].on, ["created in Inbox/"]);
         assert!(a[0].skill_folder);
+        assert!(a[0].web);
         assert_eq!(
             w.agent("Weekly Review").unwrap().path,
             "Agents/Weekly review.md"

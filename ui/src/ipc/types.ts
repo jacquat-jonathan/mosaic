@@ -121,6 +121,8 @@ export interface Agent {
   on: string[];
   model: string | null;
   may_change: string[];
+  /** Runs may use web search and fetch (`web: true` in the agent's frontmatter). */
+  web: boolean;
   instructions: string;
 }
 

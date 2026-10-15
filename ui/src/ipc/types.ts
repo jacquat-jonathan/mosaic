@@ -41,6 +41,8 @@ export interface Written {
 export interface VaultInfo {
   root: string;
   name: string;
+  /** Set when undo history and proposals can't be saved for this vault this session. */
+  history_warning?: string | null;
 }
 
 export interface RecentVault extends VaultInfo {

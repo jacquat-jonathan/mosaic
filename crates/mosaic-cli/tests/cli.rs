@@ -13,12 +13,29 @@ struct Out {
 }
 
 fn mosaic(vault: &Path, args: &[&str], stdin: Option<&str>) -> Out {
+    mosaic_in(
+        vault,
+        &vault.join(".test-settings"),
+        &vault.join(".test-cache"),
+        args,
+        stdin,
+    )
+}
+
+/// `mosaic` with its settings (Application Support) and cache folders given.
+fn mosaic_in(
+    vault: &Path,
+    settings: &Path,
+    cache: &Path,
+    args: &[&str],
+    stdin: Option<&str>,
+) -> Out {
     let mut child = Command::new(env!("CARGO_BIN_EXE_mosaic"))
         .arg("--vault")
         .arg(vault)
         .args(args)
-        .env("MOSAIC_CACHE_DIR", vault.join(".test-cache"))
-        .env("MOSAIC_SETTINGS_DIR", vault.join(".test-settings"))
+        .env("MOSAIC_CACHE_DIR", cache)
+        .env("MOSAIC_SETTINGS_DIR", settings)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -158,6 +175,56 @@ fn notes_never_wait_on_the_planner() {
     assert_eq!(out.code, 0, "{}", out.stderr);
     let out = mosaic(v, &["append", "Ideas.md"], Some("- more\n"));
     assert_eq!(out.code, 0, "{}", out.stderr);
+}
+
+#[test]
+fn history_outlasts_caches_follows_a_moved_vault_and_isnt_shared_with_a_copy() {
+    let dir = tempfile::tempdir().unwrap();
+    let (settings, cache) = (dir.path().join("support"), dir.path().join("cache"));
+    let src = fixture();
+    let v = dir.path().join("Vault");
+    std::fs::rename(src.path(), &v).unwrap();
+    let run = |v: &Path, args: &[&str]| {
+        let out = mosaic_in(v, &settings, &cache, args, None);
+        assert_eq!(out.code, 0, "{args:?}: {}", out.stderr);
+        out.stdout
+    };
+    let versions = |v: &Path| {
+        let out = run(v, &["--json", "history", "Ideas.md"]);
+        serde_json::from_str::<Value>(&out)
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .len()
+    };
+    run(&v, &["write", "Ideas.md", "--content", "one"]);
+    let before = versions(&v);
+    assert!(before > 0);
+    // Clearing Caches (the search index) keeps the undo history.
+    std::fs::remove_dir_all(&cache).unwrap();
+    assert_eq!(versions(&v), before);
+    // A copy of the folder starts its own history…
+    let copy = dir.path().join("Vault copy");
+    assert!(
+        Command::new("cp")
+            .arg("-R")
+            .arg(&v)
+            .arg(&copy)
+            .status()
+            .unwrap()
+            .success()
+    );
+    run(&copy, &["write", "Ideas.md", "--content", "copy"]);
+    run(&copy, &["write", "Ideas.md", "--content", "copy 2"]);
+    assert_eq!(
+        versions(&v),
+        before,
+        "the copy wrote into the original's history"
+    );
+    // …and a moved vault keeps its own.
+    let moved = dir.path().join("Renamed");
+    std::fs::rename(&v, &moved).unwrap();
+    assert_eq!(versions(&moved), before);
 }
 
 #[test]

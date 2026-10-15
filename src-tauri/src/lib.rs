@@ -41,6 +41,9 @@ impl AppState {
 struct VaultInfo {
     root: String,
     name: String,
+    /// Set when undo history and proposals can't be saved for this vault (shown as a banner).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    history_warning: Option<String>,
 }
 
 #[derive(Serialize, Clone)]
@@ -58,6 +61,7 @@ fn info(ws: &Workspace) -> VaultInfo {
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default(),
+        history_warning: ws.history_warning(),
     }
 }
 
@@ -79,6 +83,7 @@ fn create_vault(parent: String, name: String) -> CmdResult<VaultInfo> {
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default(),
+        history_warning: None,
     })
 }
 

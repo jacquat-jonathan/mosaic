@@ -278,6 +278,11 @@ function Main() {
             <button onClick={() => void useVault.getState().openVault(vault.root)}>Retry</button>
           </div>
         )}
+        {vault.history_warning && (
+          <div className="notice warn" role="alert">
+            <span>{vault.history_warning}</span>
+          </div>
+        )}
         <Workspace />
       </main>
       {right && contextKind(active) && (

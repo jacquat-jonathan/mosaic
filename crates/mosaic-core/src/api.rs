@@ -28,7 +28,11 @@ pub struct Workspace {
     /// `None` for an in-memory index (tests), where queries use `index`.
     reader: Option<Mutex<Index>>,
     /// Versions of every file changed through this workspace (see `history`).
-    history: Mutex<History>,
+    /// Opened on first use for `open` (from `history_root`), so reading notes creates nothing.
+    history: OnceLock<Mutex<History>>,
+    history_root: Option<std::path::PathBuf>,
+    /// Why the history is only in memory this session, when it couldn't be opened on disk.
+    history_problem: OnceLock<String>,
     /// Who changes files through this workspace: the app, the CLI or an agent.
     source: Source,
     /// The agent's name (MCP client), once known.
@@ -137,7 +141,9 @@ impl Workspace {
             synced: Default::default(),
             reader,
             index: Mutex::new(index),
-            history: Mutex::new(history),
+            history: OnceLock::from(Mutex::new(history)),
+            history_root: None,
+            history_problem: OnceLock::new(),
             source: Source::App,
             actor: Mutex::new(None),
             fixed_rules: None,
@@ -183,15 +189,25 @@ impl Workspace {
             .is_none_or(|allowed| allowed.iter().any(|p| rule_covers(p, path)))
     }
 
-    /// Opens a vault with its index and history in the default cache location (in memory if that fails).
+    /// Opens a vault with its index in Caches (in memory if that fails) and its history in
+    /// Application Support (see `History::open_for`). If the history can't be opened, it's kept
+    /// in memory and `history_warning` says why.
     pub fn open(root: impl AsRef<std::path::Path>) -> Result<Self> {
         let vault = Vault::open(root)?;
         let index = Index::open_for(&vault).or_else(|_| Index::in_memory())?;
-        let history = History::open_for(vault.root()).or_else(|_| History::in_memory())?;
         let root = vault.root().to_path_buf();
-        let mut workspace = Self::with_history(vault, index, history);
+        let mut workspace = Self::new(vault, index);
+        workspace.history = OnceLock::new();
+        workspace.history_root = Some(root.clone());
         workspace.planner_root = Some(root);
         Ok(workspace)
+    }
+
+    /// Why undo history and proposals won't outlast this session, if they won't. Opens the history
+    /// now: the app asks when a vault opens, to show it.
+    pub fn history_warning(&self) -> Option<String> {
+        drop(self.hist());
+        self.history_problem.get().cloned()
     }
 
     /// Who changes files through this workspace (recorded in the history). The app is the default.
@@ -214,7 +230,21 @@ impl Workspace {
     }
 
     pub(crate) fn hist(&self) -> MutexGuard<'_, History> {
-        self.history.lock().unwrap_or_else(|p| p.into_inner())
+        self.history
+            .get_or_init(|| {
+                let opened = match &self.history_root {
+                    Some(root) => History::open_for(root),
+                    None => History::in_memory(),
+                };
+                Mutex::new(opened.unwrap_or_else(|e| {
+                    let _ = self.history_problem.set(format!(
+                        "Undo history and AI proposals can't be saved for this vault, so changes from this session can't be undone after Mosaic quits: {e}"
+                    ));
+                    History::in_memory().expect("in-memory history")
+                }))
+            })
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
     }
 
     pub(crate) fn source(&self) -> Source {
@@ -1473,6 +1503,23 @@ mod tests {
             !Index::in_memory()
                 .unwrap()
                 .watched_within(Duration::from_secs(5))
+        );
+    }
+
+    #[test]
+    fn a_history_that_cant_open_is_reported_not_silently_lost() {
+        let (d, _) = fixture();
+        std::fs::create_dir_all(d.path().join(".mosaic")).unwrap();
+        std::fs::write(d.path().join(".mosaic/vault.json"), "{ half").unwrap();
+        let w = Workspace::open(d.path()).unwrap();
+        let warning = w.history_warning().expect("a warning");
+        assert!(warning.contains("vault.json"), "{warning}");
+        // Notes still work, with history for this session only.
+        w.write("Ideas.md", "changed", None).unwrap();
+        assert!(!w.history("Ideas.md", 5).unwrap().is_empty());
+        assert_eq!(
+            std::fs::read_to_string(d.path().join(".mosaic/vault.json")).unwrap(),
+            "{ half"
         );
     }
 

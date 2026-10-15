@@ -418,7 +418,7 @@ impl PlannerStore {
 
 impl Workspace {
     pub fn preview_markdown_planner_import(&self) -> Result<MarkdownImportPreview> {
-        let rules = self.rules();
+        let rules = self.rules()?;
         let tasks: Vec<TaskMeta> = self
             .reading()
             .tasks()?

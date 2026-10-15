@@ -257,7 +257,11 @@ impl Workspace {
             .vault
             .canonical_rel(norm)
             .unwrap_or_else(|_| norm.to_string());
-        !self.change_allowed(&real) || access_for(&self.rules(), &real) == Some(Access::Review)
+        // Unknown rules (unreadable settings) propose rather than write.
+        !self.change_allowed(&real)
+            || self
+                .rules()
+                .map_or(true, |r| access_for(&r, &real) == Some(Access::Review))
     }
 
     /// The file as the agent should see it: its pending proposal if there is one, else the disk.
@@ -518,7 +522,7 @@ impl Workspace {
 
     /// Proposals, with `stale` set when the file changed since. Agents see only paths they may see.
     pub fn proposals(&self, include_decided: bool, limit: usize) -> Result<Vec<Proposal>> {
-        let rules = self.rules();
+        let rules = self.rules()?;
         let mut list = self.hist().proposals(include_decided, limit)?;
         list.retain(|p| access_for(&rules, &p.path) != Some(Access::Hidden));
         for p in &mut list {
@@ -685,7 +689,7 @@ impl Workspace {
     /// The agent takes its own proposal back.
     pub fn withdraw_proposal(&self, id: i64) -> Result<()> {
         let p = self.pending(id)?;
-        if access_for(&self.rules(), &p.path) == Some(Access::Hidden) {
+        if access_for(&self.rules()?, &p.path) == Some(Access::Hidden) {
             return Err(Error::NotFound(format!("proposal {id}")));
         }
         self.hist().decide(id, "withdrawn", None)

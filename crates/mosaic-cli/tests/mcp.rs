@@ -636,6 +636,37 @@ fn folder_rules_hold_under_another_spelling_of_the_path() {
 }
 
 #[test]
+fn unreadable_settings_pause_agent_access_instead_of_dropping_the_rules() {
+    let dir = fixture();
+    let root = std::fs::canonicalize(dir.path()).unwrap();
+    std::fs::create_dir_all(root.join("Private")).unwrap();
+    std::fs::write(root.join("Private/Secret.md"), "zebra password").unwrap();
+    let settings = root.join(".test-settings");
+    std::fs::create_dir_all(&settings).unwrap();
+    // Half-written: the rules can't be known, so nothing may be read or changed.
+    let rules = json!({ "agent_rules": { root.to_str().unwrap(): [
+        { "path": "Private", "access": "hidden" }
+    ] } })
+    .to_string();
+    std::fs::write(settings.join("settings.json"), &rules[..rules.len() - 8]).unwrap();
+    let mut c = Client::start(&root);
+
+    for (tool, args) in [
+        ("read_file", json!({ "path": "Private/Secret.md" })),
+        ("search", json!({ "query": "zebra" })),
+        ("list_files", json!({})),
+        (
+            "append_to_file",
+            json!({ "path": "Ideas.md", "content": "x" }),
+        ),
+    ] {
+        let (err, payload) = c.call(tool, args);
+        assert!(err, "{tool}: {payload}");
+        assert_eq!(payload["code"], "denied", "{tool}: {payload}");
+    }
+}
+
+#[test]
 fn agents_move_several_files_and_add_images() {
     let dir = fixture();
     let mut c = Client::start(dir.path());

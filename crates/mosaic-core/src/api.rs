@@ -219,14 +219,22 @@ impl Workspace {
         self.actor.lock().unwrap_or_else(|p| p.into_inner()).clone()
     }
 
-    /// The vault's folder rules for agents (Settings › AI). They never apply to the app.
-    pub(crate) fn rules(&self) -> Vec<AgentRule> {
+    /// The vault's folder rules for agents (Settings › AI). They never apply to the app. When
+    /// settings.json can't be read the rules are unknown, so agents are denied rather than let
+    /// through as if there were none.
+    pub(crate) fn rules(&self) -> Result<Vec<AgentRule>> {
         if self.source == Source::App {
-            Vec::new()
+            Ok(Vec::new())
         } else if let Some(rules) = &self.fixed_rules {
-            rules.clone()
+            Ok(rules.clone())
         } else {
-            Settings::load().agent_rules(self.vault.root())
+            Settings::try_load()
+                .map(|s| s.agent_rules(self.vault.root()))
+                .map_err(|_| {
+                    Error::Denied(
+                        "Mosaic's settings can't be read, so agent access is paused; ask the person to check Settings › AI".into(),
+                    )
+                })
         }
     }
 
@@ -237,7 +245,7 @@ impl Workspace {
     /// A hidden path reads as "not found", so agents can't tell it exists.
     pub(crate) fn check_read(&self, path: &str) -> Result<()> {
         let norm = normalize(path)?;
-        if Self::visible(&self.rules(), &self.vault.canonical_rel(&norm)?) {
+        if Self::visible(&self.rules()?, &self.vault.canonical_rel(&norm)?) {
             Ok(())
         } else {
             Err(Error::NotFound(norm))
@@ -247,7 +255,7 @@ impl Workspace {
     /// Refuses changes to read-only or hidden paths — for a folder, to anything inside it too.
     fn check_write(&self, path: &str) -> Result<()> {
         let norm = normalize(path)?;
-        let rules = self.rules();
+        let rules = self.rules()?;
         // Rules are matched against the on-disk spelling: `private/x.md` opens `Private/x.md`.
         let real = self.vault.canonical_rel(&norm)?;
         match access_for(&rules, &real) {
@@ -342,7 +350,7 @@ impl Workspace {
 
     pub fn list(&self, dir: &str, recursive: bool) -> Result<Vec<Entry>> {
         self.check_read(dir)?;
-        let rules = self.rules();
+        let rules = self.rules()?;
         let mut entries = self.vault.list(dir, recursive)?;
         entries.retain(|e| Self::visible(&rules, &e.path));
         Ok(entries)
@@ -782,7 +790,7 @@ impl Workspace {
 
     /// Changes made by agents and the command line, newest first.
     pub fn activity(&self, limit: usize) -> Result<Vec<Version>> {
-        let rules = self.rules();
+        let rules = self.rules()?;
         let mut list = self.hist().activity(limit)?;
         list.retain(|v| Self::visible(&rules, &v.path));
         Ok(list)
@@ -867,7 +875,7 @@ impl Workspace {
     }
 
     pub fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchHit>> {
-        let rules = self.rules();
+        let rules = self.rules()?;
         if rules.is_empty() {
             return self.reading().search(query, limit);
         }
@@ -882,13 +890,13 @@ impl Workspace {
     /// what their folder rules let them see.
     pub fn query(&self, query: &str) -> Result<crate::query::QueryResult> {
         let q = crate::query::parse(query)?;
-        let rules = self.rules();
+        let rules = self.rules()?;
         q.run(&self.reading(), |p| Self::visible(&rules, p))
     }
 
     pub fn backlinks(&self, path: &str) -> Result<Vec<Backlink>> {
         self.check_read(path)?;
-        let rules = self.rules();
+        let rules = self.rules()?;
         let mut list = self.reading().backlinks(&normalize(path)?)?;
         list.retain(|b| Self::visible(&rules, &b.source));
         Ok(list)
@@ -896,7 +904,7 @@ impl Workspace {
 
     /// Tags with counts. With hidden folders, only notes agents can see are counted.
     pub fn tags(&self) -> Result<Vec<TagCount>> {
-        let rules = self.rules();
+        let rules = self.rules()?;
         let all = self.reading().tags()?;
         if !rules.iter().any(|r| r.access == Access::Hidden) {
             return Ok(all);
@@ -912,7 +920,7 @@ impl Workspace {
     }
 
     pub fn paths_with_tag(&self, tag: &str) -> Result<Vec<String>> {
-        let rules = self.rules();
+        let rules = self.rules()?;
         let mut paths = self.reading().paths_with_tag(tag)?;
         paths.retain(|p| Self::visible(&rules, p));
         Ok(paths)
@@ -937,7 +945,7 @@ impl Workspace {
             .into_iter()
             .map(|b| b.source)
             .collect();
-        let rules = self.rules();
+        let rules = self.rules()?;
         let mut out = Vec::new();
         let mut seen = BTreeSet::new();
         for n in &names {
@@ -1037,7 +1045,7 @@ impl Workspace {
                 vec![],
             ),
         };
-        let rules = self.rules();
+        let rules = self.rules()?;
         let index = self.reading();
         let mut backlinks = index.backlinks(&file.path)?;
         backlinks.retain(|b| Self::visible(&rules, &b.source));
@@ -1123,7 +1131,7 @@ impl Workspace {
                 .map(|e| e.path)
                 .collect();
             // Links are rewritten in other notes; an agent may not change read-only ones that way.
-            let rules = self.rules();
+            let rules = self.rules()?;
             let blocked: Vec<&String> = sources
                 .iter()
                 .filter(|p| access_for(&rules, p).is_some())

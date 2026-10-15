@@ -1,1 +1,2 @@
-39a9c21d9eb4f2f45081ee5cfd3b557143e5e296ca4d15d33412065e02c351e8
+# Release keys this build trusts, one per line (docs/PUBLISHING.md › Rotating the release key).
+39a9c21d9eb4f2f45081ee5cfd3b557143e5e296ca4d15d33412065e02c351e8  # current, since 0.18.0

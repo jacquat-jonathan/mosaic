@@ -8,6 +8,9 @@ use std::io::Read;
 use std::time::Duration;
 
 const REPO: &str = "jacquat-jonathan/mosaic";
+/// The release keys this build trusts: one hex Ed25519 public key per line, `#` starts a comment.
+/// Normally the current key and the next one, so a key can be retired without stranding installs
+/// (see docs/PUBLISHING.md).
 const PUBLIC_KEY: &str = include_str!("../../release-public-key.hex");
 const MAX_ARCHIVE: u64 = 1024 * 1024 * 1024;
 #[derive(Debug, Clone, Deserialize)]
@@ -47,15 +50,28 @@ fn decode_hex<const N: usize>(text: &str) -> Result<[u8; N], String> {
     }
     Ok(out)
 }
-fn verified_manifest(bytes: &[u8], signature: &[u8], key: &str) -> Result<Manifest, String> {
-    let key = VerifyingKey::from_bytes(&decode_hex(key)?)
-        .map_err(|_| "Invalid release verification key")?;
+fn trusted_keys(list: &str) -> Result<Vec<VerifyingKey>, String> {
+    list.lines()
+        .map(|line| line.split('#').next().unwrap_or_default().trim())
+        .filter(|line| !line.is_empty())
+        .map(|hex| {
+            VerifyingKey::from_bytes(&decode_hex(hex)?)
+                .map_err(|_| "Invalid release verification key".to_string())
+        })
+        .collect()
+}
+fn verified_manifest(bytes: &[u8], signature: &[u8], keys: &str) -> Result<Manifest, String> {
+    let keys = trusted_keys(keys)?;
     let raw = base64::engine::general_purpose::STANDARD
         .decode(signature)
         .map_err(|_| "Invalid release signature")?;
     let signature = Signature::from_slice(&raw).map_err(|_| "Invalid release signature")?;
-    key.verify_strict(bytes, &signature)
-        .map_err(|_| "Release signature verification failed. Nothing was installed.")?;
+    if !keys
+        .iter()
+        .any(|key| key.verify_strict(bytes, &signature).is_ok())
+    {
+        return Err("Release signature verification failed. Nothing was installed.".into());
+    }
     let manifest: Manifest =
         serde_json::from_slice(bytes).map_err(|e| format!("Invalid signed manifest: {e}"))?;
     if parse_version(&manifest.version).is_none()
@@ -424,6 +440,34 @@ mod tests {
         assert!(verified_manifest(bytes, signature.as_bytes(), PUBLIC_KEY).is_err());
         assert!(verified_manifest(bytes, b"", &key).is_err());
     }
+    #[test]
+    fn any_trusted_key_verifies_so_a_key_can_be_rotated() {
+        let hex = |k: &SigningKey| {
+            k.verifying_key()
+                .to_bytes()
+                .iter()
+                .map(|v| format!("{v:02x}"))
+                .collect::<String>()
+        };
+        let (current, next) = (
+            SigningKey::from_bytes(&[7; 32]),
+            SigningKey::from_bytes(&[9; 32]),
+        );
+        let keys = format!("# current\n{}\n\n{}  # next\n", hex(&current), hex(&next));
+        let bytes = br#"{"version":"0.18.0","bundle_id":"dev.jona.mosaic","minimum_macos":"12.0","architectures":["arm64","x86_64"],"archive":"Mosaic-0.18.0-universal.tar.gz","sha256":"0000000000000000000000000000000000000000000000000000000000000000","size":100,"date":"2026-10-08","notes":[]}"#;
+        let by = |k: &SigningKey| {
+            base64::engine::general_purpose::STANDARD.encode(k.sign(bytes).to_bytes())
+        };
+        assert!(verified_manifest(bytes, by(&current).as_bytes(), &keys).is_ok());
+        assert!(verified_manifest(bytes, by(&next).as_bytes(), &keys).is_ok());
+        let stranger = SigningKey::from_bytes(&[3; 32]);
+        assert!(verified_manifest(bytes, by(&stranger).as_bytes(), &keys).is_err());
+        // No key at all trusts nothing.
+        assert!(verified_manifest(bytes, by(&current).as_bytes(), "# none\n").is_err());
+        // The shipped list parses.
+        assert!(!trusted_keys(PUBLIC_KEY).unwrap().is_empty());
+    }
+
     #[test]
     fn refuses_archive_escape_and_non_universal_executables() {
         assert!(safe_archive(

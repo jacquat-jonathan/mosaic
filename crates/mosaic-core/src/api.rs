@@ -21,6 +21,8 @@ pub struct Workspace {
     /// a vault that never used it gets no `.mosaic/` folder. `None` root: in memory.
     planner: OnceLock<std::result::Result<Mutex<PlannerStore>, String>>,
     planner_root: Option<std::path::PathBuf>,
+    /// Set once a full sync finished: only then does the index reflect the whole vault.
+    synced: std::sync::atomic::AtomicBool,
     index: Mutex<Index>,
     /// A read-only connection to the same index for queries, so a long sync doesn't block search.
     /// `None` for an in-memory index (tests), where queries use `index`.
@@ -132,6 +134,7 @@ impl Workspace {
             vault,
             planner: OnceLock::new(),
             planner_root: None,
+            synced: Default::default(),
             reader,
             index: Mutex::new(index),
             history: Mutex::new(history),
@@ -365,7 +368,17 @@ impl Workspace {
                 .apply_sync(&self.vault, batch.changed, batch.removed)?;
         }
         progress(plan.total, plan.total);
+        self.synced
+            .store(true, std::sync::atomic::Ordering::Relaxed);
         Ok(plan.stats)
+    }
+
+    /// For a watcher keeping the index current: tells other processes they needn't walk the
+    /// vault themselves. Does nothing until the first full sync is done.
+    pub fn heartbeat(&self) {
+        if self.synced.load(std::sync::atomic::Ordering::Relaxed) {
+            self.index().mark_watched();
+        }
     }
 
     /// Re-indexes a path after a change made outside this API (file watcher). A change by another
@@ -1428,6 +1441,7 @@ fn settings_error(e: std::io::Error) -> Error {
 mod tests {
     use super::*;
     use crate::index::tests::fixture;
+    use std::time::Duration;
 
     fn ws() -> (tempfile::TempDir, Workspace) {
         let (d, v) = fixture();
@@ -1438,6 +1452,28 @@ mod tests {
 
     fn text(w: &Workspace, p: &str) -> String {
         w.read(p).unwrap().content.unwrap()
+    }
+
+    #[test]
+    fn the_app_heartbeat_tells_other_processes_the_index_is_current() {
+        let (d, v) = fixture();
+        let db = d.path().join(".cache/index.db");
+        std::fs::create_dir_all(db.parent().unwrap()).unwrap();
+        let w = Workspace::new(v, Index::open_at(&db).unwrap());
+        let other = Index::open_at(&db).unwrap();
+        // Not before the first full sync: the index may still be incomplete.
+        w.heartbeat();
+        assert!(!other.watched_within(Duration::from_secs(5)));
+        w.sync(|_, _| {}).unwrap();
+        w.heartbeat();
+        assert!(other.watched_within(Duration::from_secs(5)));
+        assert!(!other.watched_within(Duration::ZERO));
+        // An in-memory index has no heartbeat to share.
+        assert!(
+            !Index::in_memory()
+                .unwrap()
+                .watched_within(Duration::from_secs(5))
+        );
     }
 
     #[test]

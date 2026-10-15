@@ -4,6 +4,7 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Faster AI tool calls on large vaults:** while Mosaic is open, agents' searches and queries use the index the app already keeps current instead of re-scanning every file first, and a quick run of calls shares one scan.
 - **Notes don't depend on the planner:** `mosaic` commands and AI agents work on notes even when the planner's database is damaged, and no longer create a `.mosaic` folder in vaults that don't use the planner. The planner also waits briefly instead of failing when two windows use it at once.
 - **No more freezes while a vault indexes:** file, search, history and planner work now runs off the window's thread, the index catches up in small batches so typing right after opening a large vault saves at once, and finding Claude Code no longer re-reads your shell profile for every chat.
 - **Checked on every change:** the full test suite now runs on GitHub for each push to `main` and each pull request, not only when a release is cut.

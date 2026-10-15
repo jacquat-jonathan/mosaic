@@ -467,6 +467,30 @@ impl Index {
 
     /// A second, read-only connection to the same database. With WAL it reads the last committed
     /// state while a sync is writing, so search and backlinks don't wait for a long sync.
+    /// Where the app's watcher says it's keeping this index current (see `mark_watched`).
+    fn heartbeat_path(&self) -> Option<PathBuf> {
+        let db = self.path.as_ref()?;
+        Some(db.with_extension("db.watched"))
+    }
+
+    /// Records that a watcher is keeping this index current. Called every few seconds by the
+    /// app; other processes (the MCP server) then skip their own walk of the vault.
+    pub fn mark_watched(&self) {
+        if let Some(p) = self.heartbeat_path()
+            && let Ok(f) = std::fs::File::options().create(true).append(true).open(p)
+        {
+            let _ = f.set_modified(std::time::SystemTime::now());
+        }
+    }
+
+    /// Whether a watcher marked this index within `age`.
+    pub fn watched_within(&self, age: std::time::Duration) -> bool {
+        self.heartbeat_path()
+            .and_then(|p| std::fs::metadata(p).ok()?.modified().ok())
+            .and_then(|t| t.elapsed().ok())
+            .is_some_and(|e| e < age)
+    }
+
     /// `None` for an in-memory index.
     pub fn open_reader(&self) -> Option<Self> {
         let path = self.path.as_ref()?;

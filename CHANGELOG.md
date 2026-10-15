@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+## 0.19.0 — 2026-10-15
+
 - **Faster note shaping:** reorder sibling heading sections from the editor or Outline by dragging, or use ⌥↑/⌥↓ in the Outline; nested subsections move with their parent and numbered headings are renumbered. The adjacent + action creates a same-level section, while the compact slash menu groups its choices, adds callouts, math, links and embeds, and calls checklist items Checkboxes.
 - **Formatting where you work:** selecting note text reveals compact Bold, Italic, web-link and Mosaic-note-link actions alongside their keyboard shortcuts. Heading add and drag controls stay out of the way until hover, and the taller slash menu uses the app surface without a bright frame.
 - **Folder templates and quiet attachments:** a folder menu shows which template it inherits and links directly to editing or changing that default. Embedded images and PDFs stay out of the file tree by default, remain visible from Note details, and can be restored to the tree from Vault settings.

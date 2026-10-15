@@ -3,7 +3,7 @@
 
 use crate::error::{Error, Result};
 use crate::history::{Action, History, Source, Version};
-use crate::index::{Backlink, Index, OutLink, SearchHit, SyncStats, TagCount};
+use crate::index::{Backlink, Index, OutLink, SearchHit, SyncPlan, SyncStats, TagCount};
 use crate::kind::FileKind;
 use crate::links::{FileSet, markdown_url_for, wiki_text_for};
 use crate::parse::{self, Heading, LinkKind};
@@ -328,8 +328,19 @@ impl Workspace {
         self.index.lock().unwrap_or_else(|p| p.into_inner())
     }
 
-    pub fn sync(&self, progress: impl FnMut(usize, usize)) -> Result<SyncStats> {
-        self.index().sync(&self.vault, progress)
+    /// Brings the index up to date with the disk. The vault is walked without the index lock, and
+    /// files are indexed in batches that each take it briefly, so a write made meanwhile (an
+    /// autosave) waits for one batch at most.
+    pub fn sync(&self, mut progress: impl FnMut(usize, usize)) -> Result<SyncStats> {
+        let known = self.index().known_files()?;
+        let plan = SyncPlan::new(&self.vault, known)?;
+        for batch in plan.batches() {
+            progress(batch.done, plan.total);
+            self.index()
+                .apply_sync(&self.vault, batch.changed, batch.removed)?;
+        }
+        progress(plan.total, plan.total);
+        Ok(plan.stats)
     }
 
     /// Re-indexes a path after a change made outside this API (file watcher). A change by another
@@ -1402,6 +1413,39 @@ mod tests {
 
     fn text(w: &Workspace, p: &str) -> String {
         w.read(p).unwrap().content.unwrap()
+    }
+
+    #[test]
+    fn sync_lets_writes_in_between_batches() {
+        let (d, v) = fixture();
+        for i in 0..600 {
+            std::fs::write(d.path().join(format!("n{i}.md")), format!("# N{i}\n")).unwrap();
+        }
+        let w = Workspace::new(v, Index::in_memory().unwrap());
+        let mut calls = 0;
+        let stats = w
+            .sync(|done, total| {
+                calls += 1;
+                assert!(done <= total);
+                // Between batches the index is free, so an autosave doesn't wait for the whole walk.
+                assert!(w.index.try_lock().is_ok(), "index locked during progress");
+            })
+            .unwrap();
+        assert!(calls >= 3, "{calls} progress calls");
+        assert!(stats.indexed >= 600);
+        assert_eq!(w.search("N599", 5).unwrap()[0].path, "n599.md");
+        // Files that disappear while it runs aren't indexed as ghosts.
+        std::fs::write(d.path().join("gone.md"), "x").unwrap();
+        let again = w
+            .sync(|_, _| std::fs::remove_file(d.path().join("gone.md")).unwrap_or(()))
+            .unwrap();
+        assert_eq!(again.unchanged, stats.indexed);
+        assert!(
+            w.search("x", 5)
+                .unwrap()
+                .iter()
+                .all(|h| h.path != "gone.md")
+        );
     }
 
     #[test]

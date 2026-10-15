@@ -37,6 +37,79 @@ pub struct SyncStats {
     pub unchanged: usize,
 }
 
+/// Files indexed per transaction in a sync: a write waits for one batch at most, not the walk.
+pub(crate) const SYNC_BATCH: usize = 250;
+
+/// A sync worked out from a vault listing and what the index holds, applied in batches.
+pub(crate) struct SyncPlan {
+    changed: Vec<Entry>,
+    removed: Vec<String>,
+    pub(crate) total: usize,
+    pub(crate) stats: SyncStats,
+}
+
+pub(crate) struct SyncBatch<'a> {
+    /// Files dealt with before this batch (unchanged ones count as done).
+    pub(crate) done: usize,
+    pub(crate) changed: &'a [Entry],
+    pub(crate) removed: &'a [String],
+}
+
+impl SyncPlan {
+    pub(crate) fn new(vault: &Vault, known: HashMap<String, (u64, u64)>) -> Result<Self> {
+        let entries: Vec<Entry> = vault
+            .list("", true)?
+            .into_iter()
+            .filter(|e| !e.is_dir)
+            .collect();
+        let present: HashSet<&str> = entries.iter().map(|e| e.path.as_str()).collect();
+        let removed: Vec<String> = known
+            .keys()
+            .filter(|p| !present.contains(p.as_str()))
+            .cloned()
+            .collect();
+        let total = entries.len();
+        let changed: Vec<Entry> = entries
+            .into_iter()
+            .filter(|e| known.get(&e.path) != Some(&(e.mtime, e.size)))
+            .collect();
+        let stats = SyncStats {
+            indexed: changed.len(),
+            removed: removed.len(),
+            unchanged: total - changed.len(),
+        };
+        Ok(SyncPlan {
+            changed,
+            removed,
+            total,
+            stats,
+        })
+    }
+
+    /// The batches in order; removals ride along with the first one.
+    pub(crate) fn batches(&self) -> Vec<SyncBatch<'_>> {
+        let mut out = Vec::new();
+        let mut done = self.stats.unchanged;
+        let mut chunks = self.changed.chunks(SYNC_BATCH).peekable();
+        if chunks.peek().is_none() && !self.removed.is_empty() {
+            out.push(SyncBatch {
+                done,
+                changed: &[],
+                removed: &self.removed,
+            });
+        }
+        for (i, chunk) in chunks.enumerate() {
+            out.push(SyncBatch {
+                done,
+                changed: chunk,
+                removed: if i == 0 { &self.removed } else { &[] },
+            });
+            done += chunk.len();
+        }
+        out
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct SearchHit {
     pub path: String,
@@ -511,54 +584,58 @@ impl Index {
         vault: &Vault,
         mut progress: impl FnMut(usize, usize),
     ) -> Result<SyncStats> {
-        let entries: Vec<Entry> = vault
-            .list("", true)?
-            .into_iter()
-            .filter(|e| !e.is_dir)
-            .collect();
-        let known: HashMap<String, (u64, u64)> = {
-            let mut stmt = self
-                .conn
-                .prepare("SELECT path, mtime, size FROM files")
-                .map_err(sql_err)?;
-            stmt.query_map([], |r| {
-                Ok((
-                    r.get::<_, String>(0)?,
-                    (r.get::<_, i64>(1)? as u64, r.get::<_, i64>(2)? as u64),
-                ))
-            })
-            .map_err(sql_err)?
-            .collect::<std::result::Result<_, _>>()
-            .map_err(sql_err)?
-        };
-        let mut stats = SyncStats::default();
-        let present: HashSet<&str> = entries.iter().map(|e| e.path.as_str()).collect();
-        let total = entries.len();
+        let plan = SyncPlan::new(vault, self.known_files()?)?;
+        for batch in plan.batches() {
+            progress(batch.done, plan.total);
+            self.apply_sync(vault, batch.changed, batch.removed)?;
+        }
+        progress(plan.total, plan.total);
+        Ok(plan.stats)
+    }
+
+    /// What the index holds: path → (mtime, size), to tell changed files from unchanged ones.
+    pub(crate) fn known_files(&self) -> Result<HashMap<String, (u64, u64)>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT path, mtime, size FROM files")
+            .map_err(sql_err)?;
+        stmt.query_map([], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                (r.get::<_, i64>(1)? as u64, r.get::<_, i64>(2)? as u64),
+            ))
+        })
+        .map_err(sql_err)?
+        .collect::<std::result::Result<_, _>>()
+        .map_err(sql_err)
+    }
+
+    /// One batch of a sync, in one transaction: indexes `changed` (as they are now: a file
+    /// changed or deleted since the plan is stat'ed again) and forgets `removed`.
+    pub(crate) fn apply_sync(
+        &mut self,
+        vault: &Vault,
+        changed: &[Entry],
+        removed: &[String],
+    ) -> Result<()> {
         // IMMEDIATE: take the write lock up front. A deferred transaction that later upgrades gets
         // "database is locked" at once (no busy wait) when another process wrote in between.
         let tx = self
             .conn
             .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
             .map_err(sql_err)?;
-        for (i, e) in entries.iter().enumerate() {
-            if known.get(&e.path) == Some(&(e.mtime, e.size)) {
-                stats.unchanged += 1;
-            } else {
-                Self::index_entry(&tx, vault, e)?;
-                stats.indexed += 1;
-            }
-            if i % 250 == 0 {
-                progress(i, total);
+        for e in changed {
+            match vault.stat(&e.path) {
+                Ok(now) if !now.is_dir => Self::index_entry(&tx, vault, &now)?,
+                _ => Self::delete_rows(&tx, &e.path)?,
             }
         }
-        for path in known.keys().filter(|p| !present.contains(p.as_str())) {
+        for path in removed {
             Self::delete_rows(&tx, path)?;
-            stats.removed += 1;
         }
         tx.commit().map_err(sql_err)?;
-        progress(total, total);
         self.invalidate();
-        Ok(stats)
+        Ok(())
     }
 
     /// Re-indexes one path after a change (or forgets it if it no longer exists).

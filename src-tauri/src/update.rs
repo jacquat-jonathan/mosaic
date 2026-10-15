@@ -228,7 +228,7 @@ fn git(dir: &Path, args: &[&str]) -> Result<String, String> {
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn update_status(state: State<UpdateState>) -> UpdateStatus {
     let dir = source_dir();
     UpdateStatus {
@@ -266,7 +266,7 @@ fn install_log_file() -> PathBuf {
 }
 
 /// Sets the source checkout to update from; `None` goes back to where the app was built.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn set_update_source(
     state: State<UpdateState>,
     path: Option<String>,
@@ -370,7 +370,7 @@ fn check_in(dir: &Path, installed_commit: &str, installed_version: &str) -> CmdR
 
 /// Pulls and rebuilds in the background, streaming output as `update-log` events and ending with
 /// `update-done`. The new build is installed by `finish_update`.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn start_update(app: AppHandle, state: State<UpdateState>) -> CmdResult<()> {
     if running_bundle().is_none() {
         return Err(invalid(
@@ -425,7 +425,7 @@ pub fn start_update(app: AppHandle, state: State<UpdateState>) -> CmdResult<()> 
 
 /// Stops a running update: kills the current step's whole process group (zsh, pnpm, cargo, rustc…).
 /// The installed app is only replaced by "Restart to finish", so stopping at any point is safe.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn cancel_update(app: AppHandle, state: State<UpdateState>) -> CmdResult<()> {
     if !state.running.load(Ordering::SeqCst) {
         return Ok(());
@@ -505,7 +505,7 @@ fn run_logged(app: &AppHandle, dir: &Path, script: &str) -> Result<Option<PathBu
 }
 
 /// Quits, then a detached helper waits for this process to exit, swaps in the new build and reopens it.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn finish_update(app: AppHandle, state: State<UpdateState>) -> CmdResult<()> {
     let built = state
         .built

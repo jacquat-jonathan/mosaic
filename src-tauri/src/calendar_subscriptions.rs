@@ -298,7 +298,7 @@ async fn refresh_one(
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn calendar_subscriptions(
     app: AppHandle,
     state: State<AppState>,
@@ -371,7 +371,7 @@ pub(crate) async fn add_calendar_subscription(
     view(&app, &subscription)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn update_calendar_subscription(
     app: AppHandle,
     state: State<AppState>,
@@ -402,7 +402,7 @@ pub(crate) fn update_calendar_subscription(
     view(&app, &result)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn remove_calendar_subscription(
     app: AppHandle,
     state: State<AppState>,
@@ -449,7 +449,7 @@ pub(crate) async fn refresh_calendar_subscriptions(
     Ok(result)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn calendar_overlay_range(
     app: AppHandle,
     state: State<AppState>,

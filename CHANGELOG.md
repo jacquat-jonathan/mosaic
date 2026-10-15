@@ -4,6 +4,7 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **No more freezes while a vault indexes:** file, search, history and planner work now runs off the window's thread, the index catches up in small batches so typing right after opening a large vault saves at once, and finding Claude Code no longer re-reads your shell profile for every chat.
 - **Checked on every change:** the full test suite now runs on GitHub for each push to `main` and each pull request, not only when a release is cut.
 - **Chats and workflows read only through Mosaic:** Claude no longer uses its own file tools, which could read hidden folders and files outside the vault; it reads with Mosaic's tools, so folder rules always apply. Workflows reach the web only when you tick **Can use the web** (`web: true`), and a run started by a new note treats that note as untrusted input.
 - **Folder rules fail closed:** if Mosaic's settings file is damaged or can't be read, agents are refused with a clear message instead of briefly seeing every folder as if no rules existed.

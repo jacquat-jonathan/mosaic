@@ -31,7 +31,7 @@ fn write_document(dir: &Path, html: &str) -> CmdResult<PathBuf> {
 
 /// Publishes a sanitized preview on the asset origin. Unlike `srcdoc`, this gives WebKit a real,
 /// app-distinct origin on which scripts and sibling vault resources can run inside the sandbox.
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn html_preview_document(app: AppHandle, html: String) -> CmdResult<String> {
     let dir = app
         .path()

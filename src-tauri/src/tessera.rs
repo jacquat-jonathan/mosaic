@@ -192,7 +192,7 @@ fn trigger_error(agent: &Agent) -> Option<String> {
     (!errors.is_empty()).then(|| errors.join(" · "))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn tessera_status(
     state: State<AppState>,
     tessera: State<TesseraState>,
@@ -228,7 +228,7 @@ pub fn tessera_status(
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn tessera_pause_all(app: AppHandle, state: State<AppState>, paused: bool) -> CmdResult<()> {
     let ws = state.get()?;
     let mut cfg = Settings::load().tessera(ws.vault.root());
@@ -240,7 +240,7 @@ pub fn tessera_pause_all(app: AppHandle, state: State<AppState>, paused: bool) -
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn tessera_pause_agent(
     app: AppHandle,
     state: State<AppState>,
@@ -260,7 +260,7 @@ pub fn tessera_pause_agent(
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn tessera_set_max_chain_depth(state: State<AppState>, depth: u8) -> CmdResult<()> {
     if depth > 10 {
         return Err(Error::Invalid(
@@ -273,13 +273,13 @@ pub fn tessera_set_max_chain_depth(state: State<AppState>, depth: u8) -> CmdResu
     save(ws.vault.root(), cfg)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn tessera_run(app: AppHandle, state: State<AppState>, name: String) -> CmdResult<u64> {
     let ws = state.get()?;
     start_agent(&app, &ws, &name, RunCause::Manual)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn tessera_test_event(
     app: AppHandle,
     state: State<AppState>,

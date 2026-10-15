@@ -54,6 +54,17 @@ pub(crate) fn path_env() -> String {
 
 /// Finds the `claude` command: the usual install places, then the login shell's PATH.
 pub(crate) fn find_claude() -> Option<PathBuf> {
+    // The login-shell lookup reads the person's whole profile (often 0.3–2 s), so a found path is
+    // kept for the app run; it's looked up again if it disappears, and while none is found.
+    static FOUND: Mutex<Option<PathBuf>> = Mutex::new(None);
+    let mut found = FOUND.lock().unwrap_or_else(|p| p.into_inner());
+    if found.as_ref().is_none_or(|p| !p.is_file()) {
+        *found = detect_claude();
+    }
+    found.clone()
+}
+
+fn detect_claude() -> Option<PathBuf> {
     let h = home();
     for p in [
         h.join(".local/bin/claude"),
@@ -82,7 +93,7 @@ pub(crate) fn mosaic_cli() -> Option<PathBuf> {
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn chat_check() -> ClaudeInfo {
     let path = find_claude();
     let version = path.as_ref().and_then(|p| {
@@ -103,7 +114,7 @@ pub fn chat_check() -> ClaudeInfo {
 
 /// Sends a message: starts Claude Code (resuming `session` if given) and returns the run's id;
 /// its events arrive as `chat-event`. With `agent`, the message runs that agent from `Agents/`.
-#[tauri::command]
+#[tauri::command(async)]
 #[allow(clippy::too_many_arguments)]
 pub fn chat_send(
     app: AppHandle,
@@ -249,7 +260,7 @@ pub fn chat_send(
 }
 
 /// Stops an answer: kills Claude Code's whole process group.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn chat_stop(chats: State<ChatState>, run: u64) -> CmdResult<()> {
     if let Some(pgid) = chats.runs.lock().expect("chat lock").remove(&run) {
         let _ = Command::new("kill")

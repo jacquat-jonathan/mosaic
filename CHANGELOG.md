@@ -4,6 +4,7 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Notes don't depend on the planner:** `mosaic` commands and AI agents work on notes even when the planner's database is damaged, and no longer create a `.mosaic` folder in vaults that don't use the planner. The planner also waits briefly instead of failing when two windows use it at once.
 - **No more freezes while a vault indexes:** file, search, history and planner work now runs off the window's thread, the index catches up in small batches so typing right after opening a large vault saves at once, and finding Claude Code no longer re-reads your shell profile for every chat.
 - **Checked on every change:** the full test suite now runs on GitHub for each push to `main` and each pull request, not only when a release is cut.
 - **Chats and workflows read only through Mosaic:** Claude no longer uses its own file tools, which could read hidden folders and files outside the vault; it reads with Mosaic's tools, so folder rules always apply. Workflows reach the web only when you tick **Can use the web** (`web: true`), and a run started by a new note treats that note as untrusted input.

@@ -654,6 +654,16 @@ fn recovery_from_the_last_valid_backup_is_explicit() {
     fs::write(&database, b"not a sqlite database").unwrap();
 
     assert!(PlannerStore::open(dir.path()).is_err());
+    // Notes still open; the planner reports the damage when it's first needed (the app asks at
+    // once, to offer the restore).
+    let notes = Workspace::open(dir.path()).unwrap();
+    assert!(notes.list("", true).is_ok());
+    let damaged = notes.open_planner().unwrap_err().to_string();
+    // The store's own message comes through, so the app can tell when to offer the restore.
+    let cause = PlannerStore::open(dir.path()).err().unwrap().to_string();
+    assert!(damaged.contains(&cause), "{damaged}");
+    assert!(notes.planner_summary().is_err());
+    drop(notes);
     let corrupt = PlannerStore::restore_last_backup(dir.path()).unwrap();
     assert!(corrupt.is_file());
     let restored = PlannerStore::open(dir.path()).unwrap();

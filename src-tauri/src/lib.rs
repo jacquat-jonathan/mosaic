@@ -63,7 +63,9 @@ fn info(ws: &Workspace) -> VaultInfo {
 
 #[tauri::command(async)]
 fn open_vault(app: AppHandle, state: State<AppState>, path: String) -> CmdResult<VaultInfo> {
-    activate(app, &state, Workspace::open(&path)?)
+    let ws = Workspace::open(&path)?;
+    ws.open_planner()?;
+    activate(app, &state, ws)
 }
 
 /// Creates `<parent>/<name>` as a new, empty vault folder. The UI then opens it with `open_vault`.

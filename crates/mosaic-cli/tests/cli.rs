@@ -144,6 +144,23 @@ fn templates_create_complete_notes_and_follow_renames_without_changing_raw_creat
 }
 
 #[test]
+fn notes_never_wait_on_the_planner() {
+    let dir = fixture();
+    let v = dir.path();
+    // Reading notes doesn't create the planner's folder in a vault that never used it.
+    let out = mosaic(v, &["read", "Ideas.md"], None);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(!v.join(".mosaic").exists());
+    // A damaged planner database doesn't stop notes from being read or changed.
+    std::fs::create_dir_all(v.join(".mosaic")).unwrap();
+    std::fs::write(v.join(".mosaic/planner.sqlite3"), "not a database").unwrap();
+    let out = mosaic(v, &["read", "Ideas.md"], None);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let out = mosaic(v, &["append", "Ideas.md"], Some("- more\n"));
+    assert_eq!(out.code, 0, "{}", out.stderr);
+}
+
+#[test]
 fn create_read_append_and_patch() {
     let dir = fixture();
     let v = dir.path();

@@ -556,31 +556,20 @@ impl Workspace {
         include_archived: bool,
         include_trashed: bool,
     ) -> Result<Vec<PlannerTask>> {
-        self.planner
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
+        self.planner()?
             .list_tasks(include_archived, include_trashed)
     }
 
     pub fn create_planner_task(&self, input: CreateTask) -> Result<PlannerTask> {
-        self.planner
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .create_task(input)
+        self.planner()?.create_task(input)
     }
 
     pub fn update_planner_task(&self, id: &str, input: UpdateTask) -> Result<PlannerTask> {
-        self.planner
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .update_task(id, input)
+        self.planner()?.update_task(id, input)
     }
 
     pub fn move_planner_task(&self, id: &str, input: MoveTask) -> Result<PlannerTask> {
-        self.planner
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .move_task(id, input)
+        self.planner()?.move_task(id, input)
     }
 
     pub fn complete_planner_task(
@@ -590,42 +579,27 @@ impl Workspace {
         allow_incomplete_subtasks: bool,
         future_sessions: FutureSessionPolicy,
     ) -> Result<PlannerTask> {
-        self.planner
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .complete_task(
-                id,
-                expected_revision,
-                allow_incomplete_subtasks,
-                future_sessions,
-            )
+        self.planner()?.complete_task(
+            id,
+            expected_revision,
+            allow_incomplete_subtasks,
+            future_sessions,
+        )
     }
 
     pub fn reopen_planner_task(&self, id: &str, expected_revision: i64) -> Result<PlannerTask> {
-        self.planner
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .reopen_task(id, expected_revision)
+        self.planner()?.reopen_task(id, expected_revision)
     }
 
     pub fn archive_planner_task(&self, id: &str, expected_revision: i64) -> Result<PlannerTask> {
-        self.planner
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .archive_task(id, expected_revision)
+        self.planner()?.archive_task(id, expected_revision)
     }
 
     pub fn restore_planner_task(&self, id: &str, expected_revision: i64) -> Result<PlannerTask> {
-        self.planner
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .restore_task(id, expected_revision)
+        self.planner()?.restore_task(id, expected_revision)
     }
 
     pub fn trash_planner_task(&self, id: &str, expected_revision: i64) -> Result<PlannerTask> {
-        self.planner
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .trash_task(id, expected_revision)
+        self.planner()?.trash_task(id, expected_revision)
     }
 }

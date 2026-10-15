@@ -598,9 +598,7 @@ impl Workspace {
         content: &str,
         fallback_timezone: &str,
     ) -> Result<IcalImportPreview> {
-        self.planner
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
+        self.planner()?
             .preview_ical_import(source_kind, content, fallback_timezone)
     }
 
@@ -610,16 +608,11 @@ impl Workspace {
         selected_keys: &[String],
         allow_duplicates: bool,
     ) -> Result<IcalImportResult> {
-        self.planner
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
+        self.planner()?
             .import_ical(preview, selected_keys, allow_duplicates)
     }
 
     pub fn export_planner_ical(&self) -> Result<String> {
-        self.planner
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .export_ical()
+        self.planner()?.export_ical()
     }
 }

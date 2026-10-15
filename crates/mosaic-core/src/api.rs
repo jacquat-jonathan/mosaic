@@ -13,11 +13,14 @@ use crate::vault::{Entry, FileContent, Vault, Written, normalize};
 use regex::Regex;
 use serde::Serialize;
 use std::collections::{BTreeSet, HashMap};
-use std::sync::{Mutex, MutexGuard};
+use std::sync::{Mutex, MutexGuard, OnceLock};
 
 pub struct Workspace {
     pub vault: Vault,
-    pub(crate) planner: Mutex<PlannerStore>,
+    /// Opened on first use, so a damaged or newer planner never stops notes from working, and
+    /// a vault that never used it gets no `.mosaic/` folder. `None` root: in memory.
+    planner: OnceLock<std::result::Result<Mutex<PlannerStore>, String>>,
+    planner_root: Option<std::path::PathBuf>,
     index: Mutex<Index>,
     /// A read-only connection to the same index for queries, so a long sync doesn't block search.
     /// `None` for an in-memory index (tests), where queries use `index`.
@@ -125,10 +128,10 @@ impl Workspace {
 
     fn with_history(vault: Vault, index: Index, history: History) -> Self {
         let reader = index.open_reader().map(Mutex::new);
-        let planner = PlannerStore::in_memory().expect("in-memory planner");
         Workspace {
             vault,
-            planner: Mutex::new(planner),
+            planner: OnceLock::new(),
+            planner_root: None,
             reader,
             index: Mutex::new(index),
             history: Mutex::new(history),
@@ -182,9 +185,9 @@ impl Workspace {
         let vault = Vault::open(root)?;
         let index = Index::open_for(&vault).or_else(|_| Index::in_memory())?;
         let history = History::open_for(vault.root()).or_else(|_| History::in_memory())?;
-        let planner = PlannerStore::open(vault.root())?;
+        let root = vault.root().to_path_buf();
         let mut workspace = Self::with_history(vault, index, history);
-        workspace.planner = Mutex::new(planner);
+        workspace.planner_root = Some(root);
         Ok(workspace)
     }
 
@@ -322,6 +325,28 @@ impl Workspace {
     pub fn validating(mut self) -> Self {
         self.vault.set_validate(true);
         self
+    }
+
+    /// Opens the planner now rather than on first use: the app does, so a damaged database is
+    /// reported when the vault opens, where it can offer to restore the last backup.
+    pub fn open_planner(&self) -> Result<()> {
+        self.planner().map(drop)
+    }
+
+    /// The planner's store, opened the first time it's needed.
+    pub(crate) fn planner(&self) -> Result<MutexGuard<'_, PlannerStore>> {
+        let store = self.planner.get_or_init(|| {
+            match &self.planner_root {
+                Some(root) => PlannerStore::open(root),
+                None => PlannerStore::in_memory(),
+            }
+            .map(Mutex::new)
+            .map_err(|e| e.to_string())
+        });
+        match store {
+            Ok(m) => Ok(m.lock().unwrap_or_else(|p| p.into_inner())),
+            Err(e) => Err(Error::Invalid(format!("the planner is unavailable: {e}"))),
+        }
     }
 
     pub fn index(&self) -> MutexGuard<'_, Index> {

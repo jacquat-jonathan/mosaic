@@ -29,6 +29,9 @@ pub(super) fn in_memory() -> Result<Connection> {
 }
 
 fn configure(conn: &Connection) -> Result<()> {
+    // Two windows, or an export while the UI writes, wait for each other instead of failing.
+    conn.busy_timeout(std::time::Duration::from_secs(5))
+        .map_err(sql_error)?;
     conn.pragma_update(None, "foreign_keys", "ON")
         .map_err(sql_error)?;
     conn.pragma_update(None, "synchronous", "FULL")

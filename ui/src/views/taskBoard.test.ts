@@ -15,6 +15,7 @@ const task = (
   tags: [],
   props: {},
   task: {
+    workflow: "new",
     line,
     parent,
     text: `Task ${line}`,

@@ -4,7 +4,8 @@ import type { Version } from "../ipc/types";
 export function who(v: Version): string {
   if (v.action === "before") return v.source === "external" ? "Another app" : "Earlier version";
   if (v.actor) return v.actor;
-  return { app: "You", cli: "Command line", agent: "An agent", external: "Another app" }[v.source];
+  const by: Record<string, string> = { app: "You", cli: "Command line", agent: "An agent", external: "Another app" };
+  return by[v.source] ?? "Someone";
 }
 
 /** What happened, in words. */

@@ -42,6 +42,7 @@ test("task queries show tickable tasks, nested, with their note", () => {
   const task = (line: number, status: "open" | "done" | "moved", text: string, depth = 0) => ({
     ...row,
     task: {
+      workflow: "new",
       line,
       status,
       mark: status === "done" ? "x" : status === "moved" ? ">" : " ",

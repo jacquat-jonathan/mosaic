@@ -79,6 +79,7 @@ impl Action {
 /// A move whose link rewrites didn't all finish (some failed, or Mosaic stopped half-way). Its
 /// links can be fixed later by running the rewrite again (`Workspace::fix_links`).
 #[derive(Debug, Clone, Serialize, PartialEq)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct UnfinishedRename {
     pub id: i64,
     pub from: String,
@@ -92,6 +93,7 @@ pub struct UnfinishedRename {
 
 /// One version of a file (its content is fetched separately with [`History::content`]).
 #[derive(Debug, Clone, Serialize, PartialEq)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct Version {
     pub id: i64,
     pub path: String,

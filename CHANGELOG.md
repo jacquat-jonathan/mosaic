@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Fewer mismatches between the app's window and its engine:** the interface now gets the exact shape of every command and result from the engine itself, so a change on one side that the other doesn't follow is caught before a release. Doing this fixed a few small mismatches, such as a review that could open without knowing whether the file had changed since the agent's proposal.
+
 ## 0.21.0 — 2026-10-16
 
 - **Security fixes in bundled libraries:** the drawing editor, diagrams and math rendering now use patched versions of the small libraries they depend on (nanoid, lodash-es, source-map-js and KaTeX), closing the known security advisories against the older copies.

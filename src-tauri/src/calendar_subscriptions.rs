@@ -43,7 +43,7 @@ struct SubscriptionStore {
     vaults: HashMap<String, Vec<Subscription>>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 pub(crate) struct SubscriptionView {
     id: String,
     name: String,
@@ -55,7 +55,7 @@ pub(crate) struct SubscriptionView {
     has_cache: bool,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 pub(crate) struct OverlayRange {
     subscriptions: Vec<SubscriptionView>,
     occurrences: Vec<OverlayOccurrence>,
@@ -286,6 +286,7 @@ async fn refresh_one(
 }
 
 #[tauri::command(async)]
+#[specta::specta]
 pub(crate) fn calendar_subscriptions(
     app: AppHandle,
     state: State<AppState>,
@@ -301,6 +302,7 @@ pub(crate) fn calendar_subscriptions(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub(crate) async fn add_calendar_subscription(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -359,6 +361,7 @@ pub(crate) async fn add_calendar_subscription(
 }
 
 #[tauri::command(async)]
+#[specta::specta]
 pub(crate) fn update_calendar_subscription(
     app: AppHandle,
     state: State<AppState>,
@@ -390,6 +393,7 @@ pub(crate) fn update_calendar_subscription(
 }
 
 #[tauri::command(async)]
+#[specta::specta]
 pub(crate) fn remove_calendar_subscription(
     app: AppHandle,
     state: State<AppState>,
@@ -412,6 +416,7 @@ pub(crate) fn remove_calendar_subscription(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub(crate) async fn refresh_calendar_subscriptions(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -437,6 +442,7 @@ pub(crate) async fn refresh_calendar_subscriptions(
 }
 
 #[tauri::command(async)]
+#[specta::specta]
 pub(crate) fn calendar_overlay_range(
     app: AppHandle,
     state: State<AppState>,

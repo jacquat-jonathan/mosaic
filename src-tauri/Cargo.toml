@@ -13,7 +13,7 @@ tauri-build = { version = "2.7", features = [] }
 serde_json.workspace = true
 
 [dependencies]
-mosaic-core.workspace = true
+mosaic-core = { workspace = true, features = ["specta"] }
 serde.workspace = true
 serde_json.workspace = true
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
@@ -25,6 +25,9 @@ base64 = "0.22"
 sha2 = "0.11"
 tempfile = "3.27.0"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+tauri-specta = { version = "=2.0.0-rc.25", features = ["derive", "typescript"] }
+specta = { version = "=2.0.0-rc.25", features = ["derive", "serde_json"] }
+specta-typescript = "=0.0.12"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2-foundation = { version = "0.3", features = ["NSUserDefaults", "NSString"] }

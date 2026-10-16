@@ -19,6 +19,7 @@ pub struct Vault {
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct Entry {
     pub path: String,
     pub name: String,
@@ -30,6 +31,7 @@ pub struct Entry {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct FileContent {
     pub path: String,
     pub kind: FileKind,
@@ -44,6 +46,7 @@ pub struct FileContent {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct Written {
     pub path: String,
     pub hash: String,

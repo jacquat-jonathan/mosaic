@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct IcalImportCandidate {
     pub key: String,
     pub source_uid: String,
@@ -26,6 +27,7 @@ pub struct IcalImportCandidate {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct IcalImportPreview {
     pub planner_revision: i64,
     pub source_kind: String,
@@ -34,6 +36,7 @@ pub struct IcalImportPreview {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct IcalImportResult {
     pub planner_revision: i64,
     pub imported_event_ids: Vec<String>,
@@ -41,6 +44,7 @@ pub struct IcalImportResult {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct OverlayOccurrence {
     pub source_id: String,
     pub source_name: String,

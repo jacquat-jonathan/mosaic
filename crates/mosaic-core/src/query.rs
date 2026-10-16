@@ -104,6 +104,7 @@ pub fn task_status(mark: char) -> &'static str {
 
 /// A task row's own fields.
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct TaskRow {
     pub workflow: String,
     /// 1-based line in the note.
@@ -121,6 +122,7 @@ pub struct TaskRow {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct QueryRow {
     pub path: String,
     pub title: String,
@@ -128,6 +130,7 @@ pub struct QueryRow {
     pub modified: u64,
     pub tags: Vec<String>,
     /// The note's frontmatter.
+    #[cfg_attr(feature = "specta", specta(type = specta_typescript::Unknown))]
     pub props: Value,
     /// Set for task queries (`task:`): the row is this task, in the note above.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -166,6 +169,7 @@ impl QueryRow {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct QueryResult {
     /// Fields worth showing next to each note: `show:`, or the fields the query filters and sorts on.
     pub columns: Vec<String>,

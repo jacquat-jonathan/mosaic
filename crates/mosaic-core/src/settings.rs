@@ -52,6 +52,7 @@ impl Default for TesseraSettings {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct AgentRun {
     pub id: u64,
     pub agent: String,
@@ -95,6 +96,7 @@ fn one_attempt() -> u8 {
 /// What agents may do in a folder (and everything inside it).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub enum Access {
     /// Agents can read and search it, but not change anything.
     ReadOnly,
@@ -106,6 +108,7 @@ pub enum Access {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(from = "RawRule", into = "RawRule")]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct AgentRule {
     /// Vault-relative folder (or file) path.
     pub path: String,
@@ -116,6 +119,7 @@ pub struct AgentRule {
 }
 
 #[derive(Serialize, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 struct RawRule {
     path: String,
     access: String,

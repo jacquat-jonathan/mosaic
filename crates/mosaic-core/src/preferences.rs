@@ -5,23 +5,69 @@ use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct VaultPreferences {
     pub version: u32,
     pub agents_folder: String,
     pub daily_folder: String,
     pub daily_template: String,
+    #[cfg_attr(feature = "specta", specta(type = choices::DailyFormat))]
     pub daily_format: String,
+    #[cfg_attr(feature = "specta", specta(type = choices::NewNoteLocation))]
     pub new_note_location: String,
     pub new_note_folder: String,
+    #[cfg_attr(feature = "specta", specta(type = choices::AttachmentLocation))]
     pub attachment_location: String,
     pub attachment_folder: String,
     pub show_attachments_in_tree: bool,
+    #[cfg_attr(feature = "specta", specta(type = choices::LinkStyle))]
     pub link_style: String,
     pub startup_note: String,
     pub folder_colors: BTreeMap<String, String>,
+    /// Set once the app moved the per-app new-note and daily-note settings of Mosaic 0.17 and
+    /// earlier into this vault's preferences.
+    pub legacy_migrated: bool,
+    /// Preferences a newer Mosaic wrote, kept on save (not part of the UI's type).
     #[serde(flatten)]
+    #[cfg_attr(feature = "specta", specta(skip))]
     pub other: BTreeMap<String, serde_json::Value>,
 }
+/// The values `validate` accepts, as types for the app's TypeScript bindings.
+#[cfg(feature = "specta")]
+#[allow(dead_code)]
+mod choices {
+    use serde::Serialize;
+
+    #[derive(Serialize, specta::Type)]
+    pub enum DailyFormat {
+        #[serde(rename = "YYYY-MM-DD")]
+        Iso,
+        #[serde(rename = "DD-MM-YYYY")]
+        DayFirst,
+        #[serde(rename = "YYYYMMDD")]
+        Compact,
+    }
+    #[derive(Serialize, specta::Type)]
+    #[serde(rename_all = "kebab-case")]
+    pub enum NewNoteLocation {
+        Current,
+        Root,
+        Folder,
+    }
+    #[derive(Serialize, specta::Type)]
+    #[serde(rename_all = "kebab-case")]
+    pub enum AttachmentLocation {
+        NextToNote,
+        Folder,
+    }
+    #[derive(Serialize, specta::Type)]
+    #[serde(rename_all = "kebab-case")]
+    pub enum LinkStyle {
+        Wiki,
+        Markdown,
+    }
+}
+
 impl Default for VaultPreferences {
     fn default() -> Self {
         Self {
@@ -38,6 +84,7 @@ impl Default for VaultPreferences {
             link_style: "wiki".into(),
             startup_note: String::new(),
             folder_colors: BTreeMap::new(),
+            legacy_migrated: false,
             other: BTreeMap::new(),
         }
     }

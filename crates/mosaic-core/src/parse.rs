@@ -30,6 +30,7 @@ pub struct Link {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct Heading {
     pub level: u8,
     pub text: String,

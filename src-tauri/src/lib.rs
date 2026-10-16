@@ -42,7 +42,7 @@ impl AppState {
     }
 }
 
-#[derive(Serialize, Clone)]
+#[derive(Serialize, Clone, specta::Type)]
 struct VaultInfo {
     root: String,
     name: String,
@@ -71,6 +71,7 @@ fn info(ws: &Workspace) -> VaultInfo {
 }
 
 #[tauri::command(async)]
+#[specta::specta]
 fn open_vault(app: AppHandle, state: State<AppState>, path: String) -> CmdResult<VaultInfo> {
     let ws = Workspace::open(&path)?;
     ws.open_planner()?;
@@ -79,6 +80,7 @@ fn open_vault(app: AppHandle, state: State<AppState>, path: String) -> CmdResult
 
 /// Creates `<parent>/<name>` as a new, empty vault folder. The UI then opens it with `open_vault`.
 #[tauri::command(async)]
+#[specta::specta]
 fn create_vault(parent: String, name: String) -> CmdResult<VaultInfo> {
     let vault = mosaic_core::Vault::create_new(&parent, &name)?;
     let root = vault.root();
@@ -146,7 +148,7 @@ fn activate(app: AppHandle, state: &AppState, ws: Workspace) -> CmdResult<VaultI
     Ok(out)
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, specta::Type)]
 struct RecentVault {
     root: String,
     name: String,
@@ -155,6 +157,7 @@ struct RecentVault {
 }
 
 #[tauri::command(async)]
+#[specta::specta]
 fn recent_vaults() -> Vec<RecentVault> {
     Settings::load()
         .recent_vaults
@@ -171,6 +174,7 @@ fn recent_vaults() -> Vec<RecentVault> {
 }
 
 #[tauri::command(async)]
+#[specta::specta]
 fn forget_vault(path: String) -> CmdResult<()> {
     Settings::update(|settings| {
         settings.forget_vault(std::path::Path::new(&path));
@@ -180,21 +184,25 @@ fn forget_vault(path: String) -> CmdResult<()> {
 }
 
 #[tauri::command(async)]
+#[specta::specta]
 fn get_bookmarks(state: State<AppState>) -> CmdResult<Vec<String>> {
     VaultState::open(state.get()?.vault.root())?.bookmarks()
 }
 
 #[tauri::command(async)]
+#[specta::specta]
 fn get_agent_rules(state: State<AppState>) -> CmdResult<Vec<AgentRule>> {
     VaultState::open(state.get()?.vault.root())?.rules()
 }
 
 #[tauri::command(async)]
+#[specta::specta]
 fn set_agent_rules(state: State<AppState>, rules: Vec<AgentRule>) -> CmdResult<()> {
     VaultState::open(state.get()?.vault.root())?.set_rules(rules)
 }
 
 #[tauri::command(async)]
+#[specta::specta]
 fn set_bookmarks(state: State<AppState>, paths: Vec<String>) -> CmdResult<()> {
     VaultState::open(state.get()?.vault.root())?.update_bookmarks(|list| {
         *list = paths;
@@ -203,6 +211,7 @@ fn set_bookmarks(state: State<AppState>, paths: Vec<String>) -> CmdResult<()> {
 }
 
 #[tauri::command(async)]
+#[specta::specta]
 fn copy_path(state: State<AppState>, from: String, to: String) -> CmdResult<Written> {
     state.get()?.copy(&from, &to)
 }
@@ -239,26 +248,31 @@ fn percent_decode(s: &str) -> Option<String> {
 }
 
 #[tauri::command(async)]
+#[specta::specta]
 fn current_vault(state: State<AppState>) -> Option<VaultInfo> {
     state.get().ok().map(|ws| info(&ws))
 }
 
 #[tauri::command(async)]
+#[specta::specta]
 fn last_vault() -> Option<PathBuf> {
     Settings::load().last_vault.filter(|p| p.is_dir())
 }
 
 #[tauri::command(async)]
+#[specta::specta]
 fn list_dir(state: State<AppState>, dir: String, recursive: bool) -> CmdResult<Vec<Entry>> {
     state.get()?.list(&dir, recursive)
 }
 
 #[tauri::command(async)]
+#[specta::specta]
 fn read_file(state: State<AppState>, path: String) -> CmdResult<FileContent> {
     state.get()?.read(&path)
 }
 
 #[tauri::command(async)]
+#[specta::specta]
 fn create_file(
     state: State<AppState>,
     path: String,
@@ -273,21 +287,21 @@ fn create_file(
 }
 
 #[tauri::command(async)]
+#[specta::specta]
 fn template_config(state: State<AppState>) -> CmdResult<mosaic_core::templates::TemplateConfig> {
     state.get()?.template_config()
 }
 #[tauri::command(async)]
+#[specta::specta]
 fn vault_preferences(
     state: State<AppState>,
 ) -> CmdResult<mosaic_core::preferences::VaultPreferences> {
     state.get()?.vault_preferences()
 }
 #[tauri::command(async)]
-fn set_vault_preferences(
-    state: State<AppState>,
-    patch: serde_json::Value,
-    root: String,
-) -> CmdResult<()> {
+#[specta::specta]
+fn set_vault_preferences(state: State<AppState>, patch: JsonValue, root: String) -> CmdResult<()> {
+    let JsonValue(patch) = patch;
     let ws = state.get()?;
     if ws.vault.root().to_string_lossy() != root {
         return Err(Error::Invalid("The vault changed. Reopen Settings.".into()));
@@ -295,6 +309,7 @@ fn set_vault_preferences(
     ws.set_vault_preferences(patch)
 }
 #[tauri::command(async)]
+#[specta::specta]
 fn set_template_config(
     state: State<AppState>,
     config: mosaic_core::templates::TemplateConfig,
@@ -302,6 +317,7 @@ fn set_template_config(
     state.get()?.set_template_config(config)
 }
 #[tauri::command(async)]
+#[specta::specta]
 fn list_templates(
     state: State<AppState>,
     path: Option<String>,
@@ -309,6 +325,7 @@ fn list_templates(
     state.get()?.list_templates(path.as_deref())
 }
 #[tauri::command(async)]
+#[specta::specta]
 fn render_template(
     state: State<AppState>,
     request: mosaic_core::templates::TemplateRequest,
@@ -316,6 +333,7 @@ fn render_template(
     state.get()?.render_template(&request)
 }
 #[tauri::command(async)]
+#[specta::specta]
 fn create_note(
     state: State<AppState>,
     request: mosaic_core::templates::TemplateRequest,
@@ -323,11 +341,13 @@ fn create_note(
     state.get()?.create_note(&request)
 }
 #[tauri::command(async)]
+#[specta::specta]
 fn template_starters() -> Vec<(&'static str, &'static str)> {
     mosaic_core::templates::STARTERS.to_vec()
 }
 
 #[tauri::command(async)]
+#[specta::specta]
 fn write_file(
     state: State<AppState>,
     path: String,
@@ -343,27 +363,32 @@ fn write_file(
 }
 
 #[tauri::command(async)]
+#[specta::specta]
 fn make_dir(state: State<AppState>, path: String) -> CmdResult<()> {
     state.get()?.mkdir(&path)
 }
 
 #[tauri::command(async)]
+#[specta::specta]
 fn rename_path(state: State<AppState>, from: String, to: String) -> CmdResult<Renamed> {
     state.get()?.rename(&from, &to, true)
 }
 
 /// Moves whose link rewrites didn't all finish; the app offers **Fix links** for each.
 #[tauri::command(async)]
+#[specta::specta]
 fn unfinished_renames(state: State<AppState>) -> CmdResult<Vec<UnfinishedRename>> {
     state.get()?.unfinished_renames()
 }
 
 #[tauri::command(async)]
+#[specta::specta]
 fn fix_links(state: State<AppState>, id: i64) -> CmdResult<Renamed> {
     state.get()?.fix_links(id)
 }
 
 #[tauri::command(async)]
+#[specta::specta]
 fn delete_path(state: State<AppState>, path: String) -> CmdResult<()> {
     state.get()?.delete(&path).map(|_| ())
 }
@@ -371,6 +396,7 @@ fn delete_path(state: State<AppState>, path: String) -> CmdResult<()> {
 /// Opens the macOS print dialog for the window ("Save as PDF" is in it). The UI shows only the
 /// print preview when printing, through print CSS.
 #[tauri::command]
+#[specta::specta]
 fn print_window(window: tauri::WebviewWindow) -> CmdResult<()> {
     window
         .print()
@@ -378,11 +404,13 @@ fn print_window(window: tauri::WebviewWindow) -> CmdResult<()> {
 }
 
 #[tauri::command(async)]
+#[specta::specta]
 fn unlinked_mentions(state: State<AppState>, path: String) -> CmdResult<Vec<Mention>> {
     state.get()?.unlinked_mentions(&path, 30)
 }
 
 #[tauri::command(async)]
+#[specta::specta]
 fn link_mention(
     state: State<AppState>,
     source: String,
@@ -394,16 +422,19 @@ fn link_mention(
 }
 
 #[tauri::command(async)]
+#[specta::specta]
 fn file_history(state: State<AppState>, path: String) -> CmdResult<Vec<Version>> {
     state.get()?.history(&path, 50)
 }
 
 #[tauri::command(async)]
+#[specta::specta]
 fn version_content(state: State<AppState>, id: i64) -> CmdResult<String> {
     state.get()?.version_content(id)
 }
 
 #[tauri::command(async)]
+#[specta::specta]
 fn restore_version(
     state: State<AppState>,
     path: String,
@@ -414,16 +445,19 @@ fn restore_version(
 }
 
 #[tauri::command(async)]
+#[specta::specta]
 fn ai_activity(state: State<AppState>, limit: Option<usize>) -> CmdResult<Vec<Version>> {
     state.get()?.activity(limit.unwrap_or(200))
 }
 
 #[tauri::command(async)]
+#[specta::specta]
 fn undo_change(state: State<AppState>, id: i64) -> CmdResult<String> {
     state.get()?.undo(id)
 }
 
 #[tauri::command(async)]
+#[specta::specta]
 fn absolute_path(state: State<AppState>, path: String) -> CmdResult<String> {
     Ok(state.get()?.vault.resolve(&path)?.display().to_string())
 }
@@ -431,6 +465,7 @@ fn absolute_path(state: State<AppState>, path: String) -> CmdResult<String> {
 /// Opens a file of the open vault with its default macOS app. The webview has no general
 /// "open path" permission: programs, installers and folders are refused (`Vault::openable`).
 #[tauri::command(async)]
+#[specta::specta]
 fn open_in_default_app(app: AppHandle, state: State<AppState>, path: String) -> CmdResult<()> {
     let abs = state.get()?.vault.openable(&path)?;
     app.opener()
@@ -439,6 +474,7 @@ fn open_in_default_app(app: AppHandle, state: State<AppState>, path: String) -> 
 }
 
 #[tauri::command(async)]
+#[specta::specta]
 fn search(
     state: State<AppState>,
     query: String,
@@ -448,6 +484,7 @@ fn search(
 }
 
 #[tauri::command(async)]
+#[specta::specta]
 fn proposals(
     state: State<AppState>,
     include_decided: Option<bool>,
@@ -458,16 +495,19 @@ fn proposals(
 }
 
 #[tauri::command(async)]
+#[specta::specta]
 fn proposal_content(state: State<AppState>, id: i64) -> CmdResult<Option<String>> {
     state.get()?.proposal_content(id)
 }
 
 #[tauri::command(async)]
+#[specta::specta]
 fn proposal_base(state: State<AppState>, id: i64) -> CmdResult<Option<String>> {
     state.get()?.proposal_base(id)
 }
 
 #[tauri::command(async)]
+#[specta::specta]
 fn accept_proposal(
     state: State<AppState>,
     id: i64,
@@ -480,21 +520,25 @@ fn accept_proposal(
 }
 
 #[tauri::command(async)]
+#[specta::specta]
 fn reject_proposal(state: State<AppState>, id: i64, reason: Option<String>) -> CmdResult<()> {
     state.get()?.reject_proposal(id, reason.as_deref())
 }
 
 #[tauri::command(async)]
+#[specta::specta]
 fn agents(state: State<AppState>) -> CmdResult<Vec<mosaic_core::agents::Agent>> {
     state.get()?.agents()
 }
 
 #[tauri::command(async)]
+#[specta::specta]
 fn mirror_agents(state: State<AppState>) -> CmdResult<mosaic_core::agents::MirrorReport> {
     state.get()?.mirror_agents()
 }
 
 #[tauri::command(async)]
+#[specta::specta]
 fn days(
     state: State<AppState>,
     from: String,
@@ -505,6 +549,7 @@ fn days(
 }
 
 #[tauri::command(async)]
+#[specta::specta]
 fn carry_over(
     state: State<AppState>,
     day: String,
@@ -517,6 +562,7 @@ fn carry_over(
 }
 
 #[tauri::command(async)]
+#[specta::specta]
 fn set_task(
     state: State<AppState>,
     path: String,
@@ -528,6 +574,7 @@ fn set_task(
 }
 
 #[tauri::command(async)]
+#[specta::specta]
 fn set_task_workflow(
     state: State<AppState>,
     path: String,
@@ -542,6 +589,7 @@ fn set_task_workflow(
 }
 
 #[tauri::command(async)]
+#[specta::specta]
 fn query_notes(
     state: State<AppState>,
     query: String,
@@ -550,26 +598,30 @@ fn query_notes(
 }
 
 #[tauri::command(async)]
+#[specta::specta]
 fn backlinks(state: State<AppState>, path: String) -> CmdResult<Vec<Backlink>> {
     state.get()?.backlinks(&path)
 }
 
 #[tauri::command(async)]
+#[specta::specta]
 fn tags(state: State<AppState>) -> CmdResult<Vec<TagCount>> {
     state.get()?.tags()
 }
 
 #[tauri::command(async)]
+#[specta::specta]
 fn aliases(state: State<AppState>) -> CmdResult<Vec<(String, String)>> {
     state.get()?.aliases()
 }
 
 #[tauri::command(async)]
+#[specta::specta]
 fn outline(state: State<AppState>, path: String) -> CmdResult<Outline> {
     state.get()?.outline(&path)
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, specta::Type)]
 struct CliInfo {
     /// The `mosaic` binary shipped inside the app.
     path: Option<String>,
@@ -589,6 +641,7 @@ fn cli_link() -> PathBuf {
 }
 
 #[tauri::command(async)]
+#[specta::specta]
 fn cli_info() -> CliInfo {
     let path = bundled_cli();
     let link = cli_link();
@@ -605,6 +658,7 @@ fn cli_info() -> CliInfo {
 
 /// Symlinks the bundled CLI into ~/.local/bin (no admin rights needed).
 #[tauri::command(async)]
+#[specta::specta]
 fn install_cli() -> CmdResult<CliInfo> {
     let src = bundled_cli()
         .ok_or_else(|| Error::Invalid("the mosaic command isn't bundled in this build".into()))?;
@@ -631,43 +685,26 @@ fn enable_webkit_spellcheck() {
         .setBool_forKey(true, ns_string!("WebContinuousSpellCheckingEnabled"));
 }
 
-pub fn run() {
-    #[cfg(target_os = "macos")]
-    enable_webkit_spellcheck();
-    tauri::Builder::default()
-        .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_opener::init())
-        .manage(AppState::default())
-        .manage(update::UpdateState::default())
-        .manage(chat::ChatState::default())
-        .manage(tessera::TesseraState::default())
-        .on_window_event(|window, event| {
-            if matches!(
-                event,
-                tauri::WindowEvent::CloseRequested { .. }
-                    | tauri::WindowEvent::Moved(_)
-                    | tauri::WindowEvent::Resized(_)
-            ) {
-                window_state::save(window);
-            }
-        })
-        .setup(|app| {
-            if let Some(window) = app.get_webview_window("main") {
-                window_state::restore(&window);
-            }
-            // Agents change bookmarks through the CLI/MCP, which write settings.json directly.
-            let handle = app.handle().clone();
-            let watcher = mosaic_core::watch::watch_settings(move || {
-                let _ = handle.emit("settings-changed", ());
-            })
-            .ok();
-            *app.state::<AppState>()
-                .settings_watcher
-                .lock()
-                .expect("watcher lock poisoned") = watcher;
-            Ok(())
-        })
-        .invoke_handler(tauri::generate_handler![
+/// Free-form JSON from the UI (a preferences patch): `unknown` in the TypeScript bindings.
+#[derive(serde::Deserialize)]
+#[serde(transparent)]
+struct JsonValue(serde_json::Value);
+
+impl specta::Type for JsonValue {
+    fn definition(types: &mut specta::Types) -> specta::datatype::DataType {
+        specta_typescript::Unknown::<()>::definition(types)
+    }
+}
+
+/// The app's commands, as the UI calls them: registered from this one list, and exported to
+/// `ui/src/ipc/bindings.ts` (see the `bindings_are_current` test).
+pub(crate) fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
+    tauri_specta::Builder::<tauri::Wry>::new()
+        .error_handling(tauri_specta::ErrorHandlingMode::Throw)
+        // ids, sizes and millisecond times are 64-bit in Rust but always below 2^53: plain numbers,
+        // as the UI already receives them.
+        .dangerously_cast_bigints_to_number()
+        .commands(tauri_specta::collect_commands![
             open_vault,
             query_notes,
             set_task,
@@ -741,7 +778,6 @@ pub fn run() {
             get_bookmarks,
             set_bookmarks,
             copy_path,
-            import_file,
             current_vault,
             last_vault,
             list_dir,
@@ -787,6 +823,88 @@ pub fn run() {
             update::cancel_update,
             update::finish_update,
         ])
+}
+
+pub fn run() {
+    #[cfg(target_os = "macos")]
+    enable_webkit_spellcheck();
+    tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
+        .manage(AppState::default())
+        .manage(update::UpdateState::default())
+        .manage(chat::ChatState::default())
+        .manage(tessera::TesseraState::default())
+        .on_window_event(|window, event| {
+            if matches!(
+                event,
+                tauri::WindowEvent::CloseRequested { .. }
+                    | tauri::WindowEvent::Moved(_)
+                    | tauri::WindowEvent::Resized(_)
+            ) {
+                window_state::save(window);
+            }
+        })
+        .setup(|app| {
+            if let Some(window) = app.get_webview_window("main") {
+                window_state::restore(&window);
+            }
+            // Agents change bookmarks through the CLI/MCP, which write settings.json directly.
+            let handle = app.handle().clone();
+            let watcher = mosaic_core::watch::watch_settings(move || {
+                let _ = handle.emit("settings-changed", ());
+            })
+            .ok();
+            *app.state::<AppState>()
+                .settings_watcher
+                .lock()
+                .expect("watcher lock poisoned") = watcher;
+            Ok(())
+        })
+        .invoke_handler({
+            // Every typed command goes through the same list the TypeScript bindings come from;
+            // only `import_file` (raw bytes in the request body) is routed by hand.
+            let typed = specta_builder().invoke_handler();
+            let raw: Box<dyn Fn(tauri::ipc::Invoke) -> bool + Send + Sync> =
+                Box::new(tauri::generate_handler![import_file]);
+            move |invoke| {
+                if invoke.message.command() == "import_file" {
+                    raw(invoke)
+                } else {
+                    typed(invoke)
+                }
+            }
+        })
         .run(tauri::generate_context!())
         .expect("error while running Mosaic");
+}
+
+#[cfg(test)]
+mod bindings_tests {
+    /// `ui/src/ipc/bindings.ts` is generated from the commands above; this fails when it's stale.
+    /// Regenerate it with `MOSAIC_WRITE_BINDINGS=1 cargo test -p mosaic-app bindings_are_current`.
+    #[test]
+    fn bindings_are_current() {
+        let path =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../ui/src/ipc/bindings.ts");
+        let dir = tempfile::tempdir().unwrap();
+        let fresh = dir.path().join("bindings.ts");
+        super::specta_builder()
+            .export(
+                specta_typescript::Typescript::default().header(
+                    "// Generated from src-tauri (tauri-specta). Don't edit: see bindings_are_current.\n",
+                ),
+                &fresh,
+            )
+            .expect("export bindings");
+        let fresh = std::fs::read_to_string(fresh).unwrap();
+        if std::env::var_os("MOSAIC_WRITE_BINDINGS").is_some() {
+            std::fs::write(&path, &fresh).unwrap();
+        }
+        let current = std::fs::read_to_string(&path).unwrap_or_default();
+        assert!(
+            current == fresh,
+            "ui/src/ipc/bindings.ts is out of date: run MOSAIC_WRITE_BINDINGS=1 cargo test -p mosaic-app bindings_are_current"
+        );
+    }
 }

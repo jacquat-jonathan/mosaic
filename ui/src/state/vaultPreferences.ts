@@ -1,24 +1,12 @@
 import { create } from "zustand";
 import { api } from "../ipc/api";
 import { prefs } from "./settings";
+import type * as B from "../ipc/bindings";
 import { errorMessage } from "../ipc/types";
 
-export interface VaultPreferences {
-  version: number;
-  agents_folder: string;
-  daily_folder: string;
-  daily_template: string;
-  daily_format: "YYYY-MM-DD" | "DD-MM-YYYY" | "YYYYMMDD";
-  new_note_location: "current" | "root" | "folder";
-  new_note_folder: string;
-  attachment_location: "next-to-note" | "folder";
-  attachment_folder: string;
-  show_attachments_in_tree: boolean;
-  link_style: "wiki" | "markdown";
-  startup_note: string;
-  folder_colors: Record<string, string>;
-  legacy_migrated?: boolean;
-}
+/** As the core sends them: every field is present (`#[serde(default)]` only applies when it reads
+ * them), and the choice fields are the values `VaultPreferences::validate` accepts. */
+export type VaultPreferences = Required<B.VaultPreferences>;
 export const DEFAULT_VAULT_PREFS: VaultPreferences = {
   version: 1,
   agents_folder: "Agents",
@@ -33,6 +21,7 @@ export const DEFAULT_VAULT_PREFS: VaultPreferences = {
   link_style: "wiki",
   startup_note: "",
   folder_colors: {},
+  legacy_migrated: false,
 };
 export const useVaultPreferences = create<{ root: string | null; value: VaultPreferences; error: string | null }>(
   () => ({ root: null, value: DEFAULT_VAULT_PREFS, error: null }),

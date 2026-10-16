@@ -5,6 +5,7 @@ use chrono::{DateTime, FixedOffset, Local};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct TemplateRule {
     pub folder: String,
     /// None explicitly stops inheritance with a blank note.
@@ -12,6 +13,7 @@ pub struct TemplateRule {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct TemplateConfig {
     pub version: u32,
     pub folder: String,
@@ -96,21 +98,25 @@ impl TemplateConfig {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct TemplateResolution {
     pub template: Option<String>,
     pub rule_folder: Option<String>,
 }
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct TemplateEntry {
     pub path: String,
     pub name: String,
 }
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct TemplateList {
     pub templates: Vec<TemplateEntry>,
     pub default: TemplateResolution,
 }
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct TemplateRequest {
     pub path: String,
     #[serde(default)]
@@ -124,6 +130,7 @@ pub struct TemplateRequest {
     pub expected_template_hash: Option<String>,
 }
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct TemplateContext {
     pub title: String,
     pub date: String,
@@ -132,6 +139,7 @@ pub struct TemplateContext {
     pub timestamp: String,
 }
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct TemplatePreview {
     pub path: String,
     pub content: String,
@@ -141,6 +149,7 @@ pub struct TemplatePreview {
     pub context: TemplateContext,
 }
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct CreatedNote {
     #[serde(flatten)]
     pub written: Written,

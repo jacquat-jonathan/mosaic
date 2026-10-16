@@ -46,6 +46,7 @@ fn date(s: &str) -> Result<NaiveDate> {
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct DayTask {
     /// The note it's in.
     pub path: String,
@@ -64,6 +65,7 @@ pub struct DayTask {
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct Day {
     /// `2026-10-04`.
     pub date: String,
@@ -73,6 +75,7 @@ pub struct Day {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct Days {
     pub days: Vec<Day>,
     /// Open dated tasks whose day is before `today`.
@@ -80,6 +83,7 @@ pub struct Days {
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct CarryOver {
     /// The daily note the tasks came from (`None`: there was none before this day).
     pub from: Option<String>,

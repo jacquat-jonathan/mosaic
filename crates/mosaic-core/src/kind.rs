@@ -5,6 +5,7 @@ use std::path::Path;
 /// how to read and write the file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub enum FileKind {
     Markdown,
     Canvas,

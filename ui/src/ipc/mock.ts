@@ -35,6 +35,7 @@ import type {
   UpdatePlannerWorkSession,
   Version,
 } from "./types";
+import type { commands, Day, DayTask } from "./bindings";
 import { kindOf } from "./kinds";
 import { parse as parseYaml } from "yaml";
 import { annotatedTask, taskLabel, type WorkflowState, WORKFLOW_STATES } from "../views/taskBoardModel";
@@ -246,7 +247,7 @@ function mockIcalPreview(content: string, sourceKind: string): IcalImportPreview
       start_value,
       end_value,
       timezone: event.timezone,
-      recurrence_rule: event.recurrence_rule,
+      recurrence_rule: event.recurrence_rule ?? null,
       duplicate: importedIcal.has(`${sourceKind}:${key}`),
       event,
     };
@@ -443,19 +444,19 @@ function mockDays(from: string, to: string, today: string) {
       date = `${stem.slice(0, 4)}-${stem.slice(4, 6)}-${stem.slice(6)}`;
     return date && mockDay(new Date(`${date}T12:00`)) === date ? date : null;
   };
-  const days: { date: string; note: string | null; tasks: unknown[] }[] = [];
+  const days: Day[] = [];
   for (let d = new Date(`${from}T12:00`); mockDay(d) <= to; d.setDate(d.getDate() + 1)) {
     const date = mockDay(d);
     const notes = [...files.keys()].filter((p) => dailyOf(p) === date);
     if (notes.length > 1) throw err("invalid", `Two daily notes represent ${date}; rename one before continuing`);
     days.push({ date, note: notes[0] ?? null, tasks: [] });
   }
-  const overdue: unknown[] = [];
+  const overdue: DayTask[] = [];
   for (const [path, f] of [...files.entries()].sort(([a], [b]) => a.localeCompare(b))) {
     if (!path.endsWith(".md")) continue;
     for (const t of mockTasks(path, f.content)) {
       const daily = dailyOf(path);
-      const task = { ...t, text: taskLabel(t.text), status: taskStatus(t.mark), daily: !!daily };
+      const task: DayTask = { ...t, text: taskLabel(t.text), status: taskStatus(t.mark), daily: !!daily };
       const on = daily ?? t.due;
       if (!daily && t.due && task.status === "open" && t.due < today) overdue.push(task);
       days.find((x) => x.date === on)?.tasks.push(task);
@@ -834,38 +835,119 @@ function write(p: string, content: string) {
 }
 
 const vaultPreferences = new Map<string, Record<string, unknown>>();
-export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promise<unknown> {
+/** Commands whose arguments name a vault root refuse another vault, like the real backend. */
+function checkRoot(a: Record<string, unknown>) {
   if (typeof a.root === "string" && a.root !== mockRoot) throw err("invalid", "The vault changed");
-  switch (cmd) {
-    case "planner_summary":
-      return {
-        schema_version: 1,
-        revision: plannerRevision,
-        epics: plannerEpics.length,
-        tasks: plannerTasks.length,
-        work_sessions: plannerWorkSessions.length,
-        events: plannerEvents.filter((event) => !event.series_id).length,
-        is_empty:
-          plannerEpics.length === 0 &&
-          plannerTasks.length === 0 &&
-          plannerWorkSessions.length === 0 &&
-          plannerEvents.length === 0,
-      };
-    case "planner_activity":
-      return plannerActivities
-        .filter((item) => item.entity_kind === a.entityKind && item.entity_id === a.entityId)
-        .map((item) => structuredClone(item));
-    case "planner_epics":
-      return plannerEpics
-        .filter((epic) => (a.includeArchived || !epic.archived_at) && (a.includeTrashed || !epic.trashed_at))
-        .sort((x, y) => x.position - y.position)
-        .map((epic) => ({ ...epic }));
-    case "planner_tasks":
-      return plannerTasks
-        .filter((task) => (a.includeArchived || !task.archived_at) && (a.includeTrashed || !task.trashed_at))
-        .sort((x, y) => x.position - y.position)
-        .map((task) => ({ ...task }));
-    case "planner_create_epic": {
+}
+
+/** An event input as the core stores it: fields left out are saved as null. */
+function eventFields(input: CreatePlannerEvent) {
+  return {
+    ...input,
+    meeting_url: input.meeting_url ?? null,
+    epic_id: input.epic_id ?? null,
+    color: input.color ?? null,
+    recurrence_rule: input.recurrence_rule ?? null,
+  };
+}
+
+function notInMock(cmd: string): never {
+  throw err("invalid", `mock: ${cmd} is only available in the app`);
+}
+
+/** The mock backend: one function per command in ./bindings.ts, so the compiler checks every
+ * result against the Rust types and fails when a command is added, renamed or removed. */
+export const mockCommands: typeof commands = {
+  openVault: async (path) => {
+    const a: Record<string, unknown> = { path };
+    opened = true;
+    mockRoot = String(a.path ?? "/mock/vault");
+    return { root: mockRoot, name: "Mock vault" };
+  },
+  queryNotes: async (query) => {
+    const a: Record<string, unknown> = { query };
+    return mockQuery(String(a.query ?? ""));
+  },
+  setTask: async (path, line, text, done) => {
+    const a: Record<string, unknown> = { path, line, text, done };
+    {
+      const f = files.get(a.path as string);
+      if (!f) throw err("not_found", String(a.path));
+      const lines = f.content.split("\n");
+      const i = (a.line as number) - 1;
+      const m = /^(\s*(?:[-*+]|\d+[.)])\s+\[)(.)(\].*)$/.exec(lines[i] ?? "");
+      if (!m || taskLabel(m[3].slice(1).trim()) !== a.text) throw err("conflict", String(a.path));
+      lines[i] =
+        `${m[1]}${a.done ? "x" : " "}${a.done ? m[3] : m[3].replace(/\s*<!--\s*mosaic:state=done\s*-->/g, "")}`;
+      f.content = lines.join("\n");
+      f.mtime = Date.now();
+      emit("vault-changed", { paths: [path] });
+      return { path, hash: hash(f.content) };
+    }
+  },
+  setTaskWorkflow: async (path, line, text, expectedState, next) => {
+    const a: Record<string, unknown> = { path, line, text, expectedState, next };
+    {
+      const f = files.get(a.path as string);
+      if (!f) throw err("not_found", String(a.path));
+      if (!WORKFLOW_STATES.some((s) => s.id === a.next)) throw err("invalid", "Unknown workflow state");
+      const lines = f.content.split("\n");
+      const i = Number(a.line) - 1;
+      const m = /^(\s*(?:[-*+]|\d+[.)])\s+\[)([ xX])(\]\s*)(.*)$/.exec(lines[i] ?? "");
+      const state = m && mockWorkflow(m[4], m[2]);
+      if (!m || taskLabel(m[4]) !== a.text || state !== a.expectedState) throw err("conflict", String(a.path));
+      lines[i] = `${m[1]}${a.next === "done" ? "x" : " "}${m[3]}${annotatedTask(m[4], a.next as WorkflowState)}`;
+      write(String(a.path), lines.join("\n"));
+      track(String(a.path), "edited", lines.join("\n"));
+      emit("vault-changed", { paths: [path] });
+      return { path, hash: hash(files.get(path)!.content) };
+    }
+  },
+  days: async (from, to, today) => {
+    const a: Record<string, unknown> = { from, to, today };
+    return mockDays(a.from as string, a.to as string, a.today as string);
+  },
+  carryOver: async (day, path, _newNote) => {
+    return { from: null, to: path ?? `${day}.md`, moved: 0, created: false };
+  },
+  plannerSummary: async () => {
+    return {
+      schema_version: 1,
+      revision: plannerRevision,
+      epics: plannerEpics.length,
+      tasks: plannerTasks.length,
+      work_sessions: plannerWorkSessions.length,
+      events: plannerEvents.filter((event) => !event.series_id).length,
+      is_empty:
+        plannerEpics.length === 0 &&
+        plannerTasks.length === 0 &&
+        plannerWorkSessions.length === 0 &&
+        plannerEvents.length === 0,
+    };
+  },
+  plannerActivity: async (entityKind, entityId) => {
+    const a: Record<string, unknown> = { entityKind, entityId };
+    return plannerActivities
+      .filter((item) => item.entity_kind === a.entityKind && item.entity_id === a.entityId)
+      .map((item) => structuredClone(item));
+  },
+  plannerEpics: async (includeArchived, includeTrashed) => {
+    const a: Record<string, unknown> = { includeArchived, includeTrashed };
+    return plannerEpics
+      .filter((epic) => (a.includeArchived || !epic.archived_at) && (a.includeTrashed || !epic.trashed_at))
+      .sort((x, y) => x.position - y.position)
+      .map((epic) => ({ ...epic }));
+  },
+  plannerTasks: async (includeArchived, includeTrashed) => {
+    const a: Record<string, unknown> = { includeArchived, includeTrashed };
+    return plannerTasks
+      .filter((task) => (a.includeArchived || !task.archived_at) && (a.includeTrashed || !task.trashed_at))
+      .sort((x, y) => x.position - y.position)
+      .map((task) => ({ ...task }));
+  },
+  plannerCreateEpic: async (input) => {
+    const a: Record<string, unknown> = { input };
+    {
       const input = a.input as CreatePlannerEpic,
         title = input.title.trim();
       if (!title) throw err("invalid", "Epic title cannot be empty");
@@ -887,7 +969,10 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
       plannerChanged([epic.id]);
       return { ...epic };
     }
-    case "planner_update_epic": {
+  },
+  plannerUpdateEpic: async (id, input) => {
+    const a: Record<string, unknown> = { id, input };
+    {
       const epic = plannerEpics.find((item) => item.id === a.id);
       if (!epic) throw err("not_found", "Planner epic not found");
       const input = a.input as UpdatePlannerEpic;
@@ -905,9 +990,11 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
       plannerChanged([epic.id]);
       return { ...epic };
     }
-    case "planner_archive_epic":
-    case "planner_restore_epic":
-    case "planner_trash_epic": {
+  },
+  plannerArchiveEpic: async (id, expectedRevision) => {
+    const a: Record<string, unknown> = { id, expectedRevision };
+    const cmd: string = "planner_archive_epic";
+    {
       const epic = plannerEpics.find((item) => item.id === a.id);
       if (!epic) throw err("not_found", "Planner epic not found");
       plannerConflict(epic, Number(a.expectedRevision));
@@ -935,7 +1022,74 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
       plannerChanged([epic.id]);
       return { ...epic };
     }
-    case "planner_create_task": {
+  },
+  plannerRestoreEpic: async (id, expectedRevision) => {
+    const a: Record<string, unknown> = { id, expectedRevision };
+    const cmd: string = "planner_restore_epic";
+    {
+      const epic = plannerEpics.find((item) => item.id === a.id);
+      if (!epic) throw err("not_found", "Planner epic not found");
+      plannerConflict(epic, Number(a.expectedRevision));
+      const at = plannerNow();
+      if (cmd === "planner_archive_epic") epic.archived_at ??= at;
+      else if (cmd === "planner_restore_epic") {
+        epic.archived_at = null;
+        epic.trashed_at = null;
+      } else {
+        if (!epic.archived_at) throw err("invalid", "Archive an epic before moving it to Trash");
+        epic.trashed_at = at;
+      }
+      epic.revision++;
+      epic.updated_at = at;
+      plannerRecord(
+        "epic",
+        epic.id,
+        cmd === "planner_archive_epic" ? "archived" : cmd === "planner_restore_epic" ? "restored" : "trashed",
+        cmd === "planner_archive_epic"
+          ? "Archived epic"
+          : cmd === "planner_restore_epic"
+            ? "Restored epic"
+            : "Trashed epic",
+      );
+      plannerChanged([epic.id]);
+      return { ...epic };
+    }
+  },
+  plannerTrashEpic: async (id, expectedRevision) => {
+    const a: Record<string, unknown> = { id, expectedRevision };
+    const cmd: string = "planner_trash_epic";
+    {
+      const epic = plannerEpics.find((item) => item.id === a.id);
+      if (!epic) throw err("not_found", "Planner epic not found");
+      plannerConflict(epic, Number(a.expectedRevision));
+      const at = plannerNow();
+      if (cmd === "planner_archive_epic") epic.archived_at ??= at;
+      else if (cmd === "planner_restore_epic") {
+        epic.archived_at = null;
+        epic.trashed_at = null;
+      } else {
+        if (!epic.archived_at) throw err("invalid", "Archive an epic before moving it to Trash");
+        epic.trashed_at = at;
+      }
+      epic.revision++;
+      epic.updated_at = at;
+      plannerRecord(
+        "epic",
+        epic.id,
+        cmd === "planner_archive_epic" ? "archived" : cmd === "planner_restore_epic" ? "restored" : "trashed",
+        cmd === "planner_archive_epic"
+          ? "Archived epic"
+          : cmd === "planner_restore_epic"
+            ? "Restored epic"
+            : "Trashed epic",
+      );
+      plannerChanged([epic.id]);
+      return { ...epic };
+    }
+  },
+  plannerCreateTask: async (input) => {
+    const a: Record<string, unknown> = { input };
+    {
       const input = a.input as CreatePlannerTask,
         title = input.title.trim();
       if (!title) throw err("invalid", "Task title cannot be empty");
@@ -947,13 +1101,13 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
       const at = plannerNow(),
         task: PlannerTask = {
           id: nextPlannerId("task"),
-          epic_id: input.epic_id,
-          parent_id: input.parent_id,
+          epic_id: input.epic_id ?? null,
+          parent_id: input.parent_id ?? null,
           title,
           description: input.description,
           status: input.status,
-          due_date: input.due_date,
-          estimate_minutes: input.estimate_minutes,
+          due_date: input.due_date ?? null,
+          estimate_minutes: input.estimate_minutes ?? null,
           position:
             Math.max(
               0,
@@ -978,7 +1132,10 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
       plannerChanged([task.id]);
       return { ...task };
     }
-    case "planner_update_task": {
+  },
+  plannerUpdateTask: async (id, input) => {
+    const a: Record<string, unknown> = { id, input };
+    {
       const task = plannerTasks.find((item) => item.id === a.id);
       if (!task) throw err("not_found", "Planner task not found");
       const input = a.input as UpdatePlannerTask;
@@ -998,7 +1155,10 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
       plannerChanged([task.id]);
       return { ...task };
     }
-    case "planner_move_task": {
+  },
+  plannerMoveTask: async (id, input) => {
+    const a: Record<string, unknown> = { id, input };
+    {
       const task = plannerTasks.find((item) => item.id === a.id);
       if (!task) throw err("not_found", "Planner task not found");
       const input = a.input as MovePlannerTask;
@@ -1036,7 +1196,7 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
       });
       for (const id of descendants) {
         const child = plannerTasks.find((item) => item.id === id)!;
-        child.epic_id = input.epic_id;
+        child.epic_id = input.epic_id ?? null;
         child.revision++;
         child.updated_at = at;
       }
@@ -1044,7 +1204,10 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
       plannerChanged([task.id, ...descendants]);
       return { ...task };
     }
-    case "planner_complete_task": {
+  },
+  plannerCompleteTask: async (id, expectedRevision, allowIncompleteSubtasks, futureSessions) => {
+    const a: Record<string, unknown> = { id, expectedRevision, allowIncompleteSubtasks, futureSessions };
+    {
       const task = plannerTasks.find((item) => item.id === a.id);
       if (!task) throw err("not_found", "Planner task not found");
       plannerConflict(task, Number(a.expectedRevision));
@@ -1069,10 +1232,11 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
       plannerChanged([task.id]);
       return { ...task };
     }
-    case "planner_reopen_task":
-    case "planner_archive_task":
-    case "planner_restore_task":
-    case "planner_trash_task": {
+  },
+  plannerReopenTask: async (id, expectedRevision) => {
+    const a: Record<string, unknown> = { id, expectedRevision };
+    const cmd: string = "planner_reopen_task";
+    {
       const task = plannerTasks.find((item) => item.id === a.id);
       if (!task) throw err("not_found", "Planner task not found");
       plannerConflict(task, Number(a.expectedRevision));
@@ -1111,14 +1275,148 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
       plannerChanged([task.id]);
       return { ...task };
     }
-    case "planner_work_sessions":
-      return plannerWorkSessions
-        .filter(
-          (session) =>
-            (!a.taskId || session.task_id === a.taskId) && (a.includeCancelled || session.state !== "cancelled"),
-        )
-        .map((session) => ({ ...session }));
-    case "planner_create_work_session": {
+  },
+  plannerArchiveTask: async (id, expectedRevision) => {
+    const a: Record<string, unknown> = { id, expectedRevision };
+    const cmd: string = "planner_archive_task";
+    {
+      const task = plannerTasks.find((item) => item.id === a.id);
+      if (!task) throw err("not_found", "Planner task not found");
+      plannerConflict(task, Number(a.expectedRevision));
+      const at = plannerNow();
+      if (cmd === "planner_reopen_task") {
+        task.status = "new";
+        task.completed_at = null;
+      } else if (cmd === "planner_archive_task") task.archived_at ??= at;
+      else if (cmd === "planner_restore_task") {
+        task.archived_at = null;
+        task.trashed_at = null;
+      } else {
+        if (!task.archived_at) throw err("invalid", "Archive a task before moving it to Trash");
+        task.trashed_at = at;
+      }
+      task.updated_at = at;
+      task.revision++;
+      plannerRecord(
+        "task",
+        task.id,
+        cmd === "planner_reopen_task"
+          ? "reopened"
+          : cmd === "planner_archive_task"
+            ? "archived"
+            : cmd === "planner_restore_task"
+              ? "restored"
+              : "trashed",
+        cmd === "planner_reopen_task"
+          ? "Reopened task"
+          : cmd === "planner_archive_task"
+            ? "Archived task"
+            : cmd === "planner_restore_task"
+              ? "Restored task"
+              : "Trashed task",
+      );
+      plannerChanged([task.id]);
+      return { ...task };
+    }
+  },
+  plannerRestoreTask: async (id, expectedRevision) => {
+    const a: Record<string, unknown> = { id, expectedRevision };
+    const cmd: string = "planner_restore_task";
+    {
+      const task = plannerTasks.find((item) => item.id === a.id);
+      if (!task) throw err("not_found", "Planner task not found");
+      plannerConflict(task, Number(a.expectedRevision));
+      const at = plannerNow();
+      if (cmd === "planner_reopen_task") {
+        task.status = "new";
+        task.completed_at = null;
+      } else if (cmd === "planner_archive_task") task.archived_at ??= at;
+      else if (cmd === "planner_restore_task") {
+        task.archived_at = null;
+        task.trashed_at = null;
+      } else {
+        if (!task.archived_at) throw err("invalid", "Archive a task before moving it to Trash");
+        task.trashed_at = at;
+      }
+      task.updated_at = at;
+      task.revision++;
+      plannerRecord(
+        "task",
+        task.id,
+        cmd === "planner_reopen_task"
+          ? "reopened"
+          : cmd === "planner_archive_task"
+            ? "archived"
+            : cmd === "planner_restore_task"
+              ? "restored"
+              : "trashed",
+        cmd === "planner_reopen_task"
+          ? "Reopened task"
+          : cmd === "planner_archive_task"
+            ? "Archived task"
+            : cmd === "planner_restore_task"
+              ? "Restored task"
+              : "Trashed task",
+      );
+      plannerChanged([task.id]);
+      return { ...task };
+    }
+  },
+  plannerTrashTask: async (id, expectedRevision) => {
+    const a: Record<string, unknown> = { id, expectedRevision };
+    const cmd: string = "planner_trash_task";
+    {
+      const task = plannerTasks.find((item) => item.id === a.id);
+      if (!task) throw err("not_found", "Planner task not found");
+      plannerConflict(task, Number(a.expectedRevision));
+      const at = plannerNow();
+      if (cmd === "planner_reopen_task") {
+        task.status = "new";
+        task.completed_at = null;
+      } else if (cmd === "planner_archive_task") task.archived_at ??= at;
+      else if (cmd === "planner_restore_task") {
+        task.archived_at = null;
+        task.trashed_at = null;
+      } else {
+        if (!task.archived_at) throw err("invalid", "Archive a task before moving it to Trash");
+        task.trashed_at = at;
+      }
+      task.updated_at = at;
+      task.revision++;
+      plannerRecord(
+        "task",
+        task.id,
+        cmd === "planner_reopen_task"
+          ? "reopened"
+          : cmd === "planner_archive_task"
+            ? "archived"
+            : cmd === "planner_restore_task"
+              ? "restored"
+              : "trashed",
+        cmd === "planner_reopen_task"
+          ? "Reopened task"
+          : cmd === "planner_archive_task"
+            ? "Archived task"
+            : cmd === "planner_restore_task"
+              ? "Restored task"
+              : "Trashed task",
+      );
+      plannerChanged([task.id]);
+      return { ...task };
+    }
+  },
+  plannerWorkSessions: async (taskId, includeCancelled) => {
+    const a: Record<string, unknown> = { taskId, includeCancelled };
+    return plannerWorkSessions
+      .filter(
+        (session) =>
+          (!a.taskId || session.task_id === a.taskId) && (a.includeCancelled || session.state !== "cancelled"),
+      )
+      .map((session) => ({ ...session }));
+  },
+  plannerCreateWorkSession: async (input) => {
+    const a: Record<string, unknown> = { input };
+    {
       const input = a.input as CreatePlannerWorkSession,
         task = plannerTasks.find((item) => item.id === input.task_id);
       if (!task) throw err("not_found", "Planner task not found");
@@ -1145,7 +1443,10 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
       plannerChanged([session.id, session.task_id]);
       return { ...session };
     }
-    case "planner_update_work_session": {
+  },
+  plannerUpdateWorkSession: async (id, input) => {
+    const a: Record<string, unknown> = { id, input };
+    {
       const session = plannerWorkSessions.find((item) => item.id === a.id);
       if (!session) throw err("not_found", "Planner work session not found");
       const input = a.input as UpdatePlannerWorkSession;
@@ -1162,7 +1463,10 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
       plannerChanged([session.id, session.task_id]);
       return { ...session };
     }
-    case "planner_cancel_work_session": {
+  },
+  plannerCancelWorkSession: async (id, expectedRevision) => {
+    const a: Record<string, unknown> = { id, expectedRevision };
+    {
       const session = plannerWorkSessions.find((item) => item.id === a.id);
       if (!session) throw err("not_found", "Planner work session not found");
       plannerConflict(session, Number(a.expectedRevision));
@@ -1172,114 +1476,10 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
       plannerChanged([session.id, session.task_id]);
       return { ...session };
     }
-    case "planner_events":
-      return plannerEvents
-        .filter(
-          (event) =>
-            !event.series_id && (a.includeArchived || !event.archived_at) && (a.includeTrashed || !event.trashed_at),
-        )
-        .map((event) => structuredClone(event));
-    case "planner_create_event": {
-      const input = a.input as CreatePlannerEvent,
-        title = input.title.trim();
-      if (!title) throw err("invalid", "Event title cannot be empty");
-      const at = plannerNow(),
-        event: PlannerEvent = {
-          ...structuredClone(input),
-          id: nextPlannerId("event"),
-          series_id: null,
-          title,
-          revision: 1,
-          created_at: at,
-          updated_at: at,
-          archived_at: null,
-          trashed_at: null,
-        };
-      plannerEvents.push(event);
-      plannerRecord("event", event.id, "created", "Created event");
-      plannerChanged([event.id]);
-      return structuredClone(event);
-    }
-    case "planner_update_event": {
-      const event = plannerEvents.find((item) => item.id === a.id);
-      if (!event) throw err("not_found", "Planner event not found");
-      const input = a.input as UpdatePlannerEvent;
-      plannerConflict(event, input.expected_revision);
-      if (!input.title.trim()) throw err("invalid", "Event title cannot be empty");
-      Object.assign(event, structuredClone(input), {
-        title: input.title.trim(),
-        revision: event.revision + 1,
-        updated_at: plannerNow(),
-      });
-      plannerRecord("event", event.id, "updated", "Updated event");
-      plannerChanged([event.id]);
-      return structuredClone(event);
-    }
-    case "planner_archive_event":
-    case "planner_restore_event":
-    case "planner_trash_event": {
-      const event = plannerEvents.find((item) => item.id === a.id);
-      if (!event) throw err("not_found", "Planner event not found");
-      plannerConflict(event, Number(a.expectedRevision));
-      const at = plannerNow();
-      if (cmd === "planner_archive_event") event.archived_at ??= at;
-      else if (cmd === "planner_restore_event") {
-        event.archived_at = null;
-        event.trashed_at = null;
-      } else {
-        if (!event.archived_at) throw err("invalid", "Archive an event before moving it to Trash");
-        event.trashed_at = at;
-      }
-      event.revision++;
-      event.updated_at = at;
-      plannerRecord(
-        "event",
-        event.id,
-        cmd === "planner_archive_event" ? "archived" : cmd === "planner_restore_event" ? "restored" : "trashed",
-        cmd === "planner_archive_event"
-          ? "Archived event"
-          : cmd === "planner_restore_event"
-            ? "Restored event"
-            : "Trashed event",
-      );
-      plannerChanged([event.id]);
-      return structuredClone(event);
-    }
-    case "planner_cancel_event_occurrence": {
-      const event = plannerEvents.find((item) => item.id === a.seriesId);
-      if (!event) throw err("not_found", "Planner event not found");
-      plannerConflict(event, Number(a.expectedRevision));
-      plannerEventExceptions.set(`${event.id}:${a.occurrenceKey}`, { action: "cancelled", replacement: null });
-      event.revision++;
-      event.updated_at = plannerNow();
-      plannerChanged([event.id]);
-      return structuredClone(event);
-    }
-    case "planner_replace_event_occurrence": {
-      const event = plannerEvents.find((item) => item.id === a.seriesId);
-      if (!event) throw err("not_found", "Planner event not found");
-      plannerConflict(event, Number(a.expectedRevision));
-      const input = a.input as CreatePlannerEvent,
-        at = plannerNow(),
-        replacement: PlannerEvent = {
-          ...structuredClone(input),
-          id: nextPlannerId("event"),
-          series_id: event.id,
-          recurrence_rule: null,
-          revision: 1,
-          created_at: at,
-          updated_at: at,
-          archived_at: null,
-          trashed_at: null,
-        };
-      plannerEvents.push(replacement);
-      plannerEventExceptions.set(`${event.id}:${a.occurrenceKey}`, { action: "replaced", replacement: replacement.id });
-      event.revision++;
-      event.updated_at = at;
-      plannerChanged([event.id, replacement.id]);
-      return structuredClone(replacement);
-    }
-    case "planner_calendar_range": {
+  },
+  plannerCalendarRange: async (from, to) => {
+    const a: Record<string, unknown> = { from, to };
+    {
       const from = String(a.from),
         to = String(a.to),
         roots = plannerEvents.filter((event) => !event.series_id && !event.archived_at && !event.trashed_at),
@@ -1330,133 +1530,196 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
       }
       return { from, to, events, work_sessions: sessions, due_markers, unscheduled_tasks, workload };
     }
-    case "planner_ical_preview":
-      return mockIcalPreview(String(a.content), String(a.sourceKind));
-    case "planner_ical_import": {
-      const preview = a.preview as IcalImportPreview,
-        selected = new Set(a.selectedKeys as string[]),
-        known = new Set(preview.candidates.map((item) => item.key));
-      for (const key of selected)
-        if (!known.has(key)) throw err("invalid", "iCalendar selection contains an unknown event");
-      const imported_event_ids: string[] = [],
-        skipped_duplicates: string[] = [];
-      for (const candidate of preview.candidates.filter((item) => selected.has(item.key))) {
-        const fingerprint = `${preview.source_kind}:${candidate.key}`;
-        if (importedIcal.has(fingerprint) && !a.allowDuplicates) {
-          skipped_duplicates.push(candidate.key);
-          continue;
-        }
-        const at = plannerNow(),
-          event: PlannerEvent = {
-            ...structuredClone(candidate.event),
-            id: nextPlannerId("event"),
-            series_id: null,
-            revision: 1,
-            created_at: at,
-            updated_at: at,
-            archived_at: null,
-            trashed_at: null,
-          };
-        plannerEvents.push(event);
-        importedIcal.add(fingerprint);
-        imported_event_ids.push(event.id);
-      }
-      if (imported_event_ids.length) plannerChanged(imported_event_ids);
-      return { planner_revision: plannerRevision, imported_event_ids, skipped_duplicates };
+  },
+  plannerEvents: async (includeArchived, includeTrashed) => {
+    const a: Record<string, unknown> = { includeArchived, includeTrashed };
+    return plannerEvents
+      .filter(
+        (event) =>
+          !event.series_id && (a.includeArchived || !event.archived_at) && (a.includeTrashed || !event.trashed_at),
+      )
+      .map((event) => structuredClone(event));
+  },
+  plannerCreateEvent: async (input) => {
+    const a: Record<string, unknown> = { input };
+    {
+      const input = a.input as CreatePlannerEvent,
+        title = input.title.trim();
+      if (!title) throw err("invalid", "Event title cannot be empty");
+      const at = plannerNow(),
+        event: PlannerEvent = {
+          ...eventFields(structuredClone(input)),
+          id: nextPlannerId("event"),
+          series_id: null,
+          title,
+          revision: 1,
+          created_at: at,
+          updated_at: at,
+          archived_at: null,
+          trashed_at: null,
+        };
+      plannerEvents.push(event);
+      plannerRecord("event", event.id, "created", "Created event");
+      plannerChanged([event.id]);
+      return structuredClone(event);
     }
-    case "planner_ical_export":
-      return `BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Mosaic//Planner//EN\r\n${plannerEvents
-        .filter((item) => !item.series_id && !item.archived_at && !item.trashed_at)
-        .map(
-          (item) =>
-            `BEGIN:VEVENT\r\nUID:mosaic-${item.id}@local\r\nSUMMARY:${item.title}\r\nDTSTART${item.all_day ? ";VALUE=DATE" : ""}:${item.all_day ? item.start_value.replaceAll("-", "") : item.start_value.replaceAll(/[-:]/g, "").replace(".000", "")}\r\nDTEND${item.all_day ? ";VALUE=DATE" : ""}:${item.all_day ? item.end_value.replaceAll("-", "") : item.end_value.replaceAll(/[-:]/g, "").replace(".000", "")}\r\nEND:VEVENT\r\n`,
-        )
-        .join("")}END:VCALENDAR\r\n`;
-    case "planner_ical_export_file":
-      return String(a.path);
-    case "planner_export": {
-      if (a.format === "json")
-        return `${JSON.stringify(
-          {
-            format_version: 1,
-            exported_at: plannerNow(),
-            summary: await mockInvoke("planner_summary", {}),
-            epics: plannerEpics,
-            tasks: plannerTasks,
-            work_sessions: plannerWorkSessions,
-            events: plannerEvents.filter((item) => !item.series_id),
-            activity: plannerActivities,
-          },
-          null,
-          2,
-        )}\n`;
-      if (a.format === "csv")
-        return (
-          "entity_type,id,parent_id,epic_id,status,title,start,end,due_date,estimate_minutes,archived_at,trashed_at\r\n" +
-          plannerTasks
-            .map(
-              (item) =>
-                `"task","${item.id}","${item.parent_id ?? ""}","${item.epic_id ?? ""}","${item.status}","${item.title.replaceAll('"', '""')}","","","${item.due_date ?? ""}","${item.estimate_minutes ?? ""}","${item.archived_at ?? ""}","${item.trashed_at ?? ""}"`,
-            )
-            .join("\r\n") +
-          "\r\n"
-        );
-      throw err("invalid", "planner export must be JSON or CSV");
-    }
-    case "planner_export_file":
-      return String(a.path);
-    case "planner_restore_backup":
-      return `${String(a.path)}/.mosaic/planner.sqlite3`;
-    case "calendar_subscriptions":
-      return structuredClone(mockCalendarSubscriptions);
-    case "add_calendar_subscription": {
-      const name = String(a.name).trim(),
-        url = String(a.url);
-      if (!name || !/^https?:\/\/|^webcal:\/\//i.test(url))
-        throw err("invalid", "subscription name and HTTPS or webcal URL are required");
-      const item: CalendarSubscription = {
-        id: nextPlannerId("subscription"),
-        name,
-        color: String(a.color),
-        visible: true,
-        refresh_minutes: Number(a.refreshMinutes),
-        last_success: new Date().toISOString(),
-        last_error: null,
-        has_cache: true,
-      };
-      mockCalendarSubscriptions.push(item);
-      return structuredClone(item);
-    }
-    case "update_calendar_subscription": {
-      const item = mockCalendarSubscriptions.find((value) => value.id === a.id);
-      if (!item) throw err("not_found", "Calendar subscription not found");
-      Object.assign(item, {
-        name: String(a.name),
-        color: String(a.color),
-        visible: Boolean(a.visible),
-        refresh_minutes: Number(a.refreshMinutes),
+  },
+  plannerUpdateEvent: async (id, input) => {
+    const a: Record<string, unknown> = { id, input };
+    {
+      const event = plannerEvents.find((item) => item.id === a.id);
+      if (!event) throw err("not_found", "Planner event not found");
+      const input = a.input as UpdatePlannerEvent;
+      plannerConflict(event, input.expected_revision);
+      if (!input.title.trim()) throw err("invalid", "Event title cannot be empty");
+      Object.assign(event, structuredClone(input), {
+        title: input.title.trim(),
+        revision: event.revision + 1,
+        updated_at: plannerNow(),
       });
-      return structuredClone(item);
+      plannerRecord("event", event.id, "updated", "Updated event");
+      plannerChanged([event.id]);
+      return structuredClone(event);
     }
-    case "remove_calendar_subscription": {
-      const index = mockCalendarSubscriptions.findIndex((value) => value.id === a.id);
-      if (index < 0) throw err("not_found", "Calendar subscription not found");
-      mockCalendarSubscriptions.splice(index, 1);
-      return null;
-    }
-    case "refresh_calendar_subscriptions": {
-      for (const item of mockCalendarSubscriptions) {
-        item.last_success = new Date().toISOString();
-        item.last_error = null;
+  },
+  plannerArchiveEvent: async (id, expectedRevision) => {
+    const a: Record<string, unknown> = { id, expectedRevision };
+    const cmd: string = "planner_archive_event";
+    {
+      const event = plannerEvents.find((item) => item.id === a.id);
+      if (!event) throw err("not_found", "Planner event not found");
+      plannerConflict(event, Number(a.expectedRevision));
+      const at = plannerNow();
+      if (cmd === "planner_archive_event") event.archived_at ??= at;
+      else if (cmd === "planner_restore_event") {
+        event.archived_at = null;
+        event.trashed_at = null;
+      } else {
+        if (!event.archived_at) throw err("invalid", "Archive an event before moving it to Trash");
+        event.trashed_at = at;
       }
-      return structuredClone(mockCalendarSubscriptions);
+      event.revision++;
+      event.updated_at = at;
+      plannerRecord(
+        "event",
+        event.id,
+        cmd === "planner_archive_event" ? "archived" : cmd === "planner_restore_event" ? "restored" : "trashed",
+        cmd === "planner_archive_event"
+          ? "Archived event"
+          : cmd === "planner_restore_event"
+            ? "Restored event"
+            : "Trashed event",
+      );
+      plannerChanged([event.id]);
+      return structuredClone(event);
     }
-    case "calendar_overlay_range":
-      return {
-        subscriptions: structuredClone(mockCalendarSubscriptions),
-        occurrences: mockOverlayRange(String(a.from), String(a.to)),
-      };
-    case "planner_migration_preview": {
+  },
+  plannerRestoreEvent: async (id, expectedRevision) => {
+    const a: Record<string, unknown> = { id, expectedRevision };
+    const cmd: string = "planner_restore_event";
+    {
+      const event = plannerEvents.find((item) => item.id === a.id);
+      if (!event) throw err("not_found", "Planner event not found");
+      plannerConflict(event, Number(a.expectedRevision));
+      const at = plannerNow();
+      if (cmd === "planner_archive_event") event.archived_at ??= at;
+      else if (cmd === "planner_restore_event") {
+        event.archived_at = null;
+        event.trashed_at = null;
+      } else {
+        if (!event.archived_at) throw err("invalid", "Archive an event before moving it to Trash");
+        event.trashed_at = at;
+      }
+      event.revision++;
+      event.updated_at = at;
+      plannerRecord(
+        "event",
+        event.id,
+        cmd === "planner_archive_event" ? "archived" : cmd === "planner_restore_event" ? "restored" : "trashed",
+        cmd === "planner_archive_event"
+          ? "Archived event"
+          : cmd === "planner_restore_event"
+            ? "Restored event"
+            : "Trashed event",
+      );
+      plannerChanged([event.id]);
+      return structuredClone(event);
+    }
+  },
+  plannerTrashEvent: async (id, expectedRevision) => {
+    const a: Record<string, unknown> = { id, expectedRevision };
+    const cmd: string = "planner_trash_event";
+    {
+      const event = plannerEvents.find((item) => item.id === a.id);
+      if (!event) throw err("not_found", "Planner event not found");
+      plannerConflict(event, Number(a.expectedRevision));
+      const at = plannerNow();
+      if (cmd === "planner_archive_event") event.archived_at ??= at;
+      else if (cmd === "planner_restore_event") {
+        event.archived_at = null;
+        event.trashed_at = null;
+      } else {
+        if (!event.archived_at) throw err("invalid", "Archive an event before moving it to Trash");
+        event.trashed_at = at;
+      }
+      event.revision++;
+      event.updated_at = at;
+      plannerRecord(
+        "event",
+        event.id,
+        cmd === "planner_archive_event" ? "archived" : cmd === "planner_restore_event" ? "restored" : "trashed",
+        cmd === "planner_archive_event"
+          ? "Archived event"
+          : cmd === "planner_restore_event"
+            ? "Restored event"
+            : "Trashed event",
+      );
+      plannerChanged([event.id]);
+      return structuredClone(event);
+    }
+  },
+  plannerCancelEventOccurrence: async (seriesId, expectedRevision, occurrenceKey) => {
+    const a: Record<string, unknown> = { seriesId, expectedRevision, occurrenceKey };
+    {
+      const event = plannerEvents.find((item) => item.id === a.seriesId);
+      if (!event) throw err("not_found", "Planner event not found");
+      plannerConflict(event, Number(a.expectedRevision));
+      plannerEventExceptions.set(`${event.id}:${a.occurrenceKey}`, { action: "cancelled", replacement: null });
+      event.revision++;
+      event.updated_at = plannerNow();
+      plannerChanged([event.id]);
+      return structuredClone(event);
+    }
+  },
+  plannerReplaceEventOccurrence: async (seriesId, expectedRevision, occurrenceKey, input) => {
+    const a: Record<string, unknown> = { seriesId, expectedRevision, occurrenceKey, input };
+    {
+      const event = plannerEvents.find((item) => item.id === a.seriesId);
+      if (!event) throw err("not_found", "Planner event not found");
+      plannerConflict(event, Number(a.expectedRevision));
+      const input = a.input as CreatePlannerEvent,
+        at = plannerNow(),
+        replacement: PlannerEvent = {
+          ...eventFields(structuredClone(input)),
+          id: nextPlannerId("event"),
+          series_id: event.id,
+          recurrence_rule: null,
+          revision: 1,
+          created_at: at,
+          updated_at: at,
+          archived_at: null,
+          trashed_at: null,
+        };
+      plannerEvents.push(replacement);
+      plannerEventExceptions.set(`${event.id}:${a.occurrenceKey}`, { action: "replaced", replacement: replacement.id });
+      event.revision++;
+      event.updated_at = at;
+      plannerChanged([event.id, replacement.id]);
+      return structuredClone(replacement);
+    }
+  },
+  plannerMigrationPreview: async () => {
+    {
       const groups: { source_path: string; tasks: MarkdownImportCandidate[] }[] = [];
       for (const [path, file] of [...files.entries()].sort(([x], [y]) => x.localeCompare(y))) {
         if (!path.endsWith(".md")) continue;
@@ -1515,7 +1778,10 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
         duplicates: all.filter((item) => item.duplicate).length,
       } satisfies MarkdownImportPreview;
     }
-    case "planner_import_markdown": {
+  },
+  plannerImportMarkdown: async (preview, selectedFingerprints, allowDuplicates, timezone) => {
+    const a: Record<string, unknown> = { preview, selectedFingerprints, allowDuplicates, timezone };
+    {
       const preview = a.preview as MarkdownImportPreview,
         selected = new Set(a.selectedFingerprints as string[]),
         all = preview.groups.flatMap((group) => group.tasks),
@@ -1615,19 +1881,435 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
         skipped_duplicates: skipped,
       };
     }
-    case "vault_preferences": {
+  },
+  plannerIcalPreview: async (sourceKind, content, fallbackTimezone) => {
+    const a: Record<string, unknown> = { sourceKind, content, fallbackTimezone };
+    return mockIcalPreview(String(a.content), String(a.sourceKind));
+  },
+  plannerIcalImport: async (preview, selectedKeys, allowDuplicates) => {
+    const a: Record<string, unknown> = { preview, selectedKeys, allowDuplicates };
+    {
+      const preview = a.preview as IcalImportPreview,
+        selected = new Set(a.selectedKeys as string[]),
+        known = new Set(preview.candidates.map((item) => item.key));
+      for (const key of selected)
+        if (!known.has(key)) throw err("invalid", "iCalendar selection contains an unknown event");
+      const imported_event_ids: string[] = [],
+        skipped_duplicates: string[] = [];
+      for (const candidate of preview.candidates.filter((item) => selected.has(item.key))) {
+        const fingerprint = `${preview.source_kind}:${candidate.key}`;
+        if (importedIcal.has(fingerprint) && !a.allowDuplicates) {
+          skipped_duplicates.push(candidate.key);
+          continue;
+        }
+        const at = plannerNow(),
+          event: PlannerEvent = {
+            ...eventFields(structuredClone(candidate.event)),
+            id: nextPlannerId("event"),
+            series_id: null,
+            revision: 1,
+            created_at: at,
+            updated_at: at,
+            archived_at: null,
+            trashed_at: null,
+          };
+        plannerEvents.push(event);
+        importedIcal.add(fingerprint);
+        imported_event_ids.push(event.id);
+      }
+      if (imported_event_ids.length) plannerChanged(imported_event_ids);
+      return { planner_revision: plannerRevision, imported_event_ids, skipped_duplicates };
+    }
+  },
+  plannerIcalExport: async () => {
+    return `BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Mosaic//Planner//EN\r\n${plannerEvents
+      .filter((item) => !item.series_id && !item.archived_at && !item.trashed_at)
+      .map(
+        (item) =>
+          `BEGIN:VEVENT\r\nUID:mosaic-${item.id}@local\r\nSUMMARY:${item.title}\r\nDTSTART${item.all_day ? ";VALUE=DATE" : ""}:${item.all_day ? item.start_value.replaceAll("-", "") : item.start_value.replaceAll(/[-:]/g, "").replace(".000", "")}\r\nDTEND${item.all_day ? ";VALUE=DATE" : ""}:${item.all_day ? item.end_value.replaceAll("-", "") : item.end_value.replaceAll(/[-:]/g, "").replace(".000", "")}\r\nEND:VEVENT\r\n`,
+      )
+      .join("")}END:VCALENDAR\r\n`;
+  },
+  plannerIcalExportFile: async (path) => {
+    const a: Record<string, unknown> = { path };
+    return String(a.path);
+  },
+  plannerExport: async (format) => {
+    const a: Record<string, unknown> = { format };
+    {
+      if (a.format === "json")
+        return `${JSON.stringify(
+          {
+            format_version: 1,
+            exported_at: plannerNow(),
+            summary: await mockInvoke("planner_summary", {}),
+            epics: plannerEpics,
+            tasks: plannerTasks,
+            work_sessions: plannerWorkSessions,
+            events: plannerEvents.filter((item) => !item.series_id),
+            activity: plannerActivities,
+          },
+          null,
+          2,
+        )}\n`;
+      if (a.format === "csv")
+        return (
+          "entity_type,id,parent_id,epic_id,status,title,start,end,due_date,estimate_minutes,archived_at,trashed_at\r\n" +
+          plannerTasks
+            .map(
+              (item) =>
+                `"task","${item.id}","${item.parent_id ?? ""}","${item.epic_id ?? ""}","${item.status}","${item.title.replaceAll('"', '""')}","","","${item.due_date ?? ""}","${item.estimate_minutes ?? ""}","${item.archived_at ?? ""}","${item.trashed_at ?? ""}"`,
+            )
+            .join("\r\n") +
+          "\r\n"
+        );
+      throw err("invalid", "planner export must be JSON or CSV");
+    }
+  },
+  plannerExportFile: async (format, path) => {
+    const a: Record<string, unknown> = { format, path };
+    return String(a.path);
+  },
+  plannerRestoreBackup: async (path) => {
+    const a: Record<string, unknown> = { path };
+    return `${String(a.path)}/.mosaic/planner.sqlite3`;
+  },
+  calendarSubscriptions: async () => {
+    return structuredClone(mockCalendarSubscriptions);
+  },
+  addCalendarSubscription: async (name, url, color, refreshMinutes) => {
+    const a: Record<string, unknown> = { name, url, color, refreshMinutes };
+    {
+      const name = String(a.name).trim(),
+        url = String(a.url);
+      if (!name || !/^https?:\/\/|^webcal:\/\//i.test(url))
+        throw err("invalid", "subscription name and HTTPS or webcal URL are required");
+      const item: CalendarSubscription = {
+        id: nextPlannerId("subscription"),
+        name,
+        color: String(a.color),
+        visible: true,
+        refresh_minutes: Number(a.refreshMinutes),
+        last_success: new Date().toISOString(),
+        last_error: null,
+        has_cache: true,
+      };
+      mockCalendarSubscriptions.push(item);
+      return structuredClone(item);
+    }
+  },
+  updateCalendarSubscription: async (id, name, color, visible, refreshMinutes) => {
+    const a: Record<string, unknown> = { id, name, color, visible, refreshMinutes };
+    {
+      const item = mockCalendarSubscriptions.find((value) => value.id === a.id);
+      if (!item) throw err("not_found", "Calendar subscription not found");
+      Object.assign(item, {
+        name: String(a.name),
+        color: String(a.color),
+        visible: Boolean(a.visible),
+        refresh_minutes: Number(a.refreshMinutes),
+      });
+      return structuredClone(item);
+    }
+  },
+  removeCalendarSubscription: async (id) => {
+    const a: Record<string, unknown> = { id };
+    {
+      const index = mockCalendarSubscriptions.findIndex((value) => value.id === a.id);
+      if (index < 0) throw err("not_found", "Calendar subscription not found");
+      mockCalendarSubscriptions.splice(index, 1);
+      return null;
+    }
+  },
+  refreshCalendarSubscriptions: async (_force) => {
+    {
+      for (const item of mockCalendarSubscriptions) {
+        item.last_success = new Date().toISOString();
+        item.last_error = null;
+      }
+      return structuredClone(mockCalendarSubscriptions);
+    }
+  },
+  calendarOverlayRange: async (from, to, timezone) => {
+    const a: Record<string, unknown> = { from, to, timezone };
+    return {
+      subscriptions: structuredClone(mockCalendarSubscriptions),
+      occurrences: mockOverlayRange(String(a.from), String(a.to)),
+    };
+  },
+  agents: async () => {
+    return mockAgents();
+  },
+  mirrorAgents: async () => {
+    return { written: [], removed: [], skipped: [] };
+  },
+  chatCheck: async () => {
+    return { path: "/mock/claude", version: "mock" };
+  },
+  chatSend: async (message, session, context, active, agent, selectionPath, selectionText, model) => {
+    const a: Record<string, unknown> = {
+      message,
+      session,
+      context,
+      active,
+      agent,
+      selectionPath,
+      selectionText,
+      model,
+    };
+    {
+      // A canned answer, streamed, for trying the chat panel in the browser.
+      const run = ++chatRuns;
+      const target = (a.context as string[])[0] ?? "Ideas.md";
+      const steps: unknown[] = [
+        { kind: "started", session_id: "mock-session", mosaic: true },
+        { kind: "tool", id: "t1", summary: `Read ${target.replace(/\.md$/, "")}`, path: target, writes: false },
+        { kind: "tool_done", id: "t1", error: null, review: null },
+        {
+          kind: "text",
+          text: a.agent
+            ? `Running the **${a.agent}** agent.`
+            : `You asked: *${String(a.message).slice(0, 80)}*.${a.selectionText ? " I also received the selected text." : ""}${a.model ? ` Model: ${a.model}.` : ""}`,
+        },
+        { kind: "tool", id: "t2", summary: "Edited Ideas", path: "Ideas.md", writes: true },
+        { kind: "tool_done", id: "t2", error: null, review: null },
+        { kind: "text", text: "Done: I added a line to [[Ideas]].\n\n- one\n- two" },
+        { kind: "done", session_id: "mock-session", cost_usd: 0.0123, error: null },
+      ];
+      steps.forEach((event, i) => setTimeout(() => emit("chat-event", { run, event }), 250 * (i + 1)));
+      return run;
+    }
+  },
+  chatStop: async (_run) => {
+    return null;
+  },
+  tesseraStatus: async () => {
+    return {
+      paused: tesseraPaused,
+      max_chain_depth: tesseraMaxDepth,
+      agents: mockAgents().map((a) => ({
+        name: a.name,
+        title: a.title,
+        schedule: a.schedule,
+        on: a.on,
+        model: a.model,
+        paused: tesseraPausedAgents.includes(a.name),
+        running: tesseraRuns.some((r) => r.agent === a.name && r.status === "running"),
+        queued: 0,
+        error: null,
+      })),
+      runs: tesseraRuns,
+    };
+  },
+  tesseraRun: async (name) => {
+    const a: Record<string, unknown> = { name };
+    {
+      const agent = mockAgents().find((agent) => agent.name === a.name);
+      if (!agent) throw err("not_found", "Agent not found");
+      const id = ++chatRuns;
+      tesseraRuns.unshift({
+        id,
+        agent: agent.name,
+        title: agent.title,
+        started: Math.floor(Date.now() / 1000),
+        finished: Math.floor(Date.now() / 1000),
+        late: false,
+        status: "done",
+        answer: "Mock run completed. No files were changed.",
+        error: null,
+        proposals: 0,
+        changes: [],
+        changed_paths: [],
+        proposal_ids: [],
+      });
+      emit("tessera-changed", {});
+      return id;
+    }
+  },
+  tesseraTestEvent: async (name, path) => {
+    const a: Record<string, unknown> = { name, path };
+    {
+      const agent = mockAgents().find((agent) => agent.name === a.name);
+      if (!agent) throw err("not_found", "Agent not found");
+      const id = ++chatRuns;
+      tesseraRuns.unshift({
+        id,
+        agent: agent.name,
+        title: agent.title,
+        started: Math.floor(Date.now() / 1000),
+        finished: Math.floor(Date.now() / 1000),
+        late: false,
+        status: "done",
+        trigger: `Test · ${a.path}`,
+        trigger_path: String(a.path),
+        chain_id: `test-${id}`,
+        chain_depth: 0,
+        model: agent.model,
+        attempts: 1,
+        answer: "Mock event run completed.",
+        error: null,
+        proposals: 0,
+        changes: [],
+        changed_paths: [],
+        proposal_ids: [],
+      });
+      emit("tessera-changed", {});
+      return id;
+    }
+  },
+  tesseraPauseAll: async (paused) => {
+    const a: Record<string, unknown> = { paused };
+    tesseraPaused = Boolean(a.paused);
+    return null;
+  },
+  tesseraPauseAgent: async (name, paused) => {
+    const a: Record<string, unknown> = { name, paused };
+    {
+      const name = String(a.name);
+      const i = tesseraPausedAgents.indexOf(name);
+      if (i >= 0) tesseraPausedAgents.splice(i, 1);
+      if (a.paused) tesseraPausedAgents.push(name);
+      return null;
+    }
+  },
+  tesseraSetMaxChainDepth: async (depth) => {
+    const a: Record<string, unknown> = { depth };
+    tesseraMaxDepth = Number(a.depth);
+    return null;
+  },
+  proposals: async (includeDecided) => {
+    const a: Record<string, unknown> = { includeDecided };
+    {
+      const list = proposals
+        .filter((p) => a.includeDecided || p.status === "pending")
+        .map(({ content: _c, ...p }) => ({
+          ...p,
+          overwrote: false,
+          stale:
+            p.status === "pending" && (files.has(p.path) ? hash(files.get(p.path)!.content) : null) !== p.base_hash,
+        }));
+      return list;
+    }
+  },
+  proposalContent: async (id) => {
+    const a: Record<string, unknown> = { id };
+    return proposals.find((p) => p.id === a.id)?.content ?? null;
+  },
+  proposalBase: async (_id) => {
+    return null;
+  },
+  acceptProposal: async (id, force, content) => {
+    const p = proposals.find((x) => x.id === id && x.status === "pending");
+    if (!p) throw err("not_found", `proposal ${id}`);
+    const current = files.has(p.path) ? hash(files.get(p.path)!.content) : null;
+    if (current !== p.base_hash && !force) throw err("conflict", `file changed since it was read: ${p.path}`);
+    const accepted = typeof content === "string" ? content : p.content;
+    if (accepted === null) files.delete(p.path);
+    else write(p.path, accepted);
+    track(p.path, p.action, accepted, { source: "agent", actor: p.actor });
+    emit("vault-changed", { paths: [p.path] });
+    Object.assign(p, { status: "accepted", reason: null, decided: Date.now() });
+    return p.path;
+  },
+  rejectProposal: async (id, reason) => {
+    const p = proposals.find((x) => x.id === id && x.status === "pending");
+    if (!p) throw err("not_found", `proposal ${id}`);
+    Object.assign(p, { status: "rejected", reason: reason ?? null, decided: Date.now() });
+    return null;
+  },
+  createVault: async (parent, name) => {
+    const a: Record<string, unknown> = { parent, name };
+    opened = true;
+    return { root: `${String(a.parent)}/${String(a.name)}`, name: String(a.name) };
+  },
+  recentVaults: async () => {
+    return [
+      { root: "/mock/vault", name: "Mock vault", exists: true },
+      { root: "/mock/Work notes", name: "Work notes", exists: true },
+      { root: "/Volumes/USB/Old vault", name: "Old vault", exists: false },
+    ];
+  },
+  forgetVault: async (_path) => {
+    return null;
+  },
+  getBookmarks: async () => {
+    return bookmarks;
+  },
+  setBookmarks: async (paths) => {
+    const a: Record<string, unknown> = { paths };
+    bookmarks = [...(a.paths as string[])];
+    return null;
+  },
+  copyPath: async (from, to) => {
+    const a: Record<string, unknown> = { from, to };
+    {
+      const from = files.get(norm(a.from));
+      if (!from) throw err("not_found", `not found: ${norm(a.from)}`);
+      const to = norm(a.to);
+      if (exists(to)) throw err("already_exists", `already exists: ${to}`);
+      return write(to, from.content);
+    }
+  },
+  currentVault: async () => {
+    return opened ? { root: mockRoot, name: "Mock vault" } : null;
+  },
+  lastVault: async () => {
+    return null;
+  },
+  listDir: async (dir, recursive) => {
+    const a: Record<string, unknown> = { dir, recursive };
+    return list(norm(a.dir), Boolean(a.recursive));
+  },
+  readFile: async (path) => {
+    const a: Record<string, unknown> = { path };
+    {
+      const p = norm(a.path);
+      const f = files.get(p);
+      if (!f) throw err("not_found", `not found: ${p}`);
+      const kind = kindOf(p);
+      const text = !["image", "pdf", "other"].includes(kind);
+      const out: FileContent = {
+        path: p,
+        kind,
+        size: f.content.length,
+        mtime: f.mtime,
+        hash: hash(f.content),
+        content: text ? f.content : null,
+      };
+      return out;
+    }
+  },
+  createFile: async (path, content, root) => {
+    const a: Record<string, unknown> = { path, content, root };
+    checkRoot(a);
+    {
+      const p = norm(a.path);
+      if (exists(p)) throw err("already_exists", `already exists: ${p}`);
+      return write(p, String(a.content ?? ""));
+    }
+  },
+  templateConfig: async () => {
+    return templateConfigs.get(mockRoot) ?? defaultTemplateConfig();
+  },
+  vaultPreferences: async () => {
+    {
       const { DEFAULT_VAULT_PREFS } = await import("../state/vaultPreferences");
       return { ...DEFAULT_VAULT_PREFS, ...vaultPreferences.get(mockRoot) };
     }
-    case "set_vault_preferences": {
+  },
+  setVaultPreferences: async (patch, root) => {
+    const a: Record<string, unknown> = { patch, root };
+    checkRoot(a);
+    {
       if (a.root !== mockRoot) throw err("invalid", "The vault changed");
       vaultPreferences.set(mockRoot, { ...vaultPreferences.get(mockRoot), ...(a.patch as object) });
       emit("settings-changed", {});
       return null;
     }
-    case "template_config":
-      return templateConfigs.get(mockRoot) ?? defaultTemplateConfig();
-    case "set_template_config": {
+  },
+  setTemplateConfig: async (config) => {
+    const a: Record<string, unknown> = { config };
+    {
       const c = a.config as TemplateConfig;
       if (c.version !== 1 || !c.folder || c.folder.includes(".."))
         throw err("invalid", "Choose a valid Templates folder");
@@ -1643,17 +2325,23 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
       emit("settings-changed", {});
       return null;
     }
-    case "list_templates": {
+  },
+  listTemplates: async (path) => {
+    const a: Record<string, unknown> = { path };
+    {
       const c = templateConfigs.get(mockRoot) ?? defaultTemplateConfig();
       return {
         templates: [...files.keys()]
           .filter((p) => p.endsWith(".md") && inFolder(p, c.folder))
           .sort()
-          .map((path) => ({ path, name: path.split("/").pop() })),
+          .map((path) => ({ path, name: path.split("/").pop() ?? path })),
         default: a.path ? templateDefault(c, String(a.path)) : { template: null, rule_folder: null },
       };
     }
-    case "render_template": {
+  },
+  renderTemplate: async (request) => {
+    const a: Record<string, unknown> = { request };
+    {
       const r = a.request as TemplateRequest,
         c = templateConfigs.get(mockRoot) ?? defaultTemplateConfig();
       const path = norm(r.path);
@@ -1698,191 +2386,33 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
         context,
       };
     }
-    case "create_note": {
+  },
+  createNote: async (request) => {
+    const a: Record<string, unknown> = { request };
+    {
       const p = (await mockInvoke("render_template", a)) as import("./types").TemplatePreview;
       if (exists(p.path)) throw err("already_exists", `already exists: ${p.path}`);
       const out = write(p.path, p.content);
       track(p.path, "created", p.content);
       return { ...out, template: p.template, rule_folder: p.rule_folder };
     }
-    case "template_starters":
-      return Object.entries({
-        Meeting: ["Participants", "Purpose", "Agenda", "Notes", "Decisions", "Actions"],
-        Retro: ["Context", "What went well", "What to improve", "Themes", "Agreed actions"],
-        Project: ["Purpose", "Outcomes", "Scope", "Stakeholders", "Milestones", "Decisions", "Risks", "Next actions"],
-        Analysis: ["Question", "Context", "Evidence", "Assumptions", "Options", "Recommendation", "Open questions"],
-        Brainstorm: ["Prompt", "Constraints", "Ideas", "Themes", "Promising directions", "Next experiments"],
-      }).map(([name, sections]) => [
-        `${name}.md`,
-        `# {{title}}\n\nDate: {{date}}\n\n${sections.map((s) => `## ${s}\n`).join("\n")}\n`,
-      ]);
-    case "open_vault":
-      opened = true;
-      mockRoot = String(a.path ?? "/mock/vault");
-      return { root: mockRoot, name: "Mock vault" };
-    case "current_vault":
-      return opened ? { root: mockRoot, name: "Mock vault" } : null;
-    case "last_vault":
-      return null;
-    case "create_vault":
-      opened = true;
-      return { root: `${String(a.parent)}/${String(a.name)}`, name: String(a.name) };
-    case "recent_vaults":
-      return [
-        { root: "/mock/vault", name: "Mock vault", exists: true },
-        { root: "/mock/Work notes", name: "Work notes", exists: true },
-        { root: "/Volumes/USB/Old vault", name: "Old vault", exists: false },
-      ];
-    case "forget_vault":
-      return null;
-    case "update_status":
-      return updateStatus();
-    case "check_updates":
-      await new Promise((r) => setTimeout(r, 600));
-      return {
-        latest_version: "0.2.0",
-        releases: [
-          {
-            version: "0.2.0",
-            date: "2026-10-01",
-            notes: [
-              "**Movable window:** drag the sidebar header, tab bar or welcome screen. Updates show the current `version` and *release notes*.",
-              "A running update can be cancelled; the installed app stays as it was.",
-            ],
-          },
-        ],
-        update_available: true,
-      };
-    case "start_update":
-      if (updateRunning) throw err("invalid", "An update is already running.");
-      fakeUpdate();
-      return null;
-    case "cancel_update":
-      cancelFakeUpdate();
-      return null;
-    case "finish_update":
-      window.location.reload();
-      return null;
-    case "get_bookmarks":
-      return bookmarks;
-    case "set_bookmarks":
-      bookmarks = [...(a.paths as string[])];
-      return null;
-    case "copy_path": {
-      const from = files.get(norm(a.from));
-      if (!from) throw err("not_found", `not found: ${norm(a.from)}`);
-      const to = norm(a.to);
-      if (exists(to)) throw err("already_exists", `already exists: ${to}`);
-      return write(to, from.content);
-    }
-    case "import_file": {
-      // Binary files are kept as data: URLs, like the mock's sample images.
-      const p = norm(a.path);
-      const bytes = a.bytes as Uint8Array;
-      const kind = kindOf(p);
-      const content = ["image", "pdf", "other"].includes(kind)
-        ? `data:${kind === "pdf" ? "application/pdf" : `image/${p.split(".").pop()}`};base64,${btoa(Array.from(bytes, (b) => String.fromCharCode(b)).join(""))}`
-        : new TextDecoder().decode(bytes);
-      const dot = p.lastIndexOf(".") > p.lastIndexOf("/") + 1 ? p.lastIndexOf(".") : p.length;
-      let target = p;
-      for (let n = 1; exists(target); n++) target = `${p.slice(0, dot)} ${n}${p.slice(dot)}`;
-      return write(target, content);
-    }
-    case "list_dir":
-      return list(norm(a.dir), Boolean(a.recursive));
-    case "read_file": {
-      const p = norm(a.path);
-      const f = files.get(p);
-      if (!f) throw err("not_found", `not found: ${p}`);
-      const kind = kindOf(p);
-      const text = !["image", "pdf", "other"].includes(kind);
-      const out: FileContent = {
-        path: p,
-        kind,
-        size: f.content.length,
-        mtime: f.mtime,
-        hash: hash(f.content),
-        content: text ? f.content : null,
-      };
-      return out;
-    }
-    case "unlinked_mentions": {
-      // Simplified: whole-word, case-insensitive title matches outside [[links]].
-      const target = norm(a.path);
-      const title = target.split("/").pop()!.replace(/\.md$/, "");
-      const word = new RegExp(
-        `(^|[^\\p{L}\\p{N}])(${title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})(?=$|[^\\p{L}\\p{N}])`,
-        "iu",
-      );
-      const out: { source: string; line: number; context: string; text: string }[] = [];
-      for (const [p, f] of files) {
-        if (p === target || !p.endsWith(".md") || f.content.includes(`[[${title}`)) continue;
-        f.content.split("\n").forEach((l, i) => {
-          const m = word.exec(l.replace(/\[\[[^\]]*\]\]/g, (x) => " ".repeat(x.length)));
-          if (m) out.push({ source: p, line: i + 1, context: l.trim(), text: m[2] });
-        });
-      }
-      return out;
-    }
-    case "link_mention": {
-      const p = norm(a.source);
-      const f = files.get(p)!;
-      const lines = f.content.split("\n");
-      const text = String(a.text);
-      const title = norm(a.target).split("/").pop()!.replace(/\.md$/, "");
-      lines[Number(a.line) - 1] = lines[Number(a.line) - 1].replace(
-        text,
-        text === title ? `[[${title}]]` : `[[${title}|${text}]]`,
-      );
-      return write(p, lines.join("\n"));
-    }
-    case "get_agent_rules":
-      return agentRules;
-    case "set_agent_rules":
-      agentRules = a.rules as typeof agentRules;
-      return null;
-    case "file_history":
-      return versions
-        .filter((v) => v.path === norm(a.path))
-        .reverse()
-        .map(({ content: _c, ...v }) => v);
-    case "version_content":
-      return versions.find((v) => v.id === a.id)?.content ?? "";
-    case "ai_activity":
-      return versions
-        .filter((v) => (v.source === "agent" || v.source === "cli") && v.action !== "before")
-        .reverse()
-        .map(({ content: _c, ...v }) => v);
-    case "restore_version": {
-      const p = norm(a.path);
-      const content = versions.find((v) => v.id === a.id)?.content ?? "";
-      const out = write(p, content);
-      track(p, "restored", content);
-      return out;
-    }
-    case "undo_change": {
-      const v = versions.find((x) => x.id === a.id);
-      if (!v) throw err("not_found", "change not found");
-      const cur = files.get(v.path);
-      if (v.action === "created") files.delete(v.path);
-      else if (v.action === "deleted") write(v.path, v.content ?? "");
-      else {
-        if (cur && hash(cur.content) !== v.hash)
-          throw { code: "conflict", message: `${v.path} changed since`, current_hash: hash(cur.content) };
-        const prev = versions.filter((x) => x.path === v.path && x.id < v.id && x.content !== null).pop();
-        if (!prev) throw err("invalid", "no earlier version");
-        write(v.path, prev.content ?? "");
-        track(v.path, "restored", prev.content);
-      }
-      window.dispatchEvent(new CustomEvent("mock-vault-changed", { detail: { paths: [v.path] } }));
-      return v.path;
-    }
-    case "create_file": {
-      const p = norm(a.path);
-      if (exists(p)) throw err("already_exists", `already exists: ${p}`);
-      return write(p, String(a.content ?? ""));
-    }
-    case "write_file": {
+  },
+  templateStarters: async () => {
+    return Object.entries({
+      Meeting: ["Participants", "Purpose", "Agenda", "Notes", "Decisions", "Actions"],
+      Retro: ["Context", "What went well", "What to improve", "Themes", "Agreed actions"],
+      Project: ["Purpose", "Outcomes", "Scope", "Stakeholders", "Milestones", "Decisions", "Risks", "Next actions"],
+      Analysis: ["Question", "Context", "Evidence", "Assumptions", "Options", "Recommendation", "Open questions"],
+      Brainstorm: ["Prompt", "Constraints", "Ideas", "Themes", "Promising directions", "Next experiments"],
+    }).map(([name, sections]) => [
+      `${name}.md`,
+      `# {{title}}\n\nDate: {{date}}\n\n${sections.map((s) => `## ${s}\n`).join("\n")}\n`,
+    ]);
+  },
+  writeFile: async (path, content, expectedHash, root) => {
+    const a: Record<string, unknown> = { path, content, expectedHash, root };
+    checkRoot(a);
+    {
       const p = norm(a.path);
       const cur = files.get(p);
       if (a.expectedHash && cur && hash(cur.content) !== a.expectedHash) {
@@ -1892,13 +2422,19 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
       track(p, cur ? "edited" : "created", String(a.content ?? ""));
       return out;
     }
-    case "make_dir": {
+  },
+  makeDir: async (path) => {
+    const a: Record<string, unknown> = { path };
+    {
       const p = norm(a.path);
       dirs.add(p);
       addParents(p);
       return null;
     }
-    case "rename_path": {
+  },
+  renamePath: async (from, to) => {
+    const a: Record<string, unknown> = { from, to };
+    {
       const from = norm(a.from);
       const to = norm(a.to);
       if (!exists(from)) throw err("not_found", `not found: ${from}`);
@@ -1947,7 +2483,10 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
       track(to, "renamed", null, { from_path: from });
       return { path: to, updated_links_in: [], review: null };
     }
-    case "delete_path": {
+  },
+  deletePath: async (path) => {
+    const a: Record<string, unknown> = { path };
+    {
       const p = norm(a.path);
       if (!exists(p)) throw err("not_found", `not found: ${p}`);
       const under = (x: string) => x === p || x.startsWith(`${p}/`);
@@ -1959,7 +2498,116 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
       for (const d of [...dirs]) if (under(d)) dirs.delete(d);
       return null;
     }
-    case "search": {
+  },
+  fileHistory: async (path) => {
+    const a: Record<string, unknown> = { path };
+    return versions
+      .filter((v) => v.path === norm(a.path))
+      .reverse()
+      .map(({ content: _c, ...v }) => v);
+  },
+  unlinkedMentions: async (path) => {
+    const a: Record<string, unknown> = { path };
+    {
+      // Simplified: whole-word, case-insensitive title matches outside [[links]].
+      const target = norm(a.path);
+      const title = target.split("/").pop()!.replace(/\.md$/, "");
+      const word = new RegExp(
+        `(^|[^\\p{L}\\p{N}])(${title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})(?=$|[^\\p{L}\\p{N}])`,
+        "iu",
+      );
+      const out: { source: string; line: number; context: string; text: string }[] = [];
+      for (const [p, f] of files) {
+        if (p === target || !p.endsWith(".md") || f.content.includes(`[[${title}`)) continue;
+        f.content.split("\n").forEach((l, i) => {
+          const m = word.exec(l.replace(/\[\[[^\]]*\]\]/g, (x) => " ".repeat(x.length)));
+          if (m) out.push({ source: p, line: i + 1, context: l.trim(), text: m[2] });
+        });
+      }
+      return out;
+    }
+  },
+  printWindow: async () => notInMock("print_window"),
+  linkMention: async (source, line, text, target) => {
+    const a: Record<string, unknown> = { source, line, text, target };
+    {
+      const p = norm(a.source);
+      const f = files.get(p)!;
+      const lines = f.content.split("\n");
+      const text = String(a.text);
+      const title = norm(a.target).split("/").pop()!.replace(/\.md$/, "");
+      lines[Number(a.line) - 1] = lines[Number(a.line) - 1].replace(
+        text,
+        text === title ? `[[${title}]]` : `[[${title}|${text}]]`,
+      );
+      return write(p, lines.join("\n"));
+    }
+  },
+  getAgentRules: async () => {
+    return agentRules;
+  },
+  setAgentRules: async (rules) => {
+    const a: Record<string, unknown> = { rules };
+    agentRules = a.rules as typeof agentRules;
+    return null;
+  },
+  versionContent: async (id) => {
+    const a: Record<string, unknown> = { id };
+    return versions.find((v) => v.id === a.id)?.content ?? "";
+  },
+  restoreVersion: async (path, id, expectedHash) => {
+    const a: Record<string, unknown> = { path, id, expectedHash };
+    {
+      const p = norm(a.path);
+      const content = versions.find((v) => v.id === a.id)?.content ?? "";
+      const out = write(p, content);
+      track(p, "restored", content);
+      return out;
+    }
+  },
+  aiActivity: async (_limit) => {
+    return versions
+      .filter((v) => (v.source === "agent" || v.source === "cli") && v.action !== "before")
+      .reverse()
+      .map(({ content: _c, ...v }) => v);
+  },
+  undoChange: async (id) => {
+    const a: Record<string, unknown> = { id };
+    {
+      const v = versions.find((x) => x.id === a.id);
+      if (!v) throw err("not_found", "change not found");
+      const cur = files.get(v.path);
+      if (v.action === "created") files.delete(v.path);
+      else if (v.action === "deleted") write(v.path, v.content ?? "");
+      else {
+        if (cur && hash(cur.content) !== v.hash)
+          throw { code: "conflict", message: `${v.path} changed since`, current_hash: hash(cur.content) };
+        const prev = versions.filter((x) => x.path === v.path && x.id < v.id && x.content !== null).pop();
+        if (!prev) throw err("invalid", "no earlier version");
+        write(v.path, prev.content ?? "");
+        track(v.path, "restored", prev.content);
+      }
+      window.dispatchEvent(new CustomEvent("mock-vault-changed", { detail: { paths: [v.path] } }));
+      return v.path;
+    }
+  },
+  absolutePath: async (path) => {
+    const a: Record<string, unknown> = { path };
+    return `/mock/vault/${norm(a.path)}`;
+    // The mock's renames always finish.
+  },
+  openInDefaultApp: async () => notInMock("open_in_default_app"),
+  unfinishedRenames: async () => {
+    return [];
+  },
+  fixLinks: async (id) => {
+    const a: Record<string, unknown> = { id };
+    throw err("invalid", `there is no unfinished move ${a.id}`);
+  },
+  htmlPreviewDocument: async () => notInMock("html_preview_document"),
+  search: async (query, limit) => {
+    const a: Record<string, unknown> = { query, limit };
+    {
       const terms = String(a.query ?? "")
         .toLowerCase()
         .split(/\s+/)
@@ -1983,187 +2631,10 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
       }
       return hits;
     }
-    case "proposals": {
-      const list = proposals
-        .filter((p) => a.includeDecided || p.status === "pending")
-        .map(({ content: _c, ...p }) => ({
-          ...p,
-          overwrote: false,
-          stale:
-            p.status === "pending" && (files.has(p.path) ? hash(files.get(p.path)!.content) : null) !== p.base_hash,
-        }));
-      return list;
-    }
-    case "proposal_content":
-      return proposals.find((p) => p.id === a.id)?.content ?? null;
-    case "proposal_base":
-      return null;
-    case "accept_proposal":
-    case "reject_proposal": {
-      const p = proposals.find((x) => x.id === a.id && x.status === "pending");
-      if (!p) throw err("not_found", `proposal ${a.id}`);
-      if (cmd === "accept_proposal") {
-        const current = files.has(p.path) ? hash(files.get(p.path)!.content) : null;
-        if (current !== p.base_hash && !a.force) throw err("conflict", `file changed since it was read: ${p.path}`);
-        const accepted = typeof a.content === "string" ? a.content : p.content;
-        if (accepted === null) files.delete(p.path);
-        else write(p.path, accepted);
-        track(p.path, p.action, accepted, { source: "agent", actor: p.actor });
-        emit("vault-changed", { paths: [p.path] });
-      }
-      Object.assign(p, {
-        status: cmd === "accept_proposal" ? "accepted" : "rejected",
-        reason: (a.reason as string | null) ?? null,
-        decided: Date.now(),
-      });
-      return cmd === "accept_proposal" ? p.path : null;
-    }
-    case "set_task": {
-      const f = files.get(a.path as string);
-      if (!f) throw err("not_found", String(a.path));
-      const lines = f.content.split("\n");
-      const i = (a.line as number) - 1;
-      const m = /^(\s*(?:[-*+]|\d+[.)])\s+\[)(.)(\].*)$/.exec(lines[i] ?? "");
-      if (!m || taskLabel(m[3].slice(1).trim()) !== a.text) throw err("conflict", String(a.path));
-      lines[i] =
-        `${m[1]}${a.done ? "x" : " "}${a.done ? m[3] : m[3].replace(/\s*<!--\s*mosaic:state=done\s*-->/g, "")}`;
-      f.content = lines.join("\n");
-      f.mtime = Date.now();
-      emit("vault-changed", { paths: [a.path] });
-      return { path: a.path, hash: hash(f.content) };
-    }
-    case "set_task_workflow": {
-      const f = files.get(a.path as string);
-      if (!f) throw err("not_found", String(a.path));
-      if (!WORKFLOW_STATES.some((s) => s.id === a.next)) throw err("invalid", "Unknown workflow state");
-      const lines = f.content.split("\n");
-      const i = Number(a.line) - 1;
-      const m = /^(\s*(?:[-*+]|\d+[.)])\s+\[)([ xX])(\]\s*)(.*)$/.exec(lines[i] ?? "");
-      const state = m && mockWorkflow(m[4], m[2]);
-      if (!m || taskLabel(m[4]) !== a.text || state !== a.expectedState) throw err("conflict", String(a.path));
-      lines[i] = `${m[1]}${a.next === "done" ? "x" : " "}${m[3]}${annotatedTask(m[4], a.next as WorkflowState)}`;
-      write(String(a.path), lines.join("\n"));
-      track(String(a.path), "edited", lines.join("\n"));
-      emit("vault-changed", { paths: [a.path] });
-      return { path: a.path, hash: hash(files.get(String(a.path))!.content) };
-    }
-    case "agents":
-      return mockAgents();
-    case "chat_check":
-      return { path: "/mock/claude", version: "mock" };
-    case "chat_send": {
-      // A canned answer, streamed, for trying the chat panel in the browser.
-      const run = ++chatRuns;
-      const target = (a.context as string[])[0] ?? "Ideas.md";
-      const steps: unknown[] = [
-        { kind: "started", session_id: "mock-session", mosaic: true },
-        { kind: "tool", id: "t1", summary: `Read ${target.replace(/\.md$/, "")}`, path: target, writes: false },
-        { kind: "tool_done", id: "t1", error: null, review: null },
-        {
-          kind: "text",
-          text: a.agent
-            ? `Running the **${a.agent}** agent.`
-            : `You asked: *${String(a.message).slice(0, 80)}*.${a.selectionText ? " I also received the selected text." : ""}${a.model ? ` Model: ${a.model}.` : ""}`,
-        },
-        { kind: "tool", id: "t2", summary: "Edited Ideas", path: "Ideas.md", writes: true },
-        { kind: "tool_done", id: "t2", error: null, review: null },
-        { kind: "text", text: "Done: I added a line to [[Ideas]].\n\n- one\n- two" },
-        { kind: "done", session_id: "mock-session", cost_usd: 0.0123, error: null },
-      ];
-      steps.forEach((event, i) => setTimeout(() => emit("chat-event", { run, event }), 250 * (i + 1)));
-      return run;
-    }
-    case "chat_stop":
-      return null;
-    case "mirror_agents":
-      return { written: [], removed: [], skipped: [] };
-    case "tessera_status":
-      return {
-        paused: tesseraPaused,
-        max_chain_depth: tesseraMaxDepth,
-        agents: mockAgents().map((a) => ({
-          name: a.name,
-          title: a.title,
-          schedule: a.schedule,
-          on: a.on,
-          model: a.model,
-          paused: tesseraPausedAgents.includes(a.name),
-          running: tesseraRuns.some((r) => r.agent === a.name && r.status === "running"),
-          queued: 0,
-          error: null,
-        })),
-        runs: tesseraRuns,
-      };
-    case "tessera_pause_all":
-      tesseraPaused = Boolean(a.paused);
-      return null;
-    case "tessera_pause_agent": {
-      const name = String(a.name);
-      const i = tesseraPausedAgents.indexOf(name);
-      if (i >= 0) tesseraPausedAgents.splice(i, 1);
-      if (a.paused) tesseraPausedAgents.push(name);
-      return null;
-    }
-    case "tessera_set_max_chain_depth":
-      tesseraMaxDepth = Number(a.depth);
-      return null;
-    case "tessera_run": {
-      const agent = mockAgents().find((agent) => agent.name === a.name);
-      if (!agent) throw err("not_found", "Agent not found");
-      const id = ++chatRuns;
-      tesseraRuns.unshift({
-        id,
-        agent: agent.name,
-        title: agent.title,
-        started: Math.floor(Date.now() / 1000),
-        finished: Math.floor(Date.now() / 1000),
-        late: false,
-        status: "done",
-        answer: "Mock run completed. No files were changed.",
-        error: null,
-        proposals: 0,
-        changes: [],
-        changed_paths: [],
-        proposal_ids: [],
-      });
-      emit("tessera-changed", {});
-      return id;
-    }
-    case "tessera_test_event": {
-      const agent = mockAgents().find((agent) => agent.name === a.name);
-      if (!agent) throw err("not_found", "Agent not found");
-      const id = ++chatRuns;
-      tesseraRuns.unshift({
-        id,
-        agent: agent.name,
-        title: agent.title,
-        started: Math.floor(Date.now() / 1000),
-        finished: Math.floor(Date.now() / 1000),
-        late: false,
-        status: "done",
-        trigger: `Test · ${a.path}`,
-        trigger_path: String(a.path),
-        chain_id: `test-${id}`,
-        chain_depth: 0,
-        model: agent.model,
-        attempts: 1,
-        answer: "Mock event run completed.",
-        error: null,
-        proposals: 0,
-        changes: [],
-        changed_paths: [],
-        proposal_ids: [],
-      });
-      emit("tessera-changed", {});
-      return id;
-    }
-    case "days":
-      return mockDays(a.from as string, a.to as string, a.today as string);
-    case "carry_over":
-      return { from: null, to: a.path ?? `${a.day}.md`, moved: 0, created: false };
-    case "query_notes":
-      return mockQuery(String(a.query ?? ""));
-    case "backlinks": {
+  },
+  backlinks: async (path) => {
+    const a: Record<string, unknown> = { path };
+    {
       const target = norm(a.path).split("/").pop()!.replace(/\.md$/, "").toLowerCase();
       const out: Backlink[] = [];
       for (const [path, f] of files) {
@@ -2176,33 +2647,229 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
       }
       return out;
     }
-    case "tags": {
+  },
+  tags: async () => {
+    {
       const counts = new Map<string, number>();
       for (const f of files.values())
         for (const m of f.content.matchAll(/(?:^|\s)#([\w/-]+)/g)) counts.set(m[1], (counts.get(m[1]) ?? 0) + 1);
       return [...counts].map(([tag, count]) => ({ tag, count }));
     }
-    case "aliases":
-      return [];
-    case "cli_info":
-    case "install_cli":
-      return {
-        path: "/Applications/Mosaic.app/Contents/MacOS/mosaic",
-        link: "~/.local/bin/mosaic",
-        installed: cmd === "install_cli",
-      };
+  },
+  aliases: async () => {
+    return [];
+  },
+  outline: async () => notInMock("outline"),
+  cliInfo: async () => {
+    const cmd: string = "cli_info";
+    return {
+      path: "/Applications/Mosaic.app/Contents/MacOS/mosaic",
+      link: "~/.local/bin/mosaic",
+      installed: cmd === "install_cli",
+    };
+  },
+  installCli: async () => {
+    const cmd: string = "install_cli";
+    return {
+      path: "/Applications/Mosaic.app/Contents/MacOS/mosaic",
+      link: "~/.local/bin/mosaic",
+      installed: cmd === "install_cli",
+    };
+  },
+  updateStatus: async () => {
+    return updateStatus();
+  },
+  checkUpdates: async () => {
+    await new Promise((r) => setTimeout(r, 600));
+    return {
+      latest_version: "0.2.0",
+      releases: [
+        {
+          version: "0.2.0",
+          date: "2026-10-01",
+          notes: [
+            "**Movable window:** drag the sidebar header, tab bar or welcome screen. Updates show the current `version` and *release notes*.",
+            "A running update can be cancelled; the installed app stays as it was.",
+          ],
+        },
+      ],
+      update_available: true,
+    };
+  },
+  startUpdate: async () => {
+    if (updateRunning) throw err("invalid", "An update is already running.");
+    fakeUpdate();
+    return null;
+  },
+  cancelUpdate: async () => {
+    cancelFakeUpdate();
+    return null;
+  },
+  finishUpdate: async () => {
+    window.location.reload();
+    return null;
+  },
+};
+
+/** Parameter order of each command, to call `mockCommands` with an arguments object. */
+const PARAMS: Record<string, [keyof typeof commands, string[]]> = {
+  open_vault: ["openVault", ["path"]],
+  query_notes: ["queryNotes", ["query"]],
+  set_task: ["setTask", ["path", "line", "text", "done"]],
+  set_task_workflow: ["setTaskWorkflow", ["path", "line", "text", "expectedState", "next"]],
+  days: ["days", ["from", "to", "today"]],
+  carry_over: ["carryOver", ["day", "path", "newNote"]],
+  planner_summary: ["plannerSummary", []],
+  planner_activity: ["plannerActivity", ["entityKind", "entityId"]],
+  planner_epics: ["plannerEpics", ["includeArchived", "includeTrashed"]],
+  planner_tasks: ["plannerTasks", ["includeArchived", "includeTrashed"]],
+  planner_create_epic: ["plannerCreateEpic", ["input"]],
+  planner_update_epic: ["plannerUpdateEpic", ["id", "input"]],
+  planner_archive_epic: ["plannerArchiveEpic", ["id", "expectedRevision"]],
+  planner_restore_epic: ["plannerRestoreEpic", ["id", "expectedRevision"]],
+  planner_trash_epic: ["plannerTrashEpic", ["id", "expectedRevision"]],
+  planner_create_task: ["plannerCreateTask", ["input"]],
+  planner_update_task: ["plannerUpdateTask", ["id", "input"]],
+  planner_move_task: ["plannerMoveTask", ["id", "input"]],
+  planner_complete_task: [
+    "plannerCompleteTask",
+    ["id", "expectedRevision", "allowIncompleteSubtasks", "futureSessions"],
+  ],
+  planner_reopen_task: ["plannerReopenTask", ["id", "expectedRevision"]],
+  planner_archive_task: ["plannerArchiveTask", ["id", "expectedRevision"]],
+  planner_restore_task: ["plannerRestoreTask", ["id", "expectedRevision"]],
+  planner_trash_task: ["plannerTrashTask", ["id", "expectedRevision"]],
+  planner_work_sessions: ["plannerWorkSessions", ["taskId", "includeCancelled"]],
+  planner_create_work_session: ["plannerCreateWorkSession", ["input"]],
+  planner_update_work_session: ["plannerUpdateWorkSession", ["id", "input"]],
+  planner_cancel_work_session: ["plannerCancelWorkSession", ["id", "expectedRevision"]],
+  planner_calendar_range: ["plannerCalendarRange", ["from", "to"]],
+  planner_events: ["plannerEvents", ["includeArchived", "includeTrashed"]],
+  planner_create_event: ["plannerCreateEvent", ["input"]],
+  planner_update_event: ["plannerUpdateEvent", ["id", "input"]],
+  planner_archive_event: ["plannerArchiveEvent", ["id", "expectedRevision"]],
+  planner_restore_event: ["plannerRestoreEvent", ["id", "expectedRevision"]],
+  planner_trash_event: ["plannerTrashEvent", ["id", "expectedRevision"]],
+  planner_cancel_event_occurrence: ["plannerCancelEventOccurrence", ["seriesId", "expectedRevision", "occurrenceKey"]],
+  planner_replace_event_occurrence: [
+    "plannerReplaceEventOccurrence",
+    ["seriesId", "expectedRevision", "occurrenceKey", "input"],
+  ],
+  planner_migration_preview: ["plannerMigrationPreview", []],
+  planner_import_markdown: [
+    "plannerImportMarkdown",
+    ["preview", "selectedFingerprints", "allowDuplicates", "timezone"],
+  ],
+  planner_ical_preview: ["plannerIcalPreview", ["sourceKind", "content", "fallbackTimezone"]],
+  planner_ical_import: ["plannerIcalImport", ["preview", "selectedKeys", "allowDuplicates"]],
+  planner_ical_export: ["plannerIcalExport", []],
+  planner_ical_export_file: ["plannerIcalExportFile", ["path"]],
+  planner_export: ["plannerExport", ["format"]],
+  planner_export_file: ["plannerExportFile", ["format", "path"]],
+  planner_restore_backup: ["plannerRestoreBackup", ["path"]],
+  calendar_subscriptions: ["calendarSubscriptions", []],
+  add_calendar_subscription: ["addCalendarSubscription", ["name", "url", "color", "refreshMinutes"]],
+  update_calendar_subscription: ["updateCalendarSubscription", ["id", "name", "color", "visible", "refreshMinutes"]],
+  remove_calendar_subscription: ["removeCalendarSubscription", ["id"]],
+  refresh_calendar_subscriptions: ["refreshCalendarSubscriptions", ["force"]],
+  calendar_overlay_range: ["calendarOverlayRange", ["from", "to", "timezone"]],
+  agents: ["agents", []],
+  mirror_agents: ["mirrorAgents", []],
+  chat_check: ["chatCheck", []],
+  chat_send: [
+    "chatSend",
+    ["message", "session", "context", "active", "agent", "selectionPath", "selectionText", "model"],
+  ],
+  chat_stop: ["chatStop", ["run"]],
+  tessera_status: ["tesseraStatus", []],
+  tessera_run: ["tesseraRun", ["name"]],
+  tessera_test_event: ["tesseraTestEvent", ["name", "path"]],
+  tessera_pause_all: ["tesseraPauseAll", ["paused"]],
+  tessera_pause_agent: ["tesseraPauseAgent", ["name", "paused"]],
+  tessera_set_max_chain_depth: ["tesseraSetMaxChainDepth", ["depth"]],
+  proposals: ["proposals", ["includeDecided"]],
+  proposal_content: ["proposalContent", ["id"]],
+  proposal_base: ["proposalBase", ["id"]],
+  accept_proposal: ["acceptProposal", ["id", "force", "content"]],
+  reject_proposal: ["rejectProposal", ["id", "reason"]],
+  create_vault: ["createVault", ["parent", "name"]],
+  recent_vaults: ["recentVaults", []],
+  forget_vault: ["forgetVault", ["path"]],
+  get_bookmarks: ["getBookmarks", []],
+  set_bookmarks: ["setBookmarks", ["paths"]],
+  copy_path: ["copyPath", ["from", "to"]],
+  current_vault: ["currentVault", []],
+  last_vault: ["lastVault", []],
+  list_dir: ["listDir", ["dir", "recursive"]],
+  read_file: ["readFile", ["path"]],
+  create_file: ["createFile", ["path", "content", "root"]],
+  template_config: ["templateConfig", []],
+  vault_preferences: ["vaultPreferences", []],
+  set_vault_preferences: ["setVaultPreferences", ["patch", "root"]],
+  set_template_config: ["setTemplateConfig", ["config"]],
+  list_templates: ["listTemplates", ["path"]],
+  render_template: ["renderTemplate", ["request"]],
+  create_note: ["createNote", ["request"]],
+  template_starters: ["templateStarters", []],
+  write_file: ["writeFile", ["path", "content", "expectedHash", "root"]],
+  make_dir: ["makeDir", ["path"]],
+  rename_path: ["renamePath", ["from", "to"]],
+  delete_path: ["deletePath", ["path"]],
+  file_history: ["fileHistory", ["path"]],
+  unlinked_mentions: ["unlinkedMentions", ["path"]],
+  print_window: ["printWindow", []],
+  link_mention: ["linkMention", ["source", "line", "text", "target"]],
+  get_agent_rules: ["getAgentRules", []],
+  set_agent_rules: ["setAgentRules", ["rules"]],
+  version_content: ["versionContent", ["id"]],
+  restore_version: ["restoreVersion", ["path", "id", "expectedHash"]],
+  ai_activity: ["aiActivity", ["limit"]],
+  undo_change: ["undoChange", ["id"]],
+  absolute_path: ["absolutePath", ["path"]],
+  open_in_default_app: ["openInDefaultApp", ["path"]],
+  unfinished_renames: ["unfinishedRenames", []],
+  fix_links: ["fixLinks", ["id"]],
+  html_preview_document: ["htmlPreviewDocument", ["html"]],
+  search: ["search", ["query", "limit"]],
+  backlinks: ["backlinks", ["path"]],
+  tags: ["tags", []],
+  aliases: ["aliases", []],
+  outline: ["outline", ["path"]],
+  cli_info: ["cliInfo", []],
+  install_cli: ["installCli", []],
+  update_status: ["updateStatus", []],
+  check_updates: ["checkUpdates", []],
+  start_update: ["startUpdate", []],
+  cancel_update: ["cancelUpdate", []],
+  finish_update: ["finishUpdate", []],
+};
+
+/** Calls a mock command by its Tauri name with named arguments (dev handle, raw-bytes import). */
+export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promise<unknown> {
+  const typed = PARAMS[cmd];
+  if (typed) {
+    const [name, params] = typed;
+    return (mockCommands[name] as (...args: unknown[]) => Promise<unknown>)(...params.map((p) => a[p]));
+  }
+  switch (cmd) {
+    case "import_file": {
+      // Binary files are kept as data: URLs, like the mock's sample images.
+      const p = norm(a.path);
+      const bytes = a.bytes as Uint8Array;
+      const kind = kindOf(p);
+      const content = ["image", "pdf", "other"].includes(kind)
+        ? `data:${kind === "pdf" ? "application/pdf" : `image/${p.split(".").pop()}`};base64,${btoa(Array.from(bytes, (b) => String.fromCharCode(b)).join(""))}`
+        : new TextDecoder().decode(bytes);
+      const dot = p.lastIndexOf(".") > p.lastIndexOf("/") + 1 ? p.lastIndexOf(".") : p.length;
+      let target = p;
+      for (let n = 1; exists(target); n++) target = `${p.slice(0, dot)} ${n}${p.slice(dot)}`;
+      return write(target, content);
+    }
     case "read_raw": {
       const f = files.get(norm(a.path));
       if (!f) throw err("not_found", `not found: ${a.path}`);
       return f.content;
     }
-    case "absolute_path":
-      return `/mock/vault/${norm(a.path)}`;
-    // The mock's renames always finish.
-    case "unfinished_renames":
-      return [];
-    case "fix_links":
-      throw err("invalid", `there is no unfinished move ${a.id}`);
     default:
       throw err("invalid", `mock: unknown command ${cmd}`);
   }
@@ -2247,7 +2914,7 @@ function mockQuery(q: string): QueryResult {
         ? r.path
         : r.task && f in r.task
           ? r.task[f as keyof typeof r.task]
-          : r.props[f];
+          : (r.props as Record<string, unknown>)[f];
   for (const tok of tokens) {
     const t = tok.replace(/"/g, "");
     let m: RegExpExecArray | null;

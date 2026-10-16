@@ -17,7 +17,7 @@ use tauri::{AppHandle, Emitter, State};
 
 type CmdResult<T> = Result<T, Error>;
 
-#[derive(Default)]
+#[derive(Default, specta::Type)]
 pub struct ChatState {
     next: AtomicU64,
     /// Running answers: run id → process group id.
@@ -30,7 +30,7 @@ struct ChatPayload {
     event: ChatEvent,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, specta::Type)]
 pub struct ClaudeInfo {
     /// Where `claude` was found, if it was.
     path: Option<String>,
@@ -94,6 +94,7 @@ pub(crate) fn mosaic_cli() -> Option<PathBuf> {
 }
 
 #[tauri::command(async)]
+#[specta::specta]
 pub fn chat_check() -> ClaudeInfo {
     let path = find_claude();
     let version = path.as_ref().and_then(|p| {
@@ -115,11 +116,11 @@ pub fn chat_check() -> ClaudeInfo {
 /// Sends a message: starts Claude Code (resuming `session` if given) and returns the run's id;
 /// its events arrive as `chat-event`. With `agent`, the message runs that agent from `Agents/`.
 #[tauri::command(async)]
+#[specta::specta]
 #[allow(clippy::too_many_arguments)]
 pub fn chat_send(
     app: AppHandle,
     state: State<AppState>,
-    chats: State<ChatState>,
     message: String,
     session: Option<String>,
     context: Vec<String>,
@@ -194,6 +195,7 @@ pub fn chat_send(
     if let Some(mut stdin) = child.stdin.take() {
         let _ = stdin.write_all(prompt.as_bytes());
     }
+    let chats = tauri::Manager::state::<ChatState>(&app);
     let run = chats.next.fetch_add(1, Ordering::SeqCst) + 1;
     chats
         .runs
@@ -261,6 +263,7 @@ pub fn chat_send(
 
 /// Stops an answer: kills Claude Code's whole process group.
 #[tauri::command(async)]
+#[specta::specta]
 pub fn chat_stop(chats: State<ChatState>, run: u64) -> CmdResult<()> {
     if let Some(pgid) = chats.runs.lock().expect("chat lock").remove(&run) {
         let _ = Command::new("kill")

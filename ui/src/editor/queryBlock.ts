@@ -28,7 +28,7 @@ export function cell(row: QueryRow, column: string): string {
     const pad = (n: number) => String(n).padStart(2, "0");
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
   }
-  const v = prop(row.props, column);
+  const v = prop(row.props as Record<string, unknown>, column);
   if (v == null) return "";
   if (Array.isArray(v)) return v.map((i) => (typeof i === "object" ? JSON.stringify(i) : String(i))).join(", ");
   return typeof v === "object" ? JSON.stringify(v) : String(v);

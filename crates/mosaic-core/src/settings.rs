@@ -13,13 +13,11 @@ pub const APP_ID: &str = "dev.jona.mosaic";
 pub struct Settings {
     pub last_vault: Option<PathBuf>,
     pub recent_vaults: Vec<PathBuf>,
-    /// Bookmarked vault-relative paths, per vault root. Kept here so the vault holds only user content.
+    /// Bookmarks, folder rules and scheduler state per vault root, as Mosaic 0.20 and earlier kept
+    /// them. They now live per vault id (`vault_state`), are copied from here once, and these are
+    /// only read for a vault that has no id yet; kept so going back to 0.20 still finds them.
     pub bookmarks: BTreeMap<PathBuf, Vec<String>>,
-    /// The Mosaic source checkout that Settings › Update pulls and rebuilds. `None` = where the app was built.
-    pub update_source: Option<PathBuf>,
-    /// Folders agents (MCP, CLI) may only read, or can't see at all, per vault root.
     pub agent_rules: BTreeMap<PathBuf, Vec<AgentRule>>,
-    /// Scheduler state and run history, per vault; kept outside the vault like other app state.
     pub tessera: BTreeMap<PathBuf, TesseraSettings>,
     /// Raw values preserve invalid/newer configurations so they can be reported and repaired.
     pub templates: BTreeMap<PathBuf, serde_json::Value>,
@@ -202,9 +200,14 @@ pub fn cache_dir() -> Option<PathBuf> {
 impl Settings {
     /// Configuration mutations must never turn a malformed settings file into silent defaults.
     pub fn try_load() -> std::io::Result<Self> {
-        let Some(dir) = app_support_dir() else {
-            return Ok(Self::default());
-        };
+        match app_support_dir() {
+            Some(dir) => Self::try_load_in(&dir),
+            None => Ok(Self::default()),
+        }
+    }
+
+    /// `try_load` from the settings.json in `dir`.
+    pub fn try_load_in(dir: &Path) -> std::io::Result<Self> {
         match std::fs::read(dir.join(SETTINGS_FILE)) {
             Ok(bytes) => serde_json::from_slice(&bytes).map_err(std::io::Error::other),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Self::default()),
@@ -303,30 +306,6 @@ impl Settings {
     }
 }
 
-impl Settings {
-    /// Makes a vault's bookmarks follow a move of `from` to `to` (also inside a moved folder).
-    /// Returns whether anything changed.
-    pub fn remap_bookmarks(&mut self, root: &Path, from: &str, to: &str) -> bool {
-        let Some(list) = self.bookmarks.get_mut(root) else {
-            return false;
-        };
-        let mut changed = false;
-        for p in list.iter_mut() {
-            let mapped = if p == from {
-                Some(to.to_string())
-            } else {
-                p.strip_prefix(&format!("{from}/"))
-                    .map(|rest| format!("{to}/{rest}"))
-            };
-            if let Some(m) = mapped {
-                *p = m;
-                changed = true;
-            }
-        }
-        changed
-    }
-}
-
 #[cfg(test)]
 mod tests {
     #[test]
@@ -398,17 +377,6 @@ mod tests {
         s.set_bookmarks(a, vec!["x.md".into(), "y.md".into(), "x.md".into()]);
         assert_eq!(s.bookmarks(a), vec!["x.md", "y.md"]);
         assert!(s.bookmarks(Path::new("/b")).is_empty());
-        s.set_bookmarks(
-            a,
-            vec!["Notes/x.md".into(), "Notes".into(), "Notes2/y.md".into()],
-        );
-        assert!(s.remap_bookmarks(a, "Notes", "Archive/Notes"));
-        assert_eq!(
-            s.bookmarks(a),
-            vec!["Archive/Notes/x.md", "Archive/Notes", "Notes2/y.md"]
-        );
-        assert!(!s.remap_bookmarks(a, "Missing.md", "Other.md"));
-        assert!(!s.remap_bookmarks(Path::new("/b"), "x.md", "z.md"));
         s.set_bookmarks(a, vec![]);
         assert!(!s.bookmarks.contains_key(a));
     }

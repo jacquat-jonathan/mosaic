@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { ExternalLink } from "lucide-react";
 import { useWorkspace, type Buffer } from "../state/workspace";
 import { MarkdownEditor } from "./MarkdownEditor";
@@ -9,6 +9,7 @@ import { PdfViewer } from "./PdfViewer";
 import { CsvEditor } from "./CsvEditor";
 import { ConflictBar } from "../views/ConflictBar";
 import { openInDefaultApp } from "../ipc/api";
+import { errorMessage } from "../ipc/types";
 import { CanvasEditor } from "./canvas/CanvasEditor";
 import { ExcalidrawEditor } from "./ExcalidrawEditor";
 import { RenderedSourceViewer } from "./RenderedSourceViewer";
@@ -77,14 +78,26 @@ function Viewer({ buffer }: { buffer: Buffer }) {
 }
 
 function Unsupported({ path, message }: { path: string; message: string }) {
+  // Programs and installers are refused by the backend; say why instead of doing nothing.
+  const [refused, setRefused] = useState<string | null>(null);
+  useEffect(() => setRefused(null), [path]);
   return (
     <div className="empty">
       <p>{message}</p>
       <p>
-        <button className="primary" onClick={() => void openInDefaultApp(path)}>
+        <button
+          className="primary"
+          onClick={() =>
+            openInDefaultApp(path).then(
+              () => setRefused(null),
+              (e) => setRefused(errorMessage(e)),
+            )
+          }
+        >
           <ExternalLink size={14} /> Open in default app
         </button>
       </p>
+      {refused && <p className="error-text">{refused}</p>}
     </div>
   );
 }

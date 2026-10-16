@@ -419,6 +419,14 @@ fn run(cli: Cli) -> Result<()> {
     if needs_index {
         ws.sync(|_, _| {})?;
     }
+    if matches!(cli.cmd, Cmd::Mcp) {
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()?;
+        return rt.block_on(mcp::serve(ws, mode));
+    }
+    // A command is one agent request: its folder rules are read once (see `freeze_rules`).
+    let _rules = ws.freeze_rules();
     match cli.cmd {
         Cmd::Templates { path } => print(json, &ws.list_templates(path.as_deref())?, |v| {
             let mut lines: Vec<String> = v.templates.iter().map(|t| t.path.clone()).collect();
@@ -639,6 +647,7 @@ fn run(cli: Cli) -> Result<()> {
                         r.updated_links_in.join(", ")
                     ));
                 }
+                s.push_str(&failed_links(r));
                 s
             })
         }
@@ -710,7 +719,7 @@ fn run(cli: Cli) -> Result<()> {
         Cmd::Move { paths, to } => print(json, &ws.move_into(&paths, &to)?, |moved| {
             moved
                 .iter()
-                .map(|r| format!("moved to {}", r.path))
+                .map(|r| format!("moved to {}{}", r.path, failed_links(r)))
                 .collect::<Vec<_>>()
                 .join("\n")
         }),
@@ -795,11 +804,14 @@ fn run(cli: Cli) -> Result<()> {
         }),
         Cmd::Guide => unreachable!(),
         Cmd::SwapApps { .. } => unreachable!(),
-        Cmd::Mcp => {
-            let rt = tokio::runtime::Builder::new_multi_thread()
-                .enable_all()
-                .build()?;
-            rt.block_on(mcp::serve(ws, mode))
-        }
+        Cmd::Mcp => unreachable!("served above"),
     }
+}
+
+/// Links a move couldn't rewrite: the move happened, and the app offers Fix links for it.
+fn failed_links(r: &mosaic_core::api::Renamed) -> String {
+    r.failed_links_in
+        .iter()
+        .map(|f| format!("\ncouldn't update links in {}: {}", f.path, f.error))
+        .collect()
 }

@@ -331,8 +331,14 @@ impl MosaicMcp {
         }
     }
 
-    /// The workspace for this call. In follow mode, switches first if the app opened another vault.
-    fn ws(&self) -> Arc<Workspace> {
+    /// The workspace for this call, with the folder rules read once for the whole call (see
+    /// `Workspace::freeze_rules`).
+    fn ws(&self) -> mosaic_core::api::RulesFrozen<Arc<Workspace>> {
+        Workspace::frozen(self.workspace())
+    }
+
+    /// The current workspace. In follow mode, switches first if the app opened another vault.
+    fn workspace(&self) -> Arc<Workspace> {
         let current = self.ws.read().unwrap_or_else(|p| p.into_inner()).clone();
         if self.mode == VaultMode::FollowApp
             && let Some(root) = app_vault()

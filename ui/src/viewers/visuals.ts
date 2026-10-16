@@ -5,6 +5,7 @@ import Papa from "papaparse";
 import { api } from "../ipc/api";
 import { parentOf } from "../state/vault";
 import { isDark } from "../theme";
+import { sanitizeSvg } from "../sanitizeSvg";
 
 function resolveRelative(fromFile: string, rel: string): string {
   const parts = parentOf(fromFile).split("/").filter(Boolean);
@@ -99,5 +100,6 @@ export async function renderGraphviz(source: string, el: HTMLElement): Promise<v
   if (result.status !== "success") {
     throw new Error(result.errors.map((e) => e.message).join("\n") || "Graphviz couldn't render this graph.");
   }
-  el.innerHTML = result.output;
+  // DOT `URL`/`href` attributes are copied into the SVG as links.
+  el.innerHTML = sanitizeSvg(result.output);
 }

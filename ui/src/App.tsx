@@ -174,6 +174,7 @@ function Main() {
   const rightWidth = useUi((s) => s.rightWidth);
   const indexing = useVault((s) => s.indexing);
   const offline = useVault((s) => s.offline);
+  const unfinishedRenames = useVault((s) => s.unfinishedRenames);
   const pendingReviews = useReview((s) => s.pending.length);
   const chatAttention = useChat(
     (s) =>
@@ -393,6 +394,14 @@ function Main() {
               <span>{vault.history_warning}</span>
             </div>
           )}
+          {unfinishedRenames.map((op) => (
+            <div key={op.id} className="notice warn" role="alert">
+              <span>
+                Moving {op.from} to {op.to} didn't finish: some links may still point to the old name.
+              </span>
+              <button onClick={() => void useVault.getState().fixLinks(op.id)}>Fix links</button>
+            </div>
+          ))}
           <Workspace />
         </main>
         {right && contextKind(active) && (

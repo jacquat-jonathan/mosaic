@@ -223,16 +223,7 @@ async fn refresh_one(
     }
     let url = get_secret(&subscription.id)?;
     let parsed = normalized_url(&url)?;
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(15))
-        .redirect(reqwest::redirect::Policy::custom(|attempt| {
-            if attempt.previous().len() >= 5 || attempt.url().scheme() != "https" {
-                attempt.stop()
-            } else {
-                attempt.follow()
-            }
-        }))
-        .build()
+    let client = crate::http::client(Duration::from_secs(15))
         .map_err(|_| Error::Invalid("could not initialize calendar download".into()))?;
     let mut request = client.get(parsed);
     if let Some(etag) = &subscription.etag {
@@ -241,7 +232,7 @@ async fn refresh_one(
     if let Some(last_modified) = &subscription.last_modified {
         request = request.header(IF_MODIFIED_SINCE, last_modified);
     }
-    let mut response = request
+    let response = request
         .send()
         .await
         .map_err(|_| Error::Invalid("calendar feed could not be reached".into()))?;
@@ -256,12 +247,6 @@ async fn refresh_one(
             response.status().as_u16()
         )));
     }
-    if response
-        .content_length()
-        .is_some_and(|length| length > MAX_FEED_BYTES as u64)
-    {
-        return Err(Error::Invalid("calendar feed is larger than 10 MB".into()));
-    }
     let etag = response
         .headers()
         .get(ETAG)
@@ -273,16 +258,18 @@ async fn refresh_one(
         .and_then(|value| value.to_str().ok())
         .map(str::to_string);
     let mut bytes = Vec::new();
-    while let Some(chunk) = response
-        .chunk()
-        .await
-        .map_err(|_| Error::Invalid("calendar feed download was interrupted".into()))?
-    {
-        if bytes.len().saturating_add(chunk.len()) > MAX_FEED_BYTES {
-            return Err(Error::Invalid("calendar feed is larger than 10 MB".into()));
-        }
-        bytes.extend_from_slice(&chunk);
-    }
+    crate::http::read_capped(response, MAX_FEED_BYTES as u64, |chunk, _| {
+        bytes.extend_from_slice(chunk);
+        Ok(())
+    })
+    .await
+    .map_err(|e| {
+        Error::Invalid(if e.contains("larger") {
+            "calendar feed is larger than 10 MB".into()
+        } else {
+            "calendar feed download was interrupted".into()
+        })
+    })?;
     let content = std::str::from_utf8(&bytes)
         .map_err(|_| Error::Invalid("calendar feed is not UTF-8".into()))?;
     validate_ical(content, "UTC")?;

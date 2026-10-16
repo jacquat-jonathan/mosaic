@@ -437,6 +437,7 @@ impl Workspace {
         Ok(crate::api::Renamed {
             path: to.to_string(),
             updated_links_in: vec![],
+            failed_links_in: vec![],
             review: Some(id),
         })
     }

@@ -5,6 +5,11 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 ## Unreleased
 
 - **Security fixes in bundled libraries:** the drawing editor, diagrams and math rendering now use patched versions of the small libraries they depend on (nanoid, lodash-es, source-map-js and KaTeX), closing the known security advisories against the older copies.
+- **Notes and diagrams can't run code in the app:** Mosaic's window now only runs its own scripts. Graphviz diagrams and canvases are cleaned before they are shown, so a link or attribute in a diagram file can't carry a script, and odd canvas positions or colours are ignored. **Open in default app** now only opens files inside the vault and refuses programs, installers and scripts.
+- **Folder rules and bookmarks follow your vault:** each vault's folder rules (Settings › AI), bookmarks and workflow schedule state are now kept per vault instead of in one shared settings file, so they stay with a vault you move or rename, and the scheduler's frequent bookkeeping can never damage the rules. Mosaic moves them over the first time you open each vault. Each agent request now checks one consistent set of rules, and if a vault's rules can't be read, agents are paused for that vault instead of seeing every folder.
+- **Renames never leave broken links silently:** when moving or renaming a note can't update a link in another note (for example a locked folder), the move still completes and Mosaic says which notes it couldn't update instead of reporting the whole move as failed. If a move didn't finish, including when Mosaic was quit half-way, a banner offers **Fix links** to update the rest.
+- **Simpler, quieter updates:** the developer-only option that pulled and rebuilt a source checkout is gone; updates are the signed downloads from GitHub Releases. Update downloads and calendar feeds now share one HTTPS connection policy. Agents' proposals appear the moment they're made, and Mosaic no longer asks for them every few seconds in the background.
+- **When Mosaic goes online, spelled out:** the README now lists every case: update checks when you click, subscribed calendars while the Calendar is open, and Claude Code for chats and workflows.
 
 ## 0.20.0 — 2026-10-16
 

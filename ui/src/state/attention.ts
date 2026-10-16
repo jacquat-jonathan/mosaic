@@ -1,5 +1,6 @@
 import { create } from "zustand";
-import { api, inTauri, onTesseraChanged } from "../ipc/api";
+import { api, inTauri, onTesseraChanged, onVaultChanged } from "../ipc/api";
+import { vaultPrefs } from "./vaultPreferences";
 import { type Agent, type TesseraStatus, errorMessage } from "../ipc/types";
 
 interface Attention {
@@ -55,13 +56,20 @@ export function startAttention() {
   const refresh = () => void useAttention.getState().refresh();
   refresh();
   let live = true;
-  let off: (() => void) | undefined;
-  void onTesseraChanged(refresh).then((f) => (live ? (off = f) : f()));
-  const timer = setInterval(refresh, 15000);
+  const offs: (() => void)[] = [];
+  const keep = (f: () => void) => (live ? offs.push(f) : f());
+  // Runs change the scheduler state; agent files change in the agents folder; Claude Code may have
+  // been installed or signed in while Mosaic was in the background.
+  void onTesseraChanged(refresh).then(keep);
+  void onVaultChanged((c) => {
+    const folder = vaultPrefs().agents_folder;
+    if (c.paths.some((p) => p === folder || p.startsWith(`${folder}/`))) refresh();
+  }).then(keep);
+  window.addEventListener("focus", refresh);
   return () => {
     live = false;
     generation++;
-    clearInterval(timer);
-    off?.();
+    window.removeEventListener("focus", refresh);
+    for (const off of offs) off();
   };
 }

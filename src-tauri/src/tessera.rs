@@ -8,7 +8,8 @@ use mosaic_core::agents::{Agent, EventTrigger};
 use mosaic_core::chat::{
     ChatEvent, allowed_tools, disallowed_tools, event_prompt, parse_line, system_prompt,
 };
-use mosaic_core::settings::{AgentRun, Settings, TesseraSettings};
+use mosaic_core::settings::{AgentRun, TesseraSettings};
+use mosaic_core::vault_state::VaultState;
 use serde::Serialize;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::io::{BufRead, BufReader, Read, Write};
@@ -162,15 +163,16 @@ struct WorkflowAgent {
     error: Option<String>,
 }
 
+/// The scheduler's state for a vault, in `vaults/<id>/tessera-state.json` (not settings.json, which
+/// it used to rewrite every 30 s).
+fn config(root: &Path) -> TesseraSettings {
+    VaultState::open(root)
+        .map(|state| state.tessera())
+        .unwrap_or_default()
+}
+
 fn save(root: &Path, value: TesseraSettings) -> CmdResult<()> {
-    Settings::update(|s| {
-        s.set_tessera(root, value);
-        true
-    })
-    .map_err(|e| Error::Io {
-        path: "settings.json".into(),
-        source: e,
-    })
+    VaultState::open(root)?.set_tessera(&value)
 }
 
 fn running_key(root: &Path, agent: &str) -> String {
@@ -198,7 +200,7 @@ pub fn tessera_status(
     tessera: State<TesseraState>,
 ) -> CmdResult<TesseraStatus> {
     let ws = state.get()?;
-    let cfg = Settings::load().tessera(ws.vault.root());
+    let cfg = config(ws.vault.root());
     let running = tessera.running.lock().expect("tessera lock");
     let events = tessera.events.lock().expect("tessera event lock");
     let agents = ws
@@ -231,7 +233,7 @@ pub fn tessera_status(
 #[tauri::command(async)]
 pub fn tessera_pause_all(app: AppHandle, state: State<AppState>, paused: bool) -> CmdResult<()> {
     let ws = state.get()?;
-    let mut cfg = Settings::load().tessera(ws.vault.root());
+    let mut cfg = config(ws.vault.root());
     cfg.paused = paused;
     save(ws.vault.root(), cfg)?;
     if !paused {
@@ -248,7 +250,7 @@ pub fn tessera_pause_agent(
     paused: bool,
 ) -> CmdResult<()> {
     let ws = state.get()?;
-    let mut cfg = Settings::load().tessera(ws.vault.root());
+    let mut cfg = config(ws.vault.root());
     cfg.paused_agents.retain(|n| n != &name);
     if paused {
         cfg.paused_agents.push(name);
@@ -268,7 +270,7 @@ pub fn tessera_set_max_chain_depth(state: State<AppState>, depth: u8) -> CmdResu
         ));
     }
     let ws = state.get()?;
-    let mut cfg = Settings::load().tessera(ws.vault.root());
+    let mut cfg = config(ws.vault.root());
     cfg.max_chain_depth = depth;
     save(ws.vault.root(), cfg)
 }
@@ -440,7 +442,7 @@ fn tick(app: &AppHandle, startup: bool) {
     };
     let root = ws.vault.root().to_path_buf();
     let now = Local::now();
-    let mut cfg = Settings::load().tessera(&root);
+    let mut cfg = config(&root);
     if cfg.last_checked == 0 {
         cfg.last_checked = now.timestamp();
         let _ = save(&root, cfg);
@@ -491,7 +493,7 @@ fn new_id(app: &AppHandle, prefix: &str) -> String {
 }
 
 fn dispatch_created(app: &AppHandle, ws: &Arc<mosaic_core::Workspace>, path: &str, chain: Chain) {
-    let cfg = Settings::load().tessera(ws.vault.root());
+    let cfg = config(ws.vault.root());
     if cfg.paused {
         return;
     }
@@ -522,7 +524,7 @@ fn enqueue_event(
     path: String,
     chain: Chain,
 ) {
-    let cfg = Settings::load().tessera(ws.vault.root());
+    let cfg = config(ws.vault.root());
     let key = format!("{agent}\0created\0{path}");
     let reason = {
         let state = app.state::<TesseraState>();
@@ -581,7 +583,7 @@ fn enqueue_event(
 
 fn drain_queue(app: &AppHandle, ws: &Arc<mosaic_core::Workspace>) {
     loop {
-        let cfg = Settings::load().tessera(ws.vault.root());
+        let cfg = config(ws.vault.root());
         if cfg.paused {
             return;
         }
@@ -659,7 +661,7 @@ fn record_skipped(
         .unwrap_or_else(|| agent.to_string());
     let now = Local::now().timestamp();
     let id = run_id(app);
-    let mut cfg = Settings::load().tessera(root);
+    let mut cfg = config(root);
     cfg.runs.insert(
         0,
         AgentRun {
@@ -737,7 +739,7 @@ fn spawn(
     let _ = ws.mirror_agents();
     let root = ws.vault.root().to_path_buf();
     let id = run_id(app);
-    let mut cfg = Settings::load().tessera(&root);
+    let mut cfg = config(&root);
     cfg.runs.insert(
         0,
         AgentRun {
@@ -789,7 +791,7 @@ fn spawn(
             std::thread::sleep(Duration::from_secs(u64::from(attempts)));
         };
 
-        let mut cfg = Settings::load().tessera(&root);
+        let mut cfg = config(&root);
         if let Some(run) = cfg.runs.iter_mut().find(|r| r.id == id) {
             run.finished = Some(Local::now().timestamp());
             run.status = if output.error.is_some() {
@@ -824,7 +826,7 @@ fn spawn(
 }
 
 fn update_attempts(root: &Path, id: u64, attempts: u8) {
-    let mut cfg = Settings::load().tessera(root);
+    let mut cfg = config(root);
     if let Some(run) = cfg.runs.iter_mut().find(|r| r.id == id) {
         run.attempts = attempts;
     }

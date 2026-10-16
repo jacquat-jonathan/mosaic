@@ -3,20 +3,23 @@
 mod calendar_subscriptions;
 mod chat;
 mod html_preview;
+mod http;
 mod planner;
 mod tessera;
 mod update;
 mod window_state;
 
 use mosaic_core::api::{Mention, Outline, Renamed};
-use mosaic_core::history::Version;
+use mosaic_core::history::{UnfinishedRename, Version};
 use mosaic_core::index::{Backlink, SearchHit, TagCount};
 use mosaic_core::settings::{AgentRule, Settings};
+use mosaic_core::vault_state::VaultState;
 use mosaic_core::{Entry, Error, FileContent, Workspace, Written};
 use serde::Serialize;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, RwLock};
 use tauri::{AppHandle, Emitter, Manager, State};
+use tauri_plugin_opener::OpenerExt;
 
 type CmdResult<T> = Result<T, Error>;
 
@@ -24,6 +27,8 @@ type CmdResult<T> = Result<T, Error>;
 pub(crate) struct AppState {
     ws: RwLock<Option<Arc<Workspace>>>,
     watcher: Mutex<Option<mosaic_core::watch::Watcher>>,
+    /// Reports proposals and history written by agents (MCP servers, the CLI) as `history-changed`.
+    history_watcher: Mutex<Option<mosaic_core::watch::Watcher>>,
     settings_watcher: Mutex<Option<mosaic_core::watch::Watcher>>,
 }
 
@@ -90,6 +95,8 @@ fn create_vault(parent: String, name: String) -> CmdResult<VaultInfo> {
 /// Makes `ws` the open vault: remembers it, starts the watcher and indexes in the background.
 fn activate(app: AppHandle, state: &AppState, ws: Workspace) -> CmdResult<VaultInfo> {
     let ws = Arc::new(ws);
+    // Known limit: Tauri's scope can only grow (a forbid would be permanent and beat a later allow),
+    // so vaults opened earlier in the session stay readable through asset URLs until restart.
     let _ = app
         .asset_protocol_scope()
         .allow_directory(ws.vault.root(), true);
@@ -97,6 +104,15 @@ fn activate(app: AppHandle, state: &AppState, ws: Workspace) -> CmdResult<VaultI
         settings.remember_vault(ws.vault.root().to_path_buf());
         true
     });
+    // Moves this vault's rules, bookmarks and scheduler state out of settings.json the first time.
+    let _ = VaultState::open(ws.vault.root());
+    let history_events = app.clone();
+    *state.history_watcher.lock().expect("watcher lock poisoned") =
+        mosaic_core::watch::watch_history(ws.vault.root(), move || {
+            let _ = history_events.emit("history-changed", ());
+        })
+        .ok()
+        .flatten();
     let out = info(&ws);
     *state.ws.write().expect("workspace lock poisoned") = Some(ws.clone());
     tessera::reset_events(&app, &ws);
@@ -165,37 +181,24 @@ fn forget_vault(path: String) -> CmdResult<()> {
 
 #[tauri::command(async)]
 fn get_bookmarks(state: State<AppState>) -> CmdResult<Vec<String>> {
-    Ok(Settings::load().bookmarks(state.get()?.vault.root()))
+    VaultState::open(state.get()?.vault.root())?.bookmarks()
 }
 
 #[tauri::command(async)]
 fn get_agent_rules(state: State<AppState>) -> CmdResult<Vec<AgentRule>> {
-    Ok(Settings::load().agent_rules(state.get()?.vault.root()))
+    VaultState::open(state.get()?.vault.root())?.rules()
 }
 
 #[tauri::command(async)]
 fn set_agent_rules(state: State<AppState>, rules: Vec<AgentRule>) -> CmdResult<()> {
-    let ws = state.get()?;
-    Settings::update(|settings| {
-        settings.set_agent_rules(ws.vault.root(), rules);
-        true
-    })
-    .map_err(|e| Error::Io {
-        path: "settings.json".into(),
-        source: e,
-    })
+    VaultState::open(state.get()?.vault.root())?.set_rules(rules)
 }
 
 #[tauri::command(async)]
 fn set_bookmarks(state: State<AppState>, paths: Vec<String>) -> CmdResult<()> {
-    let ws = state.get()?;
-    Settings::update(|settings| {
-        settings.set_bookmarks(ws.vault.root(), paths);
+    VaultState::open(state.get()?.vault.root())?.update_bookmarks(|list| {
+        *list = paths;
         true
-    })
-    .map_err(|e| Error::Io {
-        path: "settings.json".into(),
-        source: e,
     })
 }
 
@@ -349,6 +352,17 @@ fn rename_path(state: State<AppState>, from: String, to: String) -> CmdResult<Re
     state.get()?.rename(&from, &to, true)
 }
 
+/// Moves whose link rewrites didn't all finish; the app offers **Fix links** for each.
+#[tauri::command(async)]
+fn unfinished_renames(state: State<AppState>) -> CmdResult<Vec<UnfinishedRename>> {
+    state.get()?.unfinished_renames()
+}
+
+#[tauri::command(async)]
+fn fix_links(state: State<AppState>, id: i64) -> CmdResult<Renamed> {
+    state.get()?.fix_links(id)
+}
+
 #[tauri::command(async)]
 fn delete_path(state: State<AppState>, path: String) -> CmdResult<()> {
     state.get()?.delete(&path).map(|_| ())
@@ -412,6 +426,16 @@ fn undo_change(state: State<AppState>, id: i64) -> CmdResult<String> {
 #[tauri::command(async)]
 fn absolute_path(state: State<AppState>, path: String) -> CmdResult<String> {
     Ok(state.get()?.vault.resolve(&path)?.display().to_string())
+}
+
+/// Opens a file of the open vault with its default macOS app. The webview has no general
+/// "open path" permission: programs, installers and folders are refused (`Vault::openable`).
+#[tauri::command(async)]
+fn open_in_default_app(app: AppHandle, state: State<AppState>, path: String) -> CmdResult<()> {
+    let abs = state.get()?.vault.openable(&path)?;
+    app.opener()
+        .open_path(abs.display().to_string(), None::<&str>)
+        .map_err(|error| Error::Invalid(format!("Couldn't open {path}: {error}")))
 }
 
 #[tauri::command(async)]
@@ -746,6 +770,9 @@ pub fn run() {
             ai_activity,
             undo_change,
             absolute_path,
+            open_in_default_app,
+            unfinished_renames,
+            fix_links,
             html_preview::html_preview_document,
             search,
             backlinks,
@@ -755,7 +782,6 @@ pub fn run() {
             cli_info,
             install_cli,
             update::update_status,
-            update::set_update_source,
             update::check_updates,
             update::start_update,
             update::cancel_update,

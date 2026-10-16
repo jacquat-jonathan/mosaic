@@ -75,6 +75,10 @@ export function parseCanvas(text: string): CanvasDoc {
     if (typeof n?.id !== "string" || typeof n.type !== "string") {
       throw new CanvasParseError(`Invalid node: ${JSON.stringify(n).slice(0, 120)}`);
     }
+    // Geometry is interpolated into SVG attributes: anything but a finite number becomes 0.
+    for (const key of ["x", "y", "width", "height"] as const) {
+      if (key in n && !Number.isFinite(n[key])) n[key] = Number.isFinite(Number(n[key])) ? Number(n[key]) : 0;
+    }
   }
   return { ...doc, nodes, edges } as CanvasDoc;
 }
@@ -96,9 +100,12 @@ export const PRESET_COLORS: Record<string, string> = {
   "6": "#8e4ec6",
 };
 
+/** Only real hex colours reach SVG/CSS attributes; anything else falls back to the theme colour. */
+const HEX_COLOR = /^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
+
 export function colorOf(c: string | undefined): string | undefined {
   if (!c) return undefined;
-  return PRESET_COLORS[c] ?? (c.startsWith("#") ? c : undefined);
+  return PRESET_COLORS[c] ?? (HEX_COLOR.test(c) ? c : undefined);
 }
 
 export function newId(): string {

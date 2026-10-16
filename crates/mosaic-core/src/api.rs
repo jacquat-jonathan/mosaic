@@ -8,7 +8,7 @@ use crate::kind::FileKind;
 use crate::links::{FileSet, markdown_url_for, wiki_text_for};
 use crate::parse::{self, Heading, LinkKind};
 use crate::planner::PlannerStore;
-use crate::settings::{Access, AgentRule, SETTINGS_FILE, Settings, access_for, rule_covers};
+use crate::settings::{Access, AgentRule, Settings, access_for, rule_covers};
 use crate::vault::{Entry, FileContent, Vault, Written, normalize};
 use regex::Regex;
 use serde::Serialize;
@@ -39,6 +39,9 @@ pub struct Workspace {
     actor: Mutex<Option<String>>,
     /// Folder rules for agents given directly instead of read from the settings (tests).
     fixed_rules: Option<Vec<AgentRule>>,
+    /// While an agent operation runs (see `freeze_rules`), the rules it read first, so every check
+    /// in that operation sees the same rules even if the person edits them meanwhile.
+    frozen_rules: Mutex<FrozenRules>,
     /// Direct-write paths for one scheduled run; other writes become proposals.
     change_allowlist: Option<Vec<String>>,
 }
@@ -48,9 +51,19 @@ pub struct Renamed {
     pub path: String,
     /// Other files whose links were rewritten to follow the move.
     pub updated_links_in: Vec<String>,
+    /// Files whose links couldn't be rewritten, and why. The move itself happened; the app offers
+    /// **Fix links** for it (`Workspace::fix_links`).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub failed_links_in: Vec<FailedLink>,
     /// Set when the rename is waiting for review rather than applied.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub review: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct FailedLink {
+    pub path: String,
+    pub error: String,
 }
 
 /// A note that mentions another note's title or alias without linking to it.
@@ -147,6 +160,7 @@ impl Workspace {
             source: Source::App,
             actor: Mutex::new(None),
             fixed_rules: None,
+            frozen_rules: Mutex::default(),
             change_allowlist: None,
         }
     }
@@ -260,18 +274,35 @@ impl Workspace {
     /// through as if there were none.
     pub(crate) fn rules(&self) -> Result<Vec<AgentRule>> {
         if self.source == Source::App {
-            Ok(Vec::new())
-        } else if let Some(rules) = &self.fixed_rules {
-            Ok(rules.clone())
-        } else {
-            Settings::try_load()
-                .map(|s| s.agent_rules(self.vault.root()))
-                .map_err(|_| {
-                    Error::Denied(
-                        "Mosaic's settings can't be read, so agent access is paused; ask the person to check Settings › AI".into(),
-                    )
-                })
+            return Ok(Vec::new());
         }
+        if let Some(rules) = &self.fixed_rules {
+            return Ok(rules.clone());
+        }
+        let mut frozen = self.frozen_rules.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some(rules) = &frozen.rules {
+            return Ok(rules.clone());
+        }
+        let rules = crate::vault_state::rules_for(self.vault.root()).map_err(|_| {
+            Error::Denied(
+                "Mosaic's folder rules can't be read, so agent access is paused; ask the person to check Settings › AI".into(),
+            )
+        })?;
+        if frozen.depth > 0 {
+            frozen.rules = Some(rules.clone());
+        }
+        Ok(rules)
+    }
+
+    /// Reads the folder rules at most once until the guard is dropped: front ends hold one for
+    /// each agent request (an MCP tool call, a CLI command), so all of its checks agree.
+    pub fn freeze_rules(&self) -> RulesFrozen<&Self> {
+        RulesFrozen::new(self)
+    }
+
+    /// `freeze_rules` for a shared workspace; the guard derefs to it.
+    pub fn frozen(ws: std::sync::Arc<Self>) -> RulesFrozen<std::sync::Arc<Self>> {
+        RulesFrozen::new(ws)
     }
 
     pub(crate) fn visible(rules: &[AgentRule], path: &str) -> bool {
@@ -1236,13 +1267,22 @@ impl Workspace {
             (None, BTreeSet::new(), vec![], vec![])
         };
 
+        // Journaled first: if a link rewrite fails or Mosaic stops half-way, the move is known and
+        // its links can be fixed later. Without a history the move still happens, unjournaled.
+        let sources: Vec<String> = sources.into_iter().collect();
+        let journal = (old_set.is_some() && !sources.is_empty())
+            .then(|| self.hist().begin_rename(from, to_n, &sources).ok())
+            .flatten();
         let out = self.vault.rename(from, to_n)?;
+        if let Some(id) = journal
+            && out != to_n
+        {
+            let _ = self.hist().moved_to(id, &out);
+        }
         let version_id = self.hist().renamed(from, &out, source, actor).ok();
-        let mut updated = Vec::new();
+        let (mut updated, mut failed) = (Vec::new(), Vec::new());
 
         if let Some(old_set) = old_set {
-            let moved_map: HashMap<String, String> =
-                moved.iter().map(|p| (p.clone(), map_path(p))).collect();
             let new_paths: Vec<String> = all_paths.iter().map(|p| map_path(p)).collect();
             // Aliases follow their notes, so alias links ([[Start]] for Home.md) still resolve and stay.
             let new_aliases: Vec<(String, String)> = aliases
@@ -1253,16 +1293,14 @@ impl Workspace {
                 new_paths.iter().map(String::as_str),
                 new_aliases.iter().map(|(a, p)| (a.as_str(), p.as_str())),
             );
-            for old_src in &sources {
-                let new_src = map_path(old_src);
-                let src_moved = moved_map.contains_key(old_src);
-                if self.rewrite_links(
-                    &old_set, &new_set, old_src, &new_src, src_moved, &moved_map, &map_path,
-                    source, actor,
-                )? {
-                    updated.push(new_src);
-                }
-            }
+            (updated, failed) = self.rewrite_sources(
+                &old_set, &new_set, &sources, &moved, &map_path, source, actor,
+            );
+        }
+        if let Some(id) = journal
+            && failed.is_empty()
+        {
+            let _ = self.hist().finish_rename(id);
         }
 
         self.reindex(from);
@@ -1272,8 +1310,11 @@ impl Workspace {
         }
         // Bookmarks follow the move too. They are secondary: a failure here doesn't undo the rename.
         let root = self.vault.root();
+        let _ = crate::vault_state::update_bookmarks_for(root, |list| {
+            crate::vault_state::remap_bookmarks(list, from, &out)
+        });
         let _ = Settings::update(|s| {
-            let mut changed = s.remap_bookmarks(root, from, &out);
+            let mut changed = false;
             if let Some(raw) = s.vault_preferences.get_mut(root)
                 && let Ok(mut config) =
                     serde_json::from_value::<crate::preferences::VaultPreferences>(raw.clone())
@@ -1302,6 +1343,7 @@ impl Workspace {
             Renamed {
                 path: out,
                 updated_links_in: updated,
+                failed_links_in: failed,
                 review: None,
             },
             version_id,
@@ -1310,8 +1352,8 @@ impl Workspace {
 
     /// The vault's bookmarks, in the user's order. They live in the app's settings, not in the vault.
     pub fn bookmarks(&self) -> Vec<Bookmark> {
-        Settings::load()
-            .bookmarks(self.vault.root())
+        crate::vault_state::bookmarks_for(self.vault.root())
+            .unwrap_or_default()
             .into_iter()
             .map(|path| Bookmark {
                 // Saved searches and structured queries always "exist".
@@ -1340,39 +1382,152 @@ impl Workspace {
         if path.is_empty() {
             return Err(Error::InvalidPath("cannot bookmark the vault root".into()));
         }
-        let root = self.vault.root();
-        Settings::update(|s| {
-            let mut list = s.bookmarks(root);
+        crate::vault_state::update_bookmarks_for(self.vault.root(), |list| {
             if list.contains(&path) {
                 return false;
             }
             list.push(path.clone());
-            s.set_bookmarks(root, list);
             true
-        })
-        .map_err(settings_error)?;
+        })?;
         Ok(self.bookmarks())
     }
 
     /// Removes a bookmark (also one whose file no longer exists).
     pub fn remove_bookmark(&self, path: &str) -> Result<Vec<Bookmark>> {
         let path = normalize(path)?;
-        let root = self.vault.root();
         let mut found = false;
-        Settings::update(|s| {
-            let mut list = s.bookmarks(root);
+        crate::vault_state::update_bookmarks_for(self.vault.root(), |list| {
+            let before = list.len();
             list.retain(|p| p != &path);
-            found = list.len() < s.bookmarks(root).len();
-            if found {
-                s.set_bookmarks(root, list);
-            }
+            found = list.len() < before;
             found
-        })
-        .map_err(settings_error)?;
+        })?;
         if !found {
             return Err(Error::Invalid(format!("{path} isn't bookmarked")));
         }
         Ok(self.bookmarks())
+    }
+
+    /// Rewrites links in each source note (by its path before the move). A note that can't be
+    /// rewritten is reported and the others still are: the move has already happened.
+    #[allow(clippy::too_many_arguments)]
+    fn rewrite_sources(
+        &self,
+        old_set: &FileSet,
+        new_set: &FileSet,
+        sources: &[String],
+        moved: &[String],
+        map_path: &dyn Fn(&str) -> String,
+        source: &Source,
+        actor: Option<&str>,
+    ) -> (Vec<String>, Vec<FailedLink>) {
+        let moved_map: HashMap<String, String> =
+            moved.iter().map(|p| (p.clone(), map_path(p))).collect();
+        let (mut updated, mut failed) = (Vec::new(), Vec::new());
+        for old_src in sources {
+            let new_src = map_path(old_src);
+            let src_moved = moved_map.contains_key(old_src);
+            match self.rewrite_links(
+                old_set, new_set, old_src, &new_src, src_moved, &moved_map, map_path, source, actor,
+            ) {
+                Ok(true) => updated.push(new_src),
+                Ok(false) => {}
+                Err(e) => failed.push(FailedLink {
+                    path: new_src,
+                    error: e.to_string(),
+                }),
+            }
+        }
+        (updated, failed)
+    }
+
+    /// Moves whose links didn't all get rewritten (some failed, or Mosaic stopped half-way).
+    pub fn unfinished_renames(&self) -> Result<Vec<crate::history::UnfinishedRename>> {
+        self.hist().unfinished_renames()
+    }
+
+    /// Finishes an interrupted move: rewrites links that still point at the old names. Notes
+    /// already updated are left as they are, so this can be run again until nothing fails. A move
+    /// that never happened is simply closed.
+    pub fn fix_links(&self, id: i64) -> Result<Renamed> {
+        let op = self
+            .unfinished_renames()?
+            .into_iter()
+            .find(|op| op.id == id)
+            .ok_or_else(|| Error::Invalid(format!("there is no unfinished move {id}")))?;
+        let (from, to) = (op.from.as_str(), op.to.as_str());
+        let done = |failed: Vec<FailedLink>, updated: Vec<String>, path: &str| {
+            if failed.is_empty() {
+                self.hist().finish_rename(id)?;
+            }
+            Ok(Renamed {
+                path: path.to_string(),
+                updated_links_in: updated,
+                failed_links_in: failed,
+                review: None,
+            })
+        };
+        let Ok(dest) = self.vault.stat(to) else {
+            // Stopped before the move itself: nothing points at a new name.
+            return done(vec![], vec![], from);
+        };
+        let moved: Vec<String> = if dest.is_dir {
+            self.vault
+                .list(to, true)?
+                .into_iter()
+                .filter(|e| !e.is_dir)
+                .map(|e| e.path)
+                .collect()
+        } else {
+            vec![to.to_string()]
+        };
+        let swap = |p: &str, a: &str, b: &str| -> String {
+            if p == a {
+                b.to_string()
+            } else if let Some(rest) = p.strip_prefix(&format!("{a}/")) {
+                format!("{b}/{rest}")
+            } else {
+                p.to_string()
+            }
+        };
+        // The vault as it was before the move, rebuilt from how it is now.
+        let now: Vec<String> = self
+            .vault
+            .list("", true)?
+            .into_iter()
+            .filter(|e| !e.is_dir)
+            .map(|e| e.path)
+            .collect();
+        let aliases = self.index().aliases()?;
+        let before: Vec<String> = now.iter().map(|p| swap(p, to, from)).collect();
+        let aliases_before: Vec<(String, String)> = aliases
+            .iter()
+            .map(|(a, p)| (a.clone(), swap(p, to, from)))
+            .collect();
+        let old_set = FileSet::new(
+            before.iter().map(String::as_str),
+            aliases_before.iter().map(|(a, p)| (a.as_str(), p.as_str())),
+        );
+        let new_set = FileSet::new(
+            now.iter().map(String::as_str),
+            aliases.iter().map(|(a, p)| (a.as_str(), p.as_str())),
+        );
+        let moved_before: Vec<String> = moved.iter().map(|p| swap(p, to, from)).collect();
+        let map_path = |p: &str| swap(p, from, to);
+        let actor = self.actor();
+        let (updated, failed) = self.rewrite_sources(
+            &old_set,
+            &new_set,
+            &op.sources,
+            &moved_before,
+            &map_path,
+            &self.source,
+            actor.as_deref(),
+        );
+        for p in &updated {
+            self.reindex(p);
+        }
+        done(failed, updated, to)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1463,8 +1618,46 @@ fn read_only(path: &str) -> Error {
     ))
 }
 
-fn settings_error(e: std::io::Error) -> Error {
-    Error::io(SETTINGS_FILE, e)
+#[derive(Default)]
+struct FrozenRules {
+    depth: usize,
+    rules: Option<Vec<AgentRule>>,
+}
+
+/// See `Workspace::freeze_rules`. Requests may overlap; the rules are read again after the last ends.
+pub struct RulesFrozen<W: std::ops::Deref<Target = Workspace>> {
+    ws: W,
+}
+
+impl<W: std::ops::Deref<Target = Workspace>> RulesFrozen<W> {
+    fn new(ws: W) -> Self {
+        ws.frozen_rules
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .depth += 1;
+        Self { ws }
+    }
+}
+
+impl<W: std::ops::Deref<Target = Workspace>> std::ops::Deref for RulesFrozen<W> {
+    type Target = Workspace;
+    fn deref(&self) -> &Workspace {
+        &self.ws
+    }
+}
+
+impl<W: std::ops::Deref<Target = Workspace>> Drop for RulesFrozen<W> {
+    fn drop(&mut self) {
+        let mut frozen = self
+            .ws
+            .frozen_rules
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        frozen.depth -= 1;
+        if frozen.depth == 0 {
+            frozen.rules = None;
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1933,5 +2126,115 @@ mod tests {
             .unwrap();
         assert!(text(&w, "Notes.md").starts_with("Talked about the [[Roadmap|roadmap]] today."));
         assert!(w.unlinked_mentions("Roadmap.md", 10).unwrap().is_empty());
+    }
+
+    /// A vault where three notes link to `A.md`, with its history in a file so a restart sees it.
+    fn linked_vault() -> (tempfile::TempDir, std::path::PathBuf, Workspace) {
+        let dir = tempfile::tempdir().unwrap();
+        for (p, c) in [
+            ("A.md", "# A"),
+            ("Notes/One.md", "See [[A]]."),
+            ("Locked/Two.md", "See [[A]]."),
+            ("Notes/Three.md", "See [[A]]."),
+        ] {
+            let full = dir.path().join(p);
+            std::fs::create_dir_all(full.parent().unwrap()).unwrap();
+            std::fs::write(full, c).unwrap();
+        }
+        let db = dir.path().join(".history-test.db");
+        let w = Workspace::with_history_file(
+            Vault::open(dir.path()).unwrap(),
+            Index::in_memory().unwrap(),
+            &db,
+        );
+        w.sync(|_, _| {}).unwrap();
+        (dir, db, w)
+    }
+
+    fn lock(dir: &std::path::Path, locked: bool) {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = if locked { 0o555 } else { 0o755 };
+        std::fs::set_permissions(dir.join("Locked"), std::fs::Permissions::from_mode(mode))
+            .unwrap();
+    }
+
+    #[test]
+    fn a_link_that_cant_be_rewritten_is_reported_and_can_be_fixed_later() {
+        let (d, _db, w) = linked_vault();
+        lock(d.path(), true);
+        let renamed = w.rename("A.md", "B.md", true);
+        lock(d.path(), false);
+
+        // The move happened and the other notes followed; the failure is reported, not an error.
+        let renamed = renamed.unwrap();
+        assert_eq!(renamed.path, "B.md");
+        assert_eq!(
+            renamed.updated_links_in,
+            vec!["Notes/One.md", "Notes/Three.md"]
+        );
+        assert_eq!(renamed.failed_links_in.len(), 1);
+        assert_eq!(renamed.failed_links_in[0].path, "Locked/Two.md");
+        assert_eq!(text(&w, "Locked/Two.md"), "See [[A]].");
+
+        let open = w.unfinished_renames().unwrap();
+        assert_eq!(
+            (open.len(), open[0].from.as_str(), open[0].to.as_str()),
+            (1, "A.md", "B.md")
+        );
+        let fixed = w.fix_links(open[0].id).unwrap();
+        assert_eq!(fixed.updated_links_in, vec!["Locked/Two.md"]);
+        assert!(fixed.failed_links_in.is_empty());
+        assert_eq!(text(&w, "Locked/Two.md"), "See [[B]].");
+        assert_eq!(text(&w, "Notes/One.md"), "See [[B]].");
+        assert!(w.unfinished_renames().unwrap().is_empty());
+        assert!(w.fix_links(open[0].id).is_err());
+    }
+
+    #[test]
+    fn a_move_interrupted_before_its_links_is_finished_after_a_restart() {
+        let (d, db, w) = linked_vault();
+        // Mosaic stopped right after moving the file: journaled, moved, no link rewritten.
+        let sources = ["Locked/Two.md", "Notes/One.md", "Notes/Three.md"].map(String::from);
+        w.hist().begin_rename("A.md", "B.md", &sources).unwrap();
+        w.vault.rename("A.md", "B.md").unwrap();
+        drop(w);
+
+        let w = Workspace::with_history_file(
+            Vault::open(d.path()).unwrap(),
+            Index::in_memory().unwrap(),
+            &db,
+        );
+        w.sync(|_, _| {}).unwrap();
+        let open = w.unfinished_renames().unwrap();
+        assert_eq!(open.len(), 1);
+        let fixed = w.fix_links(open[0].id).unwrap();
+        assert_eq!(fixed.updated_links_in.len(), 3);
+        for p in sources {
+            assert_eq!(text(&w, &p), "See [[B]].");
+        }
+        assert!(w.unfinished_renames().unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_move_interrupted_before_the_move_is_just_closed() {
+        let (_d, _db, w) = linked_vault();
+        let id = w
+            .hist()
+            .begin_rename("A.md", "B.md", &["Notes/One.md".to_string()])
+            .unwrap();
+        let fixed = w.fix_links(id).unwrap();
+        assert_eq!(fixed.path, "A.md");
+        assert!(fixed.updated_links_in.is_empty());
+        assert_eq!(text(&w, "Notes/One.md"), "See [[A]].");
+        assert!(w.unfinished_renames().unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_complete_move_leaves_nothing_to_fix() {
+        let (_d, _db, w) = linked_vault();
+        let renamed = w.rename("A.md", "B.md", true).unwrap();
+        assert_eq!(renamed.updated_links_in.len(), 3);
+        assert!(renamed.failed_links_in.is_empty());
+        assert!(w.unfinished_renames().unwrap().is_empty());
     }
 }

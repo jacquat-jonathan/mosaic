@@ -76,6 +76,20 @@ impl Action {
     }
 }
 
+/// A move whose link rewrites didn't all finish (some failed, or Mosaic stopped half-way). Its
+/// links can be fixed later by running the rewrite again (`Workspace::fix_links`).
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct UnfinishedRename {
+    pub id: i64,
+    pub from: String,
+    pub to: String,
+    /// Milliseconds since the Unix epoch.
+    pub started: i64,
+    /// Notes (by their path before the move) whose links pointed at the moved files.
+    #[serde(skip)]
+    pub sources: Vec<String>,
+}
+
 /// One version of a file (its content is fetched separately with [`History::content`]).
 #[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct Version {
@@ -203,7 +217,10 @@ impl History {
                 base_hash TEXT, content TEXT, hash TEXT, source TEXT NOT NULL, actor TEXT,
                 created INTEGER NOT NULL, updated INTEGER NOT NULL, status TEXT NOT NULL,
                 reason TEXT, decided INTEGER);
-             CREATE INDEX IF NOT EXISTS proposals_status ON proposals(status, path);",
+             CREATE INDEX IF NOT EXISTS proposals_status ON proposals(status, path);
+             CREATE TABLE IF NOT EXISTS renames (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, from_path TEXT NOT NULL, to_path TEXT NOT NULL,
+                sources TEXT NOT NULL, started INTEGER NOT NULL, finished INTEGER);",
         )
         .map_err(sql_err)?;
         // Added in 0.9.1: what an accepted proposal overwrote, and the change it made (for Undo).
@@ -360,6 +377,61 @@ impl History {
             .map_err(sql_err)?;
         self.insert(to, None, "", source, actor, Action::Renamed, Some(from))?;
         Ok(self.conn.last_insert_rowid())
+    }
+
+    /// Journals a move before it happens, with the notes whose links will need rewriting.
+    pub fn begin_rename(&self, from: &str, to: &str, sources: &[String]) -> Result<i64> {
+        self.conn
+            .execute(
+                "INSERT INTO renames (from_path, to_path, sources, started) VALUES (?1, ?2, ?3, ?4)",
+                params![from, to, serde_json::to_string(sources).unwrap_or_default(), now_ms()],
+            )
+            .map_err(sql_err)?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    /// Where the move ended up (the vault may spell the destination differently).
+    pub fn moved_to(&self, id: i64, to: &str) -> Result<()> {
+        self.conn
+            .execute(
+                "UPDATE renames SET to_path = ?2 WHERE id = ?1",
+                params![id, to],
+            )
+            .map_err(sql_err)?;
+        Ok(())
+    }
+
+    /// Every link rewrite of the move succeeded.
+    pub fn finish_rename(&self, id: i64) -> Result<()> {
+        self.conn
+            .execute(
+                "UPDATE renames SET finished = ?2 WHERE id = ?1",
+                params![id, now_ms()],
+            )
+            .map_err(sql_err)?;
+        Ok(())
+    }
+
+    /// Moves whose links still need fixing, oldest first.
+    pub fn unfinished_renames(&self) -> Result<Vec<UnfinishedRename>> {
+        let mut stmt = self
+            .conn
+            .prepare_cached(
+                "SELECT id, from_path, to_path, started, sources FROM renames WHERE finished IS NULL ORDER BY id",
+            )
+            .map_err(sql_err)?;
+        stmt.query_map([], |r| {
+            Ok(UnfinishedRename {
+                id: r.get(0)?,
+                from: r.get(1)?,
+                to: r.get(2)?,
+                started: r.get(3)?,
+                sources: serde_json::from_str(&r.get::<_, String>(4)?).unwrap_or_default(),
+            })
+        })
+        .map_err(sql_err)?
+        .collect::<rusqlite::Result<_>>()
+        .map_err(sql_err)
     }
 
     /// Versions of `path`, newest first.

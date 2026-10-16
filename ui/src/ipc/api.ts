@@ -9,6 +9,7 @@ import type {
   IndexProgress,
   RecentVault,
   Renamed,
+  UnfinishedRename,
   SearchHit,
   TagCount,
   UpdateCheck,
@@ -103,6 +104,9 @@ export const api = {
     call<Written>("write_file", { path, content, expectedHash: expectedHash ?? null, root: root ?? null }),
   mkdir: (path: string) => call<void>("make_dir", { path }),
   rename: (from: string, to: string) => call<Renamed>("rename_path", { from, to }),
+  unfinishedRenames: () => call<UnfinishedRename[]>("unfinished_renames"),
+  /** Rewrites the links an unfinished move left pointing at the old name. */
+  fixLinks: (id: number) => call<Renamed>("fix_links", { id }),
   remove: (path: string) => call<void>("delete_path", { path }),
   absolutePath: (path: string) => call<string>("absolute_path", { path }),
   search: (query: string, limit = 50) => call<SearchHit[]>("search", { query, limit }),
@@ -260,7 +264,6 @@ export const api = {
   cliInfo: () => call<CliInfo>("cli_info"),
   installCli: () => call<CliInfo>("install_cli"),
   updateStatus: () => call<UpdateStatus>("update_status"),
-  setUpdateSource: (path: string | null) => call<UpdateStatus>("set_update_source", { path }),
   checkUpdates: () => call<UpdateCheck>("check_updates"),
   fileHistory: (path: string) => call<Version[]>("file_history", { path }),
   agentRules: () => call<AgentRule[]>("get_agent_rules", {}),
@@ -360,6 +363,8 @@ export async function onChatEvent(cb: (run: number, event: ChatEvent) => void): 
 }
 
 export const onTesseraChanged = (cb: () => void) => listenTo<void>("tessera-changed", cb);
+/** The vault's history database changed: an agent proposed or withdrew a change, or one was decided. */
+export const onHistoryChanged = (cb: () => void) => listenTo<void>("history-changed", cb);
 export const onPlannerChanged = (cb: (change: PlannerChanged) => void) =>
   listenTo<PlannerChanged>("planner-changed", cb);
 
@@ -373,11 +378,11 @@ export async function onSettingsChanged(cb: () => void): Promise<() => void> {
   return listen("settings-changed", () => cb());
 }
 
-/** Opens a vault file with its default macOS application (explicit user action only). */
+/** Opens a vault file with its default macOS application (explicit user action only). Programs,
+ * installers and folders are refused by the backend. */
 export async function openInDefaultApp(path: string): Promise<void> {
   if (!inTauri) return;
-  const { openPath } = await import("@tauri-apps/plugin-opener");
-  await openPath(await api.absolutePath(path));
+  await call("open_in_default_app", { path });
 }
 
 /** Shows a vault file (or the vault itself, with `""`) in Finder. */

@@ -11,7 +11,7 @@ checkable implementation record through M33 and the planned M34-M38 calendar wor
 - Tauri 2 · Rust (stable) · React 19 + TypeScript + Vite · pnpm · CodeMirror 6.
 - Index: SQLite FTS5 via `rusqlite` (bundled), in `~/Library/Caches/mosaic/<vault-hash>/index.db`, WAL mode. Never write inside the vault except user content.
 - Ad-hoc signing only. macOS 12+. Universal2 at release.
-- Local-first: CSP `default-src 'self'`, no telemetry, every renderer bundled. M31 permits public GitHub Releases HTTPS metadata/package downloads only on explicit Check / Download clicks; no background polling, automatic installs or vault uploads. Pull/rebuild remains an explicit developer option. Release authenticity uses a free Ed25519 key independent of ad-hoc Apple signing.
+- Local-first: CSP `default-src 'self'`, no telemetry, every renderer bundled. M31 permits public GitHub Releases HTTPS metadata/package downloads only on explicit Check / Download clicks; no automatic installs or vault uploads. Other network paths (subscribed calendars, Claude Code) are listed in the README's privacy paragraph. The pull/rebuild source updater was removed in 0.21 (M39). Release authenticity uses a free Ed25519 key independent of ad-hoc Apple signing.
 
 ## Repo layout
 
@@ -328,6 +328,16 @@ migration contract, milestones and acceptance criteria are in
 - [x] M36: local Month/Week/Day calendar, work sessions, events and recurrence
 - [x] M37: `.ics` import/export and automatically refreshed read-only iCalendar overlays
 - [x] M38: recovery, export, compatibility, accessibility, performance and release acceptance
+
+### M39-M41 — Architecture review: structural follow-ups
+
+Agreed 2026-10-16; details in the vault's `Architecture/Review/06 Action plan.md`. Each release is one PR,
+then the release is cut before the next batch starts. The planner stays core (no optional module).
+
+- [ ] M39 (0.21, security and data): S3 webview CSP and sanitizing, P3 settings split with property tests,
+      D2 journaled renames/moves, Q6 source updater removed and one HTTP stack, Q7 privacy paragraph
+- [ ] M40 (0.22, one contract): Q2 tauri-specta bindings with contract tests, T4 Playwright on the mock in CI
+- [ ] M41 (0.23+, workspace services): Q1 `PlannerService`, then `ReviewService`, then files and links
 
 ## Working rules
 - `scripts/check.sh` green before each milestone commit.

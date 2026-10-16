@@ -127,6 +127,51 @@ pub fn watch_settings(on_change: impl Fn() + Send + 'static) -> Result<Watcher> 
     })
 }
 
+/// Watches the undo history and proposals of the vault at `root` (in Application Support, see
+/// `history`), which agents' MCP servers and the CLI write too, so the app can show new proposals
+/// as they arrive instead of asking every few seconds. `None` when the vault has no id yet.
+pub fn watch_history(
+    root: &std::path::Path,
+    on_change: impl Fn() + Send + 'static,
+) -> Result<Option<Watcher>> {
+    let Some(vault) = crate::vault_id::peek(root)? else {
+        return Ok(None);
+    };
+    let dir = crate::settings::app_support_dir()
+        .ok_or_else(|| Error::Invalid("no settings folder (HOME not set)".into()))?
+        .join("vaults")
+        .join(vault.id);
+    watch_files(&dir, &["history.db", "history.db-wal"], on_change).map(Some)
+}
+
+/// Calls `on_change` (debounced) when a file named one of `names` in `dir` changes.
+fn watch_files(
+    dir: &std::path::Path,
+    names: &'static [&'static str],
+    on_change: impl Fn() + Send + 'static,
+) -> Result<Watcher> {
+    let io = |e: std::io::Error| Error::io(dir.display().to_string(), e);
+    std::fs::create_dir_all(dir).map_err(io)?;
+    let mut debouncer = new_debouncer(DEBOUNCE, None, move |res: DebounceEventResult| {
+        let Ok(events) = res else { return };
+        if events.iter().any(|ev| {
+            ev.paths
+                .iter()
+                .any(|p| p.file_name().is_some_and(|n| names.iter().any(|w| n == *w)))
+        }) {
+            on_change();
+        }
+    })
+    .map_err(|e| io(std::io::Error::other(e.to_string())))?;
+    debouncer
+        .watch(dir, RecursiveMode::NonRecursive)
+        .map_err(|e| io(std::io::Error::other(e.to_string())))?;
+    Ok(Watcher {
+        _debouncer: debouncer,
+        stop: None,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -134,6 +179,24 @@ mod tests {
     use crate::vault::Vault;
     use std::sync::mpsc;
     use std::time::Instant;
+
+    #[test]
+    fn a_changed_history_database_is_reported() {
+        let dir = tempfile::tempdir().unwrap();
+        let (tx, rx) = mpsc::channel();
+        let _w = watch_files(dir.path(), &["history.db", "history.db-wal"], move || {
+            let _ = tx.send(());
+        })
+        .unwrap();
+        std::thread::sleep(Duration::from_millis(200));
+        std::fs::write(dir.path().join("other.json"), "{}").unwrap();
+        assert!(rx.recv_timeout(Duration::from_millis(600)).is_err());
+        let history = crate::history::History::open_at(&dir.path().join("history.db")).unwrap();
+        history
+            .begin_rename("a.md", "b.md", &["c.md".to_string()])
+            .unwrap();
+        assert!(rx.recv_timeout(Duration::from_secs(2)).is_ok());
+    }
 
     #[test]
     fn external_changes_are_reported_and_indexed_within_a_second() {

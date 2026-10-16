@@ -11,7 +11,7 @@ they change appears in the app within a second.
 Everything stays on your disk. Notes and attachments remain ordinary files; independent planning data
 uses a per-vault SQLite database under `.mosaic/`. Mosaic only contacts GitHub when you explicitly
 check for or download an update. There is no telemetry, background polling, or vault upload.
-Optional Claude features use Claude Code's own connection. A developer-only source updater remains available.
+Optional Claude features use Claude Code's own connection.
 
 ## Getting started
 
@@ -207,8 +207,8 @@ connected MCP clients afterward to load the new executable.
 Versions **0.17 and earlier** use the source updater. Download the first binary-update release
 manually (or rebuild once); those older apps don't acquire the new updater just by checking.
 
-**Developer option › source builds** lets you explicitly choose a git checkout and retain pull-and-rebuild
-updates, requiring the developer tools above. **Use releases** returns to downloads.
+**Built from source?** Mosaic 0.21 removed the in-app source updater. Update a checkout yourself with
+`git pull` and `scripts/install.sh`.
 
 **If an update fails:** inspect the update log in Settings and `~/Library/Logs/Mosaic/update.log`.
 Corrupt packages or signature failures never replace the app. An interrupted download is safe to retry.

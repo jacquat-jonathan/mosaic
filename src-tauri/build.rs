@@ -2,11 +2,10 @@ use std::path::Path;
 use std::process::Command;
 
 fn main() {
-    // Remember where and from which commit this app was built, for Settings › About & updates.
+    // Remember which commit this app was built from, for Settings › About & updates.
     let repo = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .expect("src-tauri has a parent");
-    println!("cargo:rustc-env=MOSAIC_SOURCE_DIR={}", repo.display());
     let commit = Command::new("git")
         .args(["rev-parse", "--short", "HEAD"])
         .current_dir(repo)

@@ -264,7 +264,6 @@ export const api = {
   cliInfo: () => call<CliInfo>("cli_info"),
   installCli: () => call<CliInfo>("install_cli"),
   updateStatus: () => call<UpdateStatus>("update_status"),
-  setUpdateSource: (path: string | null) => call<UpdateStatus>("set_update_source", { path }),
   checkUpdates: () => call<UpdateCheck>("check_updates"),
   fileHistory: (path: string) => call<Version[]>("file_history", { path }),
   agentRules: () => call<AgentRule[]>("get_agent_rules", {}),
@@ -364,6 +363,8 @@ export async function onChatEvent(cb: (run: number, event: ChatEvent) => void): 
 }
 
 export const onTesseraChanged = (cb: () => void) => listenTo<void>("tessera-changed", cb);
+/** The vault's history database changed: an agent proposed or withdrew a change, or one was decided. */
+export const onHistoryChanged = (cb: () => void) => listenTo<void>("history-changed", cb);
 export const onPlannerChanged = (cb: (change: PlannerChanged) => void) =>
   listenTo<PlannerChanged>("planner-changed", cb);
 

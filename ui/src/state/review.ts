@@ -1,19 +1,16 @@
 // Agents' pending proposals (folders under review, crates/mosaic-core/src/review.rs). They're written
-// by another process (the MCP server or the CLI) without touching any file, so no file event tells
-// the app: it checks every few seconds while a vault is open.
+// by another process (the MCP server or the CLI) into the vault's history database; the app watches
+// that database and reloads them when it changes (`history-changed`).
 
 import { create } from "zustand";
-import { api } from "../ipc/api";
-import { inTauri } from "../ipc/api";
+import { api, inTauri, onHistoryChanged } from "../ipc/api";
 import type { Proposal } from "../ipc/types";
-
-const POLL_MS = 4000;
 
 interface ReviewState {
   pending: Proposal[];
   initialized: boolean;
   refresh(): Promise<void>;
-  /** Starts checking for new proposals; returns a function that stops. */
+  /** Follows new proposals as agents make them; returns a function that stops. */
   watch(): () => void;
 }
 
@@ -25,7 +22,7 @@ export const useReview = create<ReviewState>((set, get) => ({
       const next = await api.proposals(false);
       const prev = get().pending;
       const arrived = get().initialized && next.some((p) => !prev.some((old) => old.id === p.id));
-      // Keep the same array when nothing changed, so subscribers don't re-render every poll.
+      // Keep the same array when nothing changed, so subscribers don't re-render.
       const same =
         next.length === prev.length &&
         next.every((p, i) => p.id === prev[i].id && p.updated === prev[i].updated && p.stale === prev[i].stale);
@@ -46,7 +43,12 @@ export const useReview = create<ReviewState>((set, get) => ({
   watch: () => {
     set({ initialized: false, pending: [] });
     void get().refresh();
-    const timer = setInterval(() => void get().refresh(), POLL_MS);
-    return () => clearInterval(timer);
+    let live = true;
+    let off: (() => void) | undefined;
+    void onHistoryChanged(() => void get().refresh()).then((f) => (live ? (off = f) : f()));
+    return () => {
+      live = false;
+      off?.();
+    };
   },
 }));

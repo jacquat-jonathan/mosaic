@@ -3,6 +3,7 @@
 mod calendar_subscriptions;
 mod chat;
 mod html_preview;
+mod http;
 mod planner;
 mod tessera;
 mod update;
@@ -26,6 +27,8 @@ type CmdResult<T> = Result<T, Error>;
 pub(crate) struct AppState {
     ws: RwLock<Option<Arc<Workspace>>>,
     watcher: Mutex<Option<mosaic_core::watch::Watcher>>,
+    /// Reports proposals and history written by agents (MCP servers, the CLI) as `history-changed`.
+    history_watcher: Mutex<Option<mosaic_core::watch::Watcher>>,
     settings_watcher: Mutex<Option<mosaic_core::watch::Watcher>>,
 }
 
@@ -103,6 +106,13 @@ fn activate(app: AppHandle, state: &AppState, ws: Workspace) -> CmdResult<VaultI
     });
     // Moves this vault's rules, bookmarks and scheduler state out of settings.json the first time.
     let _ = VaultState::open(ws.vault.root());
+    let history_events = app.clone();
+    *state.history_watcher.lock().expect("watcher lock poisoned") =
+        mosaic_core::watch::watch_history(ws.vault.root(), move || {
+            let _ = history_events.emit("history-changed", ());
+        })
+        .ok()
+        .flatten();
     let out = info(&ws);
     *state.ws.write().expect("workspace lock poisoned") = Some(ws.clone());
     tessera::reset_events(&app, &ws);
@@ -772,7 +782,6 @@ pub fn run() {
             cli_info,
             install_cli,
             update::update_status,
-            update::set_update_source,
             update::check_updates,
             update::start_update,
             update::cancel_update,

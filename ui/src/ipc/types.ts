@@ -553,13 +553,9 @@ export interface CliInfo {
 }
 
 export interface UpdateStatus {
-  mode?: "binary" | "source";
   version: string;
   /** Short commit the app was built from ("" if unknown). */
   commit: string;
-  source_dir: string;
-  /** Why the source folder can't be used, if it can't. */
-  source_problem: string | null;
   /** The installed .app; null for a development build. */
   app_path: string | null;
   running: boolean;
@@ -576,17 +572,11 @@ export interface Release {
 }
 
 export interface UpdateCheck {
-  branch: string;
-  upstream: string;
-  /** The version on the upstream branch, if its Cargo.toml could be read. */
+  /** The newest signed release, if one was found. */
   latest_version: string | null;
-  /** Releases newer than this app, newest first. */
+  /** That release, when it's newer than this app. */
   releases: Release[];
-  behind: { hash: string; subject: string }[];
-  ahead: number;
-  source_head: string;
-  installed_outdated: boolean;
-  dirty: boolean;
+  update_available: boolean;
 }
 
 /** A note that mentions another note's title or alias without linking to it. */

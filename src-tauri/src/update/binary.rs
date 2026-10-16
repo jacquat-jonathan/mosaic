@@ -4,7 +4,8 @@ use base64::Engine;
 use ed25519_dalek::{Signature, VerifyingKey};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
-use std::io::Read;
+use std::io::{Read, Write};
+use std::path::Path;
 use std::time::Duration;
 
 const REPO: &str = "jacquat-jonathan/mosaic";
@@ -13,6 +14,8 @@ const REPO: &str = "jacquat-jonathan/mosaic";
 /// (see docs/PUBLISHING.md).
 const PUBLIC_KEY: &str = include_str!("../../release-public-key.hex");
 const MAX_ARCHIVE: u64 = 1024 * 1024 * 1024;
+/// Release metadata (the GitHub API answer, the manifest and its signature) is small.
+const MAX_METADATA: u64 = 1024 * 1024;
 #[derive(Debug, Clone, Deserialize)]
 pub(super) struct Manifest {
     pub version: String,
@@ -88,40 +91,6 @@ fn verified_manifest(bytes: &[u8], signature: &[u8], keys: &str) -> Result<Manif
     decode_hex::<32>(&manifest.sha256)?;
     Ok(manifest)
 }
-fn https(url: &str) -> Result<Vec<u8>, String> {
-    let output = Command::new("/usr/bin/curl")
-        .args([
-            "--fail",
-            "--location",
-            "--proto",
-            "=https",
-            "--proto-redir",
-            "=https",
-            "--connect-timeout",
-            "10",
-            "--max-time",
-            "30",
-            "--max-filesize",
-            "1048576",
-            "--silent",
-            "--show-error",
-            "--user-agent",
-            "Mosaic",
-            url,
-        ])
-        .output()
-        .map_err(|e| e.to_string())?;
-    if !output.status.success() {
-        return Err(format!(
-            "Couldn't reach GitHub (offline, rate-limited, or unavailable). Try again later. {}",
-            String::from_utf8_lossy(&output.stderr).trim()
-        ));
-    }
-    if output.stdout.len() > 1048576 {
-        return Err("Release metadata is too large".into());
-    }
-    Ok(output.stdout)
-}
 fn asset_url(release: &GithubRelease, name: &str) -> Result<String, String> {
     let expected = format!(
         "https://github.com/{REPO}/releases/download/{}/{name}",
@@ -134,10 +103,18 @@ fn asset_url(release: &GithubRelease, name: &str) -> Result<String, String> {
         .map(|a| a.browser_download_url.clone())
         .ok_or_else(|| format!("Missing release asset: {name}"))
 }
-fn latest() -> Result<Option<(Manifest, String)>, String> {
-    let releases: Vec<GithubRelease> = serde_json::from_slice(&https(&format!(
-        "https://api.github.com/repos/{REPO}/releases?per_page=30"
-    ))?)
+async fn latest() -> Result<Option<(Manifest, String)>, String> {
+    let client = crate::http::client(Duration::from_secs(30))?;
+    let https = |url: String| {
+        let client = client.clone();
+        async move { crate::http::get_bytes(&client, &url, MAX_METADATA).await }
+    };
+    let releases: Vec<GithubRelease> = serde_json::from_slice(
+        &https(format!(
+            "https://api.github.com/repos/{REPO}/releases?per_page=30"
+        ))
+        .await?,
+    )
     .map_err(|e| e.to_string())?;
     let mut releases: Vec<_> = releases
         .into_iter()
@@ -165,8 +142,8 @@ fn latest() -> Result<Option<(Manifest, String)>, String> {
         {
             continue;
         }
-        let bytes = https(&asset_url(&release, "manifest.json")?)?;
-        let signature = https(&asset_url(&release, "manifest.sig")?)?;
+        let bytes = https(asset_url(&release, "manifest.json")?).await?;
+        let signature = https(asset_url(&release, "manifest.sig")?).await?;
         let manifest = verified_manifest(&bytes, &signature, PUBLIC_KEY)?;
         if manifest.version != version {
             return Err("Release tag doesn't match its signed manifest".into());
@@ -196,14 +173,12 @@ fn latest() -> Result<Option<(Manifest, String)>, String> {
     }
     Ok(None)
 }
-pub(super) fn check() -> CmdResult<UpdateCheck> {
-    let release = latest().map_err(invalid)?;
+pub(super) async fn check() -> CmdResult<UpdateCheck> {
+    let release = latest().await.map_err(invalid)?;
     let newer = release
         .as_ref()
         .is_some_and(|(m, _)| parse_version(&m.version) > parse_version(env!("CARGO_PKG_VERSION")));
     Ok(UpdateCheck {
-        branch: "Releases".into(),
-        upstream: "GitHub releases".into(),
         latest_version: release.as_ref().map(|(m, _)| m.version.clone()),
         releases: release
             .filter(|_| newer)
@@ -215,11 +190,7 @@ pub(super) fn check() -> CmdResult<UpdateCheck> {
                 }]
             })
             .unwrap_or_default(),
-        behind: Vec::new(),
-        ahead: 0,
-        source_head: String::new(),
-        installed_outdated: newer,
-        dirty: false,
+        update_available: newer,
     })
 }
 fn checksum(path: &Path) -> Result<String, String> {
@@ -311,9 +282,10 @@ fn safe_archive(list: &str) -> bool {
             }) && (line == "Mosaic.app" || line.starts_with("Mosaic.app/"))
         })
 }
-pub(super) fn download(app: &AppHandle) -> Result<PathBuf, String> {
-    let (manifest, url) =
-        latest()?.ok_or("No complete signed download release is available yet")?;
+pub(super) async fn download(app: &AppHandle) -> Result<PathBuf, String> {
+    let (manifest, url) = latest()
+        .await?
+        .ok_or("No complete signed download release is available yet")?;
     if parse_version(&manifest.version) <= parse_version(env!("CARGO_PKG_VERSION")) {
         return Err("You're already up to date".into());
     }
@@ -327,45 +299,21 @@ pub(super) fn download(app: &AppHandle) -> Result<PathBuf, String> {
         "update-log",
         format!("Downloading Mosaic {}…", manifest.version),
     );
-    let mut child = Command::new("/usr/bin/curl")
-        .args([
-            "--fail",
-            "--location",
-            "--proto",
-            "=https",
-            "--proto-redir",
-            "=https",
-            "--connect-timeout",
-            "10",
-            "--max-time",
-            "600",
-            "--max-filesize",
-            &manifest.size.to_string(),
-            "--silent",
-            "--show-error",
-            "--output",
-        ])
-        .arg(&archive)
-        .arg(url)
-        .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .process_group(0)
-        .spawn()
-        .map_err(|e| e.to_string())?;
-    *state.step.lock().expect("update lock") = Some(child.id());
+    let client = crate::http::client(Duration::from_secs(600))?;
+    let response = client
+        .get(&url)
+        .send()
+        .await
+        .and_then(|r| r.error_for_status())
+        .map_err(|_| "Download failed; check your connection and try again".to_string())?;
+    let mut file = std::fs::File::create(&archive).map_err(|e| e.to_string())?;
     let mut last = 101;
-    let result = loop {
+    // At most the signed size is accepted; cancelling stops at the next chunk.
+    let result = crate::http::read_capped(response, manifest.size, |chunk, size| {
         if state.cancelled.load(Ordering::SeqCst) {
-            let _ = child.kill();
-            let _ = child.wait();
-            break Err(CANCELLED.into());
+            return Err(CANCELLED.into());
         }
-        let size = archive.metadata().map(|m| m.len()).unwrap_or(0);
-        if size > manifest.size {
-            let _ = child.kill();
-            let _ = child.wait();
-            break Err("Download exceeds signed size".into());
-        }
+        file.write_all(chunk).map_err(|e| e.to_string())?;
         let percent = size * 100 / manifest.size;
         if percent != last {
             last = percent;
@@ -374,19 +322,17 @@ pub(super) fn download(app: &AppHandle) -> Result<PathBuf, String> {
                 format!("Download {percent}% · {size} / {} bytes", manifest.size),
             );
         }
-        match child.try_wait() {
-            Ok(Some(status)) => {
-                break if status.success() {
-                    Ok(())
-                } else {
-                    Err("Download failed; check your connection and try again".into())
-                };
-            }
-            Ok(None) => std::thread::sleep(Duration::from_millis(250)),
-            Err(e) => break Err(e.to_string()),
+        Ok(())
+    })
+    .await
+    .map_err(|e| {
+        if e.contains("larger") {
+            "Download exceeds signed size".to_string()
+        } else {
+            e
         }
-    };
-    *state.step.lock().expect("update lock") = None;
+    });
+    drop(file);
     result?;
     if archive.metadata().map_err(|e| e.to_string())?.len() != manifest.size
         || checksum(&archive)? != manifest.sha256
@@ -466,6 +412,18 @@ mod tests {
         assert!(verified_manifest(bytes, by(&current).as_bytes(), "# none\n").is_err());
         // The shipped list parses.
         assert!(!trusted_keys(PUBLIC_KEY).unwrap().is_empty());
+    }
+
+    /// Talks to GitHub: run by hand (`cargo test -p mosaic-app -- --ignored`) after changing the
+    /// download code, to see the published release found and its signed manifest verified.
+    #[test]
+    #[ignore]
+    fn finds_and_verifies_the_published_release() {
+        let (manifest, url) = tauri::async_runtime::block_on(latest())
+            .unwrap()
+            .expect("a published release");
+        assert!(parse_version(&manifest.version) >= parse_version("0.20.0"));
+        assert!(url.ends_with(&manifest.archive), "{url}");
     }
 
     #[test]

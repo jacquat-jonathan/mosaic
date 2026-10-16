@@ -17,8 +17,6 @@ pub struct Settings {
     /// them. They now live per vault id (`vault_state`), are copied from here once, and these are
     /// only read for a vault that has no id yet; kept so going back to 0.20 still finds them.
     pub bookmarks: BTreeMap<PathBuf, Vec<String>>,
-    /// The Mosaic source checkout that Settings › Update pulls and rebuilds. `None` = where the app was built.
-    pub update_source: Option<PathBuf>,
     pub agent_rules: BTreeMap<PathBuf, Vec<AgentRule>>,
     pub tessera: BTreeMap<PathBuf, TesseraSettings>,
     /// Raw values preserve invalid/newer configurations so they can be reported and repaired.

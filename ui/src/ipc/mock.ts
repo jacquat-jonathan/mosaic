@@ -53,7 +53,6 @@ let opened = false;
 let mockRoot = "/mock/vault";
 const templateConfigs = new Map<string, TemplateConfig>();
 let bookmarks: string[] = ["Welcome.md"];
-let updateSource: string | null = null;
 let updateBuilt = false;
 let updateRunning = false;
 let updateTimers: ReturnType<typeof setTimeout>[] = [];
@@ -312,6 +311,8 @@ export function mockPropose(path: string, content: string | null, actor = "claud
     content,
   };
   proposals.push(p);
+  // Like an agent's MCP server writing the history database.
+  window.dispatchEvent(new CustomEvent("mock-history-changed"));
   return p.id;
 }
 // Reachable from the browser console (a module imported by URL can be a separate copy after a hot reload).
@@ -321,13 +322,8 @@ const emit = (name: string, detail: unknown) => window.dispatchEvent(new CustomE
 
 function updateStatus() {
   return {
-    mode: updateSource ? "source" : "binary",
     version: "0.1.0",
     commit: "5320ff4",
-    source_dir: updateSource ?? "/Users/you/Developer/mosaic",
-    source_problem: updateSource?.includes("nope")
-      ? `${updateSource} isn't a Mosaic source checkout (no .git or scripts/install.sh).`
-      : null,
     app_path: "/Applications/Mosaic.app",
     running: updateRunning,
     ready_to_install: updateBuilt,
@@ -1741,14 +1737,9 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
       return null;
     case "update_status":
       return updateStatus();
-    case "set_update_source":
-      updateSource = (a.path as string | null) ?? null;
-      return updateStatus();
     case "check_updates":
       await new Promise((r) => setTimeout(r, 600));
       return {
-        branch: "main",
-        upstream: "origin/main",
         latest_version: "0.2.0",
         releases: [
           {
@@ -1760,14 +1751,7 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
             ],
           },
         ],
-        behind: [
-          { hash: "9a1c2e7", subject: "M10: settings panel and in-app updates" },
-          { hash: "41d0b3a", subject: "Fix tree drag onto collapsed folders" },
-        ],
-        ahead: 0,
-        source_head: "5320ff4",
-        installed_outdated: false,
-        dirty: false,
+        update_available: true,
       };
     case "start_update":
       if (updateRunning) throw err("invalid", "An update is already running.");

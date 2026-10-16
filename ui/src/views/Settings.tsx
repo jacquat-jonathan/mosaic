@@ -14,7 +14,7 @@ import {
 import { useVault } from "../state/vault";
 import { useWorkspace } from "../state/workspace";
 import { leaveAllDrafts } from "../state/drafts";
-import { api, onUpdateDone, onUpdateLog, pickFolder, revealInFinder } from "../ipc/api";
+import { api, onUpdateDone, onUpdateLog, revealInFinder } from "../ipc/api";
 import { errorMessage, type UpdateCheck, type UpdateStatus } from "../ipc/types";
 import { commands, formatKeys, keysFor, rebind, type Keys } from "../commands";
 import { createVault, openVaultFolder } from "../actions";
@@ -511,17 +511,6 @@ function About() {
     }
   };
 
-  const changeSource = async (reset: boolean) => {
-    const path = reset ? null : await pickFolder("Choose the Mosaic source folder (the git checkout)");
-    if (!reset && !path) return;
-    try {
-      setStatus(await api.setUpdateSource(path));
-      setCheck(null);
-    } catch (e) {
-      setError(errorMessage(e));
-    }
-  };
-
   const update = async () => {
     setError(null);
     useUpdateFlow.setState({ log: [], phase: "running", error: null });
@@ -555,9 +544,8 @@ function About() {
 
   if (!status) return error ? <p className="error-text">{error}</p> : <p className="settings-note">Loading…</p>;
   const dev = status.app_path === null;
-  const binary = status.mode === "binary";
-  const canUpdate = !dev && !status.source_problem && flow.phase !== "running";
-  const hasNews = !!check && (check.behind.length > 0 || check.installed_outdated);
+  const canUpdate = !dev && flow.phase !== "running";
+  const hasNews = !!check?.update_available;
 
   return (
     <>
@@ -568,40 +556,12 @@ function About() {
         {dev ? <span className="badge">Development build</span> : <span className="badge">{status.app_path}</span>}
       </Row>
       {status.last_install_error && (
-        <p className="warn-text">The last update was built but not installed: {status.last_install_error}</p>
+        <p className="warn-text">The last update was downloaded but not installed: {status.last_install_error}</p>
       )}
-      <details className="settings-note">
-        <summary>Developer option · source builds</summary>
-        <Row
-          label="Source folder"
-          hint={
-            <>
-              <code className="path">{status.source_dir}</code>
-              {status.source_problem && <span className="warn-text">{status.source_problem}</span>}
-            </>
-          }
-        >
-          <div className="button-row">
-            <button className="secondary" onClick={() => void changeSource(false)}>
-              Change…
-            </button>
-            <button className="secondary" title="Use downloadable releases" onClick={() => void changeSource(true)}>
-              Use releases
-            </button>
-          </div>
-        </Row>
-      </details>
-
       <div className="update-box">
         <p className="settings-note">
-          {binary ? (
-            "Mosaic downloads signed universal packages from GitHub Releases. No git, Node or Rust is needed. Checks and downloads use HTTPS only when you click; there is no background polling or telemetry."
-          ) : (
-            <>
-              Developer mode: pulls source commits and rebuilds with <code>scripts/install.sh</code>, only when you
-              click.
-            </>
-          )}
+          Mosaic downloads signed universal packages from GitHub Releases. Checks and downloads use HTTPS only when you
+          click; there is no telemetry.
         </p>
         {dev && (
           <p className="warn-text">
@@ -609,17 +569,13 @@ function About() {
           </p>
         )}
         <div className="button-row">
-          <button
-            className="secondary"
-            disabled={checking || !!status.source_problem || flow.phase === "running"}
-            onClick={() => void runCheck()}
-          >
+          <button className="secondary" disabled={checking || flow.phase === "running"} onClick={() => void runCheck()}>
             <RefreshCw size={14} className={checking ? "spin" : ""} /> {checking ? "Checking…" : "Check for updates"}
           </button>
           {flow.phase === "running" && (
             <button
               className="secondary"
-              title="Stop the build; the installed app stays as it is"
+              title="Stop the download; the installed app stays as it is"
               onClick={() => void cancel()}
             >
               <X size={14} /> Cancel
@@ -628,11 +584,10 @@ function About() {
           {flow.phase !== "built" && flow.phase !== "running" && (
             <button
               className={hasNews ? "primary" : "secondary"}
-              disabled={!canUpdate || (binary && !hasNews)}
-              title={check && !hasNews ? "Rebuild the current source anyway" : undefined}
+              disabled={!canUpdate || !hasNews}
               onClick={() => void update()}
             >
-              <Download size={14} /> {binary ? "Download update" : check && !hasNews ? "Rebuild anyway" : "Update"}
+              <Download size={14} /> Download update
             </button>
           )}
           {flow.phase === "built" && (
@@ -676,56 +631,18 @@ function About() {
                 ))}
               </>
             )}
-            {binary ? (
-              <p>
-                {hasNews
-                  ? "The package is verified before installation. Your vault and settings are preserved."
-                  : check.latest_version
-                    ? "You're up to date with downloadable releases."
-                    : "No complete signed downloadable release is available yet."}
-              </p>
-            ) : check.behind.length > 0 ? (
-              <details className="commit-details" open={check.releases.length === 0}>
-                <summary>
-                  {check.behind.length} new {check.behind.length === 1 ? "commit" : "commits"} on{" "}
-                  <code>{check.upstream}</code>
-                </summary>
-                <ul className="commit-list">
-                  {check.behind.map((c) => (
-                    <li key={c.hash}>
-                      <code>{c.hash}</code> {c.subject}
-                    </li>
-                  ))}
-                </ul>
-              </details>
-            ) : check.installed_outdated ? (
-              <p>
-                No new commits on <code>{check.upstream}</code>, but the source folder (at{" "}
-                <code>{check.source_head}</code>) is newer than this app. Update to rebuild it.
-              </p>
-            ) : (
-              <p>
-                You're up to date with <code>{check.upstream}</code>.
-              </p>
-            )}
-            {check.ahead > 0 && (
-              <p className="settings-note">
-                The source folder has {check.ahead} local {check.ahead === 1 ? "commit" : "commits"} that aren't on{" "}
-                {check.upstream}; they're included in the build.
-              </p>
-            )}
-            {check.dirty && (
-              <p className="warn-text">
-                The source folder has uncommitted changes. git pull may refuse to run until you commit or stash them.
-              </p>
-            )}
+            <p>
+              {hasNews
+                ? "The package is verified before installation. Your vault and settings are preserved."
+                : check.latest_version
+                  ? "You're up to date with downloadable releases."
+                  : "No complete signed downloadable release is available yet."}
+            </p>
           </div>
         )}
 
         {flow.phase === "running" && (
-          <p className="settings-note">
-            {binary ? "Downloading and verifying…" : "Building…"} You can keep working meanwhile.
-          </p>
+          <p className="settings-note">Downloading and verifying… You can keep working meanwhile.</p>
         )}
         {flow.phase === "built" && (
           <p className="ok-text">
@@ -733,12 +650,10 @@ function About() {
             retained for recovery.
           </p>
         )}
-        {binary && (
-          <p className="settings-note">
-            Mosaic is ad-hoc signed, not Apple-notarized. macOS may ask you to approve it in Privacy & Security. Mosaic
-            never disables Gatekeeper or removes quarantine. Restart connected MCP clients after updating.
-          </p>
-        )}
+        <p className="settings-note">
+          Mosaic is ad-hoc signed, not Apple-notarized. macOS may ask you to approve it in Privacy & Security. Mosaic
+          never disables Gatekeeper or removes quarantine. Restart connected MCP clients after updating.
+        </p>
         {flow.phase === "failed" && flow.error && <p className="error-text">{flow.error}</p>}
         {flow.phase === "cancelled" && (
           <p className="settings-note">Update cancelled. The installed app wasn't changed.</p>

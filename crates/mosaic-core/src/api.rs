@@ -8,7 +8,7 @@ use crate::kind::FileKind;
 use crate::links::{FileSet, markdown_url_for, wiki_text_for};
 use crate::parse::{self, Heading, LinkKind};
 use crate::planner::PlannerStore;
-use crate::settings::{Access, AgentRule, SETTINGS_FILE, Settings, access_for, rule_covers};
+use crate::settings::{Access, AgentRule, Settings, access_for, rule_covers};
 use crate::vault::{Entry, FileContent, Vault, Written, normalize};
 use regex::Regex;
 use serde::Serialize;
@@ -39,6 +39,9 @@ pub struct Workspace {
     actor: Mutex<Option<String>>,
     /// Folder rules for agents given directly instead of read from the settings (tests).
     fixed_rules: Option<Vec<AgentRule>>,
+    /// While an agent operation runs (see `freeze_rules`), the rules it read first, so every check
+    /// in that operation sees the same rules even if the person edits them meanwhile.
+    frozen_rules: Mutex<FrozenRules>,
     /// Direct-write paths for one scheduled run; other writes become proposals.
     change_allowlist: Option<Vec<String>>,
 }
@@ -147,6 +150,7 @@ impl Workspace {
             source: Source::App,
             actor: Mutex::new(None),
             fixed_rules: None,
+            frozen_rules: Mutex::default(),
             change_allowlist: None,
         }
     }
@@ -260,18 +264,35 @@ impl Workspace {
     /// through as if there were none.
     pub(crate) fn rules(&self) -> Result<Vec<AgentRule>> {
         if self.source == Source::App {
-            Ok(Vec::new())
-        } else if let Some(rules) = &self.fixed_rules {
-            Ok(rules.clone())
-        } else {
-            Settings::try_load()
-                .map(|s| s.agent_rules(self.vault.root()))
-                .map_err(|_| {
-                    Error::Denied(
-                        "Mosaic's settings can't be read, so agent access is paused; ask the person to check Settings › AI".into(),
-                    )
-                })
+            return Ok(Vec::new());
         }
+        if let Some(rules) = &self.fixed_rules {
+            return Ok(rules.clone());
+        }
+        let mut frozen = self.frozen_rules.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some(rules) = &frozen.rules {
+            return Ok(rules.clone());
+        }
+        let rules = crate::vault_state::rules_for(self.vault.root()).map_err(|_| {
+            Error::Denied(
+                "Mosaic's folder rules can't be read, so agent access is paused; ask the person to check Settings › AI".into(),
+            )
+        })?;
+        if frozen.depth > 0 {
+            frozen.rules = Some(rules.clone());
+        }
+        Ok(rules)
+    }
+
+    /// Reads the folder rules at most once until the guard is dropped: front ends hold one for
+    /// each agent request (an MCP tool call, a CLI command), so all of its checks agree.
+    pub fn freeze_rules(&self) -> RulesFrozen<&Self> {
+        RulesFrozen::new(self)
+    }
+
+    /// `freeze_rules` for a shared workspace; the guard derefs to it.
+    pub fn frozen(ws: std::sync::Arc<Self>) -> RulesFrozen<std::sync::Arc<Self>> {
+        RulesFrozen::new(ws)
     }
 
     pub(crate) fn visible(rules: &[AgentRule], path: &str) -> bool {
@@ -1272,8 +1293,11 @@ impl Workspace {
         }
         // Bookmarks follow the move too. They are secondary: a failure here doesn't undo the rename.
         let root = self.vault.root();
+        let _ = crate::vault_state::update_bookmarks_for(root, |list| {
+            crate::vault_state::remap_bookmarks(list, from, &out)
+        });
         let _ = Settings::update(|s| {
-            let mut changed = s.remap_bookmarks(root, from, &out);
+            let mut changed = false;
             if let Some(raw) = s.vault_preferences.get_mut(root)
                 && let Ok(mut config) =
                     serde_json::from_value::<crate::preferences::VaultPreferences>(raw.clone())
@@ -1310,8 +1334,8 @@ impl Workspace {
 
     /// The vault's bookmarks, in the user's order. They live in the app's settings, not in the vault.
     pub fn bookmarks(&self) -> Vec<Bookmark> {
-        Settings::load()
-            .bookmarks(self.vault.root())
+        crate::vault_state::bookmarks_for(self.vault.root())
+            .unwrap_or_default()
             .into_iter()
             .map(|path| Bookmark {
                 // Saved searches and structured queries always "exist".
@@ -1340,35 +1364,26 @@ impl Workspace {
         if path.is_empty() {
             return Err(Error::InvalidPath("cannot bookmark the vault root".into()));
         }
-        let root = self.vault.root();
-        Settings::update(|s| {
-            let mut list = s.bookmarks(root);
+        crate::vault_state::update_bookmarks_for(self.vault.root(), |list| {
             if list.contains(&path) {
                 return false;
             }
             list.push(path.clone());
-            s.set_bookmarks(root, list);
             true
-        })
-        .map_err(settings_error)?;
+        })?;
         Ok(self.bookmarks())
     }
 
     /// Removes a bookmark (also one whose file no longer exists).
     pub fn remove_bookmark(&self, path: &str) -> Result<Vec<Bookmark>> {
         let path = normalize(path)?;
-        let root = self.vault.root();
         let mut found = false;
-        Settings::update(|s| {
-            let mut list = s.bookmarks(root);
+        crate::vault_state::update_bookmarks_for(self.vault.root(), |list| {
+            let before = list.len();
             list.retain(|p| p != &path);
-            found = list.len() < s.bookmarks(root).len();
-            if found {
-                s.set_bookmarks(root, list);
-            }
+            found = list.len() < before;
             found
-        })
-        .map_err(settings_error)?;
+        })?;
         if !found {
             return Err(Error::Invalid(format!("{path} isn't bookmarked")));
         }
@@ -1463,8 +1478,46 @@ fn read_only(path: &str) -> Error {
     ))
 }
 
-fn settings_error(e: std::io::Error) -> Error {
-    Error::io(SETTINGS_FILE, e)
+#[derive(Default)]
+struct FrozenRules {
+    depth: usize,
+    rules: Option<Vec<AgentRule>>,
+}
+
+/// See `Workspace::freeze_rules`. Requests may overlap; the rules are read again after the last ends.
+pub struct RulesFrozen<W: std::ops::Deref<Target = Workspace>> {
+    ws: W,
+}
+
+impl<W: std::ops::Deref<Target = Workspace>> RulesFrozen<W> {
+    fn new(ws: W) -> Self {
+        ws.frozen_rules
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .depth += 1;
+        Self { ws }
+    }
+}
+
+impl<W: std::ops::Deref<Target = Workspace>> std::ops::Deref for RulesFrozen<W> {
+    type Target = Workspace;
+    fn deref(&self) -> &Workspace {
+        &self.ws
+    }
+}
+
+impl<W: std::ops::Deref<Target = Workspace>> Drop for RulesFrozen<W> {
+    fn drop(&mut self) {
+        let mut frozen = self
+            .ws
+            .frozen_rules
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        frozen.depth -= 1;
+        if frozen.depth == 0 {
+            frozen.rules = None;
+        }
+    }
 }
 
 #[cfg(test)]

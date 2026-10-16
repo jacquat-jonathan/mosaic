@@ -106,6 +106,29 @@ pub fn identify(root: &Path) -> Result<VaultIdentity> {
     }
 }
 
+/// The vault's id as `identify` would return it, without writing anything into the vault: `None`
+/// when it has none yet, or when it is a copy that `identify` would give a new one.
+pub fn peek(root: &Path) -> Result<Option<VaultIdentity>> {
+    let Some(stored) = read(root)? else {
+        return Ok(None);
+    };
+    if stored.root == root {
+        return Ok(Some(VaultIdentity {
+            id: stored.id,
+            moved_from: None,
+        }));
+    }
+    let original_still_there = std::fs::canonicalize(&stored.root)
+        .ok()
+        .filter(|old| old != root)
+        .and_then(|old| read(&old).ok().flatten())
+        .is_some_and(|other| other.id == stored.id);
+    Ok((!original_still_there).then_some(VaultIdentity {
+        id: stored.id,
+        moved_from: Some(stored.root),
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -114,6 +137,31 @@ mod tests {
         let p = parent.join(name);
         std::fs::create_dir_all(&p).unwrap();
         std::fs::canonicalize(p).unwrap()
+    }
+
+    #[test]
+    fn peek_agrees_with_identify_and_never_writes() {
+        let d = tempfile::tempdir().unwrap();
+        let a = folder(d.path(), "A");
+        assert_eq!(peek(&a).unwrap(), None);
+        assert!(!a.join(".mosaic").exists());
+        let id = identify(&a).unwrap().id;
+        assert_eq!(peek(&a).unwrap().unwrap().id, id);
+
+        let copy = folder(d.path(), "A copy");
+        std::fs::create_dir_all(copy.join(".mosaic")).unwrap();
+        std::fs::copy(a.join(FILE), copy.join(FILE)).unwrap();
+        assert_eq!(peek(&copy).unwrap(), None);
+
+        std::fs::remove_dir_all(&copy).unwrap();
+        let moved = d.path().join("B");
+        std::fs::rename(&a, &moved).unwrap();
+        let moved = std::fs::canonicalize(moved).unwrap();
+        let before = std::fs::read(moved.join(FILE)).unwrap();
+        let peeked = peek(&moved).unwrap().unwrap();
+        assert_eq!(peeked.id, id);
+        assert_eq!(peeked.moved_from.as_deref(), Some(a.as_path()));
+        assert_eq!(std::fs::read(moved.join(FILE)).unwrap(), before);
     }
 
     #[test]

@@ -21,3 +21,6 @@ trash = "5.2.9"
 libc = "0.2"
 uuid = { version = "1", features = ["serde", "v4"] }
 unicode-normalization = "0.1.25"
+
+[dev-dependencies]
+proptest = { version = "1.11", default-features = false, features = ["std"] }

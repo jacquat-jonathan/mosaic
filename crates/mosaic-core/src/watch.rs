@@ -91,8 +91,8 @@ pub fn watch(ws: Arc<Workspace>, on_change: impl Fn(Changes) + Send + 'static) -
     })
 }
 
-/// Watches settings.json, which agents also write (bookmarks through the CLI or MCP), so the app
-/// can reload it.
+/// Watches settings.json and each vault's bookmarks and rules, which agents also write (bookmarks
+/// through the CLI or MCP), so the app can reload them.
 pub fn watch_settings(on_change: impl Fn() + Send + 'static) -> Result<Watcher> {
     let dir = crate::settings::app_support_dir()
         .ok_or_else(|| Error::Invalid("no settings folder (HOME not set)".into()))?;
@@ -100,10 +100,17 @@ pub fn watch_settings(on_change: impl Fn() + Send + 'static) -> Result<Watcher> 
     std::fs::create_dir_all(&dir).map_err(io)?;
     let mut debouncer = new_debouncer(DEBOUNCE, None, move |res: DebounceEventResult| {
         let Ok(events) = res else { return };
+        // Per-vault bookmarks and rules live in `vaults/<id>/`; the scheduler's frequent writes to
+        // its own state file there are deliberately not settings changes.
+        let watched = [
+            crate::settings::SETTINGS_FILE,
+            crate::vault_state::BOOKMARKS_FILE,
+            crate::vault_state::RULES_FILE,
+        ];
         let touched = events.iter().any(|ev| {
             ev.paths.iter().any(|p| {
                 p.file_name()
-                    .is_some_and(|n| n == crate::settings::SETTINGS_FILE)
+                    .is_some_and(|n| watched.iter().any(|w| n == *w))
             })
         });
         if touched {
@@ -112,7 +119,7 @@ pub fn watch_settings(on_change: impl Fn() + Send + 'static) -> Result<Watcher> 
     })
     .map_err(|e| io(std::io::Error::other(e.to_string())))?;
     debouncer
-        .watch(&dir, RecursiveMode::NonRecursive)
+        .watch(&dir, RecursiveMode::Recursive)
         .map_err(|e| io(std::io::Error::other(e.to_string())))?;
     Ok(Watcher {
         _debouncer: debouncer,

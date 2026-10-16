@@ -12,6 +12,7 @@ use mosaic_core::api::{Mention, Outline, Renamed};
 use mosaic_core::history::Version;
 use mosaic_core::index::{Backlink, SearchHit, TagCount};
 use mosaic_core::settings::{AgentRule, Settings};
+use mosaic_core::vault_state::VaultState;
 use mosaic_core::{Entry, Error, FileContent, Workspace, Written};
 use serde::Serialize;
 use std::path::PathBuf;
@@ -100,6 +101,8 @@ fn activate(app: AppHandle, state: &AppState, ws: Workspace) -> CmdResult<VaultI
         settings.remember_vault(ws.vault.root().to_path_buf());
         true
     });
+    // Moves this vault's rules, bookmarks and scheduler state out of settings.json the first time.
+    let _ = VaultState::open(ws.vault.root());
     let out = info(&ws);
     *state.ws.write().expect("workspace lock poisoned") = Some(ws.clone());
     tessera::reset_events(&app, &ws);
@@ -168,37 +171,24 @@ fn forget_vault(path: String) -> CmdResult<()> {
 
 #[tauri::command(async)]
 fn get_bookmarks(state: State<AppState>) -> CmdResult<Vec<String>> {
-    Ok(Settings::load().bookmarks(state.get()?.vault.root()))
+    VaultState::open(state.get()?.vault.root())?.bookmarks()
 }
 
 #[tauri::command(async)]
 fn get_agent_rules(state: State<AppState>) -> CmdResult<Vec<AgentRule>> {
-    Ok(Settings::load().agent_rules(state.get()?.vault.root()))
+    VaultState::open(state.get()?.vault.root())?.rules()
 }
 
 #[tauri::command(async)]
 fn set_agent_rules(state: State<AppState>, rules: Vec<AgentRule>) -> CmdResult<()> {
-    let ws = state.get()?;
-    Settings::update(|settings| {
-        settings.set_agent_rules(ws.vault.root(), rules);
-        true
-    })
-    .map_err(|e| Error::Io {
-        path: "settings.json".into(),
-        source: e,
-    })
+    VaultState::open(state.get()?.vault.root())?.set_rules(rules)
 }
 
 #[tauri::command(async)]
 fn set_bookmarks(state: State<AppState>, paths: Vec<String>) -> CmdResult<()> {
-    let ws = state.get()?;
-    Settings::update(|settings| {
-        settings.set_bookmarks(ws.vault.root(), paths);
+    VaultState::open(state.get()?.vault.root())?.update_bookmarks(|list| {
+        *list = paths;
         true
-    })
-    .map_err(|e| Error::Io {
-        path: "settings.json".into(),
-        source: e,
     })
 }
 

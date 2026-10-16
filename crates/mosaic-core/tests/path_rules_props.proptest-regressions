@@ -1,0 +1,9 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc b01c45f802929d16fa105e48dd50f596a08f723e32400a1546da53132a37f028 # shrinks to parts = ["", "Private"], lead = false
+cc f3c9756f34758daad48db93d0db8ff43b1e994bf881b685972e6f3510575668f # shrinks to rules = [AgentRule { path: "a b", access: Hidden, written_as: None }], parts = ["a b"], flips = [true], nfd = false
+cc eb35ccd033a2f6e590fa7ea62b7669ca0de54c571b518df4e82e9694d071fcdc # shrinks to target = 0, flips = [false], nfd = false, dots = [false, false]

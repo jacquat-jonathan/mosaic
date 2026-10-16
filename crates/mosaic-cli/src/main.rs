@@ -419,6 +419,14 @@ fn run(cli: Cli) -> Result<()> {
     if needs_index {
         ws.sync(|_, _| {})?;
     }
+    if matches!(cli.cmd, Cmd::Mcp) {
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()?;
+        return rt.block_on(mcp::serve(ws, mode));
+    }
+    // A command is one agent request: its folder rules are read once (see `freeze_rules`).
+    let _rules = ws.freeze_rules();
     match cli.cmd {
         Cmd::Templates { path } => print(json, &ws.list_templates(path.as_deref())?, |v| {
             let mut lines: Vec<String> = v.templates.iter().map(|t| t.path.clone()).collect();
@@ -795,11 +803,6 @@ fn run(cli: Cli) -> Result<()> {
         }),
         Cmd::Guide => unreachable!(),
         Cmd::SwapApps { .. } => unreachable!(),
-        Cmd::Mcp => {
-            let rt = tokio::runtime::Builder::new_multi_thread()
-                .enable_all()
-                .build()?;
-            rt.block_on(mcp::serve(ws, mode))
-        }
+        Cmd::Mcp => unreachable!("served above"),
     }
 }

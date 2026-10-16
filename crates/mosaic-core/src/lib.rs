@@ -25,6 +25,7 @@ pub mod timing;
 pub mod validate;
 pub mod vault;
 pub mod vault_id;
+pub mod vault_state;
 pub mod watch;
 
 pub use api::Workspace;

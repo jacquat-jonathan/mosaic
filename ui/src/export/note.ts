@@ -5,6 +5,7 @@ import { api, fileUrl } from "../ipc/api";
 import { kindOf } from "../ipc/kinds";
 import { resolveLink, parseWikiLink } from "../links";
 import { renderMarkdown } from "../markdown";
+import { sanitizeSvg } from "../sanitizeSvg";
 import { renderBlocksAll } from "../editor/blocks";
 import { useVault, parentOf } from "../state/vault";
 import { useWorkspace } from "../state/workspace";
@@ -114,7 +115,7 @@ async function noteBody(path: string, text: string, depth = 0): Promise<string> 
           import("../viewers/canvas/jsonCanvas"),
           import("../diagrams/canvasToSvg"),
         ]);
-        span.outerHTML = `<div class="embed-canvas">${canvasToSvg(parseCanvas((await api.read(resolved)).content ?? ""), false)}</div>`;
+        span.outerHTML = `<div class="embed-canvas">${sanitizeSvg(canvasToSvg(parseCanvas((await api.read(resolved)).content ?? ""), false))}</div>`;
       } else if (kind === "markdown" && depth < 1) {
         const inner = await noteBody(resolved, (await api.read(resolved)).content ?? "", depth + 1);
         span.outerHTML = `<div class="embed-note">${inner}</div>`;

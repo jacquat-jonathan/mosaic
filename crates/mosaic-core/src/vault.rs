@@ -558,7 +558,70 @@ impl Vault {
             source: std::io::Error::other(e.to_string()),
         })
     }
+
+    /// Absolute path of a vault file that may be handed to its default macOS app. Folders (which
+    /// includes `.app` bundles), launchable types such as `.command` or `.pkg`, and extensionless
+    /// executables (which macOS runs in Terminal) are refused: opening a document must never run code.
+    pub fn openable(&self, rel: &str) -> Result<PathBuf> {
+        let norm = normalize(rel)?;
+        let abs = self.resolve(&norm)?;
+        let meta = fs::metadata(&abs).map_err(|_| Error::NotFound(norm.clone()))?;
+        let refuse = |why: &str| {
+            Err(Error::Denied(format!(
+                "{norm} can't be opened from Mosaic: {why}"
+            )))
+        };
+        if !meta.is_file() {
+            return refuse("only files can be opened");
+        }
+        let ext = abs
+            .extension()
+            .map(|e| e.to_string_lossy().to_lowercase())
+            .unwrap_or_default();
+        if LAUNCHABLE_EXTENSIONS.contains(&ext.as_str()) {
+            return refuse("it is a program or launches one");
+        }
+        use std::os::unix::fs::PermissionsExt;
+        if ext.is_empty() && meta.permissions().mode() & 0o111 != 0 {
+            return refuse("it is an executable");
+        }
+        Ok(abs)
+    }
 }
+
+/// Types that run code, install software or point Finder at another file when opened.
+const LAUNCHABLE_EXTENSIONS: &[&str] = &[
+    "app",
+    "command",
+    "tool",
+    "terminal",
+    "sh",
+    "bash",
+    "zsh",
+    "csh",
+    "ksh",
+    "fish",
+    "pkg",
+    "mpkg",
+    "scpt",
+    "scptd",
+    "applescript",
+    "workflow",
+    "action",
+    "jar",
+    "webloc",
+    "inetloc",
+    "fileloc",
+    "url",
+    "prefpane",
+    "kext",
+    "plugin",
+    "bundle",
+    "osax",
+    "appex",
+    "shortcut",
+    "dylib",
+];
 
 #[cfg(test)]
 mod tests {
@@ -705,6 +768,36 @@ mod tests {
             .map(|e| e.path)
             .collect();
         assert_eq!(all, vec!["z", "z/inner.md", "A.md", "b.md"]);
+    }
+
+    #[test]
+    fn only_plain_documents_can_be_opened_in_their_default_app() {
+        use std::os::unix::fs::PermissionsExt;
+        let (d, v) = vault();
+        fs::write(d.path().join("Report.PDF"), "x").unwrap();
+        fs::write(d.path().join("run.command"), "x").unwrap();
+        fs::write(d.path().join("Setup.pkg"), "x").unwrap();
+        fs::create_dir(d.path().join("Tool.app")).unwrap();
+        fs::write(d.path().join("script"), "x").unwrap();
+        fs::set_permissions(d.path().join("script"), fs::Permissions::from_mode(0o755)).unwrap();
+        // A document with the executable bit (common on exFAT drives) still opens by its type.
+        fs::write(d.path().join("synced.docx"), "x").unwrap();
+        fs::set_permissions(
+            d.path().join("synced.docx"),
+            fs::Permissions::from_mode(0o755),
+        )
+        .unwrap();
+
+        assert!(v.openable("Report.PDF").unwrap().ends_with("Report.PDF"));
+        assert!(v.openable("synced.docx").is_ok());
+        for refused in ["run.command", "Setup.pkg", "Tool.app", "script"] {
+            assert!(
+                matches!(v.openable(refused), Err(Error::Denied(_))),
+                "{refused}"
+            );
+        }
+        assert!(matches!(v.openable("missing.pdf"), Err(Error::NotFound(_))));
+        assert!(v.openable("../outside.pdf").is_err());
     }
 
     #[test]

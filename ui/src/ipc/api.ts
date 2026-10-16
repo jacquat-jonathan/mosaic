@@ -373,11 +373,11 @@ export async function onSettingsChanged(cb: () => void): Promise<() => void> {
   return listen("settings-changed", () => cb());
 }
 
-/** Opens a vault file with its default macOS application (explicit user action only). */
+/** Opens a vault file with its default macOS application (explicit user action only). Programs,
+ * installers and folders are refused by the backend. */
 export async function openInDefaultApp(path: string): Promise<void> {
   if (!inTauri) return;
-  const { openPath } = await import("@tauri-apps/plugin-opener");
-  await openPath(await api.absolutePath(path));
+  await call("open_in_default_app", { path });
 }
 
 /** Shows a vault file (or the vault itself, with `""`) in Finder. */

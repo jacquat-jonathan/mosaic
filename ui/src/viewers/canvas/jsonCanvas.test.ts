@@ -31,3 +31,22 @@ test("preset and hex colours", () => {
   expect(colorOf("#123456")).toBe("#123456");
   expect(colorOf("nope")).toBeUndefined();
 });
+
+test("colours that could break out of an SVG attribute are refused", () => {
+  expect(colorOf('#fff" onload="alert(1)')).toBeUndefined();
+  expect(colorOf("#12345")).toBeUndefined();
+  expect(colorOf("#abcd")).toBe("#abcd");
+});
+
+test("node geometry is always a finite number", () => {
+  const doc = parseCanvas(
+    JSON.stringify({
+      nodes: [
+        { id: "a", type: "text", x: '0" onload="alert(1)', y: "12", width: null, height: "Infinity" },
+        { id: "b", type: "text", x: 5, y: 6 },
+      ],
+    }),
+  );
+  expect(doc.nodes[0]).toMatchObject({ x: 0, y: 12, width: 0, height: 0 });
+  expect(doc.nodes[1]).toEqual({ id: "b", type: "text", x: 5, y: 6 });
+});

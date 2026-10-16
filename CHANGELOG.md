@@ -5,6 +5,7 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 ## Unreleased
 
 - **Security fixes in bundled libraries:** the drawing editor, diagrams and math rendering now use patched versions of the small libraries they depend on (nanoid, lodash-es, source-map-js and KaTeX), closing the known security advisories against the older copies.
+- **Notes and diagrams can't run code in the app:** Mosaic's window now only runs its own scripts. Graphviz diagrams and canvases are cleaned before they are shown, so a link or attribute in a diagram file can't carry a script, and odd canvas positions or colours are ignored. **Open in default app** now only opens files inside the vault and refuses programs, installers and scripts.
 
 ## 0.20.0 — 2026-10-16
 

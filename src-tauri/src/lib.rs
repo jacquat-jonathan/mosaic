@@ -17,6 +17,7 @@ use serde::Serialize;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, RwLock};
 use tauri::{AppHandle, Emitter, Manager, State};
+use tauri_plugin_opener::OpenerExt;
 
 type CmdResult<T> = Result<T, Error>;
 
@@ -90,6 +91,8 @@ fn create_vault(parent: String, name: String) -> CmdResult<VaultInfo> {
 /// Makes `ws` the open vault: remembers it, starts the watcher and indexes in the background.
 fn activate(app: AppHandle, state: &AppState, ws: Workspace) -> CmdResult<VaultInfo> {
     let ws = Arc::new(ws);
+    // Known limit: Tauri's scope can only grow (a forbid would be permanent and beat a later allow),
+    // so vaults opened earlier in the session stay readable through asset URLs until restart.
     let _ = app
         .asset_protocol_scope()
         .allow_directory(ws.vault.root(), true);
@@ -412,6 +415,16 @@ fn undo_change(state: State<AppState>, id: i64) -> CmdResult<String> {
 #[tauri::command(async)]
 fn absolute_path(state: State<AppState>, path: String) -> CmdResult<String> {
     Ok(state.get()?.vault.resolve(&path)?.display().to_string())
+}
+
+/// Opens a file of the open vault with its default macOS app. The webview has no general
+/// "open path" permission: programs, installers and folders are refused (`Vault::openable`).
+#[tauri::command(async)]
+fn open_in_default_app(app: AppHandle, state: State<AppState>, path: String) -> CmdResult<()> {
+    let abs = state.get()?.vault.openable(&path)?;
+    app.opener()
+        .open_path(abs.display().to_string(), None::<&str>)
+        .map_err(|error| Error::Invalid(format!("Couldn't open {path}: {error}")))
 }
 
 #[tauri::command(async)]
@@ -746,6 +759,7 @@ pub fn run() {
             ai_activity,
             undo_change,
             absolute_path,
+            open_in_default_app,
             html_preview::html_preview_document,
             search,
             backlinks,

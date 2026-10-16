@@ -2,6 +2,7 @@ import { type EditorView, WidgetType } from "@codemirror/view";
 import { createElement, type ReactElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { renderMath } from "./render";
+import { sanitizeSvg } from "../sanitizeSvg";
 import { PropertiesEditor } from "./PropertiesEditor";
 import { isDark } from "../theme";
 import { editorContext, type EditorContext } from "./context";
@@ -272,8 +273,7 @@ export class CanvasEmbedWidget extends WidgetType {
       import("../diagrams/canvasToSvg"),
     ]).then(
       ([text, { parseCanvas }, { canvasToSvg }]) => {
-        // Our own SVG with every label escaped, so it's safe to insert.
-        el.innerHTML = canvasToSvg(parseCanvas(text), this.dark);
+        el.innerHTML = sanitizeSvg(canvasToSvg(parseCanvas(text), this.dark));
       },
       (e) => showError(el, e),
     );

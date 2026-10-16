@@ -8,7 +8,8 @@
     "lint": "tsc --noEmit",
     "test": "vitest run",
     "format": "biome format --write .",
-    "check:biome": "biome ci ."
+    "check:biome": "biome ci .",
+    "e2e": "playwright test"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.3",
@@ -46,6 +47,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",
+    "@playwright/test": "^1.63.0",
     "@types/katex": "^0.16.8",
     "@types/node": "^26.6.3",
     "@types/papaparse": "^5.5.2",

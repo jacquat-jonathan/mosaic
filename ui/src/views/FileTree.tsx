@@ -492,6 +492,7 @@ function RenameInput({ entry }: { entry: Entry }) {
 
   return (
     <input
+      aria-label="New name"
       ref={ref}
       className="tree-rename"
       defaultValue={shown}

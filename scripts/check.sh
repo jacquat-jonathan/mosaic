@@ -14,3 +14,5 @@ cargo test --workspace
 pnpm --dir ui lint
 pnpm --dir ui exec biome ci .
 pnpm --dir ui test
+# UI flows (open, rename, conflict, review) in Google Chrome against the dev server's mock vault.
+pnpm --dir ui e2e

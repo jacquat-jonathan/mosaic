@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Security fixes in bundled libraries:** the drawing editor, diagrams and math rendering now use patched versions of the small libraries they depend on (nanoid, lodash-es, source-map-js and KaTeX), closing the known security advisories against the older copies.
+
 ## 0.20.0 — 2026-10-16
 
 - **One manual download needed:** this version is signed with a new release key, so Mosaic 0.19 and earlier can't install it from About & updates (they report that the signature can't be verified). Download the DMG from the GitHub release page once; later updates install from within the app as before.

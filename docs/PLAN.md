@@ -11,7 +11,7 @@ checkable implementation record through M33 and the planned M34-M38 calendar wor
 - Tauri 2 · Rust (stable) · React 19 + TypeScript + Vite · pnpm · CodeMirror 6.
 - Index: SQLite FTS5 via `rusqlite` (bundled), in `~/Library/Caches/mosaic/<vault-hash>/index.db`, WAL mode. Never write inside the vault except user content.
 - Ad-hoc signing only. macOS 12+. Universal2 at release.
-- Local-first: CSP `default-src 'self'`, no telemetry, every renderer bundled. M31 permits public GitHub Releases HTTPS metadata/package downloads only on explicit Check / Download clicks; no background polling, automatic installs or vault uploads. The pull/rebuild source updater was removed in 0.21 (M39). Release authenticity uses a free Ed25519 key independent of ad-hoc Apple signing.
+- Local-first: CSP `default-src 'self'`, no telemetry, every renderer bundled. M31 permits public GitHub Releases HTTPS metadata/package downloads only on explicit Check / Download clicks; no automatic installs or vault uploads. Other network paths (subscribed calendars, Claude Code) are listed in the README's privacy paragraph. The pull/rebuild source updater was removed in 0.21 (M39). Release authenticity uses a free Ed25519 key independent of ad-hoc Apple signing.
 
 ## Repo layout
 

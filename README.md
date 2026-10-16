@@ -9,9 +9,18 @@ get the same abilities through an **MCP server** and a **`mosaic` command-line t
 they change appears in the app within a second.
 
 Everything stays on your disk. Notes and attachments remain ordinary files; independent planning data
-uses a per-vault SQLite database under `.mosaic/`. Mosaic only contacts GitHub when you explicitly
-check for or download an update. There is no telemetry, background polling, or vault upload.
-Optional Claude features use Claude Code's own connection.
+uses a per-vault SQLite database under `.mosaic/`. There is no telemetry and no vault upload. Mosaic
+goes online only in these cases:
+
+- **Updates:** it reads GitHub Releases only when you click **Check for updates** or **Download update**.
+- **Subscribed calendars:** while the Calendar is open, it checks every 5 minutes and when you return
+  to the window, and downloads each calendar you subscribed to once that calendar's refresh interval
+  (30 minutes unless you change it) has passed.
+- **Claude:** chats and workflows run Claude Code, which uses its own connection to Anthropic.
+  Scheduled and event-triggered workflows do this in the background when they run. A workflow can use
+  the web only when you tick **Can use the web**.
+
+Links you click open in your browser.
 
 ## Getting started
 

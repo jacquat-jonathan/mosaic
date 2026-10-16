@@ -37,6 +37,7 @@ import type {
 } from "./types";
 import type { commands, Day, DayTask } from "./bindings";
 import { kindOf } from "./kinds";
+import { linkTextFor, parseWikiLink, resolveLink } from "../links";
 import { parse as parseYaml } from "yaml";
 import { annotatedTask, taskLabel, type WorkflowState, WORKFLOW_STATES } from "../views/taskBoardModel";
 import { defaultTemplateConfig, inFolder, templateDefault } from "../templates";
@@ -838,6 +839,19 @@ const vaultPreferences = new Map<string, Record<string, unknown>>();
 /** Commands whose arguments name a vault root refuse another vault, like the real backend. */
 function checkRoot(a: Record<string, unknown>) {
   if (typeof a.root === "string" && a.root !== mockRoot) throw err("invalid", "The vault changed");
+}
+
+/** Like the core: an unknown proposal is not found, a decided one can't be decided again. */
+function pendingProposal(id: number) {
+  const p = proposals.find((x) => x.id === id);
+  if (!p) throw err("not_found", `proposal ${id}`);
+  if (p.status !== "pending") throw err("invalid", `proposal ${id} is already ${p.status}`);
+  return p;
+}
+
+/** The mock vault's files as tree entries (enough for link resolution). */
+function fileEntries(): Entry[] {
+  return [...files.keys()].map((path) => ({ path, is_dir: false }) as Entry);
 }
 
 /** An event input as the core stores it: fields left out are saved as null. */
@@ -2199,8 +2213,7 @@ export const mockCommands: typeof commands = {
     return null;
   },
   acceptProposal: async (id, force, content) => {
-    const p = proposals.find((x) => x.id === id && x.status === "pending");
-    if (!p) throw err("not_found", `proposal ${id}`);
+    const p = pendingProposal(id);
     const current = files.has(p.path) ? hash(files.get(p.path)!.content) : null;
     if (current !== p.base_hash && !force) throw err("conflict", `file changed since it was read: ${p.path}`);
     const accepted = typeof content === "string" ? content : p.content;
@@ -2212,8 +2225,7 @@ export const mockCommands: typeof commands = {
     return p.path;
   },
   rejectProposal: async (id, reason) => {
-    const p = proposals.find((x) => x.id === id && x.status === "pending");
-    if (!p) throw err("not_found", `proposal ${id}`);
+    const p = pendingProposal(id);
     Object.assign(p, { status: "rejected", reason: reason ?? null, decided: Date.now() });
     return null;
   },
@@ -2469,6 +2481,7 @@ export const mockCommands: typeof commands = {
             Object.entries(colors).map(([path, color]) => [under(path) ? move(path) : path, color]),
           );
       }
+      const before = fileEntries();
       for (const [p, f] of [...files])
         if (under(p)) {
           files.delete(p);
@@ -2481,7 +2494,25 @@ export const mockCommands: typeof commands = {
         }
       addParents(to);
       track(to, "renamed", null, { from_path: from });
-      return { path: to, updated_links_in: [], review: null };
+      // Like the core: wiki links that pointed at a moved file follow it (shortest text that resolves).
+      const after = fileEntries();
+      const back = (p: string) => (p === to ? from : p.startsWith(`${to}/`) ? `${from}${p.slice(to.length)}` : p);
+      const updated: string[] = [];
+      for (const [path, f] of files) {
+        if (!path.toLowerCase().endsWith(".md")) continue;
+        const text = f.content.replace(/(!?\[\[)([^\]\n]+)(\]\])/g, (whole, open, inner, close) => {
+          const target = parseWikiLink(inner).target;
+          const old = resolveLink(target, before, back(path));
+          if (!old || !under(old) || resolveLink(target, after, path) === move(old)) return whole;
+          return `${open}${linkTextFor(move(old), after, path)}${inner.slice(inner.indexOf(target) + target.length)}${close}`;
+        });
+        if (text !== f.content) {
+          write(path, text);
+          track(path, "edited", text);
+          updated.push(path);
+        }
+      }
+      return { path: to, updated_links_in: updated, review: null };
     }
   },
   deletePath: async (path) => {

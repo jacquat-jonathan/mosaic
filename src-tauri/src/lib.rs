@@ -9,7 +9,7 @@ mod update;
 mod window_state;
 
 use mosaic_core::api::{Mention, Outline, Renamed};
-use mosaic_core::history::Version;
+use mosaic_core::history::{UnfinishedRename, Version};
 use mosaic_core::index::{Backlink, SearchHit, TagCount};
 use mosaic_core::settings::{AgentRule, Settings};
 use mosaic_core::vault_state::VaultState;
@@ -340,6 +340,17 @@ fn make_dir(state: State<AppState>, path: String) -> CmdResult<()> {
 #[tauri::command(async)]
 fn rename_path(state: State<AppState>, from: String, to: String) -> CmdResult<Renamed> {
     state.get()?.rename(&from, &to, true)
+}
+
+/// Moves whose link rewrites didn't all finish; the app offers **Fix links** for each.
+#[tauri::command(async)]
+fn unfinished_renames(state: State<AppState>) -> CmdResult<Vec<UnfinishedRename>> {
+    state.get()?.unfinished_renames()
+}
+
+#[tauri::command(async)]
+fn fix_links(state: State<AppState>, id: i64) -> CmdResult<Renamed> {
+    state.get()?.fix_links(id)
 }
 
 #[tauri::command(async)]
@@ -750,6 +761,8 @@ pub fn run() {
             undo_change,
             absolute_path,
             open_in_default_app,
+            unfinished_renames,
+            fix_links,
             html_preview::html_preview_document,
             search,
             backlinks,

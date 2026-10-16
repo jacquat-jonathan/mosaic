@@ -526,7 +526,18 @@ export interface TagCount {
 export interface Renamed {
   path: string;
   updated_links_in: string[];
+  /** Notes whose links couldn't be rewritten; the move happened anyway (see UnfinishedRename). */
+  failed_links_in?: { path: string; error: string }[];
   review?: number;
+}
+
+/** A move whose links didn't all follow (a rewrite failed, or Mosaic stopped half-way). */
+export interface UnfinishedRename {
+  id: number;
+  from: string;
+  to: string;
+  /** Milliseconds since the Unix epoch. */
+  started: number;
 }
 
 export interface IndexProgress {

@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { usePlanning } from "./planning";
 import { useChat, listenToChat } from "./chat";
 import { api } from "../ipc/api";
-import { errorMessage, type Entry, type VaultInfo } from "../ipc/types";
+import { errorMessage, type Entry, type UnfinishedRename, type VaultInfo } from "../ipc/types";
 import { useWorkspace } from "./workspace";
 import { loadVaultPreferences, vaultPrefs } from "./vaultPreferences";
 import { prefs } from "./settings";
@@ -80,6 +80,8 @@ interface VaultState {
   cursor: string | null;
   /** Bookmarked vault-relative paths, in the user's order. */
   bookmarks: string[];
+  /** Moves whose links didn't all follow; each gets a banner with Fix links. */
+  unfinishedRenames: UnfinishedRename[];
 
   openVault(path: string): Promise<void>;
   refresh(): Promise<void>;
@@ -89,6 +91,8 @@ interface VaultState {
   newFile(dir: string, stem: string, ext: string, content?: string): Promise<string | null>;
   newFolder(dir: string): Promise<string | null>;
   rename(from: string, to: string): Promise<string | null>;
+  /** Rewrites the links an unfinished move left behind; false if some still failed. */
+  fixLinks(id: number): Promise<boolean>;
   remove(path: string): Promise<boolean>;
   setError(msg: string | null): void;
   touched(): void;
@@ -124,6 +128,7 @@ export const useVault = create<VaultState>((set, get) => {
     anchor: null,
     cursor: null,
     bookmarks: [],
+    unfinishedRenames: [],
 
     async openVault(path) {
       try {
@@ -139,6 +144,7 @@ export const useVault = create<VaultState>((set, get) => {
           selected: new Set(),
           anchor: null,
           bookmarks: [],
+          unfinishedRenames: [],
         });
         await loadVaultPreferences(vault.root);
         await get().refresh();
@@ -182,13 +188,17 @@ export const useVault = create<VaultState>((set, get) => {
 
     async refresh() {
       try {
-        const [entries, aliases] = await Promise.all([api.list("", true), api.aliases().catch(() => [])]);
+        const [entries, aliases, unfinishedRenames] = await Promise.all([
+          api.list("", true),
+          api.aliases().catch(() => []),
+          api.unfinishedRenames().catch(() => get().unfinishedRenames),
+        ]);
         const paths = new Set(entries.map((e) => e.path));
         set((s) => {
           const selected = [...s.selected].every((p) => paths.has(p))
             ? s.selected
             : new Set([...s.selected].filter((p) => paths.has(p)));
-          return { entries, aliases, revision: s.revision + 1, selected };
+          return { entries, aliases, unfinishedRenames, revision: s.revision + 1, selected };
         });
       } catch (e) {
         fail(e);
@@ -256,6 +266,27 @@ export const useVault = create<VaultState>((set, get) => {
         return out;
       } catch (e) {
         return fail(e);
+      }
+    },
+
+    async fixLinks(id) {
+      try {
+        const { updated_links_in, failed_links_in } = await api.fixLinks(id);
+        for (const p of updated_links_in) {
+          const b = useWorkspace.getState().buffers[p];
+          if (b && !b.dirty) void useWorkspace.getState().reload(p);
+        }
+        await get().refresh();
+        if (failed_links_in?.length) {
+          set({
+            error: `Some links still couldn't be fixed: ${failed_links_in.map((f) => `${f.path} (${f.error})`).join(", ")}`,
+          });
+          return false;
+        }
+        return true;
+      } catch (e) {
+        fail(e);
+        return false;
       }
     },
 

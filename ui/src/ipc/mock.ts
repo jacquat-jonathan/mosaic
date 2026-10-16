@@ -2214,6 +2214,11 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
     }
     case "absolute_path":
       return `/mock/vault/${norm(a.path)}`;
+    // The mock's renames always finish.
+    case "unfinished_renames":
+      return [];
+    case "fix_links":
+      throw err("invalid", `there is no unfinished move ${a.id}`);
     default:
       throw err("invalid", `mock: unknown command ${cmd}`);
   }

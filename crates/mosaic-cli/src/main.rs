@@ -647,6 +647,7 @@ fn run(cli: Cli) -> Result<()> {
                         r.updated_links_in.join(", ")
                     ));
                 }
+                s.push_str(&failed_links(r));
                 s
             })
         }
@@ -718,7 +719,7 @@ fn run(cli: Cli) -> Result<()> {
         Cmd::Move { paths, to } => print(json, &ws.move_into(&paths, &to)?, |moved| {
             moved
                 .iter()
-                .map(|r| format!("moved to {}", r.path))
+                .map(|r| format!("moved to {}{}", r.path, failed_links(r)))
                 .collect::<Vec<_>>()
                 .join("\n")
         }),
@@ -805,4 +806,12 @@ fn run(cli: Cli) -> Result<()> {
         Cmd::SwapApps { .. } => unreachable!(),
         Cmd::Mcp => unreachable!("served above"),
     }
+}
+
+/// Links a move couldn't rewrite: the move happened, and the app offers Fix links for it.
+fn failed_links(r: &mosaic_core::api::Renamed) -> String {
+    r.failed_links_in
+        .iter()
+        .map(|f| format!("\ncouldn't update links in {}: {}", f.path, f.error))
+        .collect()
 }

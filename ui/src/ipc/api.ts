@@ -9,6 +9,7 @@ import type {
   IndexProgress,
   RecentVault,
   Renamed,
+  UnfinishedRename,
   SearchHit,
   TagCount,
   UpdateCheck,
@@ -103,6 +104,9 @@ export const api = {
     call<Written>("write_file", { path, content, expectedHash: expectedHash ?? null, root: root ?? null }),
   mkdir: (path: string) => call<void>("make_dir", { path }),
   rename: (from: string, to: string) => call<Renamed>("rename_path", { from, to }),
+  unfinishedRenames: () => call<UnfinishedRename[]>("unfinished_renames"),
+  /** Rewrites the links an unfinished move left pointing at the old name. */
+  fixLinks: (id: number) => call<Renamed>("fix_links", { id }),
   remove: (path: string) => call<void>("delete_path", { path }),
   absolutePath: (path: string) => call<string>("absolute_path", { path }),
   search: (query: string, limit = 50) => call<SearchHit[]>("search", { query, limit }),

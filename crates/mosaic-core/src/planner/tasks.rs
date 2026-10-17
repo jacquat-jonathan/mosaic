@@ -1,8 +1,8 @@
+use super::service::PlannerService;
 use super::{
     CreateTask, FutureSessionPolicy, MoveTask, PlannerStore, PlannerTask, TaskStatus, UpdateTask,
     bump_store_revision, expect_revision, now, record_activity, required_title, sql_error,
 };
-use crate::api::Workspace;
 use crate::error::{Error, Result};
 use chrono::NaiveDate;
 use rusqlite::{OptionalExtension, Row, Transaction, params};
@@ -550,36 +550,31 @@ impl PlannerStore {
     }
 }
 
-impl Workspace {
-    pub fn planner_tasks(
-        &self,
-        include_archived: bool,
-        include_trashed: bool,
-    ) -> Result<Vec<PlannerTask>> {
-        self.planner()?
-            .list_tasks(include_archived, include_trashed)
+impl PlannerService {
+    pub fn tasks(&self, include_archived: bool, include_trashed: bool) -> Result<Vec<PlannerTask>> {
+        self.store()?.list_tasks(include_archived, include_trashed)
     }
 
-    pub fn create_planner_task(&self, input: CreateTask) -> Result<PlannerTask> {
-        self.planner()?.create_task(input)
+    pub fn create_task(&self, input: CreateTask) -> Result<PlannerTask> {
+        self.store()?.create_task(input)
     }
 
-    pub fn update_planner_task(&self, id: &str, input: UpdateTask) -> Result<PlannerTask> {
-        self.planner()?.update_task(id, input)
+    pub fn update_task(&self, id: &str, input: UpdateTask) -> Result<PlannerTask> {
+        self.store()?.update_task(id, input)
     }
 
-    pub fn move_planner_task(&self, id: &str, input: MoveTask) -> Result<PlannerTask> {
-        self.planner()?.move_task(id, input)
+    pub fn move_task(&self, id: &str, input: MoveTask) -> Result<PlannerTask> {
+        self.store()?.move_task(id, input)
     }
 
-    pub fn complete_planner_task(
+    pub fn complete_task(
         &self,
         id: &str,
         expected_revision: i64,
         allow_incomplete_subtasks: bool,
         future_sessions: FutureSessionPolicy,
     ) -> Result<PlannerTask> {
-        self.planner()?.complete_task(
+        self.store()?.complete_task(
             id,
             expected_revision,
             allow_incomplete_subtasks,
@@ -587,19 +582,19 @@ impl Workspace {
         )
     }
 
-    pub fn reopen_planner_task(&self, id: &str, expected_revision: i64) -> Result<PlannerTask> {
-        self.planner()?.reopen_task(id, expected_revision)
+    pub fn reopen_task(&self, id: &str, expected_revision: i64) -> Result<PlannerTask> {
+        self.store()?.reopen_task(id, expected_revision)
     }
 
-    pub fn archive_planner_task(&self, id: &str, expected_revision: i64) -> Result<PlannerTask> {
-        self.planner()?.archive_task(id, expected_revision)
+    pub fn archive_task(&self, id: &str, expected_revision: i64) -> Result<PlannerTask> {
+        self.store()?.archive_task(id, expected_revision)
     }
 
-    pub fn restore_planner_task(&self, id: &str, expected_revision: i64) -> Result<PlannerTask> {
-        self.planner()?.restore_task(id, expected_revision)
+    pub fn restore_task(&self, id: &str, expected_revision: i64) -> Result<PlannerTask> {
+        self.store()?.restore_task(id, expected_revision)
     }
 
-    pub fn trash_planner_task(&self, id: &str, expected_revision: i64) -> Result<PlannerTask> {
-        self.planner()?.trash_task(id, expected_revision)
+    pub fn trash_task(&self, id: &str, expected_revision: i64) -> Result<PlannerTask> {
+        self.store()?.trash_task(id, expected_revision)
     }
 }

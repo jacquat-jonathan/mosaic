@@ -8,12 +8,12 @@ mod ical;
 mod migration;
 mod recurrence;
 mod schema;
+mod service;
 mod tasks;
 
 #[cfg(test)]
 mod tests;
 
-use crate::api::Workspace;
 use crate::error::{Error, Result};
 use chrono::{SecondsFormat, Utc};
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
@@ -28,6 +28,7 @@ pub use migration::{
     MarkdownImportCandidate, MarkdownImportGroup, MarkdownImportKind, MarkdownImportPreview,
     MarkdownImportResult,
 };
+pub use service::PlannerService;
 
 pub const SCHEMA_VERSION: i64 = 2;
 
@@ -451,17 +452,13 @@ impl PlannerStore {
     }
 }
 
-impl Workspace {
-    pub fn planner_summary(&self) -> Result<PlannerSummary> {
-        self.planner()?.summary()
+impl PlannerService {
+    pub fn summary(&self) -> Result<PlannerSummary> {
+        self.store()?.summary()
     }
 
-    pub fn planner_activity(
-        &self,
-        entity_kind: &str,
-        entity_id: &str,
-    ) -> Result<Vec<ActivityEntry>> {
-        self.planner()?.activity(entity_kind, entity_id)
+    pub fn activity(&self, entity_kind: &str, entity_id: &str) -> Result<Vec<ActivityEntry>> {
+        self.store()?.activity(entity_kind, entity_id)
     }
 }
 

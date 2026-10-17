@@ -760,7 +760,7 @@ fn run(cli: Cli) -> Result<()> {
         Cmd::Activity { limit } => print(json, &ws.activity(limit)?, |vs| {
             vs.iter().map(version_line).collect::<Vec<_>>().join("\n")
         }),
-        Cmd::Proposals { limit } => print(json, &ws.proposals(true, limit)?, |ps| {
+        Cmd::Proposals { limit } => print(json, &ws.review().list(true, limit)?, |ps| {
             if ps.is_empty() {
                 return "no proposals".into();
             }
@@ -790,7 +790,7 @@ fn run(cli: Cli) -> Result<()> {
                 .join("\n")
         }),
         Cmd::Withdraw { id } => {
-            ws.withdraw_proposal(id)?;
+            ws.review().withdraw(id)?;
             print(json, &serde_json::json!({ "withdrawn": id }), |_| {
                 format!("withdrew proposal {id}")
             })

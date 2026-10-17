@@ -522,14 +522,29 @@ impl Workspace {
         }
     }
 
+    /// The person's review of agents' proposals (see `ReviewService`).
+    pub fn review(&self) -> ReviewService<'_> {
+        ReviewService { ws: self }
+    }
+}
+
+/// Listing and deciding proposals (`ws.review()`). Review keeps no state of its own: proposals
+/// live in `history.db` next to the file versions, and accepting one writes through the
+/// workspace's file operations, so this borrows the workspace rather than owning a store. Agents'
+/// changes become proposals inside those file operations (the crate-private `propose_*` above).
+pub struct ReviewService<'a> {
+    ws: &'a Workspace,
+}
+
+impl ReviewService<'_> {
     /// Proposals, with `stale` set when the file changed since. Agents see only paths they may see.
-    pub fn proposals(&self, include_decided: bool, limit: usize) -> Result<Vec<Proposal>> {
-        let rules = self.rules()?;
-        let mut list = self.hist().proposals(include_decided, limit)?;
+    pub fn list(&self, include_decided: bool, limit: usize) -> Result<Vec<Proposal>> {
+        let rules = self.ws.rules()?;
+        let mut list = self.ws.hist().proposals(include_decided, limit)?;
         list.retain(|p| access_for(&rules, &p.path) != Some(Access::Hidden));
         for p in &mut list {
             if p.status == "pending" {
-                p.stale = self.vault.hash_of(&p.path).ok().flatten() != p.base_hash;
+                p.stale = self.ws.vault.hash_of(&p.path).ok().flatten() != p.base_hash;
             }
         }
         Ok(list)
@@ -537,27 +552,30 @@ impl Workspace {
 
     /// The file as it was when the proposal was made (`None`: it didn't exist, or that version
     /// wasn't kept). Diffed against the file now, it shows what the person changed since.
-    pub fn proposal_base(&self, id: i64) -> Result<Option<String>> {
+    pub fn base(&self, id: i64) -> Result<Option<String>> {
         let p = self
+            .ws
             .hist()
             .proposal(id)?
             .ok_or_else(|| Error::NotFound(format!("proposal {id}")))?;
         match &p.base_hash {
-            Some(h) => self.hist().content_by_hash(&p.path, h),
+            Some(h) => self.ws.hist().content_by_hash(&p.path, h),
             None => Ok(None),
         }
     }
 
     /// The proposed content (`None` for a deletion).
-    pub fn proposal_content(&self, id: i64) -> Result<Option<String>> {
-        self.hist()
+    pub fn content(&self, id: i64) -> Result<Option<String>> {
+        self.ws
+            .hist()
             .proposal(id)?
             .ok_or_else(|| Error::NotFound(format!("proposal {id}")))?;
-        self.hist().proposal_content(id)
+        self.ws.hist().proposal_content(id)
     }
 
     fn pending(&self, id: i64) -> Result<Proposal> {
         let p = self
+            .ws
             .hist()
             .proposal(id)?
             .ok_or_else(|| Error::NotFound(format!("proposal {id}")))?;
@@ -571,7 +589,7 @@ impl Workspace {
     }
 
     fn person_only(&self, what: &str) -> Result<()> {
-        if self.source() == Source::App {
+        if self.ws.source() == Source::App {
             Ok(())
         } else {
             Err(Error::Denied(format!(
@@ -583,12 +601,12 @@ impl Workspace {
     /// Applies a proposal (the person, in the app). Refused with `conflict` when the file changed
     /// since it was proposed, unless `force`. The change is logged as the agent's, so it shows in
     /// the AI activity and can be undone. Returns the file's path.
-    pub fn accept_proposal(&self, id: i64, force: bool) -> Result<String> {
-        self.accept_proposal_content(id, force, None)
+    pub fn accept(&self, id: i64, force: bool) -> Result<String> {
+        self.accept_selected(id, force, None)
     }
 
     /// Accepts a proposal, optionally with a person-selected subset of its text changes.
-    pub fn accept_proposal_content(
+    pub fn accept_selected(
         &self,
         id: i64,
         force: bool,
@@ -596,7 +614,7 @@ impl Workspace {
     ) -> Result<String> {
         self.person_only("accept")?;
         let p = self.pending(id)?;
-        let current = self.vault.hash_of(&p.path)?;
+        let current = self.ws.vault.hash_of(&p.path)?;
         if current != p.base_hash && !force {
             return Err(Error::Conflict {
                 path: p.path.clone(),
@@ -615,36 +633,39 @@ impl Workspace {
                 Error::Invalid(format!("proposal {id} has no rename destination"))
             })?;
             let (out, version_id) =
-                self.rename_direct(&p.path, &to, p.update_links, &source, p.actor.as_deref())?;
-            self.hist()
+                self.ws
+                    .rename_direct(&p.path, &to, p.update_links, &source, p.actor.as_deref())?;
+            self.ws
+                .hist()
                 .accepted(id, current != p.base_hash, version_id)?;
             return Ok(out.path);
         }
         if p.binary && p.action == "created" {
             let bytes = self
+                .ws
                 .hist()
                 .proposal_data(id)?
                 .0
                 .ok_or_else(|| Error::Invalid(format!("proposal {id} has no file data")))?;
-            self.vault.create_bytes(&p.path, &bytes)?;
-            self.hist().accepted(id, current != p.base_hash, None)?;
-            self.reindex(&p.path);
+            self.ws.vault.create_bytes(&p.path, &bytes)?;
+            self.ws.hist().accepted(id, current != p.base_hash, None)?;
+            self.ws.reindex(&p.path);
             return Ok(p.path);
         }
         let content = selected_content
             .map(str::to_string)
             .map(Some)
-            .unwrap_or(self.hist().proposal_content(id)?);
+            .unwrap_or(self.ws.hist().proposal_content(id)?);
         match content {
             Some(content) => {
-                let existed = self.keep_before(&p.path);
-                let w = self.vault.write(&p.path, &content, None)?;
+                let existed = self.ws.keep_before(&p.path);
+                let w = self.ws.vault.write(&p.path, &content, None)?;
                 let action = if existed {
                     Action::Edited
                 } else {
                     Action::Created
                 };
-                let _ = self.hist().record(
+                let _ = self.ws.hist().record(
                     &w.path,
                     Some(&content),
                     &w.hash,
@@ -655,10 +676,10 @@ impl Workspace {
                 );
             }
             None => {
-                if let Some((text, hash)) = self.text_of(&p.path) {
-                    self.keep_before(&p.path);
-                    self.vault.delete(&p.path)?;
-                    let _ = self.hist().record(
+                if let Some((text, hash)) = self.ws.text_of(&p.path) {
+                    self.ws.keep_before(&p.path);
+                    self.ws.vault.delete(&p.path)?;
+                    let _ = self.ws.hist().record(
                         &p.path,
                         Some(&text),
                         &hash,
@@ -667,34 +688,35 @@ impl Workspace {
                         Action::Deleted,
                         None,
                     );
-                } else if self.vault.stat(&p.path).is_ok() {
-                    self.vault.delete(&p.path)?;
+                } else if self.ws.vault.stat(&p.path).is_ok() {
+                    self.ws.vault.delete(&p.path)?;
                 }
             }
         }
         // The entry just recorded is what Undo in AI activity reverts; link it so the agent sees that.
-        let version_id = self.hist().latest(&p.path)?.map(|v| v.id);
-        self.hist()
+        let version_id = self.ws.hist().latest(&p.path)?.map(|v| v.id);
+        self.ws
+            .hist()
             .accepted(id, current != p.base_hash, version_id)?;
-        self.reindex(&p.path);
+        self.ws.reindex(&p.path);
         Ok(p.path)
     }
 
     /// Turns a proposal down (the person, in the app); `reason` is shown to the agent.
-    pub fn reject_proposal(&self, id: i64, reason: Option<&str>) -> Result<()> {
+    pub fn reject(&self, id: i64, reason: Option<&str>) -> Result<()> {
         self.person_only("reject")?;
         self.pending(id)?;
         let reason = reason.map(str::trim).filter(|r| !r.is_empty());
-        self.hist().decide(id, "rejected", reason)
+        self.ws.hist().decide(id, "rejected", reason)
     }
 
     /// The agent takes its own proposal back.
-    pub fn withdraw_proposal(&self, id: i64) -> Result<()> {
+    pub fn withdraw(&self, id: i64) -> Result<()> {
         let p = self.pending(id)?;
-        if access_for(&self.rules()?, &p.path) == Some(Access::Hidden) {
+        if access_for(&self.ws.rules()?, &p.path) == Some(Access::Hidden) {
             return Err(Error::NotFound(format!("proposal {id}")));
         }
-        self.hist().decide(id, "withdrawn", None)
+        self.ws.hist().decide(id, "withdrawn", None)
     }
 }
 
@@ -748,7 +770,7 @@ mod tests {
         assert_eq!(w2.review, Some(id));
         // The app sees the file as it is, and one pending proposal.
         assert_eq!(app.read("Reviewed/Plan.md").unwrap().review, None);
-        let list = app.proposals(false, 10).unwrap();
+        let list = app.review().list(false, 10).unwrap();
         assert_eq!(list.len(), 1);
         assert_eq!(
             (
@@ -760,10 +782,10 @@ mod tests {
         );
         // Only the person decides.
         assert!(matches!(
-            agent.accept_proposal(id, false),
+            agent.review().accept(id, false),
             Err(Error::Denied(_))
         ));
-        app.accept_proposal(id, false).unwrap();
+        app.review().accept(id, false).unwrap();
         assert_eq!(
             disk(&dir, "Reviewed/Plan.md").unwrap(),
             "# Plan\n- one\n- two\n- three\n"
@@ -778,7 +800,7 @@ mod tests {
             ),
             ("agent", Some("claude-code"), "edited")
         );
-        let accepted = &agent.proposals(true, 10).unwrap()[0];
+        let accepted = &agent.review().list(true, 10).unwrap()[0];
         assert_eq!(
             (accepted.status.as_str(), accepted.overwrote),
             ("accepted", false)
@@ -786,7 +808,7 @@ mod tests {
         // The person undoes it in AI activity: the agent sees that its change is gone.
         app.undo(act[0].id).unwrap();
         assert_eq!(disk(&dir, "Reviewed/Plan.md").unwrap(), "# Plan\n- one\n");
-        assert_eq!(agent.proposals(true, 10).unwrap()[0].status, "undone");
+        assert_eq!(agent.review().list(true, 10).unwrap()[0].status, "undone");
         // Outside the review folder, agents write directly.
         assert_eq!(
             agent.write("Free.md", "changed\n", None).unwrap().review,
@@ -835,13 +857,14 @@ mod tests {
         let w = agent
             .write("Reviewed/Plan.md", "# Plan\n- changed\n- extra\n", None)
             .unwrap();
-        app.accept_proposal_content(w.review.unwrap(), false, Some("# Plan\n- changed\n"))
+        app.review()
+            .accept_selected(w.review.unwrap(), false, Some("# Plan\n- changed\n"))
             .unwrap();
         assert_eq!(
             disk(&dir, "Reviewed/Plan.md").as_deref(),
             Some("# Plan\n- changed\n")
         );
-        assert_eq!(agent.proposals(true, 10).unwrap()[0].status, "accepted");
+        assert_eq!(agent.review().list(true, 10).unwrap()[0].status, "accepted");
     }
 
     #[test]
@@ -855,18 +878,18 @@ mod tests {
         ));
         // Deleting a file that was only proposed drops the proposal.
         agent.delete("Reviewed/New.md").unwrap();
-        assert!(app.proposals(false, 10).unwrap().is_empty());
+        assert!(app.review().list(false, 10).unwrap().is_empty());
         // A proposed deletion, rejected with a reason the agent can read.
         agent.delete("Reviewed/Plan.md").unwrap();
         assert!(matches!(
             agent.read("Reviewed/Plan.md"),
             Err(Error::NotFound(_))
         ));
-        let p = &app.proposals(false, 10).unwrap()[0];
+        let p = &app.review().list(false, 10).unwrap()[0];
         assert_eq!(p.action, "deleted");
-        app.reject_proposal(p.id, Some("keep the plan")).unwrap();
+        app.review().reject(p.id, Some("keep the plan")).unwrap();
         assert!(disk(&dir, "Reviewed/Plan.md").is_some());
-        let decided = &agent.proposals(true, 10).unwrap()[0];
+        let decided = &agent.review().list(true, 10).unwrap()[0];
         assert_eq!(
             (decided.status.as_str(), decided.reason.as_deref()),
             ("rejected", Some("keep the plan"))
@@ -880,16 +903,16 @@ mod tests {
             "# Plan, edited by hand\n",
         )
         .unwrap();
-        assert!(app.proposals(false, 10).unwrap()[0].stale);
+        assert!(app.review().list(false, 10).unwrap()[0].stale);
         assert!(matches!(
-            app.accept_proposal(w.review.unwrap(), false),
+            app.review().accept(w.review.unwrap(), false),
             Err(Error::Conflict { .. })
         ));
-        app.accept_proposal(w.review.unwrap(), true).unwrap();
+        app.review().accept(w.review.unwrap(), true).unwrap();
         assert_eq!(disk(&dir, "Reviewed/Plan.md").unwrap(), "# Plan v2\n");
         // The decision records that it replaced the person's edit (stale only means something
         // while pending).
-        let forced = &agent.proposals(true, 10).unwrap()[0];
+        let forced = &agent.review().list(true, 10).unwrap()[0];
         assert_eq!(
             (forced.status.as_str(), forced.overwrote),
             ("accepted", true)
@@ -901,7 +924,8 @@ mod tests {
         let rename_id = rename.review.unwrap();
         assert!(disk(&dir, "Reviewed/Plan.md").is_some());
         let p = app
-            .proposals(false, 10)
+            .review()
+            .list(false, 10)
             .unwrap()
             .into_iter()
             .find(|p| p.id == rename_id)
@@ -910,7 +934,7 @@ mod tests {
             (p.action.as_str(), p.to_path.as_deref()),
             ("renamed", Some("Plan.md"))
         );
-        app.accept_proposal(rename_id, false).unwrap();
+        app.review().accept(rename_id, false).unwrap();
         assert!(disk(&dir, "Reviewed/Plan.md").is_none());
         assert!(disk(&dir, "Plan.md").is_some());
         assert_eq!(disk(&dir, "Free.md").as_deref(), Some("See [[Plan]]\n"));
@@ -941,7 +965,8 @@ mod tests {
         assert_eq!(disk(&dir, "Free.md").as_deref(), Some("See [[Plan]]\n"));
         assert_eq!(
             agent
-                .proposals(true, 10)
+                .review()
+                .list(true, 10)
                 .unwrap()
                 .into_iter()
                 .find(|p| p.id == rename_id)
@@ -954,12 +979,13 @@ mod tests {
         let binary_id = binary.review.unwrap();
         assert!(!dir.path().join("Reviewed/pic.png").exists());
         assert!(
-            app.proposals(false, 10)
+            app.review()
+                .list(false, 10)
                 .unwrap()
                 .iter()
                 .any(|p| p.id == binary_id && p.binary)
         );
-        app.accept_proposal(binary_id, false).unwrap();
+        app.review().accept(binary_id, false).unwrap();
         assert_eq!(
             std::fs::read(dir.path().join("Reviewed/pic.png")).unwrap(),
             b"png"

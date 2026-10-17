@@ -1,10 +1,10 @@
+use super::service::PlannerService;
 use super::{
     CalendarRange, CalendarWorkSession, CreateEvent, CreateWorkSession, DayWorkload, DueMarker,
     EventOccurrence, PlannerEvent, PlannerStore, TaskStatus, UpdateEvent, UpdateWorkSession,
     WorkSession, bump_store_revision, expect_revision, now, record_activity, required_title,
     sql_error,
 };
-use crate::api::Workspace;
 use crate::error::{Error, Result};
 use crate::planner::tasks::task_in;
 use chrono::{DateTime, NaiveDate, SecondsFormat, Utc};
@@ -893,87 +893,77 @@ fn session_workload(session: &WorkSession, estimate: Option<i64>) -> Result<(Str
     ))
 }
 
-impl Workspace {
-    pub fn planner_work_sessions(
+impl PlannerService {
+    pub fn work_sessions(
         &self,
         task_id: Option<&str>,
         include_cancelled: bool,
     ) -> Result<Vec<WorkSession>> {
-        self.planner()?
-            .list_work_sessions(task_id, include_cancelled)
+        self.store()?.list_work_sessions(task_id, include_cancelled)
     }
 
-    pub fn create_planner_work_session(&self, input: CreateWorkSession) -> Result<WorkSession> {
-        self.planner()?.create_work_session(input)
+    pub fn create_work_session(&self, input: CreateWorkSession) -> Result<WorkSession> {
+        self.store()?.create_work_session(input)
     }
 
-    pub fn update_planner_work_session(
-        &self,
-        id: &str,
-        input: UpdateWorkSession,
-    ) -> Result<WorkSession> {
-        self.planner()?.update_work_session(id, input)
+    pub fn update_work_session(&self, id: &str, input: UpdateWorkSession) -> Result<WorkSession> {
+        self.store()?.update_work_session(id, input)
     }
 
-    pub fn cancel_planner_work_session(
-        &self,
-        id: &str,
-        expected_revision: i64,
-    ) -> Result<WorkSession> {
-        self.planner()?.cancel_work_session(id, expected_revision)
+    pub fn cancel_work_session(&self, id: &str, expected_revision: i64) -> Result<WorkSession> {
+        self.store()?.cancel_work_session(id, expected_revision)
     }
 
-    pub fn planner_events(
+    pub fn events(
         &self,
         include_archived: bool,
         include_trashed: bool,
     ) -> Result<Vec<PlannerEvent>> {
-        self.planner()?
-            .list_events(include_archived, include_trashed)
+        self.store()?.list_events(include_archived, include_trashed)
     }
 
-    pub fn create_planner_event(&self, input: CreateEvent) -> Result<PlannerEvent> {
-        self.planner()?.create_event(input)
+    pub fn create_event(&self, input: CreateEvent) -> Result<PlannerEvent> {
+        self.store()?.create_event(input)
     }
 
-    pub fn update_planner_event(&self, id: &str, input: UpdateEvent) -> Result<PlannerEvent> {
-        self.planner()?.update_event(id, input)
+    pub fn update_event(&self, id: &str, input: UpdateEvent) -> Result<PlannerEvent> {
+        self.store()?.update_event(id, input)
     }
 
-    pub fn archive_planner_event(&self, id: &str, revision: i64) -> Result<PlannerEvent> {
-        self.planner()?.archive_event(id, revision)
+    pub fn archive_event(&self, id: &str, revision: i64) -> Result<PlannerEvent> {
+        self.store()?.archive_event(id, revision)
     }
 
-    pub fn restore_planner_event(&self, id: &str, revision: i64) -> Result<PlannerEvent> {
-        self.planner()?.restore_event(id, revision)
+    pub fn restore_event(&self, id: &str, revision: i64) -> Result<PlannerEvent> {
+        self.store()?.restore_event(id, revision)
     }
 
-    pub fn trash_planner_event(&self, id: &str, revision: i64) -> Result<PlannerEvent> {
-        self.planner()?.trash_event(id, revision)
+    pub fn trash_event(&self, id: &str, revision: i64) -> Result<PlannerEvent> {
+        self.store()?.trash_event(id, revision)
     }
 
-    pub fn cancel_planner_event_occurrence(
+    pub fn cancel_event_occurrence(
         &self,
         series_id: &str,
         revision: i64,
         occurrence_key: &str,
     ) -> Result<PlannerEvent> {
-        self.planner()?
+        self.store()?
             .cancel_event_occurrence(series_id, revision, occurrence_key)
     }
 
-    pub fn replace_planner_event_occurrence(
+    pub fn replace_event_occurrence(
         &self,
         series_id: &str,
         revision: i64,
         occurrence_key: &str,
         input: CreateEvent,
     ) -> Result<PlannerEvent> {
-        self.planner()?
+        self.store()?
             .replace_event_occurrence(series_id, revision, occurrence_key, input)
     }
 
-    pub fn planner_calendar_range(&self, from: &str, to: &str) -> Result<CalendarRange> {
-        self.planner()?.calendar_range(from, to)
+    pub fn calendar_range(&self, from: &str, to: &str) -> Result<CalendarRange> {
+        self.store()?.calendar_range(from, to)
     }
 }

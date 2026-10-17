@@ -562,21 +562,23 @@ fn markdown_import_previews_maps_and_deduplicates_without_editing_notes() {
         .map(|candidate| candidate.fingerprint.clone())
         .collect();
     let imported = workspace
-        .import_markdown_tasks_to_planner(&preview, &selected, false, "Europe/Zurich")
+        .planner
+        .import_markdown_tasks(&preview, &selected, false, "Europe/Zurich")
         .unwrap();
     assert_eq!(imported.imported_epic_ids.len(), 3);
     assert_eq!(imported.imported_task_ids.len(), 2);
-    assert_eq!(workspace.planner_summary().unwrap().epics, 3);
-    assert_eq!(workspace.planner_summary().unwrap().tasks, 2);
+    assert_eq!(workspace.planner.summary().unwrap().epics, 3);
+    assert_eq!(workspace.planner.summary().unwrap().tasks, 2);
     assert!(
         workspace
-            .planner_work_sessions(None, true)
+            .planner
+            .work_sessions(None, true)
             .unwrap()
             .is_empty()
     );
-    let epics = workspace.planner_epics(true, false).unwrap();
+    let epics = workspace.planner.epics(true, false).unwrap();
     let parent_epic = epics.iter().find(|epic| epic.title == "Parent").unwrap();
-    let tasks = workspace.planner_tasks(true, false).unwrap();
+    let tasks = workspace.planner.tasks(true, false).unwrap();
     let review = tasks.iter().find(|task| task.title == "Review").unwrap();
     let detail = tasks.iter().find(|task| task.title == "Detail").unwrap();
     assert_eq!(review.epic_id.as_deref(), Some(parent_epic.id.as_str()));
@@ -585,23 +587,24 @@ fn markdown_import_previews_maps_and_deduplicates_without_editing_notes() {
     assert_eq!(detail.parent_id.as_deref(), Some(review.id.as_str()));
     assert_eq!(fs::read(&note).unwrap(), before);
 
-    let revision = workspace.planner_summary().unwrap().revision;
+    let revision = workspace.planner.summary().unwrap().revision;
     let repeated = workspace
-        .import_markdown_tasks_to_planner(&preview, &selected, false, "Europe/Zurich")
+        .planner
+        .import_markdown_tasks(&preview, &selected, false, "Europe/Zurich")
         .unwrap();
     assert!(repeated.imported_task_ids.is_empty());
     assert_eq!(repeated.skipped_duplicates.len(), 5);
-    assert_eq!(workspace.planner_summary().unwrap().revision, revision);
+    assert_eq!(workspace.planner.summary().unwrap().revision, revision);
     assert_eq!(fs::read(&note).unwrap(), before);
 
-    let failed = workspace.import_markdown_tasks_to_planner(
+    let failed = workspace.planner.import_markdown_tasks(
         &preview,
         &["not-a-preview-fingerprint".into()],
         false,
         "Europe/Zurich",
     );
     assert!(failed.is_err());
-    assert_eq!(workspace.planner_summary().unwrap().revision, revision);
+    assert_eq!(workspace.planner.summary().unwrap().revision, revision);
 }
 
 #[test]
@@ -609,14 +612,16 @@ fn a_closed_vault_copy_keeps_planner_content_and_history() {
     let source = tempfile::tempdir().unwrap();
     let source_workspace = Workspace::open(source.path()).unwrap();
     let epic = source_workspace
-        .create_planner_epic(CreateEpic {
+        .planner
+        .create_epic(CreateEpic {
             title: "Portable".into(),
             description: "Travels with the vault".into(),
             color: "cyan".into(),
         })
         .unwrap();
     source_workspace
-        .create_planner_task(CreateTask {
+        .planner
+        .create_task(CreateTask {
             epic_id: Some(epic.id.clone()),
             parent_id: None,
             title: "Copy me".into(),
@@ -636,10 +641,10 @@ fn a_closed_vault_copy_keeps_planner_content_and_history() {
     )
     .unwrap();
     let copied = Workspace::open(destination.path()).unwrap();
-    assert_eq!(copied.planner_summary().unwrap().tasks, 1);
-    assert_eq!(copied.planner_epics(false, false).unwrap()[0].id, epic.id);
-    let task = copied.planner_tasks(false, false).unwrap().pop().unwrap();
-    assert_eq!(copied.planner_activity("task", &task.id).unwrap().len(), 1);
+    assert_eq!(copied.planner.summary().unwrap().tasks, 1);
+    assert_eq!(copied.planner.epics(false, false).unwrap()[0].id, epic.id);
+    let task = copied.planner.tasks(false, false).unwrap().pop().unwrap();
+    assert_eq!(copied.planner.activity("task", &task.id).unwrap().len(), 1);
 }
 
 #[test]
@@ -658,11 +663,11 @@ fn recovery_from_the_last_valid_backup_is_explicit() {
     // once, to offer the restore).
     let notes = Workspace::open(dir.path()).unwrap();
     assert!(notes.list("", true).is_ok());
-    let damaged = notes.open_planner().unwrap_err().to_string();
+    let damaged = notes.planner.open().unwrap_err().to_string();
     // The store's own message comes through, so the app can tell when to offer the restore.
     let cause = PlannerStore::open(dir.path()).err().unwrap().to_string();
     assert!(damaged.contains(&cause), "{damaged}");
-    assert!(notes.planner_summary().is_err());
+    assert!(notes.planner.summary().is_err());
     drop(notes);
     let corrupt = PlannerStore::restore_last_backup(dir.path()).unwrap();
     assert!(corrupt.is_file());

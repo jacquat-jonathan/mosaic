@@ -1,8 +1,8 @@
+use super::service::PlannerService;
 use super::{
     CreateEvent, PlannerEvent, PlannerStore, bump_store_revision, now, record_activity, sql_error,
     store_revision,
 };
-use crate::api::Workspace;
 use crate::error::{Error, Result};
 use chrono::{DateTime, Duration, NaiveDate, NaiveDateTime, SecondsFormat, TimeZone, Utc};
 use chrono_tz::Tz;
@@ -595,28 +595,28 @@ pub fn overlay_occurrences(
     Ok(result)
 }
 
-impl Workspace {
-    pub fn preview_planner_ical_import(
+impl PlannerService {
+    pub fn preview_ical_import(
         &self,
         source_kind: &str,
         content: &str,
         fallback_timezone: &str,
     ) -> Result<IcalImportPreview> {
-        self.planner()?
+        self.store()?
             .preview_ical_import(source_kind, content, fallback_timezone)
     }
 
-    pub fn import_planner_ical(
+    pub fn import_ical(
         &self,
         preview: &IcalImportPreview,
         selected_keys: &[String],
         allow_duplicates: bool,
     ) -> Result<IcalImportResult> {
-        self.planner()?
+        self.store()?
             .import_ical(preview, selected_keys, allow_duplicates)
     }
 
-    pub fn export_planner_ical(&self) -> Result<String> {
-        self.planner()?.export_ical()
+    pub fn export_ical(&self) -> Result<String> {
+        self.store()?.export_ical()
     }
 }

@@ -1,5 +1,5 @@
+use super::service::PlannerService;
 use super::{ActivityEntry, PlannerStore, PlannerSummary, now, sql_error};
-use crate::api::Workspace;
 use crate::error::Result;
 use serde::Serialize;
 
@@ -143,12 +143,12 @@ fn csv_row(values: &[&str]) -> String {
         .join(",")
 }
 
-impl Workspace {
-    pub fn export_planner_json(&self) -> Result<String> {
-        self.planner()?.export_json()
+impl PlannerService {
+    pub fn export_json(&self) -> Result<String> {
+        self.store()?.export_json()
     }
 
-    pub fn export_planner_csv(&self) -> Result<String> {
-        self.planner()?.export_csv()
+    pub fn export_csv(&self) -> Result<String> {
+        self.store()?.export_csv()
     }
 }

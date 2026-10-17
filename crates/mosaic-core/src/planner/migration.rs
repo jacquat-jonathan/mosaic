@@ -1,3 +1,4 @@
+use super::service::PlannerService;
 use super::{
     PlannerStore, TaskStatus, bump_store_revision, now, record_activity, sql_error, store_revision,
 };
@@ -421,6 +422,8 @@ impl PlannerStore {
     }
 }
 
+// Reads the vault's Markdown tasks (index and agent folder rules) as well as the planner, so it
+// lives on the workspace, which coordinates the services, rather than on `PlannerService`.
 impl Workspace {
     pub fn preview_markdown_planner_import(&self) -> Result<MarkdownImportPreview> {
         let rules = self.rules()?;
@@ -441,7 +444,7 @@ impl Workspace {
             );
             structure.insert((task.path.clone(), task.line), (task.depth, task.parent));
         }
-        let planner = self.planner()?;
+        let planner = self.planner.store()?;
         let mut groups: BTreeMap<String, Vec<MarkdownImportCandidate>> = BTreeMap::new();
         for task in tasks {
             let block_id = block_id(&task.text);
@@ -516,15 +519,17 @@ impl Workspace {
             duplicates,
         })
     }
+}
 
-    pub fn import_markdown_tasks_to_planner(
+impl PlannerService {
+    pub fn import_markdown_tasks(
         &self,
         preview: &MarkdownImportPreview,
         selected_fingerprints: &[String],
         allow_duplicates: bool,
         timezone: &str,
     ) -> Result<MarkdownImportResult> {
-        self.planner()?
+        self.store()?
             .import_markdown(preview, selected_fingerprints, allow_duplicates, timezone)
     }
 }

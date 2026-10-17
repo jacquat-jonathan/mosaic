@@ -1,8 +1,8 @@
+use super::service::PlannerService;
 use super::{
     CreateEpic, Epic, PlannerStore, UpdateEpic, bump_store_revision, expect_revision, now,
     record_activity, required_title, sql_error,
 };
-use crate::api::Workspace;
 use crate::error::{Error, Result};
 use rusqlite::{Row, Transaction, params};
 
@@ -208,33 +208,28 @@ fn uppercase_first(value: &str) -> String {
         .unwrap_or_default()
 }
 
-impl Workspace {
-    pub fn planner_epics(
-        &self,
-        include_archived: bool,
-        include_trashed: bool,
-    ) -> Result<Vec<Epic>> {
-        self.planner()?
-            .list_epics(include_archived, include_trashed)
+impl PlannerService {
+    pub fn epics(&self, include_archived: bool, include_trashed: bool) -> Result<Vec<Epic>> {
+        self.store()?.list_epics(include_archived, include_trashed)
     }
 
-    pub fn create_planner_epic(&self, input: CreateEpic) -> Result<Epic> {
-        self.planner()?.create_epic(input)
+    pub fn create_epic(&self, input: CreateEpic) -> Result<Epic> {
+        self.store()?.create_epic(input)
     }
 
-    pub fn update_planner_epic(&self, id: &str, input: UpdateEpic) -> Result<Epic> {
-        self.planner()?.update_epic(id, input)
+    pub fn update_epic(&self, id: &str, input: UpdateEpic) -> Result<Epic> {
+        self.store()?.update_epic(id, input)
     }
 
-    pub fn archive_planner_epic(&self, id: &str, expected_revision: i64) -> Result<Epic> {
-        self.planner()?.archive_epic(id, expected_revision)
+    pub fn archive_epic(&self, id: &str, expected_revision: i64) -> Result<Epic> {
+        self.store()?.archive_epic(id, expected_revision)
     }
 
-    pub fn restore_planner_epic(&self, id: &str, expected_revision: i64) -> Result<Epic> {
-        self.planner()?.restore_epic(id, expected_revision)
+    pub fn restore_epic(&self, id: &str, expected_revision: i64) -> Result<Epic> {
+        self.store()?.restore_epic(id, expected_revision)
     }
 
-    pub fn trash_planner_epic(&self, id: &str, expected_revision: i64) -> Result<Epic> {
-        self.planner()?.trash_epic(id, expected_revision)
+    pub fn trash_epic(&self, id: &str, expected_revision: i64) -> Result<Epic> {
+        self.store()?.trash_epic(id, expected_revision)
     }
 }

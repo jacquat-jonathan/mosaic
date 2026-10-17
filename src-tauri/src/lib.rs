@@ -74,7 +74,7 @@ fn info(ws: &Workspace) -> VaultInfo {
 #[specta::specta]
 fn open_vault(app: AppHandle, state: State<AppState>, path: String) -> CmdResult<VaultInfo> {
     let ws = Workspace::open(&path)?;
-    ws.open_planner()?;
+    ws.planner.open()?;
     activate(app, &state, ws)
 }
 

@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Planner kept apart from notes inside Mosaic:** the planner and calendar now run as their own part of Mosaic's engine, with their own state, so work on notes and work on the planner can't interfere with each other. Nothing changes in how either behaves.
+
 ## 0.22.0 — 2026-10-17
 
 - **Fewer mismatches between the app's window and its engine:** the interface now gets the exact shape of every command and result from the engine itself, so a change on one side that the other doesn't follow is caught before a release. Doing this fixed a few small mismatches, such as a review that could open without knowing whether the file had changed since the agent's proposal.

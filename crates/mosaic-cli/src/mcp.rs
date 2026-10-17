@@ -494,7 +494,8 @@ impl MosaicMcp {
     )]
     async fn list_proposals(&self, Parameters(a): Parameters<ProposalsArgs>) -> ToolResult {
         self.ws()
-            .proposals(true, a.limit.unwrap_or(30))
+            .review()
+            .list(true, a.limit.unwrap_or(30))
             .map_err(err)
             .and_then(ok)
     }
@@ -502,7 +503,8 @@ impl MosaicMcp {
     #[tool(description = "Take back one of your pending proposals (the file stays as it is).")]
     async fn withdraw_proposal(&self, Parameters(a): Parameters<IdArg>) -> ToolResult {
         self.ws()
-            .withdraw_proposal(a.id)
+            .review()
+            .withdraw(a.id)
             .map_err(err)
             .and_then(|_| ok(serde_json::json!({ "withdrawn": a.id })))
     }

@@ -20,13 +20,14 @@ fn call(ws: &Workspace, cmd: &str, a: &Value) -> Result<Value, Error> {
         )?),
         "create_file" => json!(ws.create(&path(), &s("content").unwrap())?),
         "rename_path" => json!(ws.rename(&s("from").unwrap(), &s("to").unwrap(), true)?),
-        "accept_proposal" => json!(ws.accept_proposal_content(
+        "accept_proposal" => json!(ws.review().accept_selected(
             a["id"].as_i64().unwrap(),
             a["force"].as_bool().unwrap_or(false),
             s("content").as_deref(),
         )?),
         "reject_proposal" => {
-            ws.reject_proposal(a["id"].as_i64().unwrap(), s("reason").as_deref())?;
+            ws.review()
+                .reject(a["id"].as_i64().unwrap(), s("reason").as_deref())?;
             Value::Null
         }
         other => panic!(

@@ -491,19 +491,20 @@ fn proposals(
 ) -> CmdResult<Vec<mosaic_core::review::Proposal>> {
     state
         .get()?
-        .proposals(include_decided.unwrap_or(false), 200)
+        .review()
+        .list(include_decided.unwrap_or(false), 200)
 }
 
 #[tauri::command(async)]
 #[specta::specta]
 fn proposal_content(state: State<AppState>, id: i64) -> CmdResult<Option<String>> {
-    state.get()?.proposal_content(id)
+    state.get()?.review().content(id)
 }
 
 #[tauri::command(async)]
 #[specta::specta]
 fn proposal_base(state: State<AppState>, id: i64) -> CmdResult<Option<String>> {
-    state.get()?.proposal_base(id)
+    state.get()?.review().base(id)
 }
 
 #[tauri::command(async)]
@@ -516,13 +517,14 @@ fn accept_proposal(
 ) -> CmdResult<String> {
     state
         .get()?
-        .accept_proposal_content(id, force.unwrap_or(false), content.as_deref())
+        .review()
+        .accept_selected(id, force.unwrap_or(false), content.as_deref())
 }
 
 #[tauri::command(async)]
 #[specta::specta]
 fn reject_proposal(state: State<AppState>, id: i64, reason: Option<String>) -> CmdResult<()> {
-    state.get()?.reject_proposal(id, reason.as_deref())
+    state.get()?.review().reject(id, reason.as_deref())
 }
 
 #[tauri::command(async)]

@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+## 0.23.0 — 2026-10-17
+
 - **Planner kept apart from notes inside Mosaic:** the planner and calendar now run as their own part of Mosaic's engine, with their own state, so work on notes and work on the planner can't interfere with each other. Nothing changes in how either behaves.
 
 ## 0.22.0 — 2026-10-17

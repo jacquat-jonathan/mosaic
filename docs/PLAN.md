@@ -336,7 +336,7 @@ then the release is cut before the next batch starts. The planner stays core (no
 
 - [x] M39 (0.21, security and data): S3 webview CSP and sanitizing, P3 settings split with property tests,
       D2 journaled renames/moves, Q6 source updater removed and one HTTP stack, Q7 privacy paragraph
-- [ ] M40 (0.22, one contract): Q2 tauri-specta bindings with contract tests, T4 Playwright on the mock in CI
+- [x] M40 (0.22, one contract): Q2 tauri-specta bindings with contract tests, T4 Playwright on the mock in CI
 - [ ] M41 (0.23+, workspace services): Q1 `PlannerService`, then `ReviewService`, then files and links
 
 ## Working rules

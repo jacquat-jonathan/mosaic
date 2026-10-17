@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+## 0.22.0 — 2026-10-17
+
 - **Fewer mismatches between the app's window and its engine:** the interface now gets the exact shape of every command and result from the engine itself, so a change on one side that the other doesn't follow is caught before a release. Doing this fixed a few small mismatches, such as a review that could open without knowing whether the file had changed since the agent's proposal.
 - **Main flows tested by clicking through them:** every change now also opens a note, renames one, edits a note while an agent changes it, and accepts an agent's proposal in a real browser before it can ship. The rename box in the file tree is now announced as "New name" to screen readers.
 

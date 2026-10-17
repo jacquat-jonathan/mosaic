@@ -111,6 +111,7 @@ impl SyncPlan {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct SearchHit {
     pub path: String,
     pub title: String,
@@ -120,6 +121,7 @@ pub struct SearchHit {
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct Backlink {
     pub source: String,
     pub line: usize,
@@ -129,6 +131,7 @@ pub struct Backlink {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct OutLink {
     pub target: String,
     /// Vault path the link resolves to, or `None` if the note doesn't exist yet.
@@ -163,6 +166,7 @@ pub struct TaskMeta {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct TagCount {
     pub tag: String,
     pub count: usize,

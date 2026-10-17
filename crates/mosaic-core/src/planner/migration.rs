@@ -17,6 +17,7 @@ static DUE: LazyLock<Regex> =
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub enum MarkdownImportKind {
     Epic,
     Task,
@@ -24,6 +25,7 @@ pub enum MarkdownImportKind {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct MarkdownImportCandidate {
     pub source_path: String,
     pub source_line: usize,
@@ -43,12 +45,14 @@ pub struct MarkdownImportCandidate {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct MarkdownImportGroup {
     pub source_path: String,
     pub tasks: Vec<MarkdownImportCandidate>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct MarkdownImportPreview {
     pub planner_revision: i64,
     pub groups: Vec<MarkdownImportGroup>,
@@ -58,6 +62,7 @@ pub struct MarkdownImportPreview {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct MarkdownImportResult {
     pub planner_revision: i64,
     pub imported_epic_ids: Vec<String>,

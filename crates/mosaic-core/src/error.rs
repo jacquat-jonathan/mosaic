@@ -66,3 +66,21 @@ impl Serialize for Error {
         st.end()
     }
 }
+
+/// The shape `Error` serializes to, for the app's TypeScript bindings.
+#[cfg(feature = "specta")]
+#[derive(Serialize, specta::Type)]
+#[serde(rename = "Error")]
+#[allow(dead_code)]
+struct ErrorShape {
+    code: String,
+    message: String,
+    current_hash: Option<String>,
+}
+
+#[cfg(feature = "specta")]
+impl specta::Type for Error {
+    fn definition(types: &mut specta::Types) -> specta::datatype::DataType {
+        ErrorShape::definition(types)
+    }
+}

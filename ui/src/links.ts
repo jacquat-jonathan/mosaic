@@ -2,7 +2,13 @@
 // Mirrors crates/mosaic-core/src/links.rs; both are tested against fixtures/links.json.
 
 import type { Entry } from "./ipc/types";
-import { parentOf } from "./state/vault";
+
+/** The folder of a vault path ("" at the root). Kept here so link resolution imports no app state
+ * (the browser mock uses it too). */
+const parentOf = (path: string) => {
+  const i = path.lastIndexOf("/");
+  return i < 0 ? "" : path.slice(0, i);
+};
 
 export interface WikiLink {
   /** Note or file name/path as written, without #heading, ^block or |alias. */

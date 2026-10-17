@@ -38,6 +38,7 @@ pub struct PlannerStore {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct PlannerSummary {
     pub schema_version: i64,
     pub revision: i64,
@@ -50,6 +51,7 @@ pub struct PlannerSummary {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub enum TaskStatus {
     New,
     Blocked,
@@ -85,12 +87,14 @@ impl TaskStatus {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub enum FutureSessionPolicy {
     Cancel,
     Keep,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct Epic {
     pub id: String,
     pub title: String,
@@ -105,6 +109,7 @@ pub struct Epic {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct CreateEpic {
     pub title: String,
     pub description: String,
@@ -112,15 +117,21 @@ pub struct CreateEpic {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct UpdateEpic {
     pub expected_revision: i64,
+    #[serde(default)]
     pub title: Option<String>,
+    #[serde(default)]
     pub description: Option<String>,
+    #[serde(default)]
     pub color: Option<String>,
+    #[serde(default)]
     pub position: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct PlannerTask {
     pub id: String,
     pub epic_id: Option<String>,
@@ -140,37 +151,51 @@ pub struct PlannerTask {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct CreateTask {
+    #[serde(default)]
     pub epic_id: Option<String>,
+    #[serde(default)]
     pub parent_id: Option<String>,
     pub title: String,
     pub description: String,
     pub status: TaskStatus,
+    #[serde(default)]
     pub due_date: Option<String>,
+    #[serde(default)]
     pub estimate_minutes: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct UpdateTask {
     pub expected_revision: i64,
+    #[serde(default)]
     pub title: Option<String>,
+    #[serde(default)]
     pub description: Option<String>,
+    #[serde(default)]
     pub due_date: Option<String>,
     pub clear_due_date: bool,
+    #[serde(default)]
     pub estimate_minutes: Option<i64>,
     pub clear_estimate: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct MoveTask {
     pub expected_revision: i64,
+    #[serde(default)]
     pub epic_id: Option<String>,
+    #[serde(default)]
     pub parent_id: Option<String>,
     pub status: TaskStatus,
     pub position: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct WorkSession {
     pub id: String,
     pub task_id: String,
@@ -187,6 +212,7 @@ pub struct WorkSession {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct PlannerEvent {
     pub id: String,
     pub series_id: Option<String>,
@@ -212,39 +238,50 @@ pub struct PlannerEvent {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct CreateEvent {
     pub title: String,
     pub description: String,
     pub location: String,
+    #[serde(default)]
     pub meeting_url: Option<String>,
     pub participants: Vec<String>,
+    #[serde(default)]
     pub epic_id: Option<String>,
+    #[serde(default)]
     pub color: Option<String>,
     pub all_day: bool,
     pub start_value: String,
     pub end_value: String,
     pub timezone: String,
+    #[serde(default)]
     pub recurrence_rule: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct UpdateEvent {
     pub expected_revision: i64,
     pub title: String,
     pub description: String,
     pub location: String,
+    #[serde(default)]
     pub meeting_url: Option<String>,
     pub participants: Vec<String>,
+    #[serde(default)]
     pub epic_id: Option<String>,
+    #[serde(default)]
     pub color: Option<String>,
     pub all_day: bool,
     pub start_value: String,
     pub end_value: String,
     pub timezone: String,
+    #[serde(default)]
     pub recurrence_rule: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct EventOccurrence {
     pub event_id: String,
     pub series_id: String,
@@ -264,6 +301,7 @@ pub struct EventOccurrence {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct CalendarWorkSession {
     pub session: WorkSession,
     pub task_title: String,
@@ -273,6 +311,7 @@ pub struct CalendarWorkSession {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct DueMarker {
     pub task_id: String,
     pub title: String,
@@ -283,12 +322,14 @@ pub struct DueMarker {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct DayWorkload {
     pub date: String,
     pub minutes: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct CalendarRange {
     pub from: String,
     pub to: String,
@@ -300,6 +341,7 @@ pub struct CalendarRange {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct CreateWorkSession {
     pub task_id: String,
     pub all_day: bool,
@@ -309,6 +351,7 @@ pub struct CreateWorkSession {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct UpdateWorkSession {
     pub expected_revision: i64,
     pub all_day: bool,
@@ -318,6 +361,7 @@ pub struct UpdateWorkSession {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct ActivityEntry {
     pub id: i64,
     pub entity_kind: String,
@@ -325,7 +369,9 @@ pub struct ActivityEntry {
     pub occurred_at: String,
     pub action: String,
     pub summary: String,
+    #[cfg_attr(feature = "specta", specta(type = Option<specta_typescript::Unknown>))]
     pub before: Option<serde_json::Value>,
+    #[cfg_attr(feature = "specta", specta(type = Option<specta_typescript::Unknown>))]
     pub after: Option<serde_json::Value>,
 }
 

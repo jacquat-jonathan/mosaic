@@ -1,0 +1,76 @@
+{
+  "about": "Command scenarios shared by crates/mosaic-core/tests/contract.rs (the real core) and ui/src/ipc/contract.test.ts (the browser mock). Both run every step and check the same expectations, so the mock can't quietly behave differently from the app. Steps call commands by their Tauri name with the UI's argument names. `expect` lists fields the result must have (other fields are ignored); `error` is the expected error code; `$last.<field>` is that field of the previous result; `$proposal` is the id of the last agent proposal. `agent_proposes` is an agent writing to a folder under review.",
+  "scenarios": [
+    {
+      "name": "a write needs the file's current hash",
+      "files": { "Contract/Write/Note.md": "one" },
+      "steps": [
+        { "cmd": "read_file", "args": { "path": "Contract/Write/Note.md" }, "expect": { "content": "one" } },
+        {
+          "cmd": "write_file",
+          "args": { "path": "Contract/Write/Note.md", "content": "two", "expectedHash": "$last.hash", "root": null },
+          "expect": { "path": "Contract/Write/Note.md" }
+        },
+        {
+          "cmd": "write_file",
+          "args": { "path": "Contract/Write/Note.md", "content": "three", "expectedHash": "stale", "root": null },
+          "error": "conflict"
+        },
+        { "cmd": "read_file", "args": { "path": "Contract/Write/Note.md" }, "expect": { "content": "two" } }
+      ]
+    },
+    {
+      "name": "creating a file that exists is refused",
+      "files": { "Contract/Create/Taken.md": "x" },
+      "steps": [
+        {
+          "cmd": "create_file",
+          "args": { "path": "Contract/Create/Taken.md", "content": "y", "root": null },
+          "error": "already_exists"
+        },
+        {
+          "cmd": "create_file",
+          "args": { "path": "Contract/Create/New.md", "content": "y", "root": null },
+          "expect": { "path": "Contract/Create/New.md" }
+        }
+      ]
+    },
+    {
+      "name": "a rename moves the file and rewrites links to it",
+      "files": { "Contract/Rename/Old name.md": "# Old", "Contract/Rename/Links.md": "See [[Old name]]." },
+      "steps": [
+        {
+          "cmd": "rename_path",
+          "args": { "from": "Contract/Rename/Old name.md", "to": "Contract/Rename/New name.md" },
+          "expect": { "path": "Contract/Rename/New name.md", "updated_links_in": ["Contract/Rename/Links.md"] }
+        },
+        { "cmd": "read_file", "args": { "path": "Contract/Rename/Links.md" }, "expect": { "content": "See [[New name]]." } },
+        { "cmd": "read_file", "args": { "path": "Contract/Rename/Old name.md" }, "error": "not_found" }
+      ]
+    },
+    {
+      "name": "accepting an agent's proposal applies it",
+      "files": { "Contract/Review/Draft.md": "old" },
+      "steps": [
+        { "agent_proposes": { "path": "Contract/Review/Draft.md", "content": "new" } },
+        { "cmd": "read_file", "args": { "path": "Contract/Review/Draft.md" }, "expect": { "content": "old" } },
+        {
+          "cmd": "accept_proposal",
+          "args": { "id": "$proposal", "force": null, "content": null },
+          "result": "Contract/Review/Draft.md"
+        },
+        { "cmd": "read_file", "args": { "path": "Contract/Review/Draft.md" }, "expect": { "content": "new" } },
+        { "cmd": "accept_proposal", "args": { "id": "$proposal", "force": null, "content": null }, "error": "invalid" }
+      ]
+    },
+    {
+      "name": "rejecting an agent's proposal leaves the file",
+      "files": { "Contract/Reject/Draft.md": "kept" },
+      "steps": [
+        { "agent_proposes": { "path": "Contract/Reject/Draft.md", "content": "dropped" } },
+        { "cmd": "reject_proposal", "args": { "id": "$proposal", "reason": "not now" }, "result": null },
+        { "cmd": "read_file", "args": { "path": "Contract/Reject/Draft.md" }, "expect": { "content": "kept" } }
+      ]
+    }
+  ]
+}

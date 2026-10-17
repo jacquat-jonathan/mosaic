@@ -98,7 +98,7 @@ test("chat messages, title, draft, attachments and session survive restart, isol
 });
 test("concurrent answers route to their original chats and interrupted chats can resume", async () => {
   vi.spyOn(api, "chatSend").mockResolvedValueOnce(1).mockResolvedValueOnce(2);
-  vi.spyOn(api, "chatStop").mockResolvedValue(undefined);
+  vi.spyOn(api, "chatStop").mockResolvedValue(null);
   const chat = useChat.getState;
   chat().restore("A");
   const a = chat().create();

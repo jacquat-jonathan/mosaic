@@ -28,7 +28,7 @@ export function ReviewModal({ proposal, onClose }: { proposal: Proposal; onClose
   const [current, setCurrent] = useState<string | null | undefined>(undefined);
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState("");
-  const [conflict, setConflict] = useState(proposal.stale);
+  const [conflict, setConflict] = useState(proposal.stale ?? false);
   // The file as the agent saw it, to show what the person changed since (on a conflict).
   const [base, setBase] = useState<string | null | undefined>(undefined);
   const [showYours, setShowYours] = useState(false);

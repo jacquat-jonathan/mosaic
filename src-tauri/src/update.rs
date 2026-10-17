@@ -32,7 +32,7 @@ fn invalid(msg: impl Into<String>) -> Error {
     Error::Invalid(msg.into())
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, specta::Type)]
 pub struct UpdateStatus {
     version: &'static str,
     commit: &'static str,
@@ -44,7 +44,7 @@ pub struct UpdateStatus {
     last_install_error: Option<String>,
 }
 
-#[derive(Serialize, Debug, PartialEq)]
+#[derive(Serialize, Debug, PartialEq, specta::Type)]
 pub struct Release {
     version: String,
     date: String,
@@ -52,7 +52,7 @@ pub struct Release {
     notes: Vec<String>,
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Debug, specta::Type)]
 pub struct UpdateCheck {
     /// The newest signed release, if one could be found.
     latest_version: Option<String>,
@@ -87,6 +87,7 @@ fn running_bundle() -> Option<PathBuf> {
 }
 
 #[tauri::command(async)]
+#[specta::specta]
 pub fn update_status(state: State<UpdateState>) -> UpdateStatus {
     UpdateStatus {
         version: env!("CARGO_PKG_VERSION"),
@@ -114,6 +115,7 @@ fn install_log_file() -> PathBuf {
 
 /// Asks GitHub for the newest signed release (only when the person clicks Check).
 #[tauri::command]
+#[specta::specta]
 pub async fn check_updates() -> CmdResult<UpdateCheck> {
     binary::check().await
 }
@@ -121,6 +123,7 @@ pub async fn check_updates() -> CmdResult<UpdateCheck> {
 /// Downloads and verifies the newest release in the background, streaming progress as
 /// `update-log` events and ending with `update-done`. It's installed by `finish_update`.
 #[tauri::command(async)]
+#[specta::specta]
 pub fn start_update(app: AppHandle, state: State<UpdateState>) -> CmdResult<()> {
     if running_bundle().is_none() {
         return Err(invalid(
@@ -167,6 +170,7 @@ pub fn start_update(app: AppHandle, state: State<UpdateState>) -> CmdResult<()> 
 /// Stops a running download. The installed app is only replaced by "Restart to finish", so
 /// stopping at any point is safe.
 #[tauri::command(async)]
+#[specta::specta]
 pub fn cancel_update(app: AppHandle, state: State<UpdateState>) -> CmdResult<()> {
     if state.running.load(Ordering::SeqCst) {
         state.cancelled.store(true, Ordering::SeqCst);
@@ -177,6 +181,7 @@ pub fn cancel_update(app: AppHandle, state: State<UpdateState>) -> CmdResult<()>
 
 /// Quits, then a detached helper waits for this process to exit, swaps in the new build and reopens it.
 #[tauri::command(async)]
+#[specta::specta]
 pub fn finish_update(app: AppHandle, state: State<UpdateState>) -> CmdResult<()> {
     let built = state
         .built

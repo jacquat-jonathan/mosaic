@@ -17,6 +17,7 @@ use std::path::Path;
 
 /// A change an agent proposed in a folder under review.
 #[derive(Debug, Clone, Serialize, PartialEq)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct Proposal {
     pub id: i64,
     pub path: String,

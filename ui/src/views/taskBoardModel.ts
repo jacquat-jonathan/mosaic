@@ -10,7 +10,7 @@ export type WorkflowState = (typeof WORKFLOW_STATES)[number]["id"];
 export type BoardTask = QueryRow & { task: TaskRow };
 export const taskKey = (row: BoardTask) => JSON.stringify([row.path, row.task.line]);
 export const workflowState = (task: TaskRow): WorkflowState =>
-  task.status === "done" ? "done" : (task.workflow ?? "new");
+  task.status === "done" ? "done" : (WORKFLOW_STATES.find((s) => s.id === task.workflow)?.id ?? "new");
 export const taskLabel = (text: string) =>
   text.replace(/\s*<!--\s*mosaic:state=(new|blocked|in-progress|in-qa|done)\s*-->/g, "").trim();
 export function annotatedTask(text: string, state: WorkflowState): string {

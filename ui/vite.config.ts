@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import fs from "node:fs";
@@ -41,4 +42,6 @@ export default defineConfig({
   clearScreen: false,
   server: { port: 1420, strictPort: true },
   build: { target: "safari15", outDir: "dist", sourcemap: true, chunkSizeWarningLimit: 5000 },
+  // e2e/ holds Playwright flows (pnpm e2e), not Vitest tests.
+  test: { include: ["src/**/*.test.ts"] },
 });

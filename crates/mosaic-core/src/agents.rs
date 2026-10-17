@@ -25,6 +25,7 @@ const SKILLS_DIR: &str = ".claude/skills";
 const MANIFEST: &str = ".claude/skills/.mosaic-agents.json";
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct Agent {
     /// Lowercase with hyphens (`weekly-review`): the slash command and skill name.
     pub name: String,
@@ -49,6 +50,7 @@ pub struct Agent {
 }
 
 #[derive(Debug, Clone, Default, Serialize, PartialEq)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct MirrorReport {
     /// Skills written or updated in `.claude/skills/`.
     pub written: Vec<String>,

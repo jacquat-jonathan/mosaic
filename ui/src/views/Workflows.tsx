@@ -86,11 +86,11 @@ export function RunDetail({ id, compact = false }: { id: string; compact?: boole
       ) : (
         <p>No changed files recorded.</p>
       )}
-      {!!run.changes.length && (
+      {!!run.changes?.length && (
         <>
           <h3>Tool activity</h3>
           <ul>
-            {run.changes.map((c, i) => (
+            {(run.changes ?? []).map((c, i) => (
               <li key={i}>{c}</li>
             ))}
           </ul>

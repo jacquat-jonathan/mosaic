@@ -47,6 +47,7 @@ pub struct Workspace {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct Renamed {
     pub path: String,
     /// Other files whose links were rewritten to follow the move.
@@ -61,6 +62,7 @@ pub struct Renamed {
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct FailedLink {
     pub path: String,
     pub error: String,
@@ -68,6 +70,7 @@ pub struct FailedLink {
 
 /// A note that mentions another note's title or alias without linking to it.
 #[derive(Debug, Clone, Serialize, PartialEq)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct Mention {
     pub source: String,
     /// 1-based line number.
@@ -124,6 +127,7 @@ pub struct Bookmark {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct Outline {
     pub path: String,
     pub kind: FileKind,

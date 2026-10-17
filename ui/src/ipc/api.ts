@@ -1,57 +1,20 @@
 // Typed access to the backend. Inside Tauri this goes through `invoke`; in a plain browser (UI
 // development and tests) it falls back to an in-memory mock vault.
 
-import type {
-  Backlink,
-  CliInfo,
-  Entry,
-  FileContent,
-  IndexProgress,
-  RecentVault,
-  Renamed,
-  UnfinishedRename,
-  SearchHit,
-  TagCount,
-  UpdateCheck,
-  UpdateDone,
-  UpdateStatus,
-  Version,
-  VaultInfo,
-  Written,
-  AgentRule,
-  Mention,
-  QueryResult,
-  Proposal,
-  Days,
-  CarryOver,
-  Agent,
-  ChatEvent,
-  ClaudeInfo,
-  TesseraStatus,
-} from "./types";
-import { mockInvoke } from "./mock";
+import type { IndexProgress, UpdateDone, Written, AgentRule, ChatEvent } from "./types";
+import { commands } from "./bindings";
+import { mockCommands, mockInvoke } from "./mock";
 import type { VaultPreferences } from "../state/vaultPreferences";
-import type { TemplateConfig, TemplateList, TemplatePreview, TemplateRequest } from "./types";
+import type { TemplateConfig, TemplateRequest } from "./types";
 import type {
-  CalendarOverlayRange,
-  CalendarSubscription,
   CreatePlannerEpic,
   CreatePlannerEvent,
   CreatePlannerTask,
   CreatePlannerWorkSession,
   IcalImportPreview,
-  IcalImportResult,
   MarkdownImportPreview,
-  MarkdownImportResult,
   MovePlannerTask,
-  PlannerActivityEntry,
-  PlannerCalendarRange,
   PlannerChanged,
-  PlannerEpic,
-  PlannerEvent,
-  PlannerSummary,
-  PlannerTask,
-  PlannerWorkSession,
   UpdatePlannerEpic,
   UpdatePlannerEvent,
   UpdatePlannerTask,
@@ -60,13 +23,8 @@ import type {
 
 export const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
-async function call<T>(cmd: string, args: Record<string, unknown> = {}): Promise<T> {
-  if (inTauri) {
-    const { invoke } = await import("@tauri-apps/api/core");
-    return invoke<T>(cmd, args);
-  }
-  return mockInvoke(cmd, args) as Promise<T>;
-}
+/** The backend's commands, typed from Rust (./bindings.ts); the in-memory mock outside the app. */
+const cmd: typeof commands = inTauri ? commands : mockCommands;
 
 /** Adds a file from outside the vault (bytes sent raw, not as JSON). A taken name gets " 1", " 2"… */
 async function importFile(path: string, bytes: Uint8Array): Promise<Written> {
@@ -76,44 +34,42 @@ async function importFile(path: string, bytes: Uint8Array): Promise<Written> {
 }
 
 export const api = {
-  openVault: (path: string) => call<VaultInfo>("open_vault", { path }),
-  currentVault: () => call<VaultInfo | null>("current_vault"),
-  lastVault: () => call<string | null>("last_vault"),
-  createVault: (parent: string, name: string) => call<VaultInfo>("create_vault", { parent, name }),
-  recentVaults: () => call<RecentVault[]>("recent_vaults"),
-  forgetVault: (path: string) => call<void>("forget_vault", { path }),
-  bookmarks: () => call<string[]>("get_bookmarks"),
-  setBookmarks: (paths: string[]) => call<void>("set_bookmarks", { paths }),
-  copy: (from: string, to: string) => call<Written>("copy_path", { from, to }),
+  openVault: (path: string) => cmd.openVault(path),
+  currentVault: () => cmd.currentVault(),
+  lastVault: () => cmd.lastVault(),
+  createVault: (parent: string, name: string) => cmd.createVault(parent, name),
+  recentVaults: () => cmd.recentVaults(),
+  forgetVault: (path: string) => cmd.forgetVault(path),
+  bookmarks: () => cmd.getBookmarks(),
+  setBookmarks: (paths: string[]) => cmd.setBookmarks(paths),
+  copy: (from: string, to: string) => cmd.copyPath(from, to),
   importFile,
-  list: (dir = "", recursive = false) => call<Entry[]>("list_dir", { dir, recursive }),
-  read: (path: string) => call<FileContent>("read_file", { path }),
-  create: (path: string, content = "", root?: string) =>
-    call<Written>("create_file", { path, content, root: root ?? null }),
-  templateConfig: () => call<TemplateConfig>("template_config"),
-  vaultPreferences: () => call<VaultPreferences>("vault_preferences"),
-  setVaultPreferences: (root: string, patch: Partial<VaultPreferences>) =>
-    call<void>("set_vault_preferences", { root, patch }),
-  setTemplateConfig: (config: TemplateConfig) => call<void>("set_template_config", { config }),
-  templates: (path: string | null = null) => call<TemplateList>("list_templates", { path }),
-  renderTemplate: (request: TemplateRequest) => call<TemplatePreview>("render_template", { request }),
-  createNote: (request: TemplateRequest) =>
-    call<Written & { template: string | null; rule_folder: string | null }>("create_note", { request }),
-  templateStarters: () => call<[string, string][]>("template_starters"),
+  list: (dir = "", recursive = false) => cmd.listDir(dir, recursive),
+  read: (path: string) => cmd.readFile(path),
+  create: (path: string, content = "", root?: string) => cmd.createFile(path, content, root ?? null),
+  templateConfig: () => cmd.templateConfig(),
+  // The core serializes every field; `#[serde(default)]` only makes them optional when it reads.
+  vaultPreferences: () => cmd.vaultPreferences() as Promise<VaultPreferences>,
+  setVaultPreferences: (root: string, patch: Partial<VaultPreferences>) => cmd.setVaultPreferences(patch, root),
+  setTemplateConfig: (config: TemplateConfig) => cmd.setTemplateConfig(config),
+  templates: (path: string | null = null) => cmd.listTemplates(path),
+  renderTemplate: (request: TemplateRequest) => cmd.renderTemplate(request),
+  createNote: (request: TemplateRequest) => cmd.createNote(request),
+  templateStarters: () => cmd.templateStarters(),
   write: (path: string, content: string, expectedHash?: string | null, root?: string) =>
-    call<Written>("write_file", { path, content, expectedHash: expectedHash ?? null, root: root ?? null }),
-  mkdir: (path: string) => call<void>("make_dir", { path }),
-  rename: (from: string, to: string) => call<Renamed>("rename_path", { from, to }),
-  unfinishedRenames: () => call<UnfinishedRename[]>("unfinished_renames"),
+    cmd.writeFile(path, content, expectedHash ?? null, root ?? null),
+  mkdir: (path: string) => cmd.makeDir(path),
+  rename: (from: string, to: string) => cmd.renamePath(from, to),
+  unfinishedRenames: () => cmd.unfinishedRenames(),
   /** Rewrites the links an unfinished move left pointing at the old name. */
-  fixLinks: (id: number) => call<Renamed>("fix_links", { id }),
-  remove: (path: string) => call<void>("delete_path", { path }),
-  absolutePath: (path: string) => call<string>("absolute_path", { path }),
-  search: (query: string, limit = 50) => call<SearchHit[]>("search", { query, limit }),
+  fixLinks: (id: number) => cmd.fixLinks(id),
+  remove: (path: string) => cmd.deletePath(path),
+  absolutePath: (path: string) => cmd.absolutePath(path),
+  search: (query: string, limit = 50) => cmd.search(query, limit),
   /** Notes matching a structured query (crates/mosaic-core/src/query.rs). */
-  query: (query: string) => call<QueryResult>("query_notes", { query }),
+  query: (query: string) => cmd.queryNotes(query),
   /** Whether Claude Code is installed (and where). */
-  chatCheck: () => call<ClaudeInfo>("chat_check", {}),
+  chatCheck: () => cmd.chatCheck(),
   /** Sends a chat message (as `agent` from Agents/ if given); events arrive through `onChatEvent`. Returns the run id. */
   chatSend: (
     message: string,
@@ -123,163 +79,131 @@ export const api = {
     agent: string | null,
     selection: { path: string; text: string } | null,
     model: string | null,
-  ) =>
-    call<number>("chat_send", {
-      message,
-      session,
-      context,
-      active,
-      agent,
-      selectionPath: selection?.path ?? null,
-      selectionText: selection?.text ?? null,
-      model,
-    }),
-  chatStop: (run: number) => call<void>("chat_stop", { run }),
+  ) => cmd.chatSend(message, session, context, active, agent, selection?.path ?? null, selection?.text ?? null, model),
+  chatStop: (run: number) => cmd.chatStop(run),
   /** The agents in the vault's Agents/ folder. */
-  agents: () => call<Agent[]>("agents", {}),
+  agents: () => cmd.agents(),
   /** Mirrors the agents into the vault's .claude/skills/ for Claude Code. */
-  mirrorAgents: () => call<unknown>("mirror_agents", {}),
-  tesseraStatus: () => call<TesseraStatus>("tessera_status", {}),
-  tesseraRun: (name: string) => call<number>("tessera_run", { name }),
-  tesseraTestEvent: (name: string, path: string) => call<number>("tessera_test_event", { name, path }),
-  tesseraPauseAll: (paused: boolean) => call<void>("tessera_pause_all", { paused }),
-  tesseraPauseAgent: (name: string, paused: boolean) => call<void>("tessera_pause_agent", { name, paused }),
-  tesseraSetMaxChainDepth: (depth: number) => call<void>("tessera_set_max_chain_depth", { depth }),
+  mirrorAgents: () => cmd.mirrorAgents(),
+  tesseraStatus: () => cmd.tesseraStatus(),
+  tesseraRun: (name: string) => cmd.tesseraRun(name),
+  tesseraTestEvent: (name: string, path: string) => cmd.tesseraTestEvent(name, path),
+  tesseraPauseAll: (paused: boolean) => cmd.tesseraPauseAll(paused),
+  tesseraPauseAgent: (name: string, paused: boolean) => cmd.tesseraPauseAgent(name, paused),
+  tesseraSetMaxChainDepth: (depth: number) => cmd.tesseraSetMaxChainDepth(depth),
   /** Each day's tasks from `from` to `to` (2026-10-04; at most 62 days), and overdue dated tasks. */
-  days: (from: string, to: string, today: string) => call<Days>("days", { from, to, today }),
+  days: (from: string, to: string, today: string) => cmd.days(from, to, today),
   /** Moves the open tasks of the last daily note before `day` into `path` (created with `newNote`). */
-  carryOver: (day: string, path: string | null, newNote: string | null) =>
-    call<CarryOver>("carry_over", { day, path, newNote }),
+  carryOver: (day: string, path: string | null, newNote: string | null) => cmd.carryOver(day, path, newNote),
   /** Ticks or unticks the task on `line` of a note; `conflict` when that line changed. */
-  setTask: (path: string, line: number, text: string, done: boolean) =>
-    call<Written>("set_task", { path, line, text, done }),
+  setTask: (path: string, line: number, text: string, done: boolean) => cmd.setTask(path, line, text, done),
   setTaskWorkflow: (path: string, line: number, text: string, expectedState: string, next: string) =>
-    call<Written>("set_task_workflow", { path, line, text, expectedState, next }),
-  plannerSummary: () => call<PlannerSummary>("planner_summary"),
+    cmd.setTaskWorkflow(path, line, text, expectedState, next),
+  plannerSummary: () => cmd.plannerSummary(),
   plannerActivity: (entityKind: "epic" | "task" | "event", entityId: string) =>
-    call<PlannerActivityEntry[]>("planner_activity", { entityKind, entityId }),
-  plannerEpics: (includeArchived = false, includeTrashed = false) =>
-    call<PlannerEpic[]>("planner_epics", { includeArchived, includeTrashed }),
-  plannerTasks: (includeArchived = false, includeTrashed = false) =>
-    call<PlannerTask[]>("planner_tasks", { includeArchived, includeTrashed }),
-  createPlannerEpic: (input: CreatePlannerEpic) => call<PlannerEpic>("planner_create_epic", { input }),
-  updatePlannerEpic: (id: string, input: UpdatePlannerEpic) => call<PlannerEpic>("planner_update_epic", { id, input }),
-  archivePlannerEpic: (id: string, expectedRevision: number) =>
-    call<PlannerEpic>("planner_archive_epic", { id, expectedRevision }),
-  restorePlannerEpic: (id: string, expectedRevision: number) =>
-    call<PlannerEpic>("planner_restore_epic", { id, expectedRevision }),
-  trashPlannerEpic: (id: string, expectedRevision: number) =>
-    call<PlannerEpic>("planner_trash_epic", { id, expectedRevision }),
-  createPlannerTask: (input: CreatePlannerTask) => call<PlannerTask>("planner_create_task", { input }),
-  updatePlannerTask: (id: string, input: UpdatePlannerTask) => call<PlannerTask>("planner_update_task", { id, input }),
-  movePlannerTask: (id: string, input: MovePlannerTask) => call<PlannerTask>("planner_move_task", { id, input }),
+    cmd.plannerActivity(entityKind, entityId),
+  plannerEpics: (includeArchived = false, includeTrashed = false) => cmd.plannerEpics(includeArchived, includeTrashed),
+  plannerTasks: (includeArchived = false, includeTrashed = false) => cmd.plannerTasks(includeArchived, includeTrashed),
+  createPlannerEpic: (input: CreatePlannerEpic) => cmd.plannerCreateEpic(input),
+  updatePlannerEpic: (id: string, input: UpdatePlannerEpic) => cmd.plannerUpdateEpic(id, input),
+  archivePlannerEpic: (id: string, expectedRevision: number) => cmd.plannerArchiveEpic(id, expectedRevision),
+  restorePlannerEpic: (id: string, expectedRevision: number) => cmd.plannerRestoreEpic(id, expectedRevision),
+  trashPlannerEpic: (id: string, expectedRevision: number) => cmd.plannerTrashEpic(id, expectedRevision),
+  createPlannerTask: (input: CreatePlannerTask) => cmd.plannerCreateTask(input),
+  updatePlannerTask: (id: string, input: UpdatePlannerTask) => cmd.plannerUpdateTask(id, input),
+  movePlannerTask: (id: string, input: MovePlannerTask) => cmd.plannerMoveTask(id, input),
   completePlannerTask: (
     id: string,
     expectedRevision: number,
     allowIncompleteSubtasks: boolean,
     futureSessions: "cancel" | "keep" = "cancel",
-  ) => call<PlannerTask>("planner_complete_task", { id, expectedRevision, allowIncompleteSubtasks, futureSessions }),
-  reopenPlannerTask: (id: string, expectedRevision: number) =>
-    call<PlannerTask>("planner_reopen_task", { id, expectedRevision }),
-  archivePlannerTask: (id: string, expectedRevision: number) =>
-    call<PlannerTask>("planner_archive_task", { id, expectedRevision }),
-  restorePlannerTask: (id: string, expectedRevision: number) =>
-    call<PlannerTask>("planner_restore_task", { id, expectedRevision }),
-  trashPlannerTask: (id: string, expectedRevision: number) =>
-    call<PlannerTask>("planner_trash_task", { id, expectedRevision }),
+  ) => cmd.plannerCompleteTask(id, expectedRevision, allowIncompleteSubtasks, futureSessions),
+  reopenPlannerTask: (id: string, expectedRevision: number) => cmd.plannerReopenTask(id, expectedRevision),
+  archivePlannerTask: (id: string, expectedRevision: number) => cmd.plannerArchiveTask(id, expectedRevision),
+  restorePlannerTask: (id: string, expectedRevision: number) => cmd.plannerRestoreTask(id, expectedRevision),
+  trashPlannerTask: (id: string, expectedRevision: number) => cmd.plannerTrashTask(id, expectedRevision),
   plannerWorkSessions: (taskId: string | null = null, includeCancelled = false) =>
-    call<PlannerWorkSession[]>("planner_work_sessions", { taskId, includeCancelled }),
-  createPlannerWorkSession: (input: CreatePlannerWorkSession) =>
-    call<PlannerWorkSession>("planner_create_work_session", { input }),
-  updatePlannerWorkSession: (id: string, input: UpdatePlannerWorkSession) =>
-    call<PlannerWorkSession>("planner_update_work_session", { id, input }),
+    cmd.plannerWorkSessions(taskId, includeCancelled),
+  createPlannerWorkSession: (input: CreatePlannerWorkSession) => cmd.plannerCreateWorkSession(input),
+  updatePlannerWorkSession: (id: string, input: UpdatePlannerWorkSession) => cmd.plannerUpdateWorkSession(id, input),
   cancelPlannerWorkSession: (id: string, expectedRevision: number) =>
-    call<PlannerWorkSession>("planner_cancel_work_session", { id, expectedRevision }),
-  plannerCalendarRange: (from: string, to: string) =>
-    call<PlannerCalendarRange>("planner_calendar_range", { from, to }),
+    cmd.plannerCancelWorkSession(id, expectedRevision),
+  plannerCalendarRange: (from: string, to: string) => cmd.plannerCalendarRange(from, to),
   plannerEvents: (includeArchived = false, includeTrashed = false) =>
-    call<PlannerEvent[]>("planner_events", { includeArchived, includeTrashed }),
-  createPlannerEvent: (input: CreatePlannerEvent) => call<PlannerEvent>("planner_create_event", { input }),
-  updatePlannerEvent: (id: string, input: UpdatePlannerEvent) =>
-    call<PlannerEvent>("planner_update_event", { id, input }),
-  archivePlannerEvent: (id: string, expectedRevision: number) =>
-    call<PlannerEvent>("planner_archive_event", { id, expectedRevision }),
-  restorePlannerEvent: (id: string, expectedRevision: number) =>
-    call<PlannerEvent>("planner_restore_event", { id, expectedRevision }),
-  trashPlannerEvent: (id: string, expectedRevision: number) =>
-    call<PlannerEvent>("planner_trash_event", { id, expectedRevision }),
+    cmd.plannerEvents(includeArchived, includeTrashed),
+  createPlannerEvent: (input: CreatePlannerEvent) => cmd.plannerCreateEvent(input),
+  updatePlannerEvent: (id: string, input: UpdatePlannerEvent) => cmd.plannerUpdateEvent(id, input),
+  archivePlannerEvent: (id: string, expectedRevision: number) => cmd.plannerArchiveEvent(id, expectedRevision),
+  restorePlannerEvent: (id: string, expectedRevision: number) => cmd.plannerRestoreEvent(id, expectedRevision),
+  trashPlannerEvent: (id: string, expectedRevision: number) => cmd.plannerTrashEvent(id, expectedRevision),
   cancelPlannerEventOccurrence: (seriesId: string, expectedRevision: number, occurrenceKey: string) =>
-    call<PlannerEvent>("planner_cancel_event_occurrence", { seriesId, expectedRevision, occurrenceKey }),
+    cmd.plannerCancelEventOccurrence(seriesId, expectedRevision, occurrenceKey),
   replacePlannerEventOccurrence: (
     seriesId: string,
     expectedRevision: number,
     occurrenceKey: string,
     input: CreatePlannerEvent,
-  ) => call<PlannerEvent>("planner_replace_event_occurrence", { seriesId, expectedRevision, occurrenceKey, input }),
-  plannerMigrationPreview: () => call<MarkdownImportPreview>("planner_migration_preview"),
+  ) => cmd.plannerReplaceEventOccurrence(seriesId, expectedRevision, occurrenceKey, input),
+  plannerMigrationPreview: () => cmd.plannerMigrationPreview(),
   importMarkdownToPlanner: (
     preview: MarkdownImportPreview,
     selectedFingerprints: string[],
     allowDuplicates: boolean,
     timezone: string,
-  ) =>
-    call<MarkdownImportResult>("planner_import_markdown", { preview, selectedFingerprints, allowDuplicates, timezone }),
+  ) => cmd.plannerImportMarkdown(preview, selectedFingerprints, allowDuplicates, timezone),
   previewPlannerIcal: (
     content: string,
     sourceKind = "ics-file",
     fallbackTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
-  ) => call<IcalImportPreview>("planner_ical_preview", { content, sourceKind, fallbackTimezone }),
+  ) => cmd.plannerIcalPreview(sourceKind, content, fallbackTimezone),
   importPlannerIcal: (preview: IcalImportPreview, selectedKeys: string[], allowDuplicates: boolean) =>
-    call<IcalImportResult>("planner_ical_import", { preview, selectedKeys, allowDuplicates }),
-  exportPlannerIcal: () => call<string>("planner_ical_export"),
-  exportPlannerIcalFile: (path: string) => call<string>("planner_ical_export_file", { path }),
-  exportPlanner: (format: "json" | "csv") => call<string>("planner_export", { format }),
-  exportPlannerFile: (format: "json" | "csv", path: string) => call<string>("planner_export_file", { format, path }),
-  restorePlannerBackup: (path: string) => call<string>("planner_restore_backup", { path }),
-  calendarSubscriptions: () => call<CalendarSubscription[]>("calendar_subscriptions"),
+    cmd.plannerIcalImport(preview, selectedKeys, allowDuplicates),
+  exportPlannerIcal: () => cmd.plannerIcalExport(),
+  exportPlannerIcalFile: (path: string) => cmd.plannerIcalExportFile(path),
+  exportPlanner: (format: "json" | "csv") => cmd.plannerExport(format),
+  exportPlannerFile: (format: "json" | "csv", path: string) => cmd.plannerExportFile(format, path),
+  restorePlannerBackup: (path: string) => cmd.plannerRestoreBackup(path),
+  calendarSubscriptions: () => cmd.calendarSubscriptions(),
   addCalendarSubscription: (name: string, url: string, color: string, refreshMinutes: number) =>
-    call<CalendarSubscription>("add_calendar_subscription", { name, url, color, refreshMinutes }),
+    cmd.addCalendarSubscription(name, url, color, refreshMinutes),
   updateCalendarSubscription: (id: string, name: string, color: string, visible: boolean, refreshMinutes: number) =>
-    call<CalendarSubscription>("update_calendar_subscription", { id, name, color, visible, refreshMinutes }),
-  removeCalendarSubscription: (id: string) => call<void>("remove_calendar_subscription", { id }),
-  refreshCalendarSubscriptions: (force = false) =>
-    call<CalendarSubscription[]>("refresh_calendar_subscriptions", { force }),
+    cmd.updateCalendarSubscription(id, name, color, visible, refreshMinutes),
+  removeCalendarSubscription: (id: string) => cmd.removeCalendarSubscription(id),
+  refreshCalendarSubscriptions: (force = false) => cmd.refreshCalendarSubscriptions(force),
   calendarOverlayRange: (
     from: string,
     to: string,
     timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
-  ) => call<CalendarOverlayRange>("calendar_overlay_range", { from, to, timezone }),
+  ) => cmd.calendarOverlayRange(from, to, timezone),
   /** Agents' proposals in folders under review: pending first, then recent decisions. */
-  proposals: (includeDecided = false) => call<Proposal[]>("proposals", { includeDecided }),
+  proposals: (includeDecided = false) => cmd.proposals(includeDecided),
   /** The proposed content (null for a deletion). */
-  proposalContent: (id: number) => call<string | null>("proposal_content", { id }),
+  proposalContent: (id: number) => cmd.proposalContent(id),
   /** The file as it was when the agent proposed (to show what the person changed since). */
-  proposalBase: (id: number) => call<string | null>("proposal_base", { id }),
-  acceptProposal: (id: number, force = false, content: string | null = null) =>
-    call<string>("accept_proposal", { id, force, content }),
-  rejectProposal: (id: number, reason: string | null) => call<void>("reject_proposal", { id, reason }),
-  backlinks: (path: string) => call<Backlink[]>("backlinks", { path }),
-  tags: () => call<TagCount[]>("tags"),
-  aliases: () => call<[string, string][]>("aliases"),
-  cliInfo: () => call<CliInfo>("cli_info"),
-  installCli: () => call<CliInfo>("install_cli"),
-  updateStatus: () => call<UpdateStatus>("update_status"),
-  checkUpdates: () => call<UpdateCheck>("check_updates"),
-  fileHistory: (path: string) => call<Version[]>("file_history", { path }),
-  agentRules: () => call<AgentRule[]>("get_agent_rules", {}),
-  printWindow: () => (inTauri ? call<void>("print_window", {}) : Promise.resolve(window.print())),
-  unlinkedMentions: (path: string) => call<Mention[]>("unlinked_mentions", { path }),
+  proposalBase: (id: number) => cmd.proposalBase(id),
+  acceptProposal: (id: number, force = false, content: string | null = null) => cmd.acceptProposal(id, force, content),
+  rejectProposal: (id: number, reason: string | null) => cmd.rejectProposal(id, reason),
+  backlinks: (path: string) => cmd.backlinks(path),
+  tags: () => cmd.tags(),
+  aliases: () => cmd.aliases(),
+  cliInfo: () => cmd.cliInfo(),
+  installCli: () => cmd.installCli(),
+  updateStatus: () => cmd.updateStatus(),
+  checkUpdates: () => cmd.checkUpdates(),
+  fileHistory: (path: string) => cmd.fileHistory(path),
+  agentRules: () => cmd.getAgentRules(),
+  printWindow: () => (inTauri ? cmd.printWindow() : Promise.resolve(window.print())),
+  unlinkedMentions: (path: string) => cmd.unlinkedMentions(path),
   linkMention: (source: string, line: number, text: string, target: string) =>
-    call<Written>("link_mention", { source, line, text, target }),
-  setAgentRules: (rules: AgentRule[]) => call<void>("set_agent_rules", { rules }),
-  versionContent: (id: number) => call<string>("version_content", { id }),
-  restoreVersion: (path: string, id: number, expectedHash: string | null) =>
-    call<Written>("restore_version", { path, id, expectedHash }),
-  aiActivity: () => call<Version[]>("ai_activity", {}),
-  undoChange: (id: number) => call<string>("undo_change", { id }),
-  startUpdate: () => call<void>("start_update"),
-  cancelUpdate: () => call<void>("cancel_update"),
-  finishUpdate: () => call<void>("finish_update"),
+    cmd.linkMention(source, line, text, target),
+  setAgentRules: (rules: AgentRule[]) => cmd.setAgentRules(rules),
+  versionContent: (id: number) => cmd.versionContent(id),
+  restoreVersion: (path: string, id: number, expectedHash: string | null) => cmd.restoreVersion(path, id, expectedHash),
+  aiActivity: () => cmd.aiActivity(null),
+  undoChange: (id: number) => cmd.undoChange(id),
+  startUpdate: () => cmd.startUpdate(),
+  cancelUpdate: () => cmd.cancelUpdate(),
+  finishUpdate: () => cmd.finishUpdate(),
 };
 
 /** Asks the user for a folder with the native dialog (or a prompt-free mock in the browser). */
@@ -300,7 +224,7 @@ export async function fileUrl(path: string): Promise<string> {
 /** Publishes a sanitized HTML preview on Mosaic's local asset origin. */
 export async function htmlPreviewDocumentUrl(html: string): Promise<string> {
   if (!inTauri) return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
-  const path = await call<string>("html_preview_document", { html });
+  const path = await cmd.htmlPreviewDocument(html);
   const { convertFileSrc } = await import("@tauri-apps/api/core");
   return convertFileSrc(path);
 }
@@ -382,7 +306,7 @@ export async function onSettingsChanged(cb: () => void): Promise<() => void> {
  * installers and folders are refused by the backend. */
 export async function openInDefaultApp(path: string): Promise<void> {
   if (!inTauri) return;
-  await call("open_in_default_app", { path });
+  await cmd.openInDefaultApp(path);
 }
 
 /** Shows a vault file (or the vault itself, with `""`) in Finder. */

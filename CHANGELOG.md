@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+## 0.24.0 — 2026-10-17
+
 - **Reviewing agents' changes kept in one place inside Mosaic:** listing, accepting, rejecting and withdrawing agents' proposals now go through one part of Mosaic's engine instead of being spread across it. Nothing changes in how review behaves.
 
 ## 0.23.0 — 2026-10-17

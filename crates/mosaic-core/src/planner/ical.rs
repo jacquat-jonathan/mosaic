@@ -102,6 +102,25 @@ fn text(value: &str) -> String {
         .replace("\\\\", "\\")
 }
 
+fn canonical_timezone(value: &str) -> Result<(Tz, String)> {
+    let value = value
+        .strip_prefix('"')
+        .and_then(|value| value.strip_suffix('"'))
+        .unwrap_or(value);
+    let canonical = value.parse::<Tz>().ok().map(|_| value).or_else(|| {
+        // Outlook writes Windows timezone IDs into otherwise standard iCalendar feeds. CLDR's
+        // territory-independent mapping gives us the canonical IANA zone understood everywhere
+        // else in the planner.
+        localzone::win_zone_to_iana(value, None)
+    });
+    let canonical =
+        canonical.ok_or_else(|| Error::Invalid(format!("unknown iCalendar timezone {value:?}")))?;
+    let parsed = canonical
+        .parse::<Tz>()
+        .map_err(|_| Error::Invalid(format!("unknown iCalendar timezone {value:?}")))?;
+    Ok((parsed, canonical.to_string()))
+}
+
 fn datetime(
     value: &str,
     params: &[(&str, &str)],
@@ -115,10 +134,11 @@ fn datetime(
         .find(|(key, _)| key.eq_ignore_ascii_case("TZID"))
         .map(|(_, value)| *value)
         .unwrap_or(fallback_timezone);
+    let (tz, timezone) = canonical_timezone(timezone)?;
     if is_date {
         let date = NaiveDate::parse_from_str(value, "%Y%m%d")
             .map_err(|_| Error::Invalid(format!("invalid iCalendar date {value:?}")))?;
-        return Ok((true, date.to_string(), timezone.to_string()));
+        return Ok((true, date.to_string(), timezone));
     }
     if value.ends_with('Z') {
         let time = NaiveDateTime::parse_from_str(value.trim_end_matches('Z'), "%Y%m%dT%H%M%S")
@@ -126,14 +146,11 @@ fn datetime(
         return Ok((
             false,
             time.and_utc().to_rfc3339_opts(SecondsFormat::Millis, true),
-            timezone.to_string(),
+            timezone,
         ));
     }
     let time = NaiveDateTime::parse_from_str(value, "%Y%m%dT%H%M%S")
         .map_err(|_| Error::Invalid(format!("invalid iCalendar local time {value:?}")))?;
-    let tz: Tz = timezone
-        .parse()
-        .map_err(|_| Error::Invalid(format!("unknown iCalendar timezone {timezone:?}")))?;
     let time = tz
         .from_local_datetime(&time)
         .earliest()
@@ -142,7 +159,7 @@ fn datetime(
         false,
         time.with_timezone(&Utc)
             .to_rfc3339_opts(SecondsFormat::Millis, true),
-        timezone.to_string(),
+        timezone,
     ))
 }
 

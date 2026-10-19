@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Outlook calendar subscriptions load correctly:** published Outlook feeds that use Windows timezone names, such as `W. Europe Standard Time`, now refresh and display instead of failing with an unknown-timezone error.
+
 ## 0.24.0 — 2026-10-17
 
 - **Reviewing agents' changes kept in one place inside Mosaic:** listing, accepting, rejecting and withdrawing agents' proposals now go through one part of Mosaic's engine instead of being spread across it. Nothing changes in how review behaves.

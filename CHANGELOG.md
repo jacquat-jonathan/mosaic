@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+## 0.24.1 — 2026-10-19
+
 - **Outlook calendar subscriptions load correctly:** published Outlook feeds that use Windows timezone names, such as `W. Europe Standard Time`, now refresh and display instead of failing with an unknown-timezone error.
 
 ## 0.24.0 — 2026-10-17

@@ -398,6 +398,28 @@ fn ical_preview_import_export_and_overlay_deduplicate() {
 }
 
 #[test]
+fn outlook_windows_timezones_are_normalized_to_iana() {
+    let content = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:outlook@example.test\r\nDTSTART;TZID=W. Europe Standard Time:20261019T090000\r\nDTEND;TZID=\"W. Europe Standard Time\":20261019T100000\r\nSUMMARY:Outlook event\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+    let mut store = in_memory();
+    let preview = store
+        .preview_ical_import("outlook", content, "UTC")
+        .unwrap();
+
+    assert_eq!(preview.candidates.len(), 1);
+    assert_eq!(preview.candidates[0].timezone, "Europe/Berlin");
+    assert_eq!(
+        preview.candidates[0].start_value,
+        "2026-10-19T07:00:00.000Z"
+    );
+    assert_eq!(preview.candidates[0].end_value, "2026-10-19T08:00:00.000Z");
+
+    let selected = vec![preview.candidates[0].key.clone()];
+    store.import_ical(&preview, &selected, false).unwrap();
+    let exported = store.export_ical().unwrap();
+    assert!(exported.contains("DTSTART;TZID=Europe/Berlin:20261019T090000"));
+}
+
+#[test]
 fn ical_failures_are_atomic_and_recurring_exceptions_export_inside_events() {
     let mut store = in_memory();
     assert!(validate_ical("not a calendar", "UTC").is_err());

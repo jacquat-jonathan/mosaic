@@ -28,7 +28,7 @@ pub mod vault_id;
 pub mod vault_state;
 pub mod watch;
 
-pub use api::Workspace;
+pub use api::{FileService, LinkService, Workspace};
 pub use error::{Error, Result};
 pub use kind::FileKind;
 pub use vault::{Entry, FileContent, Vault, Written};

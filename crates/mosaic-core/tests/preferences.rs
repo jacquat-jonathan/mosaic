@@ -29,20 +29,22 @@ fn vault_preferences_are_scoped_preserved_and_used_by_the_core() {
     let b = tempfile::tempdir().unwrap();
     let wa = Workspace::open(a.path()).unwrap();
     let wb = Workspace::open(b.path()).unwrap();
-    wa.create("Agents/Old.md", "Old agent").unwrap();
-    wa.create(
-        "People/Review/SKILL.md",
-        "---\nname: review\ncustom: preserved\n---\nReview notes\n",
-    )
-    .unwrap();
+    wa.files.create("Agents/Old.md", "Old agent").unwrap();
+    wa.files
+        .create(
+            "People/Review/SKILL.md",
+            "---\nname: review\ncustom: preserved\n---\nReview notes\n",
+        )
+        .unwrap();
     wa.set_vault_preferences(json!({"agents_folder":"People","daily_folder":"Journal","daily_format":"DD-MM-YYYY","future":{"keep":true},"folder_colors":{"People":"purple"}})).unwrap();
     assert_eq!(wa.agents().unwrap().len(), 1);
     assert_eq!(wa.agents().unwrap()[0].name, "review");
-    assert!(wa.read("Agents/Old.md").is_ok());
+    assert!(wa.files.read("Agents/Old.md").is_ok());
     assert_eq!(wb.vault_preferences().unwrap().agents_folder, "Agents");
     wa.mirror_agents().unwrap();
     assert!(a.path().join(".claude/skills/review/SKILL.md").exists());
-    wa.create("Journal/07-10-2026.md", "# 2026-10-07\n- [ ] Carry me\n")
+    wa.files
+        .create("Journal/07-10-2026.md", "# 2026-10-07\n- [ ] Carry me\n")
         .unwrap();
     assert_eq!(
         wa.days("2026-10-07", "2026-10-08", "2026-10-08")
@@ -55,10 +57,12 @@ fn vault_preferences_are_scoped_preserved_and_used_by_the_core() {
     let carried = wa.carry_over("2026-10-08", None, None).unwrap();
     assert_eq!(carried.to, "Journal/08-10-2026.md");
     assert_eq!(carried.moved, 1);
-    wa.create("Legacy/2026-10-08.md", "Legacy daily\n").unwrap();
+    wa.files
+        .create("Legacy/2026-10-08.md", "Legacy daily\n")
+        .unwrap();
     assert!(wa.days("2026-10-08", "2026-10-08", "2026-10-08").is_err());
     assert!(wa.carry_over("2026-10-08", None, None).is_err());
-    wa.rename("People", "Staff", true).unwrap();
+    wa.files.rename("People", "Staff", true).unwrap();
     assert_eq!(wa.vault_preferences().unwrap().agents_folder, "Staff");
     assert_eq!(
         wa.vault_preferences().unwrap().folder_colors["Staff"],

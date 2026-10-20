@@ -545,8 +545,8 @@ fn archived_parents_and_epics_hide_their_active_descendants_from_active_planning
 #[test]
 fn markdown_import_previews_maps_and_deduplicates_without_editing_notes() {
     let (dir, workspace) = workspace();
-    workspace.mkdir("Daily").unwrap();
-    workspace
+    workspace.files.mkdir("Daily").unwrap();
+    workspace.files
         .create(
             "Daily/2026-10-13.md",
             "# Tuesday\n\n- [ ] Parent 📅 2026-10-16 ^parent\n    - [ ] Review <!-- mosaic:state=in-qa --> ^review\n        - [ ] Detail ^detail\n- [x] Finished ^done\n- [>] Deferred ^moved\n",
@@ -684,7 +684,7 @@ fn recovery_from_the_last_valid_backup_is_explicit() {
     // Notes still open; the planner reports the damage when it's first needed (the app asks at
     // once, to offer the restore).
     let notes = Workspace::open(dir.path()).unwrap();
-    assert!(notes.list("", true).is_ok());
+    assert!(notes.files.list("", true).is_ok());
     let damaged = notes.planner.open().unwrap_err().to_string();
     // The store's own message comes through, so the app can tell when to offer the restore.
     let cause = PlannerStore::open(dir.path()).err().unwrap().to_string();

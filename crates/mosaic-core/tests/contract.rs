@@ -12,14 +12,17 @@ fn call(ws: &Workspace, cmd: &str, a: &Value) -> Result<Value, Error> {
     let s = |k: &str| a[k].as_str().map(str::to_string);
     let path = || s("path").unwrap_or_default();
     let out = match cmd {
-        "read_file" => json!(ws.read(&path())?),
-        "write_file" => json!(ws.write(
+        "read_file" => json!(ws.files.read(&path())?),
+        "write_file" => json!(ws.files.write(
             &path(),
             &s("content").unwrap(),
             s("expectedHash").as_deref()
         )?),
-        "create_file" => json!(ws.create(&path(), &s("content").unwrap())?),
-        "rename_path" => json!(ws.rename(&s("from").unwrap(), &s("to").unwrap(), true)?),
+        "create_file" => json!(ws.files.create(&path(), &s("content").unwrap())?),
+        "rename_path" => json!(
+            ws.files
+                .rename(&s("from").unwrap(), &s("to").unwrap(), true)?
+        ),
         "accept_proposal" => json!(ws.review().accept_selected(
             a["id"].as_i64().unwrap(),
             a["force"].as_bool().unwrap_or(false),
@@ -86,6 +89,7 @@ fn the_core_follows_the_shared_command_scenarios() {
             let at = format!("{name}, step {}", i + 1);
             if let Some(p) = step.get("agent_proposes") {
                 let written = agent
+                    .files
                     .write(
                         p["path"].as_str().unwrap(),
                         p["content"].as_str().unwrap(),

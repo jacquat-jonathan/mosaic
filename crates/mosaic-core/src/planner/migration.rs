@@ -2,7 +2,7 @@ use super::service::PlannerService;
 use super::{
     PlannerStore, TaskStatus, bump_store_revision, now, record_activity, sql_error, store_revision,
 };
-use crate::api::Workspace;
+use crate::api::{Context, Workspace};
 use crate::error::{Error, Result};
 use crate::index::TaskMeta;
 use regex::Regex;
@@ -431,7 +431,7 @@ impl Workspace {
             .reading()
             .tasks()?
             .into_iter()
-            .filter(|task| Self::visible(&rules, &task.path))
+            .filter(|task| Context::visible(&rules, &task.path))
             .collect();
 
         let mut fingerprints: HashMap<(String, usize), String> = HashMap::new();

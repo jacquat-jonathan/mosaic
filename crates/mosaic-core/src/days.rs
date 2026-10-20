@@ -10,7 +10,7 @@
 //! move from that one note, so a task left open for days travels along day by day instead of being
 //! gathered from the whole history.
 
-use crate::api::Workspace;
+use crate::api::{Context, Workspace};
 use crate::error::{Error, Result};
 use crate::index::TaskMeta;
 use crate::query::task_status;
@@ -117,7 +117,7 @@ impl Workspace {
         let preferences = self.vault_preferences()?;
         for n in self.reading().notes_meta()? {
             if n.kind == "markdown"
-                && Self::visible(&rules, &n.path)
+                && Context::visible(&rules, &n.path)
                 && let Some(d) = preferences.daily_date(&n.path)
                 && let Some(previous) = out.insert(d, n.path.clone())
             {
@@ -160,7 +160,7 @@ impl Workspace {
         }
         let mut overdue = Vec::new();
         for t in self.reading().tasks()? {
-            if !Self::visible(&rules, &t.path) {
+            if !Context::visible(&rules, &t.path) {
                 continue;
             }
             match preferences.daily_date(&t.path) {
@@ -235,7 +235,7 @@ impl Workspace {
         if from == to {
             return nothing(false);
         }
-        let old = self.read(&from)?;
+        let old = self.files.read(&from)?;
         let old_text = old.content.unwrap_or_default();
         let tasks = crate::parse::parse(&old_text).tasks;
         // Open tasks move; each keeps its place under the open tasks it was nested in.
@@ -274,7 +274,7 @@ impl Workspace {
 
         // The new day first: if anything fails after, the tasks exist twice rather than nowhere.
         let block = moved_lines.join("\n");
-        let created = match self.read(&to) {
+        let created = match self.files.read(&to) {
             Ok(f) => {
                 let mut text = f.content.unwrap_or_default();
                 if !text.is_empty() && !text.ends_with('\n') {
@@ -285,7 +285,7 @@ impl Workspace {
                 }
                 text.push_str(&block);
                 text.push('\n');
-                self.write(&to, &text, Some(&f.hash))?;
+                self.files.write(&to, &text, Some(&f.hash))?;
                 false
             }
             Err(Error::NotFound(_)) => {
@@ -295,7 +295,7 @@ impl Workspace {
                 }
                 text.push_str(&block);
                 text.push('\n');
-                self.create(&to, &text)?;
+                self.files.create(&to, &text)?;
                 true
             }
             Err(e) => return Err(e),
@@ -309,7 +309,8 @@ impl Workspace {
                 old_lines[t.line - 1] = format!("{marked}{ending}");
             }
         }
-        self.write(&from, &old_lines.concat(), Some(&old.hash))?;
+        self.files
+            .write(&from, &old_lines.concat(), Some(&old.hash))?;
         Ok(CarryOver {
             from: Some(from),
             to,

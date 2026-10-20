@@ -224,7 +224,7 @@ impl Workspace {
     /// The vault's agents, by name. Two with the same name: the first (by path) wins.
     pub fn agents(&self) -> Result<Vec<Agent>> {
         let directory = self.vault_preferences()?.agents_folder;
-        let entries = match self.list(&directory, true) {
+        let entries = match self.files.list(&directory, true) {
             Ok(e) => e,
             Err(Error::NotFound(_)) => return Ok(Vec::new()),
             Err(e) => return Err(e),
@@ -243,7 +243,7 @@ impl Workspace {
                 }
                 _ => continue,
             };
-            let Some(text) = self.read(&e.path)?.content else {
+            let Some(text) = self.files.read(&e.path)?.content else {
                 continue;
             };
             found.push(parse_agent(&e.path, &title, skill_folder, &text));

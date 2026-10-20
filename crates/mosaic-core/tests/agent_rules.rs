@@ -33,8 +33,8 @@ fn agents_get_the_vaults_rules_once_per_request_and_are_refused_when_they_cant_b
     };
     let dir = tempfile::tempdir().unwrap();
     let app = Workspace::open(dir.path()).unwrap();
-    app.create("Private/Salary.md", "s").unwrap();
-    app.create("Public/Plan.md", "p").unwrap();
+    app.files.create("Private/Salary.md", "s").unwrap();
+    app.files.create("Public/Plan.md", "p").unwrap();
     let state = VaultState::open(app.vault.root()).unwrap();
     state.set_rules(vec![hide("Private")]).unwrap();
 
@@ -42,22 +42,22 @@ fn agents_get_the_vaults_rules_once_per_request_and_are_refused_when_they_cant_b
         .unwrap()
         .with_source(Source::Agent);
     assert!(matches!(
-        agent.read("Private/Salary.md"),
+        agent.files.read("Private/Salary.md"),
         Err(Error::NotFound(_))
     ));
-    assert!(agent.read("Public/Plan.md").is_ok());
+    assert!(agent.files.read("Public/Plan.md").is_ok());
 
     // During one request the rules it started with apply, even if the person edits them.
     {
         let request = agent.freeze_rules();
-        assert!(request.read("Public/Plan.md").is_ok());
+        assert!(request.files.read("Public/Plan.md").is_ok());
         state
             .set_rules(vec![hide("Private"), hide("Public")])
             .unwrap();
-        assert!(request.read("Public/Plan.md").is_ok());
+        assert!(request.files.read("Public/Plan.md").is_ok());
     }
     assert!(matches!(
-        agent.read("Public/Plan.md"),
+        agent.files.read("Public/Plan.md"),
         Err(Error::NotFound(_))
     ));
 
@@ -73,12 +73,12 @@ fn agents_get_the_vaults_rules_once_per_request_and_are_refused_when_they_cant_b
         .join(mosaic_core::vault_state::RULES_FILE);
     std::fs::write(rules, "[{ half written").unwrap();
     assert!(matches!(
-        agent.read("Private/Salary.md"),
+        agent.files.read("Private/Salary.md"),
         Err(Error::Denied(_))
     ));
     assert!(matches!(
-        agent.read("Public/Plan.md"),
+        agent.files.read("Public/Plan.md"),
         Err(Error::Denied(_))
     ));
-    assert!(app.read("Private/Salary.md").is_ok());
+    assert!(app.files.read("Private/Salary.md").is_ok());
 }

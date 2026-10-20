@@ -106,7 +106,7 @@ export function MonthView({
           ...external.map((overlay) => ({
             kind: "overlay" as const,
             key: `overlay:${overlay.source_id}:${overlay.uid}:${overlay.occurrence_key}`,
-            label: `🔒 ${overlay.title}`,
+            label: overlay.title,
             color: overlay.color ?? "var(--muted)",
             overlay,
           })),
@@ -184,7 +184,7 @@ export function MonthView({
             {entries.slice(0, 3).map((entry) =>
               entry.kind === "event" ? (
                 <button
-                  className="planner-month-item"
+                  className="planner-month-item event-card"
                   draggable
                   style={{ borderColor: entry.color }}
                   key={entry.key}
@@ -208,7 +208,7 @@ export function MonthView({
                 </button>
               ) : entry.kind === "overlay" ? (
                 <button
-                  className="planner-month-item read-only"
+                  className="planner-month-item read-only event-card"
                   style={{ borderColor: entry.color }}
                   key={entry.key}
                   onClick={(click) => {

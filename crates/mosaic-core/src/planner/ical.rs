@@ -8,7 +8,7 @@ use chrono::{DateTime, Duration, NaiveDate, NaiveDateTime, SecondsFormat, TimeZo
 use chrono_tz::Tz;
 use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
@@ -66,7 +66,19 @@ pub struct OverlayOccurrence {
 struct ParsedEvent {
     uid: String,
     recurrence_id: String,
+    recurrence_key: Option<String>,
+    excluded_occurrences: Vec<String>,
+    cancelled: bool,
+    revision: ParsedRevision,
     event: CreateEvent,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+struct ParsedRevision {
+    sequence: u32,
+    last_modified: String,
+    dtstamp: String,
+    source_order: usize,
 }
 
 type IcalProperty<'a> = (&'a str, Vec<(&'a str, &'a str)>, &'a str);
@@ -100,6 +112,15 @@ fn text(value: &str) -> String {
         .replace("\\,", ",")
         .replace("\\;", ";")
         .replace("\\\\", "\\")
+}
+
+fn title_marks_cancellation(title: &str) -> bool {
+    let title = title.trim_start();
+    ["canceled:", "cancelled:"].iter().any(|prefix| {
+        title
+            .get(..prefix.len())
+            .is_some_and(|value| value.eq_ignore_ascii_case(prefix))
+    })
 }
 
 fn canonical_timezone(value: &str) -> Result<(Tz, String)> {
@@ -163,6 +184,21 @@ fn datetime(
     ))
 }
 
+fn occurrence_key(value: &str, params: &[(&str, &str)], fallback_timezone: &str) -> Result<String> {
+    let (all_day, start, timezone) = datetime(value, params, fallback_timezone)?;
+    if all_day {
+        return Ok(start);
+    }
+    let timezone: Tz = timezone
+        .parse()
+        .map_err(|_| Error::Invalid("invalid recurrence timezone".into()))?;
+    Ok(DateTime::parse_from_rfc3339(&start)
+        .map_err(|_| Error::Invalid("invalid recurrence date-time".into()))?
+        .with_timezone(&timezone)
+        .date_naive()
+        .to_string())
+}
+
 fn parse(content: &str, fallback_timezone: &str) -> Result<Vec<ParsedEvent>> {
     if content.len() > 10 * 1024 * 1024 {
         return Err(Error::Invalid(
@@ -176,6 +212,11 @@ fn parse(content: &str, fallback_timezone: &str) -> Result<Vec<ParsedEvent>> {
     {
         return Err(Error::Invalid("input is not an iCalendar document".into()));
     }
+    let calendar_cancelled = lines.iter().any(|line| {
+        property(line).is_some_and(|(name, _, value)| {
+            name.eq_ignore_ascii_case("METHOD") && value.trim().eq_ignore_ascii_case("CANCEL")
+        })
+    });
     let mut result = Vec::new();
     let mut current: Vec<String> = Vec::new();
     let mut inside = false;
@@ -190,6 +231,12 @@ fn parse(content: &str, fallback_timezone: &str) -> Result<Vec<ParsedEvent>> {
             inside = false;
             let mut uid = None;
             let mut recurrence_id = String::new();
+            let mut recurrence_key = None;
+            let mut excluded_occurrences = Vec::new();
+            let mut cancelled = calendar_cancelled;
+            let mut sequence = 0;
+            let mut last_modified = String::new();
+            let mut dtstamp = String::new();
             let mut title = "Untitled event".to_string();
             let mut description = String::new();
             let mut location = String::new();
@@ -204,7 +251,27 @@ fn parse(content: &str, fallback_timezone: &str) -> Result<Vec<ParsedEvent>> {
                 };
                 match name.to_ascii_uppercase().as_str() {
                     "UID" => uid = Some(value.trim().to_string()),
-                    "RECURRENCE-ID" => recurrence_id = value.trim().to_string(),
+                    "RECURRENCE-ID" => {
+                        recurrence_id = value.trim().to_string();
+                        recurrence_key = Some(occurrence_key(
+                            value.trim(),
+                            &parameters,
+                            fallback_timezone,
+                        )?);
+                    }
+                    "EXDATE" => {
+                        for value in value.split(',') {
+                            excluded_occurrences.push(occurrence_key(
+                                value.trim(),
+                                &parameters,
+                                fallback_timezone,
+                            )?);
+                        }
+                    }
+                    "STATUS" => cancelled |= value.trim().eq_ignore_ascii_case("CANCELLED"),
+                    "SEQUENCE" => sequence = value.trim().parse().unwrap_or(0),
+                    "LAST-MODIFIED" => last_modified = value.trim().to_string(),
+                    "DTSTAMP" => dtstamp = value.trim().to_string(),
                     "SUMMARY" => title = text(value),
                     "DESCRIPTION" => description = text(value),
                     "LOCATION" => location = text(value),
@@ -221,6 +288,7 @@ fn parse(content: &str, fallback_timezone: &str) -> Result<Vec<ParsedEvent>> {
                 }
             }
             let uid = uid.ok_or_else(|| Error::Invalid("VEVENT is missing UID".into()))?;
+            cancelled |= title_marks_cancellation(&title);
             let (all_day, start_value, timezone) = start
                 .ok_or_else(|| Error::Invalid(format!("VEVENT {uid:?} is missing DTSTART")))?;
             let end_value = if let Some((end_all_day, end, _)) = end {
@@ -240,6 +308,15 @@ fn parse(content: &str, fallback_timezone: &str) -> Result<Vec<ParsedEvent>> {
             result.push(ParsedEvent {
                 uid,
                 recurrence_id,
+                recurrence_key,
+                excluded_occurrences,
+                cancelled,
+                revision: ParsedRevision {
+                    sequence,
+                    last_modified,
+                    dtstamp,
+                    source_order: result.len(),
+                },
                 event: CreateEvent {
                     title,
                     description,
@@ -262,7 +339,24 @@ fn parse(content: &str, fallback_timezone: &str) -> Result<Vec<ParsedEvent>> {
     if result.is_empty() {
         return Err(Error::Invalid("iCalendar document has no events".into()));
     }
-    Ok(result)
+    let mut latest = HashMap::<String, usize>::new();
+    for (index, event) in result.iter().enumerate() {
+        let identity = candidate_key(&event.uid, &event.recurrence_id);
+        if latest
+            .get(&identity)
+            .is_none_or(|current| event.revision > result[*current].revision)
+        {
+            latest.insert(identity, index);
+        }
+    }
+    Ok(result
+        .into_iter()
+        .enumerate()
+        .filter_map(|(index, event)| {
+            (latest.get(&candidate_key(&event.uid, &event.recurrence_id)) == Some(&index))
+                .then_some(event)
+        })
+        .collect())
 }
 
 pub fn validate_ical(content: &str, fallback_timezone: &str) -> Result<usize> {
@@ -282,7 +376,7 @@ impl PlannerStore {
     ) -> Result<IcalImportPreview> {
         let parsed = parse(content, fallback_timezone)?;
         let mut candidates = Vec::with_capacity(parsed.len());
-        for parsed in parsed {
+        for parsed in parsed.into_iter().filter(|event| !event.cancelled) {
             let duplicate: bool = self
                 .conn
                 .query_row(
@@ -561,9 +655,19 @@ pub fn overlay_occurrences(
         .map_err(|_| Error::Invalid("overlay from must be an ISO date".into()))?;
     let to_date = NaiveDate::parse_from_str(to, "%Y-%m-%d")
         .map_err(|_| Error::Invalid("overlay to must be an ISO date".into()))?;
+    let parsed_events = parse(content, fallback_timezone)?;
+    let mut exclusions = HashMap::<String, HashSet<String>>::new();
+    for event in &parsed_events {
+        let excluded = exclusions.entry(event.uid.clone()).or_default();
+        excluded.extend(event.excluded_occurrences.iter().cloned());
+        if let Some(recurrence_key) = &event.recurrence_key {
+            excluded.insert(recurrence_key.clone());
+        }
+    }
     let mut result = Vec::new();
-    for parsed in parse(content, fallback_timezone)? {
+    for parsed in parsed_events.into_iter().filter(|event| !event.cancelled) {
         let at = now();
+        let is_exception = parsed.recurrence_key.is_some();
         let event = PlannerEvent {
             id: parsed.uid.clone(),
             series_id: None,
@@ -578,7 +682,11 @@ pub fn overlay_occurrences(
             start_value: parsed.event.start_value,
             end_value: parsed.event.end_value,
             timezone: parsed.event.timezone,
-            recurrence_rule: parsed.event.recurrence_rule,
+            recurrence_rule: if is_exception {
+                None
+            } else {
+                parsed.event.recurrence_rule
+            },
             revision: 1,
             created_at: at.clone(),
             updated_at: at,
@@ -586,6 +694,13 @@ pub fn overlay_occurrences(
             trashed_at: None,
         };
         for (key, start, end) in super::recurrence::expand(&event, from_date, to_date)? {
+            if !is_exception
+                && exclusions
+                    .get(&parsed.uid)
+                    .is_some_and(|excluded| excluded.contains(&key))
+            {
+                continue;
+            }
             result.push(OverlayOccurrence {
                 source_id: source_id.to_string(),
                 source_name: source_name.to_string(),

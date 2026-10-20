@@ -15,6 +15,7 @@ struct Rule {
     frequency: Frequency,
     interval: u32,
     weekdays: Vec<Weekday>,
+    week_start: Option<Weekday>,
     until: Option<NaiveDate>,
 }
 
@@ -36,6 +37,7 @@ fn parse_rule(value: &str) -> Result<Rule> {
     let mut frequency = None;
     let mut interval = 1;
     let mut weekdays = Vec::new();
+    let mut week_start = None;
     let mut until = None;
     for part in value.split(';') {
         let (key, value) = part
@@ -71,6 +73,11 @@ fn parse_rule(value: &str) -> Result<Rule> {
                     })
                     .collect::<Result<Vec<_>>>()?;
             }
+            "WKST" => {
+                week_start = Some(parse_weekday(&value.to_ascii_uppercase()).ok_or_else(|| {
+                    Error::Invalid(format!("unsupported recurrence week start {value:?}"))
+                })?);
+            }
             "UNTIL" => {
                 let value = value.trim_end_matches('Z');
                 let value = &value[..value.len().min(8)];
@@ -89,6 +96,7 @@ fn parse_rule(value: &str) -> Result<Rule> {
         frequency: frequency.ok_or_else(|| Error::Invalid("recurrence rule needs FREQ".into()))?,
         interval,
         weekdays,
+        week_start,
         until,
     })
 }
@@ -125,10 +133,31 @@ pub(super) fn normalize_rule(value: Option<String>) -> Result<Option<String>> {
             .join(",");
         parts.push(format!("BYDAY={weekdays}"));
     }
+    if let Some(week_start) = rule.week_start {
+        parts.push(format!("WKST={}", weekday_name(week_start)));
+    }
     if let Some(until) = rule.until {
         parts.push(format!("UNTIL={}", until.format("%Y%m%d")));
     }
     Ok(Some(parts.join(";")))
+}
+
+fn weekday_name(day: Weekday) -> &'static str {
+    match day {
+        Weekday::Mon => "MO",
+        Weekday::Tue => "TU",
+        Weekday::Wed => "WE",
+        Weekday::Thu => "TH",
+        Weekday::Fri => "FR",
+        Weekday::Sat => "SA",
+        Weekday::Sun => "SU",
+    }
+}
+
+fn start_of_week(date: NaiveDate, week_start: Weekday) -> NaiveDate {
+    let offset =
+        (7 + date.weekday().num_days_from_monday() - week_start.num_days_from_monday()) % 7;
+    date - chrono::Duration::days(i64::from(offset))
 }
 
 fn occurs(rule: &Rule, base: NaiveDate, date: NaiveDate) -> bool {
@@ -142,13 +171,15 @@ fn occurs(rule: &Rule, base: NaiveDate, date: NaiveDate) -> bool {
                 && (rule.weekdays.is_empty() || rule.weekdays.contains(&date.weekday()))
         }
         Frequency::Weekly => {
-            let days = (date - base).num_days();
             let weekdays = if rule.weekdays.is_empty() {
                 vec![base.weekday()]
             } else {
                 rule.weekdays.clone()
             };
-            (days / 7) % i64::from(rule.interval) == 0 && weekdays.contains(&date.weekday())
+            let week_start = rule.week_start.unwrap_or(Weekday::Mon);
+            let weeks =
+                (start_of_week(date, week_start) - start_of_week(base, week_start)).num_days() / 7;
+            weeks % i64::from(rule.interval) == 0 && weekdays.contains(&date.weekday())
         }
         Frequency::Monthly => {
             let months = (date.year() - base.year()) * 12
@@ -318,10 +349,37 @@ mod tests {
     #[test]
     fn supported_rules_are_normalized_and_advanced_fields_rejected() {
         assert_eq!(
-            normalize_rule(Some("RRULE:FREQ=WEEKLY;BYDAY=MO,WE;INTERVAL=2".into())).unwrap(),
-            Some("FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,WE".into())
+            normalize_rule(Some(
+                "RRULE:FREQ=WEEKLY;BYDAY=MO,WE;INTERVAL=2;WKST=SU".into()
+            ))
+            .unwrap(),
+            Some("FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,WE;WKST=SU".into())
         );
         assert!(normalize_rule(Some("FREQ=YEARLY".into())).is_err());
         assert!(normalize_rule(Some("FREQ=DAILY;COUNT=3".into())).is_err());
+        assert!(normalize_rule(Some("FREQ=WEEKLY;WKST=NO".into())).is_err());
+    }
+
+    #[test]
+    fn week_start_controls_multi_week_intervals() {
+        let mut event = event();
+        event.start_value = "2026-03-25T08:00:00.000Z".into();
+        event.end_value = "2026-03-25T09:00:00.000Z".into();
+        event.recurrence_rule = Some("FREQ=WEEKLY;INTERVAL=2;BYDAY=SU;WKST=SU".into());
+
+        let occurrences = expand(
+            &event,
+            NaiveDate::from_ymd_opt(2026, 3, 25).unwrap(),
+            NaiveDate::from_ymd_opt(2026, 4, 12).unwrap(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            occurrences
+                .iter()
+                .map(|occurrence| occurrence.0.as_str())
+                .collect::<Vec<_>>(),
+            vec!["2026-04-05"]
+        );
     }
 }

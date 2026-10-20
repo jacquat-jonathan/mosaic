@@ -398,6 +398,63 @@ fn ical_preview_import_export_and_overlay_deduplicate() {
 }
 
 #[test]
+fn ical_overlay_accepts_week_start_rules() {
+    let content = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:weekly@example.test\r\nDTSTART;TZID=Europe/Zurich:20260325T090000\r\nDTEND;TZID=Europe/Zurich:20260325T100000\r\nRRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY=SU;WKST=SU\r\nSUMMARY:Fortnightly sync\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+
+    let overlay = overlay_occurrences(
+        content,
+        "subscription",
+        "Team",
+        None,
+        "2026-03-25",
+        "2026-04-12",
+        "Europe/Zurich",
+    )
+    .unwrap();
+
+    assert_eq!(overlay.len(), 1);
+    assert_eq!(overlay[0].occurrence_key, "2026-04-05");
+}
+
+#[test]
+fn ical_overlay_replaces_recurring_exceptions_and_hides_cancellations() {
+    let content = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:series@example.test\r\nSEQUENCE:1\r\nDTSTART;TZID=Europe/Zurich:20260325T090000\r\nDTEND;TZID=Europe/Zurich:20260325T100000\r\nRRULE:FREQ=DAILY;UNTIL=20260328\r\nEXDATE;TZID=Europe/Zurich:20260328T090000\r\nSUMMARY:Daily sync\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nUID:series@example.test\r\nSEQUENCE:1\r\nRECURRENCE-ID;TZID=Europe/Zurich:20260326T090000\r\nDTSTART;TZID=Europe/Zurich:20260326T100000\r\nDTEND;TZID=Europe/Zurich:20260326T110000\r\nSUMMARY:Old sync time\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nUID:series@example.test\r\nSEQUENCE:2\r\nRECURRENCE-ID;TZID=Europe/Zurich:20260326T090000\r\nDTSTART;TZID=Europe/Zurich:20260326T110000\r\nDTEND;TZID=Europe/Zurich:20260326T120000\r\nSUMMARY:Updated sync time\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nUID:series@example.test\r\nSEQUENCE:2\r\nRECURRENCE-ID;TZID=Europe/Zurich:20260327T090000\r\nDTSTART;TZID=Europe/Zurich:20260327T090000\r\nDTEND;TZID=Europe/Zurich:20260327T100000\r\nSTATUS:CONFIRMED\r\nSUMMARY:Canceled: Daily sync\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+
+    let overlay = overlay_occurrences(
+        content,
+        "subscription",
+        "Team",
+        None,
+        "2026-03-25",
+        "2026-03-28",
+        "Europe/Zurich",
+    )
+    .unwrap();
+
+    assert_eq!(overlay.len(), 2);
+    assert_eq!(overlay[0].occurrence_key, "2026-03-25");
+    assert_eq!(overlay[1].occurrence_key, "2026-03-26");
+    assert_eq!(overlay[1].title, "Updated sync time");
+    assert_eq!(overlay[1].start_value, "2026-03-26T10:00:00.000Z");
+}
+
+#[test]
+fn ical_preview_keeps_latest_revision_and_omits_cancelled_events() {
+    let content = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:updated@example.test\r\nSEQUENCE:1\r\nDTSTAMP:20260320T080000Z\r\nDTSTART;TZID=Europe/Zurich:20260325T090000\r\nDTEND;TZID=Europe/Zurich:20260325T100000\r\nSUMMARY:Initial meeting\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nUID:updated@example.test\r\nSEQUENCE:2\r\nDTSTAMP:20260321T080000Z\r\nDTSTART;TZID=Europe/Zurich:20260325T110000\r\nDTEND;TZID=Europe/Zurich:20260325T120000\r\nSUMMARY:Updated meeting\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nUID:cancelled@example.test\r\nSEQUENCE:3\r\nDTSTART;TZID=Europe/Zurich:20260325T130000\r\nDTEND;TZID=Europe/Zurich:20260325T140000\r\nSTATUS:CANCELLED\r\nSUMMARY:Cancelled meeting\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+
+    let preview = in_memory()
+        .preview_ical_import("revision-test", content, "Europe/Zurich")
+        .unwrap();
+
+    assert_eq!(preview.candidates.len(), 1);
+    assert_eq!(preview.candidates[0].title, "Updated meeting");
+    assert_eq!(
+        preview.candidates[0].start_value,
+        "2026-03-25T10:00:00.000Z"
+    );
+}
+
+#[test]
 fn outlook_windows_timezones_are_normalized_to_iana() {
     let content = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:outlook@example.test\r\nDTSTART;TZID=W. Europe Standard Time:20261019T090000\r\nDTEND;TZID=\"W. Europe Standard Time\":20261019T100000\r\nSUMMARY:Outlook event\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
     let mut store = in_memory();

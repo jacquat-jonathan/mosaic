@@ -4,6 +4,14 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Calendar cards focus on the event name:** cards now show only the title, keep its beginning
+  anchored on the left, and wrap onto more lines when the card has enough height.
+- **Updated meetings appear once and cancelled meetings stay hidden:** calendar subscriptions now
+  replace an original recurring occurrence with its latest exception, honor excluded dates and
+  cancellations (including Outlook's `Canceled:` titles), and keep only the newest revision when a
+  feed contains several versions.
+- **Calendar subscriptions with custom week starts stay visible:** recurring events that include the
+  standard `WKST` setting now load correctly, including every-other-week schedules.
 - **Note files and links kept in focused parts of Mosaic's engine:** reading and changing files now
   goes through `FileService`, while backlinks, mentions and outlines go through `LinkService`. They
   share the same vault rules, history and index, so app, CLI and agent behavior stays unchanged.

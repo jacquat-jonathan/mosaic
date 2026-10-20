@@ -5081,6 +5081,11 @@ pre.template-preview {
 .planner-month-item[draggable="true"] {
   cursor: grab;
 }
+.planner-month-item.event-card {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
 .planner-month-drop-preview {
   display: block;
   min-width: 0;
@@ -5278,6 +5283,25 @@ pre.template-preview {
 }
 .planner-timed-item > span {
   color: var(--muted);
+}
+.planner-event-chip .planner-card-title,
+.planner-timed-item .planner-card-title {
+  display: block;
+  align-self: stretch;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  line-height: 1.2;
+  text-align: left;
+}
+.planner-timed-item.multiline-title .planner-card-title {
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .planner-week-drop-preview {
   position: absolute;

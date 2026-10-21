@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+## 0.25.0 — 2026-10-21
+
 - **Calendar cards focus on the event name:** cards now show only the title, keep its beginning
   anchored on the left, and wrap onto more lines when the card has enough height.
 - **Updated meetings appear once and cancelled meetings stay hidden:** calendar subscriptions now

@@ -78,6 +78,9 @@ export async function renderChart(source: string, el: HTMLElement, fromFile: str
   el.appendChild(target);
   await embed(target, spec as never, {
     actions: false,
+    // Use Vega's expression interpreter instead of generated functions. Tauri's CSP deliberately
+    // disallows `unsafe-eval`, so the default code-generation path cannot run in the app webview.
+    ast: true,
     renderer: "svg",
     theme: isDark() ? "dark" : undefined,
     config: { background: "transparent", view: { continuousWidth: 520, continuousHeight: 300, step: 44 } },

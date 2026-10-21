@@ -296,7 +296,7 @@ pub fn tessera_test_event(
 ) -> CmdResult<u64> {
     let ws = state.get()?;
     let agent = ws.agent(&name)?;
-    ws.read(&path)?;
+    ws.files.read(&path)?;
     let trigger = agent
         .on
         .iter()
@@ -324,6 +324,7 @@ pub fn tessera_test_event(
 /// creations, which also means there is intentionally no offline catch-up.
 pub fn reset_events(app: &AppHandle, ws: &Arc<mosaic_core::Workspace>) {
     let known = ws
+        .files
         .list("", true)
         .unwrap_or_default()
         .into_iter()
@@ -381,11 +382,12 @@ pub fn vault_changed(app: &AppHandle, ws: &Arc<mosaic_core::Workspace>, paths: &
         // to its source and require that source to have disappeared in the same watcher batch.
         let moved = recent_mosaic_move_source(ws, &path)
             .is_some_and(|(source, exact)| exact || removed_known.contains(&source));
-        if ws.read(&path).is_err() || moved {
+        if ws.files.read(&path).is_err() || moved {
             continue;
         }
         let chain = origin.unwrap_or_else(|| {
             let from_agent = ws
+                .files
                 .history(&path, 1)
                 .ok()
                 .and_then(|v| v.into_iter().next())
@@ -403,7 +405,7 @@ fn recent_mosaic_move_source(ws: &mosaic_core::Workspace, path: &str) -> Option<
     let now = Local::now().timestamp_millis();
     let mut candidate = path;
     loop {
-        if let Some(version) = ws.history(candidate, 3).ok().and_then(|versions| {
+        if let Some(version) = ws.files.history(candidate, 3).ok().and_then(|versions| {
             versions.into_iter().find(|version| {
                 version.action == "renamed"
                     && (0..=5_000).contains(&now.saturating_sub(version.time))
@@ -1119,9 +1121,10 @@ mod tests {
             Vault::open(dir.path()).unwrap(),
             Index::in_memory().unwrap(),
         );
-        ws.create("Daily/First.md", "# First").unwrap();
+        ws.files.create("Daily/First.md", "# First").unwrap();
         assert!(recent_mosaic_move_source(&ws, "Daily/First.md").is_none());
-        ws.rename("Daily/First.md", "Daily/Renamed.md", true)
+        ws.files
+            .rename("Daily/First.md", "Daily/Renamed.md", true)
             .unwrap();
         ws.refresh("Daily/Renamed.md").unwrap();
         assert_eq!(
@@ -1129,8 +1132,8 @@ mod tests {
             Some(("Daily/First.md".into(), true))
         );
 
-        ws.create("Inbox/Nested.md", "# Nested").unwrap();
-        ws.rename("Inbox", "Archive", true).unwrap();
+        ws.files.create("Inbox/Nested.md", "# Nested").unwrap();
+        ws.files.rename("Inbox", "Archive", true).unwrap();
         ws.refresh("Archive/Nested.md").unwrap();
         assert_eq!(
             recent_mosaic_move_source(&ws, "Archive/Nested.md"),

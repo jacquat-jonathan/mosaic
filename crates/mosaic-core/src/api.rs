@@ -1,5 +1,5 @@
-//! The single operation set every front end (Tauri app, CLI, MCP server) maps onto. It keeps the
-//! vault and its index consistent: every write re-indexes the touched files.
+//! The workspace services every front end (Tauri app, CLI, MCP server) maps onto. They share one
+//! context so the vault, permissions, history and index stay consistent across every operation.
 
 use crate::error::{Error, Result};
 use crate::history::{Action, History, Source, Version};
@@ -13,12 +13,24 @@ use crate::vault::{Entry, FileContent, Vault, Written, normalize};
 use regex::Regex;
 use serde::Serialize;
 use std::collections::{BTreeSet, HashMap};
-use std::sync::{Mutex, MutexGuard, OnceLock};
+use std::ops::Deref;
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
 pub struct Workspace {
-    pub vault: Vault,
+    ctx: Arc<Context>,
+    /// Vault file operations, history and rename/link-rewrite coordination.
+    pub files: FileService,
+    /// Backlinks, unlinked mentions and note outlines.
+    pub links: LinkService,
     /// Epics, tasks, work sessions and calendar events (see `planner::PlannerService`).
     pub planner: PlannerService,
+}
+
+/// State shared by the workspace's services. `Workspace` dereferences to this context so existing
+/// integrations that inspect `ws.vault` keep working while file and link operations move behind
+/// their focused services.
+pub struct Context {
+    pub vault: Vault,
     /// Set once a full sync finished: only then does the index reflect the whole vault.
     synced: std::sync::atomic::AtomicBool,
     index: Mutex<Index>,
@@ -32,16 +44,51 @@ pub struct Workspace {
     /// Why the history is only in memory this session, when it couldn't be opened on disk.
     history_problem: OnceLock<String>,
     /// Who changes files through this workspace: the app, the CLI or an agent.
-    source: Source,
+    source: Mutex<Source>,
     /// The agent's name (MCP client), once known.
     actor: Mutex<Option<String>>,
     /// Folder rules for agents given directly instead of read from the settings (tests).
-    fixed_rules: Option<Vec<AgentRule>>,
+    fixed_rules: Mutex<Option<Vec<AgentRule>>>,
     /// While an agent operation runs (see `freeze_rules`), the rules it read first, so every check
     /// in that operation sees the same rules even if the person edits them meanwhile.
     frozen_rules: Mutex<FrozenRules>,
     /// Direct-write paths for one scheduled run; other writes become proposals.
-    change_allowlist: Option<Vec<String>>,
+    change_allowlist: Mutex<Option<Vec<String>>>,
+}
+
+#[derive(Clone)]
+pub struct FileService {
+    ctx: Arc<Context>,
+}
+
+#[derive(Clone)]
+pub struct LinkService {
+    ctx: Arc<Context>,
+    files: FileService,
+}
+
+impl Deref for Workspace {
+    type Target = Context;
+
+    fn deref(&self) -> &Self::Target {
+        &self.ctx
+    }
+}
+
+impl Deref for FileService {
+    type Target = Context;
+
+    fn deref(&self) -> &Self::Target {
+        &self.ctx
+    }
+}
+
+impl Deref for LinkService {
+    type Target = Context;
+
+    fn deref(&self) -> &Self::Target {
+        &self.ctx
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -51,7 +98,7 @@ pub struct Renamed {
     /// Other files whose links were rewritten to follow the move.
     pub updated_links_in: Vec<String>,
     /// Files whose links couldn't be rewritten, and why. The move itself happened; the app offers
-    /// **Fix links** for it (`Workspace::fix_links`).
+    /// **Fix links** for it (`FileService::fix_links`).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub failed_links_in: Vec<FailedLink>,
     /// Set when the rename is waiting for review rather than applied.
@@ -148,21 +195,45 @@ impl Workspace {
     }
 
     fn with_history(vault: Vault, index: Index, history: History) -> Self {
+        Self::assemble(vault, index, Some(history), None, None)
+    }
+
+    fn assemble(
+        vault: Vault,
+        index: Index,
+        history: Option<History>,
+        history_root: Option<std::path::PathBuf>,
+        planner_root: Option<std::path::PathBuf>,
+    ) -> Self {
         let reader = index.open_reader().map(Mutex::new);
-        Workspace {
+        let history = history
+            .map(Mutex::new)
+            .map(OnceLock::from)
+            .unwrap_or_default();
+        let ctx = Arc::new(Context {
             vault,
-            planner: PlannerService::new(None),
             synced: Default::default(),
             reader,
             index: Mutex::new(index),
-            history: OnceLock::from(Mutex::new(history)),
-            history_root: None,
+            history,
+            history_root,
             history_problem: OnceLock::new(),
-            source: Source::App,
+            source: Mutex::new(Source::App),
             actor: Mutex::new(None),
-            fixed_rules: None,
+            fixed_rules: Mutex::new(None),
             frozen_rules: Mutex::default(),
-            change_allowlist: None,
+            change_allowlist: Mutex::new(None),
+        });
+        let files = FileService { ctx: ctx.clone() };
+        let links = LinkService {
+            ctx: ctx.clone(),
+            files: files.clone(),
+        };
+        Workspace {
+            ctx,
+            files,
+            links,
+            planner: PlannerService::new(planner_root),
         }
     }
 
@@ -182,26 +253,23 @@ impl Workspace {
     }
 
     /// Uses these folder rules for agents instead of the ones in the settings (tests).
-    pub fn with_agent_rules(mut self, rules: Vec<AgentRule>) -> Self {
-        self.fixed_rules = Some(rules);
+    pub fn with_agent_rules(self, rules: Vec<AgentRule>) -> Self {
+        *self.fixed_rules.lock().unwrap_or_else(|p| p.into_inner()) = Some(rules);
         self
     }
 
     /// Restricts this agent workspace to direct writes below these vault-relative paths.
-    pub fn with_change_allowlist(mut self, paths: Vec<String>) -> Self {
-        self.change_allowlist = Some(
+    pub fn with_change_allowlist(self, paths: Vec<String>) -> Self {
+        *self
+            .change_allowlist
+            .lock()
+            .unwrap_or_else(|p| p.into_inner()) = Some(
             paths
                 .into_iter()
                 .filter_map(|p| normalize(p.trim_matches('/')).ok())
                 .collect(),
         );
         self
-    }
-
-    pub(crate) fn change_allowed(&self, path: &str) -> bool {
-        self.change_allowlist
-            .as_ref()
-            .is_none_or(|allowed| allowed.iter().any(|p| rule_covers(p, path)))
     }
 
     /// Opens a vault with its index in Caches (in memory if that fails) and its history in
@@ -211,11 +279,13 @@ impl Workspace {
         let vault = Vault::open(root)?;
         let index = Index::open_for(&vault).or_else(|_| Index::in_memory())?;
         let root = vault.root().to_path_buf();
-        let mut workspace = Self::new(vault, index);
-        workspace.history = OnceLock::new();
-        workspace.history_root = Some(root.clone());
-        workspace.planner = PlannerService::new(Some(root));
-        Ok(workspace)
+        Ok(Self::assemble(
+            vault,
+            index,
+            None,
+            Some(root.clone()),
+            Some(root),
+        ))
     }
 
     /// Why undo history and proposals won't outlast this session, if they won't. Opens the history
@@ -226,9 +296,19 @@ impl Workspace {
     }
 
     /// Who changes files through this workspace (recorded in the history). The app is the default.
-    pub fn with_source(mut self, source: Source) -> Self {
-        self.source = source;
+    pub fn with_source(self, source: Source) -> Self {
+        *self.source.lock().unwrap_or_else(|p| p.into_inner()) = source;
         self
+    }
+}
+
+impl Context {
+    pub(crate) fn change_allowed(&self, path: &str) -> bool {
+        self.change_allowlist
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .as_ref()
+            .is_none_or(|allowed| allowed.iter().any(|p| rule_covers(p, path)))
     }
 
     /// The agent's name, shown in the AI activity log (e.g. the MCP client "claude-code").
@@ -263,7 +343,10 @@ impl Workspace {
     }
 
     pub(crate) fn source(&self) -> Source {
-        self.source.clone()
+        self.source
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .clone()
     }
 
     pub(crate) fn actor(&self) -> Option<String> {
@@ -274,10 +357,15 @@ impl Workspace {
     /// settings.json can't be read the rules are unknown, so agents are denied rather than let
     /// through as if there were none.
     pub(crate) fn rules(&self) -> Result<Vec<AgentRule>> {
-        if self.source == Source::App {
+        if self.source() == Source::App {
             return Ok(Vec::new());
         }
-        if let Some(rules) = &self.fixed_rules {
+        if let Some(rules) = self
+            .fixed_rules
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .as_ref()
+        {
             return Ok(rules.clone());
         }
         let mut frozen = self.frozen_rules.lock().unwrap_or_else(|p| p.into_inner());
@@ -294,7 +382,9 @@ impl Workspace {
         }
         Ok(rules)
     }
+}
 
+impl Workspace {
     /// Reads the folder rules at most once until the guard is dropped: front ends hold one for
     /// each agent request (an MCP tool call, a CLI command), so all of its checks agree.
     pub fn freeze_rules(&self) -> RulesFrozen<&Self> {
@@ -305,7 +395,9 @@ impl Workspace {
     pub fn frozen(ws: std::sync::Arc<Self>) -> RulesFrozen<std::sync::Arc<Self>> {
         RulesFrozen::new(ws)
     }
+}
 
+impl Context {
     pub(crate) fn visible(rules: &[AgentRule], path: &str) -> bool {
         access_for(rules, path) != Some(Access::Hidden)
     }
@@ -313,7 +405,7 @@ impl Workspace {
     /// A hidden path reads as "not found", so agents can't tell it exists.
     pub(crate) fn check_read(&self, path: &str) -> Result<()> {
         let norm = normalize(path)?;
-        if Self::visible(&self.rules()?, &self.vault.canonical_rel(&norm)?) {
+        if Context::visible(&self.rules()?, &self.vault.canonical_rel(&norm)?) {
             Ok(())
         } else {
             Err(Error::NotFound(norm))
@@ -363,7 +455,7 @@ impl Workspace {
         };
         match self.text_of(&norm) {
             Some((text, hash)) => {
-                let _ = self.hist().keep_before(&norm, &text, &hash, &self.source);
+                let _ = self.hist().keep_before(&norm, &text, &hash, &self.source());
                 true
             }
             None => self.vault.stat(&norm).is_ok(),
@@ -372,7 +464,7 @@ impl Workspace {
 
     /// After a change: records the file's new content.
     fn record(&self, path: &str, action: Action) {
-        self.record_as(path, action, &self.source, self.actor().as_deref());
+        self.record_as(path, action, &self.source(), self.actor().as_deref());
     }
 
     /// Records a change using the identity that caused it. Review acceptance uses this to retain
@@ -385,15 +477,22 @@ impl Workspace {
         }
     }
 
-    /// Refuse malformed canvases, drawings, charts and JSON on write, with an error saying what's
-    /// wrong. For agent front ends (CLI, MCP); the app saves half-typed files while someone edits.
-    pub fn validating(mut self) -> Self {
-        self.vault.set_validate(true);
-        self
-    }
-
     pub fn index(&self) -> MutexGuard<'_, Index> {
         self.index.lock().unwrap_or_else(|p| p.into_inner())
+    }
+
+    pub(crate) fn reindex(&self, path: &str) {
+        // Index errors never fail a successful file operation; the next sync repairs them.
+        let _ = self.index().update_path(&self.vault, path);
+    }
+}
+
+impl Workspace {
+    /// Refuse malformed canvases, drawings, charts and JSON on write, with an error saying what's
+    /// wrong. For agent front ends (CLI, MCP); the app saves half-typed files while someone edits.
+    pub fn validating(self) -> Self {
+        self.vault.set_validate(true);
+        self
     }
 
     /// Brings the index up to date with the disk. The vault is walked without the index lock, and
@@ -431,17 +530,14 @@ impl Workspace {
         }
         self.index().update_path(&self.vault, path)
     }
+}
 
-    pub(crate) fn reindex(&self, path: &str) {
-        // Index errors never fail a successful file operation; the next sync repairs them.
-        let _ = self.index().update_path(&self.vault, path);
-    }
-
+impl FileService {
     pub fn list(&self, dir: &str, recursive: bool) -> Result<Vec<Entry>> {
         self.check_read(dir)?;
         let rules = self.rules()?;
         let mut entries = self.vault.list(dir, recursive)?;
-        entries.retain(|e| Self::visible(&rules, &e.path));
+        entries.retain(|e| Context::visible(&rules, &e.path));
         Ok(entries)
     }
 
@@ -467,7 +563,9 @@ impl Workspace {
         self.reindex(&w.path);
         Ok(w)
     }
+}
 
+impl Workspace {
     pub fn vault_preferences(&self) -> Result<crate::preferences::VaultPreferences> {
         let raw = Settings::try_load()
             .map_err(|e| Error::io("settings.json", e))?
@@ -491,7 +589,7 @@ impl Workspace {
 
     /// A partial update preserves both unrelated and unknown settings.
     pub fn set_vault_preferences(&self, patch: serde_json::Value) -> Result<()> {
-        if self.source != Source::App {
+        if self.source() != Source::App {
             return Err(Error::Denied(
                 "Vault preferences are configured only in Settings".into(),
             ));
@@ -536,7 +634,7 @@ impl Workspace {
     }
 
     pub fn set_template_config(&self, config: crate::templates::TemplateConfig) -> Result<()> {
-        if self.source != Source::App {
+        if self.source() != Source::App {
             return Err(Error::Denied(
                 "Template defaults are configured only in Settings".into(),
             ));
@@ -564,6 +662,7 @@ impl Workspace {
             self.check_read(t)?;
         }
         let mut templates: Vec<_> = self
+            .files
             .list("", true)?
             .into_iter()
             .filter(|e| {
@@ -594,14 +693,16 @@ impl Workspace {
     ) -> Result<crate::templates::CreatedNote> {
         self.check_write(&request.path)?;
         let preview = self.render_template(request)?;
-        let written = self.create(&preview.path, &preview.content)?;
+        let written = self.files.create(&preview.path, &preview.content)?;
         Ok(crate::templates::CreatedNote {
             written,
             template: preview.template,
             rule_folder: preview.rule_folder,
         })
     }
+}
 
+impl FileService {
     pub fn write(&self, path: &str, content: &str, expected_hash: Option<&str>) -> Result<Written> {
         self.check_write(path)?;
         let norm = normalize(path)?;
@@ -815,7 +916,7 @@ impl Workspace {
                 &p,
                 Some(&text),
                 &hash,
-                &self.source,
+                &self.source(),
                 actor.as_deref(),
                 Action::Deleted,
                 None,
@@ -881,7 +982,7 @@ impl Workspace {
     pub fn activity(&self, limit: usize) -> Result<Vec<Version>> {
         let rules = self.rules()?;
         let mut list = self.hist().activity(limit)?;
-        list.retain(|v| Self::visible(&rules, &v.path));
+        list.retain(|v| Context::visible(&rules, &v.path));
         Ok(list)
     }
 
@@ -962,7 +1063,9 @@ impl Workspace {
             ))),
         }
     }
+}
 
+impl Workspace {
     pub fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchHit>> {
         let rules = self.rules()?;
         if rules.is_empty() {
@@ -970,7 +1073,7 @@ impl Workspace {
         }
         // Ask for more, so hidden hits don't leave the agent with a short list.
         let mut hits = self.reading().search(query, limit + 100)?;
-        hits.retain(|h| Self::visible(&rules, &h.path));
+        hits.retain(|h| Context::visible(&rules, &h.path));
         hits.truncate(limit);
         Ok(hits)
     }
@@ -980,17 +1083,21 @@ impl Workspace {
     pub fn query(&self, query: &str) -> Result<crate::query::QueryResult> {
         let q = crate::query::parse(query)?;
         let rules = self.rules()?;
-        q.run(&self.reading(), |p| Self::visible(&rules, p))
+        q.run(&self.reading(), |p| Context::visible(&rules, p))
     }
+}
 
+impl LinkService {
     pub fn backlinks(&self, path: &str) -> Result<Vec<Backlink>> {
         self.check_read(path)?;
         let rules = self.rules()?;
         let mut list = self.reading().backlinks(&normalize(path)?)?;
-        list.retain(|b| Self::visible(&rules, &b.source));
+        list.retain(|b| Context::visible(&rules, &b.source));
         Ok(list)
     }
+}
 
+impl Workspace {
     /// Tags with counts. With hidden folders, only notes agents can see are counted.
     pub fn tags(&self) -> Result<Vec<TagCount>> {
         let rules = self.rules()?;
@@ -1011,14 +1118,16 @@ impl Workspace {
     pub fn paths_with_tag(&self, tag: &str) -> Result<Vec<String>> {
         let rules = self.rules()?;
         let mut paths = self.reading().paths_with_tag(tag)?;
-        paths.retain(|p| Self::visible(&rules, p));
+        paths.retain(|p| Context::visible(&rules, p));
         Ok(paths)
     }
 
     pub fn aliases(&self) -> Result<Vec<(String, String)>> {
         self.reading().aliases()
     }
+}
 
+impl LinkService {
     /// Notes that mention `path`'s title or aliases without linking to it (at most `limit` notes).
     pub fn unlinked_mentions(&self, path: &str, limit: usize) -> Result<Vec<Mention>> {
         let norm = normalize(path)?;
@@ -1049,7 +1158,7 @@ impl Workspace {
                 if h.path == norm
                     || linking.contains(&h.path)
                     || !h.path.to_lowercase().ends_with(".md")
-                    || !Self::visible(&rules, &h.path)
+                    || !Context::visible(&rules, &h.path)
                     || !seen.insert(h.path.clone())
                 {
                     continue;
@@ -1080,7 +1189,7 @@ impl Workspace {
         text: &str,
         target: &str,
     ) -> Result<Written> {
-        let file = self.read(source)?;
+        let file = self.files.read(source)?;
         let content = file
             .content
             .ok_or_else(|| Error::NotText(source.to_string()))?;
@@ -1108,7 +1217,7 @@ impl Workspace {
             + at;
         let mut out = content.clone();
         out.replace_range(start..start + matched.len(), &link);
-        self.write(&file.path, &out, Some(&file.hash))
+        self.files.write(&file.path, &out, Some(&file.hash))
     }
 
     /// Cheap structural overview of a file — what an AI should read before deciding to load it all.
@@ -1137,7 +1246,7 @@ impl Workspace {
         let rules = self.rules()?;
         let index = self.reading();
         let mut backlinks = index.backlinks(&file.path)?;
-        backlinks.retain(|b| Self::visible(&rules, &b.source));
+        backlinks.retain(|b| Context::visible(&rules, &b.source));
         Ok(Outline {
             links: index.outlinks(&file.path)?,
             backlinks,
@@ -1152,7 +1261,9 @@ impl Workspace {
             headings,
         })
     }
+}
 
+impl FileService {
     /// Moves or renames a file or folder. With `update_links`, every link pointing at a moved file
     /// (and relative Markdown links inside moved notes) is rewritten, as Obsidian does.
     pub fn rename(&self, from: &str, to: &str, update_links: bool) -> Result<Renamed> {
@@ -1164,7 +1275,7 @@ impl Workspace {
             return self.propose_rename(&from, &to_n, update_links);
         }
         let actor = self.actor();
-        self.rename_direct(&from, &to_n, update_links, &self.source, actor.as_deref())
+        self.rename_direct(&from, &to_n, update_links, &self.source(), actor.as_deref())
             .map(|(renamed, _)| renamed)
     }
 
@@ -1228,7 +1339,7 @@ impl Workspace {
             if !blocked.is_empty() {
                 let shown: Vec<&str> = blocked
                     .iter()
-                    .filter(|p| Self::visible(&rules, p))
+                    .filter(|p| Context::visible(&rules, p))
                     .map(|p| p.as_str())
                     .collect();
                 return Err(Error::Denied(format!(
@@ -1500,7 +1611,7 @@ impl Workspace {
             &op.sources,
             &moved_before,
             &map_path,
-            &self.source,
+            &self.source(),
             actor.as_deref(),
         );
         for p in &updated {
@@ -1653,7 +1764,7 @@ mod tests {
     }
 
     fn text(w: &Workspace, p: &str) -> String {
-        w.read(p).unwrap().content.unwrap()
+        w.files.read(p).unwrap().content.unwrap()
     }
 
     #[test]
@@ -1687,8 +1798,8 @@ mod tests {
         let warning = w.history_warning().expect("a warning");
         assert!(warning.contains("vault.json"), "{warning}");
         // Notes still work, with history for this session only.
-        w.write("Ideas.md", "changed", None).unwrap();
-        assert!(!w.history("Ideas.md", 5).unwrap().is_empty());
+        w.files.write("Ideas.md", "changed", None).unwrap();
+        assert!(!w.files.history("Ideas.md", 5).unwrap().is_empty());
         assert_eq!(
             std::fs::read_to_string(d.path().join(".mosaic/vault.json")).unwrap(),
             "{ half"
@@ -1731,20 +1842,21 @@ mod tests {
     #[test]
     fn board_states_preserve_tasks_and_reject_stale_cards() {
         let (_d, w) = ws();
-        w.create("Board.md", "# Board\r\n1. [ ] Ship [[Plan]] 📅 2026-10-10 ^ship\r\n\t- [ ] Review #urgent  \r\n- [>] Moved\r\n```\n- [ ] Fake\n```\n").unwrap();
-        w.set_task_workflow(
-            "Board.md",
-            2,
-            "Ship [[Plan]] 📅 2026-10-10 ^ship",
-            "new",
-            "in-progress",
-        )
-        .unwrap();
+        w.files.create("Board.md", "# Board\r\n1. [ ] Ship [[Plan]] 📅 2026-10-10 ^ship\r\n\t- [ ] Review #urgent  \r\n- [>] Moved\r\n```\n- [ ] Fake\n```\n").unwrap();
+        w.files
+            .set_task_workflow(
+                "Board.md",
+                2,
+                "Ship [[Plan]] 📅 2026-10-10 ^ship",
+                "new",
+                "in-progress",
+            )
+            .unwrap();
         assert!(text(&w, "Board.md").contains(
             "1. [ ] Ship [[Plan]] 📅 2026-10-10 <!-- mosaic:state=in-progress --> ^ship\r\n"
         ));
         assert!(matches!(
-            w.set_task_workflow(
+            w.files.set_task_workflow(
                 "Board.md",
                 2,
                 "Ship [[Plan]] 📅 2026-10-10 ^ship",
@@ -1753,7 +1865,8 @@ mod tests {
             ),
             Err(Error::Conflict { .. })
         ));
-        w.set_task_workflow("Board.md", 3, "Review #urgent", "new", "done")
+        w.files
+            .set_task_workflow("Board.md", 3, "Review #urgent", "new", "done")
             .unwrap();
         assert!(text(&w, "Board.md").contains("\t- [x] Review #urgent  \r\n"));
         let result = w.query("task:all workflow=done").unwrap();
@@ -1761,59 +1874,67 @@ mod tests {
         let task = result.rows[0].task.as_ref().unwrap();
         assert_eq!(task.text, "Review #urgent");
         assert_eq!(task.parent, Some(2));
-        w.set_task("Board.md", 3, "Review #urgent", false).unwrap();
+        w.files
+            .set_task("Board.md", 3, "Review #urgent", false)
+            .unwrap();
         assert!(text(&w, "Board.md").contains("\t- [ ] Review #urgent  \r\n"));
         assert!(
-            w.set_task_workflow("Board.md", 4, "Moved", "new", "blocked")
+            w.files
+                .set_task_workflow("Board.md", 4, "Moved", "new", "blocked")
                 .is_err()
         );
         assert!(
-            w.set_task_workflow("Board.md", 6, "Fake", "new", "blocked")
+            w.files
+                .set_task_workflow("Board.md", 6, "Fake", "new", "blocked")
                 .is_err()
         );
         assert!(
-            w.set_task_workflow("Board.md", 2, "Changed label", "in-progress", "done")
+            w.files
+                .set_task_workflow("Board.md", 2, "Changed label", "in-progress", "done")
                 .is_err()
         );
         assert!(
-            w.set_task_workflow(
+            w.files
+                .set_task_workflow(
+                    "Board.md",
+                    2,
+                    "Ship [[Plan]] 📅 2026-10-10 ^ship",
+                    "in-progress",
+                    "unknown"
+                )
+                .is_err()
+        );
+        w.files
+            .set_task_workflow(
                 "Board.md",
                 2,
                 "Ship [[Plan]] 📅 2026-10-10 ^ship",
                 "in-progress",
-                "unknown"
+                "new",
             )
-            .is_err()
-        );
-        w.set_task_workflow(
-            "Board.md",
-            2,
-            "Ship [[Plan]] 📅 2026-10-10 ^ship",
-            "in-progress",
-            "new",
-        )
-        .unwrap();
+            .unwrap();
         assert!(!text(&w, "Board.md").contains("mosaic:state="));
     }
 
     #[test]
     fn ticking_a_task_from_a_query() {
         let (d, w) = ws();
-        w.create("Day.md", "# Day\r\n- [ ] Write\r\n    - [ ] Sub\r\n")
+        w.files
+            .create("Day.md", "# Day\r\n- [ ] Write\r\n    - [ ] Sub\r\n")
             .unwrap();
-        w.set_task("Day.md", 3, "Sub", true).unwrap();
+        w.files.set_task("Day.md", 3, "Sub", true).unwrap();
         assert_eq!(
             std::fs::read_to_string(d.path().join("Day.md")).unwrap(),
             "# Day\r\n- [ ] Write\r\n    - [x] Sub\r\n"
         );
-        w.set_task("Day.md", 3, "Sub", false).unwrap();
+        w.files.set_task("Day.md", 3, "Sub", false).unwrap();
         // The line moved or holds another task: refused, nothing written.
         assert!(matches!(
-            w.set_task("Day.md", 2, "Sub", true),
+            w.files.set_task("Day.md", 2, "Sub", true),
             Err(Error::Conflict { .. })
         ));
         assert!(matches!(
-            w.set_task("Day.md", 9, "Sub", true),
+            w.files.set_task("Day.md", 9, "Sub", true),
             Err(Error::Conflict { .. })
         ));
         assert!(
@@ -1826,16 +1947,18 @@ mod tests {
     #[test]
     fn writes_are_indexed_immediately() {
         let (_d, w) = ws();
-        w.create("New.md", "Links to [[Ideas]] about #zebra")
+        w.files
+            .create("New.md", "Links to [[Ideas]] about #zebra")
             .unwrap();
         assert_eq!(w.search("zebra", 5).unwrap()[0].path, "New.md");
         assert!(
-            w.backlinks("Ideas.md")
+            w.links
+                .backlinks("Ideas.md")
                 .unwrap()
                 .iter()
                 .any(|b| b.source == "New.md")
         );
-        w.patch("New.md", "zebra", "okapi", None).unwrap();
+        w.files.patch("New.md", "zebra", "okapi", None).unwrap();
         assert!(w.search("zebra", 5).unwrap().is_empty());
     }
 
@@ -1843,19 +1966,35 @@ mod tests {
     fn import_never_overwrites_and_numbers_like_finder() {
         let (_d, w) = ws();
         let png = [0x89, b'P', b'N', b'G', 0];
-        assert_eq!(w.import("img/a.png", &png).unwrap().path, "img/a.png");
-        assert_eq!(w.import("img/a.png", &png).unwrap().path, "img/a 1.png");
-        assert_eq!(w.import("img/a.png", &png).unwrap().path, "img/a 2.png");
-        assert_eq!(w.import("Ideas.md", b"x").unwrap().path, "Ideas 1.md");
-        assert_eq!(w.import("v1.0/README", b"x").unwrap().path, "v1.0/README");
-        assert_eq!(w.import("v1.0/README", b"x").unwrap().path, "v1.0/README 1");
-        assert_eq!(w.import(".env", b"x").unwrap_err().code(), "invalid_path");
+        assert_eq!(w.files.import("img/a.png", &png).unwrap().path, "img/a.png");
+        assert_eq!(
+            w.files.import("img/a.png", &png).unwrap().path,
+            "img/a 1.png"
+        );
+        assert_eq!(
+            w.files.import("img/a.png", &png).unwrap().path,
+            "img/a 2.png"
+        );
+        assert_eq!(w.files.import("Ideas.md", b"x").unwrap().path, "Ideas 1.md");
+        assert_eq!(
+            w.files.import("v1.0/README", b"x").unwrap().path,
+            "v1.0/README"
+        );
+        assert_eq!(
+            w.files.import("v1.0/README", b"x").unwrap().path,
+            "v1.0/README 1"
+        );
+        assert_eq!(
+            w.files.import(".env", b"x").unwrap_err().code(),
+            "invalid_path"
+        );
     }
 
     #[test]
     fn renaming_a_note_updates_links_everywhere() {
         let (_d, w) = ws();
         let r = w
+            .files
             .rename("Ideas.md", "Thoughts/Brainstorm.md", true)
             .unwrap();
         assert_eq!(r.path, "Thoughts/Brainstorm.md");
@@ -1877,7 +2016,8 @@ mod tests {
         );
         assert!(r.updated_links_in.contains(&"Home.md".to_string()));
         assert!(
-            w.backlinks("Thoughts/Brainstorm.md")
+            w.links
+                .backlinks("Thoughts/Brainstorm.md")
                 .unwrap()
                 .iter()
                 .any(|b| b.source == "Home.md")
@@ -1887,7 +2027,8 @@ mod tests {
     #[test]
     fn moving_a_note_fixes_its_own_relative_markdown_links() {
         let (_d, w) = ws();
-        w.rename("Projects/Mosaic/Plan.md", "Plan.md", true)
+        w.files
+            .rename("Projects/Mosaic/Plan.md", "Plan.md", true)
             .unwrap();
         let plan = text(&w, "Plan.md");
         assert!(plan.contains("[Ideas](Ideas.md)"), "{plan}");
@@ -1898,17 +2039,19 @@ mod tests {
     #[test]
     fn renaming_a_folder_updates_links_into_it() {
         let (_d, w) = ws();
-        w.rename("Projects", "Work", true).unwrap();
+        w.files.rename("Projects", "Work", true).unwrap();
         // Only one "Plan" exists, so the shortest form is used (Obsidian's default).
         assert!(text(&w, "Home.md").contains("[[Plan|the plan]]"));
         assert!(
-            w.backlinks("Work/Mosaic/Plan.md")
+            w.links
+                .backlinks("Work/Mosaic/Plan.md")
                 .unwrap()
                 .iter()
                 .any(|b| b.source == "Home.md")
         );
         assert!(
-            w.backlinks("Ideas.md")
+            w.links
+                .backlinks("Ideas.md")
                 .unwrap()
                 .iter()
                 .any(|b| b.source == "Work/Mosaic/Plan.md")
@@ -1919,7 +2062,7 @@ mod tests {
     fn unrelated_files_and_frontmatter_are_untouched() {
         let (_d, w) = ws();
         let before = text(&w, "Daily/2026-09-30.md");
-        w.rename("Ideas.md", "Ideas2.md", true).unwrap();
+        w.files.rename("Ideas.md", "Ideas2.md", true).unwrap();
         assert_eq!(text(&w, "Daily/2026-09-30.md"), before);
         assert!(text(&w, "Home.md").starts_with(
             "---\naliases: [Start, Index]\ntags: [hub]\ncustom_key: keep me exactly\n---"
@@ -1929,7 +2072,7 @@ mod tests {
     #[test]
     fn outline_summarises_a_note() {
         let (_d, w) = ws();
-        let o = w.outline("Home.md").unwrap();
+        let o = w.links.outline("Home.md").unwrap();
         assert_eq!(o.title, "Home");
         assert_eq!(o.aliases, vec!["Start", "Index"]);
         assert!(
@@ -1943,10 +2086,10 @@ mod tests {
     #[test]
     fn renaming_a_folder_updates_file_cards_of_a_canvas_inside_it() {
         let (_d, w) = ws();
-        w.create("Test/Plan.md", "# Plan").unwrap();
+        w.files.create("Test/Plan.md", "# Plan").unwrap();
         let canvas = r#"{"nodes":[{"id":"a","type":"file","file":"Test/Plan.md","x":0,"y":0,"width":10,"height":10}],"edges":[]}"#;
-        w.create("Test/Map.canvas", canvas).unwrap();
-        let r = w.rename("Test", "Documentation", true).unwrap();
+        w.files.create("Test/Map.canvas", canvas).unwrap();
+        let r = w.files.rename("Test", "Documentation", true).unwrap();
         assert!(
             r.updated_links_in
                 .contains(&"Documentation/Map.canvas".to_string()),
@@ -1967,8 +2110,10 @@ mod tests {
     fn agent_edits_are_logged_and_undone() {
         let (_d, w) = agent_ws();
         let before = text(&w, "Ideas.md");
-        w.patch("Ideas.md", "Ideas", "Thoughts", None).unwrap();
-        let act = w.activity(10).unwrap();
+        w.files
+            .patch("Ideas.md", "Ideas", "Thoughts", None)
+            .unwrap();
+        let act = w.files.activity(10).unwrap();
         assert_eq!(
             (
                 act[0].path.as_str(),
@@ -1978,49 +2123,52 @@ mod tests {
             ("Ideas.md", "edited", Some("claude-code"))
         );
         // The version before the agent's edit is kept.
-        let hist = w.history("Ideas.md", 10).unwrap();
+        let hist = w.files.history("Ideas.md", 10).unwrap();
         assert_eq!(
             hist.iter().map(|v| v.action.as_str()).collect::<Vec<_>>(),
             ["edited", "before"]
         );
-        w.undo(act[0].id).unwrap();
+        w.files.undo(act[0].id).unwrap();
         assert_eq!(text(&w, "Ideas.md"), before);
     }
 
     #[test]
     fn undo_refuses_when_the_file_changed_since() {
         let (_d, w) = agent_ws();
-        w.append("Ideas.md", "agent line").unwrap();
-        let id = w.activity(1).unwrap()[0].id;
-        w.append("Ideas.md", "human line").unwrap();
-        assert!(matches!(w.undo(id), Err(Error::Conflict { .. })));
+        w.files.append("Ideas.md", "agent line").unwrap();
+        let id = w.files.activity(1).unwrap()[0].id;
+        w.files.append("Ideas.md", "human line").unwrap();
+        assert!(matches!(w.files.undo(id), Err(Error::Conflict { .. })));
     }
 
     #[test]
     fn undo_reverses_create_delete_and_rename() {
         let (_d, w) = agent_ws();
-        w.create("New.md", "hello").unwrap();
-        let created = w.activity(1).unwrap()[0].id;
-        w.undo(created).unwrap();
-        assert!(w.read("New.md").is_err());
+        w.files.create("New.md", "hello").unwrap();
+        let created = w.files.activity(1).unwrap()[0].id;
+        w.files.undo(created).unwrap();
+        assert!(w.files.read("New.md").is_err());
 
         let home = text(&w, "Home.md");
-        w.delete("Home.md").unwrap();
-        let deleted = w.activity(1).unwrap()[0].id;
-        w.undo(deleted).unwrap();
+        w.files.delete("Home.md").unwrap();
+        let deleted = w.files.activity(1).unwrap()[0].id;
+        w.files.undo(deleted).unwrap();
         assert_eq!(text(&w, "Home.md"), home);
 
-        w.rename("Ideas.md", "Archive/Ideas.md", true).unwrap();
+        w.files
+            .rename("Ideas.md", "Archive/Ideas.md", true)
+            .unwrap();
         let moved = w
+            .files
             .activity(10)
             .unwrap()
             .into_iter()
             .find(|v| v.action == "renamed")
             .unwrap()
             .id;
-        w.undo(moved).unwrap();
-        assert!(w.read("Ideas.md").is_ok());
-        assert!(w.read("Archive/Ideas.md").is_err());
+        w.files.undo(moved).unwrap();
+        assert!(w.files.read("Ideas.md").is_ok());
+        assert!(w.files.read("Archive/Ideas.md").is_err());
     }
 
     #[test]
@@ -2028,15 +2176,18 @@ mod tests {
         let (d, w) = ws();
         std::fs::write(d.path().join("Ideas.md"), "changed in another editor").unwrap();
         w.refresh("Ideas.md").unwrap();
-        let hist = w.history("Ideas.md", 10).unwrap();
+        let hist = w.files.history("Ideas.md", 10).unwrap();
         assert_eq!(
             (hist[0].source.as_str(), hist[0].action.as_str()),
             ("external", "before")
         );
-        w.write("Ideas.md", "mine", None).unwrap();
-        w.restore("Ideas.md", hist[0].id, None).unwrap();
+        w.files.write("Ideas.md", "mine", None).unwrap();
+        w.files.restore("Ideas.md", hist[0].id, None).unwrap();
         assert_eq!(text(&w, "Ideas.md"), "changed in another editor");
-        assert_eq!(w.history("Ideas.md", 1).unwrap()[0].action, "restored");
+        assert_eq!(
+            w.files.history("Ideas.md", 1).unwrap()[0].action,
+            "restored"
+        );
     }
 
     #[test]
@@ -2056,10 +2207,11 @@ mod tests {
         assert!(found.unwrap() > 0);
         drop(writer);
         // The reader sees the writer's later changes.
-        w.create("Zebra.md", "zebra stripes").unwrap();
+        w.files.create("Zebra.md", "zebra stripes").unwrap();
         assert_eq!(w.search("zebra", 5).unwrap()[0].path, "Zebra.md");
         assert!(
-            w.backlinks("Ideas.md")
+            w.links
+                .backlinks("Ideas.md")
                 .unwrap()
                 .iter()
                 .all(|b| !b.source.is_empty())
@@ -2069,10 +2221,13 @@ mod tests {
     #[test]
     fn alias_links_stay_when_their_note_moves() {
         let (_d, w) = ws();
-        w.create("Note.md", "---\naliases: [Start]\n---\n# Note")
+        w.files
+            .create("Note.md", "---\naliases: [Start]\n---\n# Note")
             .unwrap();
-        w.create("Other.md", "See [[Start]] and [[Note]]").unwrap();
-        w.rename("Note.md", "Archive/Note.md", true).unwrap();
+        w.files
+            .create("Other.md", "See [[Start]] and [[Note]]")
+            .unwrap();
+        w.files.rename("Note.md", "Archive/Note.md", true).unwrap();
         let other = text(&w, "Other.md");
         assert!(other.contains("[[Start]]"), "alias link kept: {other}");
     }
@@ -2087,24 +2242,32 @@ mod tests {
             vec![(4, 4, "plan".to_string()), (6, 22, "Plan".to_string())]
         );
         let (_d, w) = ws();
-        w.create("Roadmap.md", "# Roadmap").unwrap();
-        w.create(
-            "Notes.md",
-            "Talked about the roadmap today.\nAlready linked elsewhere: no.",
-        )
-        .unwrap();
-        w.create("Linked.md", "See [[Roadmap]], the roadmap.")
+        w.files.create("Roadmap.md", "# Roadmap").unwrap();
+        w.files
+            .create(
+                "Notes.md",
+                "Talked about the roadmap today.\nAlready linked elsewhere: no.",
+            )
             .unwrap();
-        let m = w.unlinked_mentions("Roadmap.md", 10).unwrap();
+        w.files
+            .create("Linked.md", "See [[Roadmap]], the roadmap.")
+            .unwrap();
+        let m = w.links.unlinked_mentions("Roadmap.md", 10).unwrap();
         assert_eq!(m.len(), 1, "a note that already links isn't listed: {m:?}");
         assert_eq!(
             (m[0].source.as_str(), m[0].line, m[0].text.as_str()),
             ("Notes.md", 1, "roadmap")
         );
-        w.link_mention("Notes.md", 1, "roadmap", "Roadmap.md")
+        w.links
+            .link_mention("Notes.md", 1, "roadmap", "Roadmap.md")
             .unwrap();
         assert!(text(&w, "Notes.md").starts_with("Talked about the [[Roadmap|roadmap]] today."));
-        assert!(w.unlinked_mentions("Roadmap.md", 10).unwrap().is_empty());
+        assert!(
+            w.links
+                .unlinked_mentions("Roadmap.md", 10)
+                .unwrap()
+                .is_empty()
+        );
     }
 
     /// A vault where three notes link to `A.md`, with its history in a file so a restart sees it.
@@ -2141,7 +2304,7 @@ mod tests {
     fn a_link_that_cant_be_rewritten_is_reported_and_can_be_fixed_later() {
         let (d, _db, w) = linked_vault();
         lock(d.path(), true);
-        let renamed = w.rename("A.md", "B.md", true);
+        let renamed = w.files.rename("A.md", "B.md", true);
         lock(d.path(), false);
 
         // The move happened and the other notes followed; the failure is reported, not an error.
@@ -2155,18 +2318,18 @@ mod tests {
         assert_eq!(renamed.failed_links_in[0].path, "Locked/Two.md");
         assert_eq!(text(&w, "Locked/Two.md"), "See [[A]].");
 
-        let open = w.unfinished_renames().unwrap();
+        let open = w.files.unfinished_renames().unwrap();
         assert_eq!(
             (open.len(), open[0].from.as_str(), open[0].to.as_str()),
             (1, "A.md", "B.md")
         );
-        let fixed = w.fix_links(open[0].id).unwrap();
+        let fixed = w.files.fix_links(open[0].id).unwrap();
         assert_eq!(fixed.updated_links_in, vec!["Locked/Two.md"]);
         assert!(fixed.failed_links_in.is_empty());
         assert_eq!(text(&w, "Locked/Two.md"), "See [[B]].");
         assert_eq!(text(&w, "Notes/One.md"), "See [[B]].");
-        assert!(w.unfinished_renames().unwrap().is_empty());
-        assert!(w.fix_links(open[0].id).is_err());
+        assert!(w.files.unfinished_renames().unwrap().is_empty());
+        assert!(w.files.fix_links(open[0].id).is_err());
     }
 
     #[test]
@@ -2184,14 +2347,14 @@ mod tests {
             &db,
         );
         w.sync(|_, _| {}).unwrap();
-        let open = w.unfinished_renames().unwrap();
+        let open = w.files.unfinished_renames().unwrap();
         assert_eq!(open.len(), 1);
-        let fixed = w.fix_links(open[0].id).unwrap();
+        let fixed = w.files.fix_links(open[0].id).unwrap();
         assert_eq!(fixed.updated_links_in.len(), 3);
         for p in sources {
             assert_eq!(text(&w, &p), "See [[B]].");
         }
-        assert!(w.unfinished_renames().unwrap().is_empty());
+        assert!(w.files.unfinished_renames().unwrap().is_empty());
     }
 
     #[test]
@@ -2201,19 +2364,19 @@ mod tests {
             .hist()
             .begin_rename("A.md", "B.md", &["Notes/One.md".to_string()])
             .unwrap();
-        let fixed = w.fix_links(id).unwrap();
+        let fixed = w.files.fix_links(id).unwrap();
         assert_eq!(fixed.path, "A.md");
         assert!(fixed.updated_links_in.is_empty());
         assert_eq!(text(&w, "Notes/One.md"), "See [[A]].");
-        assert!(w.unfinished_renames().unwrap().is_empty());
+        assert!(w.files.unfinished_renames().unwrap().is_empty());
     }
 
     #[test]
     fn a_complete_move_leaves_nothing_to_fix() {
         let (_d, _db, w) = linked_vault();
-        let renamed = w.rename("A.md", "B.md", true).unwrap();
+        let renamed = w.files.rename("A.md", "B.md", true).unwrap();
         assert_eq!(renamed.updated_links_in.len(), 3);
         assert!(renamed.failed_links_in.is_empty());
-        assert!(w.unfinished_renames().unwrap().is_empty());
+        assert!(w.files.unfinished_renames().unwrap().is_empty());
     }
 }

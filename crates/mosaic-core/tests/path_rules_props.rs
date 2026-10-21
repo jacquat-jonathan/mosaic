@@ -169,13 +169,13 @@ proptest! {
         path.push_str(if dots[1] { "//" } else { "/" });
         path.push_str(&respell(file, &flips, nfd));
 
-        let read = ws.read(&path);
+        let read = ws.files.read(&path);
         if target == 0 {
             prop_assert!(read.is_err(), "{path} read a hidden file");
         }
         if target == 1 {
-            prop_assert!(ws.write(&path, "changed", None).is_err(), "{path} wrote a read-only file");
-            prop_assert!(ws.append(&path, "changed").is_err());
+            prop_assert!(ws.files.write(&path, "changed", None).is_err(), "{path} wrote a read-only file");
+            prop_assert!(ws.files.append(&path, "changed").is_err());
         }
         prop_assert_eq!(std::fs::read_to_string(dir.path().join("Private/Salary.md")).unwrap(), "secret");
         prop_assert_eq!(std::fs::read_to_string(dir.path().join(format!("{CAFE_NFC}/Menu.md"))).unwrap(), "menu");

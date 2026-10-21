@@ -88,3 +88,37 @@ test("accept an agent's proposal from review", async ({ page }) => {
   await page.getByRole("treeitem", { name: /^Welcome/ }).click();
   await expect(page.locator(".cm-content")).toContainText("Rewritten by an agent.");
 });
+
+test("calendar event cards only wrap titles when they have room for another line", async ({ page }) => {
+  await openVault(page);
+  await page.getByRole("tab", { name: "Plan" }).click();
+  await page.getByRole("button", { name: "Calendar", exact: true }).click();
+  await page.getByRole("tab", { name: "Week", exact: true }).click();
+
+  const card = page.locator(".planner-timed-item.overlay"),
+    title = card.locator(".planner-card-title");
+  await expect(card).toBeVisible();
+  await expect(card).toHaveText("Design sync");
+  await expect(title).toHaveCSS("text-align", "left");
+  await expect(card).toHaveCSS("height", "30px");
+  await expect(title).toHaveCSS("white-space", "nowrap");
+  const bounds = await card.evaluate((element) => {
+    const cardBounds = element.getBoundingClientRect(),
+      titleBounds = element.querySelector(".planner-card-title")?.getBoundingClientRect();
+    return titleBounds
+      ? {
+          cardLeft: cardBounds.left,
+          cardRight: cardBounds.right,
+          titleLeft: titleBounds.left,
+          titleRight: titleBounds.right,
+        }
+      : null;
+  });
+  expect(bounds).not.toBeNull();
+  expect(bounds!.titleLeft).toBeGreaterThanOrEqual(bounds!.cardLeft);
+  expect(bounds!.titleRight).toBeLessThanOrEqual(bounds!.cardRight);
+
+  await page.setViewportSize({ width: 1280, height: 1200 });
+  await expect(card).toHaveClass(/multiline-title/);
+  await expect(title).toHaveCSS("white-space", "normal");
+});

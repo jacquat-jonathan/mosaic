@@ -9,13 +9,23 @@ use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::UNIX_EPOCH;
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Vault {
     root: PathBuf,
     /// Refuse malformed canvases, drawings, charts and JSON (see `validate`). Off for the app.
-    validate: bool,
+    validate: AtomicBool,
+}
+
+impl Clone for Vault {
+    fn clone(&self) -> Self {
+        Self {
+            root: self.root.clone(),
+            validate: AtomicBool::new(self.validate.load(Ordering::Relaxed)),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -139,7 +149,7 @@ impl Vault {
         }
         Ok(Vault {
             root,
-            validate: false,
+            validate: AtomicBool::new(false),
         })
     }
 
@@ -335,12 +345,12 @@ impl Vault {
     }
 
     /// Turns on checking of structured files on write (for the CLI and MCP server).
-    pub fn set_validate(&mut self, on: bool) {
-        self.validate = on;
+    pub fn set_validate(&self, on: bool) {
+        self.validate.store(on, Ordering::Relaxed);
     }
 
     fn check_content(&self, norm: &str, content: &str) -> Result<()> {
-        if self.validate {
+        if self.validate.load(Ordering::Relaxed) {
             crate::validate::check(norm, content)
         } else {
             Ok(())

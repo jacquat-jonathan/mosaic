@@ -5,7 +5,7 @@
 //! that file builds on it (its reads see the proposed content), so a multi-step edit is reviewed
 //! as one diff. Accepted changes are applied and logged as the agent's, so they can still be undone.
 
-use crate::api::Workspace;
+use crate::api::{Context, Workspace};
 use crate::error::{Error, Result};
 use crate::history::{Action, History, Source, now_ms};
 use crate::kind::FileKind;
@@ -246,7 +246,7 @@ fn not_reviewable(path: &str, what: &str) -> Error {
     ))
 }
 
-impl Workspace {
+impl Context {
     /// Whether this workspace's changes to `norm` become proposals (agents and the CLI, in a
     /// folder under review).
     pub(crate) fn in_review(&self, norm: &str) -> bool {
@@ -521,7 +521,9 @@ impl Workspace {
             }
         }
     }
+}
 
+impl Workspace {
     /// The person's review of agents' proposals (see `ReviewService`).
     pub fn review(&self) -> ReviewService<'_> {
         ReviewService { ws: self }
@@ -632,9 +634,13 @@ impl ReviewService<'_> {
             let to = p.to_path.clone().ok_or_else(|| {
                 Error::Invalid(format!("proposal {id} has no rename destination"))
             })?;
-            let (out, version_id) =
-                self.ws
-                    .rename_direct(&p.path, &to, p.update_links, &source, p.actor.as_deref())?;
+            let (out, version_id) = self.ws.files.rename_direct(
+                &p.path,
+                &to,
+                p.update_links,
+                &source,
+                p.actor.as_deref(),
+            )?;
             self.ws
                 .hist()
                 .accepted(id, current != p.base_hash, version_id)?;
@@ -754,22 +760,23 @@ mod tests {
     #[test]
     fn agent_edits_become_one_proposal_until_accepted() {
         let (dir, app, agent) = setup();
-        let r = agent.read("Reviewed/Plan.md").unwrap();
+        let r = agent.files.read("Reviewed/Plan.md").unwrap();
         let w = agent
+            .files
             .patch("Reviewed/Plan.md", "- one", "- one\n- two", Some(&r.hash))
             .unwrap();
         let id = w.review.expect("proposed, not written");
         assert_eq!(disk(&dir, "Reviewed/Plan.md").unwrap(), "# Plan\n- one\n");
         // The agent keeps working on its proposal: reads see it, edits stack on it.
-        let seen = agent.read("Reviewed/Plan.md").unwrap();
+        let seen = agent.files.read("Reviewed/Plan.md").unwrap();
         assert_eq!(
             (seen.content.as_deref(), seen.review),
             (Some("# Plan\n- one\n- two\n"), Some(id))
         );
-        let w2 = agent.append("Reviewed/Plan.md", "- three\n").unwrap();
+        let w2 = agent.files.append("Reviewed/Plan.md", "- three\n").unwrap();
         assert_eq!(w2.review, Some(id));
         // The app sees the file as it is, and one pending proposal.
-        assert_eq!(app.read("Reviewed/Plan.md").unwrap().review, None);
+        assert_eq!(app.files.read("Reviewed/Plan.md").unwrap().review, None);
         let list = app.review().list(false, 10).unwrap();
         assert_eq!(list.len(), 1);
         assert_eq!(
@@ -791,7 +798,7 @@ mod tests {
             "# Plan\n- one\n- two\n- three\n"
         );
         // Logged as the agent's change, so it can be undone.
-        let act = app.activity(5).unwrap();
+        let act = app.files.activity(5).unwrap();
         assert_eq!(
             (
                 act[0].source.as_str(),
@@ -806,12 +813,16 @@ mod tests {
             ("accepted", false)
         );
         // The person undoes it in AI activity: the agent sees that its change is gone.
-        app.undo(act[0].id).unwrap();
+        app.files.undo(act[0].id).unwrap();
         assert_eq!(disk(&dir, "Reviewed/Plan.md").unwrap(), "# Plan\n- one\n");
         assert_eq!(agent.review().list(true, 10).unwrap()[0].status, "undone");
         // Outside the review folder, agents write directly.
         assert_eq!(
-            agent.write("Free.md", "changed\n", None).unwrap().review,
+            agent
+                .files
+                .write("Free.md", "changed\n", None)
+                .unwrap()
+                .review,
             None
         );
     }
@@ -823,6 +834,7 @@ mod tests {
         // The allowlist does not weaken the person's existing Review rule.
         assert!(
             agent
+                .files
                 .write("Reviewed/Plan.md", "changed\n", None)
                 .unwrap()
                 .review
@@ -831,6 +843,7 @@ mod tests {
         // A path outside may-change is proposed too, even though it is normally free.
         assert!(
             agent
+                .files
                 .write("Free.md", "changed\n", None)
                 .unwrap()
                 .review
@@ -846,7 +859,11 @@ mod tests {
         .with_change_allowlist(vec!["Allowed".into()]);
         std::fs::create_dir_all(dir.path().join("Allowed")).unwrap();
         assert_eq!(
-            direct.create("Allowed/New.md", "ok\n").unwrap().review,
+            direct
+                .files
+                .create("Allowed/New.md", "ok\n")
+                .unwrap()
+                .review,
             None
         );
     }
@@ -855,6 +872,7 @@ mod tests {
     fn person_can_accept_selected_text_hunks() {
         let (dir, app, agent) = setup();
         let w = agent
+            .files
             .write("Reviewed/Plan.md", "# Plan\n- changed\n- extra\n", None)
             .unwrap();
         app.review()
@@ -870,19 +888,19 @@ mod tests {
     #[test]
     fn creations_deletions_conflicts_and_rejections() {
         let (dir, app, agent) = setup();
-        let w = agent.create("Reviewed/New.md", "hello\n").unwrap();
+        let w = agent.files.create("Reviewed/New.md", "hello\n").unwrap();
         assert!(w.review.is_some() && disk(&dir, "Reviewed/New.md").is_none());
         assert!(matches!(
-            agent.create("Reviewed/New.md", "again"),
+            agent.files.create("Reviewed/New.md", "again"),
             Err(Error::AlreadyExists(_))
         ));
         // Deleting a file that was only proposed drops the proposal.
-        agent.delete("Reviewed/New.md").unwrap();
+        agent.files.delete("Reviewed/New.md").unwrap();
         assert!(app.review().list(false, 10).unwrap().is_empty());
         // A proposed deletion, rejected with a reason the agent can read.
-        agent.delete("Reviewed/Plan.md").unwrap();
+        agent.files.delete("Reviewed/Plan.md").unwrap();
         assert!(matches!(
-            agent.read("Reviewed/Plan.md"),
+            agent.files.read("Reviewed/Plan.md"),
             Err(Error::NotFound(_))
         ));
         let p = &app.review().list(false, 10).unwrap()[0];
@@ -896,6 +914,7 @@ mod tests {
         );
         // The person edits the file after the proposal: accepting needs force.
         let w = agent
+            .files
             .write("Reviewed/Plan.md", "# Plan v2\n", None)
             .unwrap();
         std::fs::write(
@@ -918,9 +937,13 @@ mod tests {
             ("accepted", true)
         );
         // Renames and binary additions wait for review too.
-        app.write("Free.md", "See [[Reviewed/Plan]]\n", None)
+        app.files
+            .write("Free.md", "See [[Reviewed/Plan]]\n", None)
             .unwrap();
-        let rename = agent.rename("Reviewed/Plan.md", "Plan.md", true).unwrap();
+        let rename = agent
+            .files
+            .rename("Reviewed/Plan.md", "Plan.md", true)
+            .unwrap();
         let rename_id = rename.review.unwrap();
         assert!(disk(&dir, "Reviewed/Plan.md").is_some());
         let p = app
@@ -938,7 +961,7 @@ mod tests {
         assert!(disk(&dir, "Reviewed/Plan.md").is_none());
         assert!(disk(&dir, "Plan.md").is_some());
         assert_eq!(disk(&dir, "Free.md").as_deref(), Some("See [[Plan]]\n"));
-        let activity = app.activity(10).unwrap();
+        let activity = app.files.activity(10).unwrap();
         let rename_change = activity
             .iter()
             .find(|v| v.action == "renamed" && v.path == "Plan.md")
@@ -958,7 +981,7 @@ mod tests {
             (link_change.source.as_str(), link_change.actor.as_deref()),
             ("agent", Some("claude-code"))
         );
-        app.undo(rename_change.id).unwrap();
+        app.files.undo(rename_change.id).unwrap();
         assert!(disk(&dir, "Reviewed/Plan.md").is_some());
         assert!(disk(&dir, "Plan.md").is_none());
         // The shorter link still resolves after moving the note back, so it stays short.
@@ -975,7 +998,7 @@ mod tests {
             "undone"
         );
 
-        let binary = agent.import("Reviewed/pic.png", b"png").unwrap();
+        let binary = agent.files.import("Reviewed/pic.png", b"png").unwrap();
         let binary_id = binary.review.unwrap();
         assert!(!dir.path().join("Reviewed/pic.png").exists());
         assert!(
@@ -990,6 +1013,9 @@ mod tests {
             std::fs::read(dir.path().join("Reviewed/pic.png")).unwrap(),
             b"png"
         );
-        assert!(matches!(agent.delete("Reviewed"), Err(Error::Denied(_))));
+        assert!(matches!(
+            agent.files.delete("Reviewed"),
+            Err(Error::Denied(_))
+        ));
     }
 }

@@ -28,6 +28,7 @@ import {
 import { TASK_DRAG } from "./UnscheduledTray";
 
 const MIN_HOUR_HEIGHT = 40;
+const MIN_MULTILINE_TITLE_HEIGHT = 34;
 const HOURS = visibleCalendarHours();
 const hourLabel = (hour: number) => {
   const whole = Math.floor(hour),
@@ -267,8 +268,7 @@ export function WeekView({
                   }}
                   onClick={() => onEvent(event.series_id, event.occurrence_key)}
                 >
-                  {event.recurring ? "↻ " : ""}
-                  {event.title}
+                  <span className="planner-card-title">{event.title}</span>
                 </button>
               ))}
               {external.map((item) => (
@@ -278,8 +278,7 @@ export function WeekView({
                   key={`${item.source_id}:${item.uid}:${item.occurrence_key}`}
                   onClick={() => onOverlay(item)}
                 >
-                  🔒 {item.title}
-                  <small>{item.source_name}</small>
+                  <span className="planner-card-title">{item.title}</span>
                 </button>
               ))}
               {sessions.map((item) => (
@@ -552,7 +551,7 @@ function TimedItem({
       <div
         role="button"
         tabIndex={0}
-        className="planner-timed-item event"
+        className={`planner-timed-item event${height >= MIN_MULTILINE_TITLE_HEIGHT ? " multiline-title" : ""}`}
         draggable
         style={style}
         onDragStart={(drag) => {
@@ -579,11 +578,7 @@ function TimedItem({
           }
         }}
       >
-        <strong>{event.title}</strong>
-        <span>
-          {event.recurring ? "↻ " : ""}
-          {hourLabel(item.start)}
-        </span>
+        <strong className="planner-card-title">{event.title}</strong>
         {handle}
       </div>
     );
@@ -591,11 +586,12 @@ function TimedItem({
   if (item.kind === "overlay") {
     const overlay = item.overlay as CalendarOverlayOccurrence;
     return (
-      <button className="planner-timed-item overlay" style={style} onClick={() => onOverlay(overlay)}>
-        <strong>🔒 {overlay.title}</strong>
-        <span>
-          {overlay.source_name} · {hourLabel(item.start)}
-        </span>
+      <button
+        className={`planner-timed-item overlay${height >= MIN_MULTILINE_TITLE_HEIGHT ? " multiline-title" : ""}`}
+        style={style}
+        onClick={() => onOverlay(overlay)}
+      >
+        <strong className="planner-card-title">{overlay.title}</strong>
       </button>
     );
   }

@@ -220,7 +220,7 @@ pub fn render(
                 "Choose a Markdown template inside the configured Templates folder".into(),
             ));
         }
-        let file = ws.read(t)?;
+        let file = ws.files.read(t)?;
         if let Some(expected) = &req.expected_template_hash
             && &file.hash != expected
         {
@@ -290,11 +290,12 @@ mod tests {
             Vault::open(dir.path()).unwrap(),
             Index::in_memory().unwrap(),
         );
-        ws.create(
-            "Templates/Retro.md",
-            "# {{title}}\nDate: {{date}}\n{{unknown}}\n",
-        )
-        .unwrap();
+        ws.files
+            .create(
+                "Templates/Retro.md",
+                "# {{title}}\nDate: {{date}}\n{{unknown}}\n",
+            )
+            .unwrap();
         let config = TemplateConfig {
             rules: vec![TemplateRule {
                 folder: "Meetings".into(),
@@ -313,12 +314,14 @@ mod tests {
             "# Sprint 5\nDate: 2026-10-08\n{{unknown}}\n"
         );
         request.expected_template_hash = preview.template_hash;
-        ws.write("Templates/Retro.md", "new source", None).unwrap();
+        ws.files
+            .write("Templates/Retro.md", "new source", None)
+            .unwrap();
         assert!(matches!(
             render(&ws, &config, &request),
             Err(Error::Conflict { .. })
         ));
-        assert!(ws.read("Meetings/Sprint 5.md").is_err());
+        assert!(ws.files.read("Meetings/Sprint 5.md").is_err());
         request.expected_template_hash = None;
         request.blank = true;
         assert_eq!(render(&ws, &config, &request).unwrap().content, "");

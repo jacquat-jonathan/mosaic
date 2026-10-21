@@ -77,7 +77,7 @@ impl Action {
 }
 
 /// A move whose link rewrites didn't all finish (some failed, or Mosaic stopped half-way). Its
-/// links can be fixed later by running the rewrite again (`Workspace::fix_links`).
+/// links can be fixed later by running the rewrite again (`crate::api::FileService::fix_links`).
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct UnfinishedRename {

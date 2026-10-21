@@ -213,7 +213,7 @@ fn set_bookmarks(state: State<AppState>, paths: Vec<String>) -> CmdResult<()> {
 #[tauri::command(async)]
 #[specta::specta]
 fn copy_path(state: State<AppState>, from: String, to: String) -> CmdResult<Written> {
-    state.get()?.copy(&from, &to)
+    state.get()?.files.copy(&from, &to)
 }
 
 /// Adds a file dropped from Finder. The bytes come as the raw request body (no JSON round trip for
@@ -229,7 +229,7 @@ fn import_file(state: State<AppState>, request: tauri::ipc::Request<'_>) -> CmdR
         .and_then(|v| v.to_str().ok())
         .and_then(percent_decode)
         .ok_or_else(|| Error::Invalid("import_file needs an x-path header".into()))?;
-    state.get()?.import(&path, bytes)
+    state.get()?.files.import(&path, bytes)
 }
 
 /// Undoes JavaScript's `encodeURIComponent`.
@@ -262,13 +262,13 @@ fn last_vault() -> Option<PathBuf> {
 #[tauri::command(async)]
 #[specta::specta]
 fn list_dir(state: State<AppState>, dir: String, recursive: bool) -> CmdResult<Vec<Entry>> {
-    state.get()?.list(&dir, recursive)
+    state.get()?.files.list(&dir, recursive)
 }
 
 #[tauri::command(async)]
 #[specta::specta]
 fn read_file(state: State<AppState>, path: String) -> CmdResult<FileContent> {
-    state.get()?.read(&path)
+    state.get()?.files.read(&path)
 }
 
 #[tauri::command(async)]
@@ -283,7 +283,7 @@ fn create_file(
     if root.is_some_and(|root| ws.vault.root().to_string_lossy() != root) {
         return Err(Error::Invalid("The vault changed. Reopen the form.".into()));
     }
-    ws.create(&path, &content)
+    ws.files.create(&path, &content)
 }
 
 #[tauri::command(async)]
@@ -359,38 +359,38 @@ fn write_file(
     if root.is_some_and(|root| ws.vault.root().to_string_lossy() != root) {
         return Err(Error::Invalid("The vault changed. Reopen the form.".into()));
     }
-    ws.write(&path, &content, expected_hash.as_deref())
+    ws.files.write(&path, &content, expected_hash.as_deref())
 }
 
 #[tauri::command(async)]
 #[specta::specta]
 fn make_dir(state: State<AppState>, path: String) -> CmdResult<()> {
-    state.get()?.mkdir(&path)
+    state.get()?.files.mkdir(&path)
 }
 
 #[tauri::command(async)]
 #[specta::specta]
 fn rename_path(state: State<AppState>, from: String, to: String) -> CmdResult<Renamed> {
-    state.get()?.rename(&from, &to, true)
+    state.get()?.files.rename(&from, &to, true)
 }
 
 /// Moves whose link rewrites didn't all finish; the app offers **Fix links** for each.
 #[tauri::command(async)]
 #[specta::specta]
 fn unfinished_renames(state: State<AppState>) -> CmdResult<Vec<UnfinishedRename>> {
-    state.get()?.unfinished_renames()
+    state.get()?.files.unfinished_renames()
 }
 
 #[tauri::command(async)]
 #[specta::specta]
 fn fix_links(state: State<AppState>, id: i64) -> CmdResult<Renamed> {
-    state.get()?.fix_links(id)
+    state.get()?.files.fix_links(id)
 }
 
 #[tauri::command(async)]
 #[specta::specta]
 fn delete_path(state: State<AppState>, path: String) -> CmdResult<()> {
-    state.get()?.delete(&path).map(|_| ())
+    state.get()?.files.delete(&path).map(|_| ())
 }
 
 /// Opens the macOS print dialog for the window ("Save as PDF" is in it). The UI shows only the
@@ -406,7 +406,7 @@ fn print_window(window: tauri::WebviewWindow) -> CmdResult<()> {
 #[tauri::command(async)]
 #[specta::specta]
 fn unlinked_mentions(state: State<AppState>, path: String) -> CmdResult<Vec<Mention>> {
-    state.get()?.unlinked_mentions(&path, 30)
+    state.get()?.links.unlinked_mentions(&path, 30)
 }
 
 #[tauri::command(async)]
@@ -418,19 +418,22 @@ fn link_mention(
     text: String,
     target: String,
 ) -> CmdResult<Written> {
-    state.get()?.link_mention(&source, line, &text, &target)
+    state
+        .get()?
+        .links
+        .link_mention(&source, line, &text, &target)
 }
 
 #[tauri::command(async)]
 #[specta::specta]
 fn file_history(state: State<AppState>, path: String) -> CmdResult<Vec<Version>> {
-    state.get()?.history(&path, 50)
+    state.get()?.files.history(&path, 50)
 }
 
 #[tauri::command(async)]
 #[specta::specta]
 fn version_content(state: State<AppState>, id: i64) -> CmdResult<String> {
-    state.get()?.version_content(id)
+    state.get()?.files.version_content(id)
 }
 
 #[tauri::command(async)]
@@ -441,19 +444,22 @@ fn restore_version(
     id: i64,
     expected_hash: Option<String>,
 ) -> CmdResult<Written> {
-    state.get()?.restore(&path, id, expected_hash.as_deref())
+    state
+        .get()?
+        .files
+        .restore(&path, id, expected_hash.as_deref())
 }
 
 #[tauri::command(async)]
 #[specta::specta]
 fn ai_activity(state: State<AppState>, limit: Option<usize>) -> CmdResult<Vec<Version>> {
-    state.get()?.activity(limit.unwrap_or(200))
+    state.get()?.files.activity(limit.unwrap_or(200))
 }
 
 #[tauri::command(async)]
 #[specta::specta]
 fn undo_change(state: State<AppState>, id: i64) -> CmdResult<String> {
-    state.get()?.undo(id)
+    state.get()?.files.undo(id)
 }
 
 #[tauri::command(async)]
@@ -572,7 +578,7 @@ fn set_task(
     text: String,
     done: bool,
 ) -> CmdResult<Written> {
-    state.get()?.set_task(&path, line, &text, done)
+    state.get()?.files.set_task(&path, line, &text, done)
 }
 
 #[tauri::command(async)]
@@ -587,6 +593,7 @@ fn set_task_workflow(
 ) -> CmdResult<Written> {
     state
         .get()?
+        .files
         .set_task_workflow(&path, line, &text, &expected_state, &next)
 }
 
@@ -602,7 +609,7 @@ fn query_notes(
 #[tauri::command(async)]
 #[specta::specta]
 fn backlinks(state: State<AppState>, path: String) -> CmdResult<Vec<Backlink>> {
-    state.get()?.backlinks(&path)
+    state.get()?.links.backlinks(&path)
 }
 
 #[tauri::command(async)]
@@ -620,7 +627,7 @@ fn aliases(state: State<AppState>) -> CmdResult<Vec<(String, String)>> {
 #[tauri::command(async)]
 #[specta::specta]
 fn outline(state: State<AppState>, path: String) -> CmdResult<Outline> {
-    state.get()?.outline(&path)
+    state.get()?.links.outline(&path)
 }
 
 #[derive(Serialize, specta::Type)]

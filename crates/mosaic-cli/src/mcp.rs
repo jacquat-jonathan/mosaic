@@ -416,6 +416,7 @@ impl MosaicMcp {
     )]
     async fn list_files(&self, Parameters(a): Parameters<ListArgs>) -> ToolResult {
         self.ws()
+            .files
             .list(&a.dir, a.recursive)
             .map_err(err)
             .and_then(ok)
@@ -425,7 +426,7 @@ impl MosaicMcp {
         description = "Read a file. Returns its content (null for binary files) and a hash to pass as expected_hash when editing."
     )]
     async fn read_file(&self, Parameters(a): Parameters<PathArg>) -> ToolResult {
-        self.ws().read(&a.path).map_err(err).and_then(ok)
+        self.ws().files.read(&a.path).map_err(err).and_then(ok)
     }
 
     #[tool(
@@ -433,7 +434,7 @@ impl MosaicMcp {
     )]
     async fn outline(&self, Parameters(a): Parameters<PathArg>) -> ToolResult {
         self.fresh();
-        self.ws().outline(&a.path).map_err(err).and_then(ok)
+        self.ws().links.outline(&a.path).map_err(err).and_then(ok)
     }
 
     #[tool(
@@ -514,6 +515,7 @@ impl MosaicMcp {
     )]
     async fn create_file(&self, Parameters(a): Parameters<CreateArgs>) -> ToolResult {
         self.ws()
+            .files
             .create(&a.path, &a.content)
             .map_err(err)
             .and_then(written)
@@ -564,6 +566,7 @@ impl MosaicMcp {
     )]
     async fn edit_file(&self, Parameters(a): Parameters<EditArgs>) -> ToolResult {
         self.ws()
+            .files
             .write(&a.path, &a.content, a.expected_hash.as_deref())
             .map_err(err)
             .and_then(written)
@@ -574,6 +577,7 @@ impl MosaicMcp {
     )]
     async fn patch_file(&self, Parameters(a): Parameters<PatchArgs>) -> ToolResult {
         self.ws()
+            .files
             .patch(&a.path, &a.find, &a.replace, a.expected_hash.as_deref())
             .map_err(err)
             .and_then(written)
@@ -584,6 +588,7 @@ impl MosaicMcp {
     )]
     async fn append_to_file(&self, Parameters(a): Parameters<AppendArgs>) -> ToolResult {
         self.ws()
+            .files
             .append(&a.path, &a.content)
             .map_err(err)
             .and_then(written)
@@ -595,6 +600,7 @@ impl MosaicMcp {
     async fn rename(&self, Parameters(a): Parameters<RenameArgs>) -> ToolResult {
         self.fresh();
         self.ws()
+            .files
             .rename(&a.from, &a.to, a.update_links.unwrap_or(true))
             .map_err(err)
             .and_then(ok)
@@ -606,6 +612,7 @@ impl MosaicMcp {
     async fn move_files(&self, Parameters(a): Parameters<MoveArgs>) -> ToolResult {
         self.fresh();
         self.ws()
+            .files
             .move_into(&a.paths, &a.folder)
             .map_err(err)
             .and_then(ok)
@@ -625,7 +632,11 @@ impl MosaicMcp {
                 bytes.len() / 1_048_576
             ))));
         }
-        self.ws().import(&a.path, &bytes).map_err(err).and_then(ok)
+        self.ws()
+            .files
+            .import(&a.path, &bytes)
+            .map_err(err)
+            .and_then(ok)
     }
 
     #[tool(
@@ -633,6 +644,7 @@ impl MosaicMcp {
     )]
     async fn copy_file(&self, Parameters(a): Parameters<CopyArgs>) -> ToolResult {
         self.ws()
+            .files
             .copy(&a.from, &a.to)
             .map_err(err)
             .and_then(written)
@@ -640,7 +652,7 @@ impl MosaicMcp {
 
     #[tool(description = "Move a file or folder to the macOS Trash (recoverable).")]
     async fn delete_file(&self, Parameters(a): Parameters<PathArg>) -> ToolResult {
-        match self.ws().delete(&a.path).map_err(err)? {
+        match self.ws().files.delete(&a.path).map_err(err)? {
             Some(id) => {
                 ok(serde_json::json!({ "path": a.path, "review": id, "note": REVIEW_NOTE }))
             }
@@ -651,6 +663,7 @@ impl MosaicMcp {
     #[tool(description = "Create a folder (and any missing parents).")]
     async fn create_folder(&self, Parameters(a): Parameters<PathArg>) -> ToolResult {
         self.ws()
+            .files
             .mkdir(&a.path)
             .map_err(err)
             .and_then(|_| ok(serde_json::json!({ "created": a.path })))
@@ -659,7 +672,7 @@ impl MosaicMcp {
     #[tool(description = "Notes and canvases that link to or embed a file, with the linking line.")]
     async fn get_backlinks(&self, Parameters(a): Parameters<PathArg>) -> ToolResult {
         self.fresh();
-        self.ws().backlinks(&a.path).map_err(err).and_then(ok)
+        self.ws().links.backlinks(&a.path).map_err(err).and_then(ok)
     }
 
     #[tool(description = "All tags used in the vault with how many files carry each.")]
@@ -672,14 +685,18 @@ impl MosaicMcp {
         description = "The human's bookmarked files, folders, searches (`search:…`) and structured queries (`query:…`), in their order. `exists` is false for a file bookmark whose file is gone."
     )]
     async fn list_bookmarks(&self) -> ToolResult {
-        ok(self.ws().bookmarks())
+        ok(self.ws().files.bookmarks())
     }
 
     #[tool(
         description = "Bookmark a file or folder, a full-text search as `search:<words>`, or a structured query as `query:<query>` so the human finds it in Bookmarks. Returns the new list."
     )]
     async fn add_bookmark(&self, Parameters(a): Parameters<PathArg>) -> ToolResult {
-        self.ws().add_bookmark(&a.path).map_err(err).and_then(ok)
+        self.ws()
+            .files
+            .add_bookmark(&a.path)
+            .map_err(err)
+            .and_then(ok)
     }
 
     #[tool(
@@ -687,6 +704,7 @@ impl MosaicMcp {
     )]
     async fn file_history(&self, Parameters(a): Parameters<HistoryArgs>) -> ToolResult {
         self.ws()
+            .files
             .history(&a.path, a.limit.unwrap_or(20))
             .map_err(err)
             .and_then(ok)
@@ -697,6 +715,7 @@ impl MosaicMcp {
     )]
     async fn restore_version(&self, Parameters(a): Parameters<RestoreArgs>) -> ToolResult {
         self.ws()
+            .files
             .restore(&a.path, a.id, a.expected_hash.as_deref())
             .map_err(err)
             .and_then(written)
@@ -732,7 +751,11 @@ impl MosaicMcp {
 
     #[tool(description = "Remove a bookmark (the file itself is untouched). Returns the new list.")]
     async fn remove_bookmark(&self, Parameters(a): Parameters<PathArg>) -> ToolResult {
-        self.ws().remove_bookmark(&a.path).map_err(err).and_then(ok)
+        self.ws()
+            .files
+            .remove_bookmark(&a.path)
+            .map_err(err)
+            .and_then(ok)
     }
 }
 
@@ -747,6 +770,7 @@ impl ServerHandler for MosaicMcp {
     ) -> Result<ListResourcesResult, ErrorData> {
         let entries = self
             .ws()
+            .files
             .list("", true)
             .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
         let resources = entries
@@ -774,6 +798,7 @@ impl ServerHandler for MosaicMcp {
         })?;
         let file = self
             .ws()
+            .files
             .read(&path)
             .map_err(|e| ErrorData::resource_not_found(e.to_string(), None))?;
         let text = file

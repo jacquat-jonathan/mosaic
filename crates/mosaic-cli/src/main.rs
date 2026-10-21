@@ -270,7 +270,7 @@ fn chrono_like(ms: i64) -> String {
 
 /// A vault file drawn as SVG: canvases, or SVG images as they are.
 pub fn render_file(ws: &Workspace, path: &str, dark: bool) -> Result<String> {
-    let file = ws.read(path)?;
+    let file = ws.files.read(path)?;
     let text = file
         .content
         .ok_or_else(|| anyhow::anyhow!("{path} isn't a text file"))?;
@@ -446,7 +446,7 @@ fn run(cli: Cli) -> Result<()> {
         } => print(json, &ws.create_note(&a.into())?, |n| {
             done(&n.written, "created")
         }),
-        Cmd::List { dir, recursive } => print(json, &ws.list(&dir, recursive)?, |entries| {
+        Cmd::List { dir, recursive } => print(json, &ws.files.list(&dir, recursive)?, |entries| {
             entries
                 .iter()
                 .map(|e| {
@@ -460,7 +460,7 @@ fn run(cli: Cli) -> Result<()> {
                 .join("\n")
         }),
         Cmd::Read { path } => {
-            let f = ws.read(&path)?;
+            let f = ws.files.read(&path)?;
             print(json, &f, |f| match &f.content {
                 Some(c) => c.trim_end_matches('\n').to_string(),
                 None => format!(
@@ -603,7 +603,7 @@ fn run(cli: Cli) -> Result<()> {
             })
         }
         Cmd::Create { path, content } => {
-            let w = ws.create(&path, &content_arg(content)?)?;
+            let w = ws.files.create(&path, &content_arg(content)?)?;
             print(json, &w, |w| done(w, "created"))
         }
         Cmd::Write {
@@ -611,11 +611,13 @@ fn run(cli: Cli) -> Result<()> {
             content,
             expected_hash,
         } => {
-            let w = ws.write(&path, &content_arg(content)?, expected_hash.as_deref())?;
+            let w = ws
+                .files
+                .write(&path, &content_arg(content)?, expected_hash.as_deref())?;
             print(json, &w, |w| done(w, "wrote"))
         }
         Cmd::Append { path, content } => {
-            let w = ws.append(&path, &content_arg(content)?)?;
+            let w = ws.files.append(&path, &content_arg(content)?)?;
             print(json, &w, |w| done(w, "appended to"))
         }
         Cmd::Patch {
@@ -624,7 +626,9 @@ fn run(cli: Cli) -> Result<()> {
             replace,
             expected_hash,
         } => {
-            let w = ws.patch(&path, &find, &replace, expected_hash.as_deref())?;
+            let w = ws
+                .files
+                .patch(&path, &find, &replace, expected_hash.as_deref())?;
             print(json, &w, |w| done(w, "patched"))
         }
         Cmd::Rename {
@@ -632,7 +636,7 @@ fn run(cli: Cli) -> Result<()> {
             to,
             no_update_links,
         } => {
-            let r = ws.rename(&from, &to, !no_update_links)?;
+            let r = ws.files.rename(&from, &to, !no_update_links)?;
             print(json, &r, |r| {
                 if let Some(id) = r.review {
                     return format!(
@@ -653,9 +657,9 @@ fn run(cli: Cli) -> Result<()> {
         }
         Cmd::Bookmarks { action } => {
             let list = match action {
-                None => ws.bookmarks(),
-                Some(BookmarkCmd::Add { path }) => ws.add_bookmark(&path)?,
-                Some(BookmarkCmd::Remove { path }) => ws.remove_bookmark(&path)?,
+                None => ws.files.bookmarks(),
+                Some(BookmarkCmd::Add { path }) => ws.files.add_bookmark(&path)?,
+                Some(BookmarkCmd::Remove { path }) => ws.files.remove_bookmark(&path)?,
             };
             print(json, &list, |list| {
                 list.iter()
@@ -671,10 +675,10 @@ fn run(cli: Cli) -> Result<()> {
             })
         }
         Cmd::Copy { from, to } => {
-            let w = ws.copy(&from, &to)?;
+            let w = ws.files.copy(&from, &to)?;
             print(json, &w, |w| done(w, "copied to"))
         }
-        Cmd::Delete { path } => match ws.delete(&path)? {
+        Cmd::Delete { path } => match ws.files.delete(&path)? {
             Some(id) => print(
                 json,
                 &serde_json::json!({ "path": path, "review": id }),
@@ -689,12 +693,12 @@ fn run(cli: Cli) -> Result<()> {
             }),
         },
         Cmd::Mkdir { path } => {
-            ws.mkdir(&path)?;
+            ws.files.mkdir(&path)?;
             print(json, &serde_json::json!({ "created": path }), |_| {
                 format!("created folder {path}")
             })
         }
-        Cmd::Backlinks { path } => print(json, &ws.backlinks(&path)?, |bs| {
+        Cmd::Backlinks { path } => print(json, &ws.links.backlinks(&path)?, |bs| {
             bs.iter()
                 .map(|b| {
                     if b.line == 0 {
@@ -713,17 +717,17 @@ fn run(cli: Cli) -> Result<()> {
                 .collect::<Vec<_>>()
                 .join("\n")
         }),
-        Cmd::Outline { path } => print(json, &ws.outline(&path)?, |o| {
+        Cmd::Outline { path } => print(json, &ws.links.outline(&path)?, |o| {
             serde_json::to_string_pretty(o).unwrap_or_default()
         }),
-        Cmd::Move { paths, to } => print(json, &ws.move_into(&paths, &to)?, |moved| {
+        Cmd::Move { paths, to } => print(json, &ws.files.move_into(&paths, &to)?, |moved| {
             moved
                 .iter()
                 .map(|r| format!("moved to {}{}", r.path, failed_links(r)))
                 .collect::<Vec<_>>()
                 .join("\n")
         }),
-        Cmd::History { path, limit } => print(json, &ws.history(&path, limit)?, |vs| {
+        Cmd::History { path, limit } => print(json, &ws.files.history(&path, limit)?, |vs| {
             vs.iter().map(version_line).collect::<Vec<_>>().join("\n")
         }),
         Cmd::Restore {
@@ -731,7 +735,7 @@ fn run(cli: Cli) -> Result<()> {
             id,
             expected_hash,
         } => {
-            let w = ws.restore(&path, id, expected_hash.as_deref())?;
+            let w = ws.files.restore(&path, id, expected_hash.as_deref())?;
             print(json, &w, |w| match w.review {
                 Some(_) => done(w, "restored"),
                 None => format!("restored {} ({})", w.path, &w.hash[..12]),
@@ -757,7 +761,7 @@ fn run(cli: Cli) -> Result<()> {
             std::fs::write(&out, bytes).with_context(|| format!("writing {}", out.display()))?;
             print(json, &out.display().to_string(), |p| format!("wrote {p}"))
         }
-        Cmd::Activity { limit } => print(json, &ws.activity(limit)?, |vs| {
+        Cmd::Activity { limit } => print(json, &ws.files.activity(limit)?, |vs| {
             vs.iter().map(version_line).collect::<Vec<_>>().join("\n")
         }),
         Cmd::Proposals { limit } => print(json, &ws.review().list(true, limit)?, |ps| {
@@ -796,7 +800,7 @@ fn run(cli: Cli) -> Result<()> {
             })
         }
         Cmd::Undo { id } => {
-            let path = ws.undo(id)?;
+            let path = ws.files.undo(id)?;
             print(json, &path, |p| format!("undone: {p}"))
         }
         Cmd::Preferences => print(json, &ws.vault_preferences()?, |p| {

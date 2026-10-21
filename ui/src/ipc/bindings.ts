@@ -779,7 +779,7 @@ export type Renamed_Deserialize = {
 	updated_links_in: string[],
 	/**
 	 *  Files whose links couldn't be rewritten, and why. The move itself happened; the app offers
-	 *  **Fix links** for it (`Workspace::fix_links`).
+	 *  **Fix links** for it (`FileService::fix_links`).
 	 */
 	failed_links_in: FailedLink[],
 	/**  Set when the rename is waiting for review rather than applied. */
@@ -792,7 +792,7 @@ export type Renamed_Serialize = {
 	updated_links_in: string[],
 	/**
 	 *  Files whose links couldn't be rewritten, and why. The move itself happened; the app offers
-	 *  **Fix links** for it (`Workspace::fix_links`).
+	 *  **Fix links** for it (`FileService::fix_links`).
 	 */
 	failed_links_in?: FailedLink[],
 	/**  Set when the rename is waiting for review rather than applied. */
@@ -904,7 +904,7 @@ export type TesseraStatus = {
 
 /**
  *  A move whose link rewrites didn't all finish (some failed, or Mosaic stopped half-way). Its
- *  links can be fixed later by running the rewrite again (`Workspace::fix_links`).
+ *  links can be fixed later by running the rewrite again (`crate::api::FileService::fix_links`).
  */
 export type UnfinishedRename = {
 	id: number,

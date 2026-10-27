@@ -1848,6 +1848,21 @@ body.resizing * {
   min-width: 32px;
   font-variant-numeric: tabular-nums;
 }
+.html-network-prompt {
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+.html-network-prompt > span {
+  min-width: 240px;
+  line-height: 1.45;
+}
+.html-network-prompt code {
+  margin: 0 4px;
+  overflow-wrap: anywhere;
+}
+.html-network-prompt .button-row {
+  margin-left: auto;
+}
 .html-frame-scroll {
   flex: 1;
   min-width: 0;

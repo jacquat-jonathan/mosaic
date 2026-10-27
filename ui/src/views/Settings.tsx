@@ -294,7 +294,7 @@ function EditorFiles() {
       <VaultToggle
         name="allow_html_scripts"
         label="Allow scripts in HTML previews"
-        hint="Allows scripts by default for HTML files in this vault. Each preview can override this for the current session. Network access remains blocked."
+        hint="Allows scripts by default for HTML files in this vault. Each preview can override this for the current session. Internet access is requested separately and remains blocked by default."
       />
       <p className="settings-note">
         Daily notes, new note destinations and attachments are configured per vault in Vault folders. Connections and

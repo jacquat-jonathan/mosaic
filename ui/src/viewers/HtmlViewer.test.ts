@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   clampHtmlZoom,
   embedLocalFetches,
+  externalHtmlOrigins,
+  htmlContentHash,
   htmlScriptPermission,
   htmlPreviewCsp,
   isLocalHtmlResource,
@@ -39,6 +41,47 @@ describe("HTML preview resources", () => {
     const allowed = htmlPreviewCsp(true);
     expect(allowed).toContain("script-src data: asset: http://asset.localhost");
     expect(allowed).not.toContain("https:");
+
+    const connectedWithoutScripts = htmlPreviewCsp(false, ["https://cdn.example.com", "https://api.example.com:8443"]);
+    expect(connectedWithoutScripts).toContain(
+      "style-src 'unsafe-inline' asset: http://asset.localhost https://cdn.example.com",
+    );
+    expect(connectedWithoutScripts).toContain(
+      "connect-src data: asset: http://asset.localhost https://cdn.example.com https://api.example.com:8443",
+    );
+    expect(connectedWithoutScripts).toContain("script-src 'none'");
+    expect(connectedWithoutScripts).toContain("frame-src 'none'");
+    expect(connectedWithoutScripts).toContain("object-src 'none'");
+    const connectedWithScripts = htmlPreviewCsp(true, ["https://cdn.example.com"]);
+    expect(connectedWithScripts).toContain("script-src data: asset: http://asset.localhost https://cdn.example.com");
+    expect(connectedWithScripts).not.toContain("https:;");
+  });
+
+  it("finds exact external resource origins without treating ordinary links as loads", () => {
+    const origins = externalHtmlOrigins(`
+      <link rel="stylesheet" href="https://cdn.example.com/site.css">
+      <script src="https://cdn.tailwindcss.com"></script>
+      <img src="//images.example.org/hero.png">
+      <div style="background:url('https://media.example.net/bg.png')"></div>
+      <script>fetch("https://api.example.com:8443/data")</script>
+      <meta http-equiv="refresh" content="0;url=https://redirect.example.com">
+      <iframe src="https://frame.example.com"></iframe>
+      <object data="https://plugin.example.com/report.pdf"></object>
+      <a href="https://links.example.com/read">Read more</a>
+    `);
+    expect(origins).toEqual([
+      "https://api.example.com:8443",
+      "https://cdn.example.com",
+      "https://cdn.tailwindcss.com",
+      "https://images.example.org",
+      "https://media.example.net",
+    ]);
+  });
+
+  it("scopes internet decisions to a hash of the exact page content", async () => {
+    const first = await htmlContentHash("<img src='https://one.example/a.png'>");
+    expect(await htmlContentHash("<img src='https://one.example/a.png'>")).toBe(first);
+    expect(await htmlContentHash("<img src='https://two.example/a.png'>")).not.toBe(first);
   });
 
   it("uses the vault script policy by default and lets each page override it", () => {

@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+## 0.26.0 — 2026-10-27
+
 - **HTML reports can be trusted per vault:** optionally allow scripts by default for every HTML file
   in a vault while keeping network access blocked, and override that choice for one page until Mosaic
   quits. Mermaid blocks embedded in HTML now render as diagrams even when page scripts stay blocked.

@@ -454,11 +454,12 @@ export function BoardView() {
                 </h2>
               ))}
             </div>
-            {lanes.map((lane) => {
+            {lanes.map((lane, laneIndex) => {
               const key = lane.id ?? "__unassigned",
                 closed = collapsed.has(key),
                 orderedEpics = [...epics].sort((a, b) => a.position - b.position),
                 epicIndex = lane.id ? orderedEpics.findIndex((item) => item.id === lane.id) : -1,
+                nextLaneId = lanes[laneIndex + 1]?.id ?? null,
                 epicInView =
                   lane.epic &&
                   (lifecycle === "active"
@@ -468,27 +469,24 @@ export function BoardView() {
                       : !!lane.epic.trashed_at);
               return (
                 <section
-                  className={`planner-lane ${lane.epic?.archived_at ? "archived" : ""} ${epicDropTarget === lane.id ? "epic-drop-target" : ""}`}
+                  className={`planner-lane ${lane.epic?.archived_at ? "archived" : ""} ${draggedEpicId ? "epic-drag-active" : ""} ${epicDropTarget === lane.id ? "epic-drop-before" : ""}`}
                   key={key}
                   style={{ "--epic-color": lane.color ?? "var(--border)" } as CSSProperties}
                   onDragOver={(event) => {
-                    if (
-                      lifecycle === "active" &&
-                      !epicFilter &&
-                      draggedEpicId &&
-                      event.dataTransfer.types.includes(EPIC_DRAG_TYPE)
-                    ) {
+                    if (draggedEpicId && event.dataTransfer.types.includes(EPIC_DRAG_TYPE)) {
                       event.preventDefault();
                       event.dataTransfer.dropEffect = "move";
-                      setEpicDropTarget(lane.id);
+                      const bounds = event.currentTarget.getBoundingClientRect();
+                      setEpicDropTarget(event.clientY < bounds.top + bounds.height / 2 ? lane.id : nextLaneId);
                     }
                   }}
                   onDrop={(event) => {
                     const movedId = event.dataTransfer.getData(EPIC_DRAG_TYPE);
                     if (!movedId) return;
                     event.preventDefault();
-                    event.stopPropagation();
-                    void moveEpic(movedId, lane.id);
+                    const bounds = event.currentTarget.getBoundingClientRect(),
+                      beforeId = event.clientY < bounds.top + bounds.height / 2 ? lane.id : nextLaneId;
+                    void moveEpic(movedId, beforeId);
                   }}
                 >
                   <header

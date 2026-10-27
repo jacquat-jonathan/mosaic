@@ -4585,16 +4585,41 @@ pre.template-preview {
   min-width: 1050px;
 }
 .planner-lane {
-  margin-bottom: 14px;
+  position: relative;
+  margin-top: 14px;
+  margin-bottom: 0;
   border-left: 4px solid var(--epic-color);
   border-radius: 8px;
+  transition: margin-top 100ms ease;
 }
 .planner-lane.archived {
   opacity: 0.72;
 }
-.planner-lane.epic-drop-target {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+.planner-lane::before {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  top: -14px;
+  left: -4px;
+  right: 0;
+  height: 14px;
+  border-radius: 6px;
+  transition:
+    height 100ms ease,
+    top 100ms ease,
+    background 100ms ease;
+}
+.planner-lane.epic-drag-active {
+  margin-top: 26px;
+}
+.planner-lane.epic-drag-active::before {
+  top: -26px;
+  height: 26px;
+}
+.planner-lane.epic-drop-before::before {
+  background:
+    linear-gradient(var(--accent), var(--accent)) center / calc(100% - 20px) 3px no-repeat,
+    color-mix(in srgb, var(--accent) 12%, transparent);
 }
 .planner-lane-title {
   min-height: 38px;

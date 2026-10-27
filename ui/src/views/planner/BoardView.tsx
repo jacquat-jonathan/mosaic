@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type CSSProperties, type DragEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent } from "react";
 import { api, inTauri, onPlannerChanged } from "../../ipc/api";
 import {
   errorMessage,
@@ -14,6 +14,7 @@ import { MigrationWizard } from "./MigrationWizard";
 import { TaskEditor } from "./TaskEditor";
 import { ActivityTimeline } from "./ActivityTimeline";
 import { EpicEditor } from "./EpicEditor";
+import { treeAutoScrollStep } from "../treeAutoScroll";
 import {
   descendantsFrom,
   PLANNER_STATUSES,
@@ -66,6 +67,40 @@ export function BoardView() {
     [busy, setBusy] = useState(new Set<string>()),
     [dismissed, setDismissed] = useState(false),
     [wizard, setWizard] = useState(false);
+  const boardScrollRef = useRef<HTMLDivElement>(null),
+    epicScrollFrame = useRef<number | null>(null),
+    epicScrollStep = useRef(0);
+  const stopEpicAutoScroll = () => {
+    epicScrollStep.current = 0;
+    if (epicScrollFrame.current !== null) cancelAnimationFrame(epicScrollFrame.current);
+    epicScrollFrame.current = null;
+  };
+  const epicAutoScrollFrame = () => {
+    epicScrollFrame.current = null;
+    const board = boardScrollRef.current,
+      step = epicScrollStep.current;
+    if (!board || step === 0) return;
+    const before = board.scrollTop;
+    board.scrollTop += step;
+    if (board.scrollTop === before) return;
+    epicScrollFrame.current = requestAnimationFrame(epicAutoScrollFrame);
+  };
+  const updateEpicAutoScroll = (clientY: number) => {
+    const board = boardScrollRef.current;
+    if (!board) return;
+    const bounds = board.getBoundingClientRect();
+    epicScrollStep.current = treeAutoScrollStep(clientY, bounds.top, bounds.bottom);
+    if (epicScrollStep.current === 0) return stopEpicAutoScroll();
+    if (epicScrollFrame.current === null) epicScrollFrame.current = requestAnimationFrame(epicAutoScrollFrame);
+  };
+  useEffect(
+    () => () => {
+      epicScrollStep.current = 0;
+      if (epicScrollFrame.current !== null) cancelAnimationFrame(epicScrollFrame.current);
+      epicScrollFrame.current = null;
+    },
+    [],
+  );
   const load = useCallback(async () => {
     if (!root) return;
     setLoading(true);
@@ -442,7 +477,19 @@ export function BoardView() {
         </header>
         {error && <p className="error-text">{error}</p>}
         {loading && !summary && <p>Loading planner…</p>}
-        <div className="board-scroll">
+        <div
+          ref={boardScrollRef}
+          className="board-scroll"
+          onDragOverCapture={(event) => {
+            if (draggedEpicId && event.dataTransfer.types.includes(EPIC_DRAG_TYPE)) updateEpicAutoScroll(event.clientY);
+            else stopEpicAutoScroll();
+          }}
+          onDragLeaveCapture={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget as Node | null)) stopEpicAutoScroll();
+          }}
+          onDropCapture={stopEpicAutoScroll}
+          onDragEnd={stopEpicAutoScroll}
+        >
           <div className="board-grid planner-grid">
             <div className="board-headings">
               {PLANNER_STATUSES.map((status) => (

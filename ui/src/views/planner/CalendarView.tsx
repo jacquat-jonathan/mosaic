@@ -25,6 +25,7 @@ import { MonthView } from "./MonthView";
 import { OverlayDetails } from "./OverlayDetails";
 import { UnscheduledTray } from "./UnscheduledTray";
 import { WeekView } from "./WeekView";
+import { WorkSessionEditor } from "./WorkSessionEditor";
 import { addDays, atNoon, isoDay, localHour, type CalendarMode, visibleDays } from "./calendarModel";
 
 const MODE_KEY = "mosaic:planner-calendar-mode";
@@ -71,6 +72,7 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
     [epics, setEpics] = useState<PlannerEpic[]>([]),
     [events, setEvents] = useState<PlannerEvent[]>([]),
     [editor, setEditor] = useState<EditorState | null>(null),
+    [selectedSessionId, setSelectedSessionId] = useState<string | null>(null),
     [selectedRange, setSelectedRange] = useState<SelectedRange | null>(null),
     [overlayDetails, setOverlayDetails] = useState<CalendarOverlayOccurrence | null>(null),
     [importing, setImporting] = useState<{ preview: IcalImportPreview; fileName: string } | null>(null),
@@ -165,11 +167,13 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
         : `${days[0].toLocaleDateString(undefined, { day: "numeric", month: "short" })} – ${days.at(-1)!.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}`;
   const openEvent = (seriesId: string, key: string) => {
     setSelectedRange(null);
+    setSelectedSessionId(null);
     const occurrence = data?.events.find((item) => item.series_id === seriesId && item.occurrence_key === key) ?? null,
       series = events.find((item) => item.id === seriesId) ?? null;
     setEditor({ occurrence, series });
   };
-  const newEvent = (day = isoDay(anchor), startHour = 9, endHour = 10, allDay = false) =>
+  const newEvent = (day = isoDay(anchor), startHour = 9, endHour = 10, allDay = false) => {
+    setSelectedSessionId(null);
     setEditor({
       occurrence: null,
       series: null,
@@ -177,6 +181,7 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
       initialEnd: allDay ? plusIsoDays(day, 1) : localInstant(day, endHour),
       initialAllDay: allDay,
     });
+  };
   const sessionAction = async (action: () => Promise<unknown>) => {
     try {
       await action();
@@ -422,9 +427,12 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
     }
   };
   const selectedData = data ?? emptyRange(from, to),
+    selectedSession = selectedSessionId
+      ? (selectedData.work_sessions.find((item) => item.session.id === selectedSessionId) ?? null)
+      : null,
     today = isoDay(new Date());
   return (
-    <div className={`planner-calendar-page ${editor || overlayDetails ? "with-editor" : ""}`}>
+    <div className={`planner-calendar-page ${editor || overlayDetails || selectedSession ? "with-editor" : ""}`}>
       <main className="planner-calendar">
         <Toolbar>
           <button className="icon" aria-label="Previous period" onClick={() => step(-1)}>
@@ -535,8 +543,15 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
                 setMode("day");
               }}
               onEvent={openEvent}
+              onSession={(session) => {
+                setEditor(null);
+                setOverlayDetails(null);
+                setSelectedRange(null);
+                setSelectedSessionId(session.id);
+              }}
               onOverlay={(item) => {
                 setSelectedRange(null);
+                setSelectedSessionId(null);
                 setOverlayDetails(item);
               }}
               onEventMove={(event, day) => void moveEvent(event, day)}
@@ -556,8 +571,15 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
                 show={show}
                 selectedRange={selectedRange}
                 onEvent={openEvent}
+                onSession={(session) => {
+                  setEditor(null);
+                  setOverlayDetails(null);
+                  setSelectedRange(null);
+                  setSelectedSessionId(session.id);
+                }}
                 onOverlay={(item) => {
                   setSelectedRange(null);
+                  setSelectedSessionId(null);
                   setOverlayDetails(item);
                 }}
                 onEmptyRange={(day, start, end) => {
@@ -571,6 +593,7 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
                 onEventResize={(event, minutes) => void resizeEvent(event, minutes)}
                 onSessionResizeStart={() => {
                   setEditor(null);
+                  setSelectedSessionId(null);
                   setSelectedRange(null);
                 }}
                 onSessionResize={resizeSession}
@@ -600,6 +623,19 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
           onDone={() => {
             setEditor(null);
             setSelectedRange(null);
+            void load();
+          }}
+        />
+      )}
+      {selectedSession && (
+        <WorkSessionEditor
+          key={`${selectedSession.session.id}:${selectedSession.session.revision}`}
+          session={selectedSession.session}
+          taskTitle={selectedSession.task_title}
+          onClose={() => setSelectedSessionId(null)}
+          onReload={() => void load()}
+          onDone={() => {
+            setSelectedSessionId(null);
             void load();
           }}
         />

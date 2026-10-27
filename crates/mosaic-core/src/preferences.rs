@@ -20,6 +20,9 @@ pub struct VaultPreferences {
     pub attachment_location: String,
     pub attachment_folder: String,
     pub show_attachments_in_tree: bool,
+    /// Allows scripts by default in sandboxed HTML previews. Individual previews may override this
+    /// for the current app session; the preview CSP still denies network access.
+    pub allow_html_scripts: bool,
     #[cfg_attr(feature = "specta", specta(type = choices::LinkStyle))]
     pub link_style: String,
     pub startup_note: String,
@@ -81,6 +84,7 @@ impl Default for VaultPreferences {
             attachment_location: "next-to-note".into(),
             attachment_folder: String::new(),
             show_attachments_in_tree: false,
+            allow_html_scripts: false,
             link_style: "wiki".into(),
             startup_note: String::new(),
             folder_colors: BTreeMap::new(),

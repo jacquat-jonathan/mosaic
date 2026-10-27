@@ -27,6 +27,7 @@ export function MonthView({
   show,
   onDay,
   onEvent,
+  onSession,
   onOverlay,
   onEventMove,
   onSessionMove,
@@ -41,6 +42,7 @@ export function MonthView({
   show: { events: boolean; sessions: boolean; due: boolean };
   onDay(day: string): void;
   onEvent(id: string, key: string): void;
+  onSession(session: PlannerWorkSession): void;
   onOverlay(item: CalendarOverlayOccurrence): void;
   onEventMove(event: EventOccurrence, day: string): void;
   onSessionMove(session: PlannerWorkSession, day: string): void;
@@ -221,6 +223,8 @@ export function MonthView({
               ) : (
                 <span
                   className="planner-month-item"
+                  role="button"
+                  tabIndex={0}
                   draggable
                   style={{ borderColor: entry.color }}
                   key={entry.key}
@@ -232,7 +236,17 @@ export function MonthView({
                   }}
                   onDragEnd={() => setDragPreview(null)}
                   onContextMenu={(event) => openMenu(event, { kind: "session", session: entry.session.session })}
-                  onClick={(click) => click.stopPropagation()}
+                  onClick={(click) => {
+                    click.stopPropagation();
+                    onSession(entry.session.session);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      onSession(entry.session.session);
+                    }
+                  }}
                 >
                   {entry.label}
                 </span>

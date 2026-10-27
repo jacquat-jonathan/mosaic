@@ -2,6 +2,7 @@
 //! (`is_error`) with a stable code, so the model can recover (e.g. re-read after a `conflict`).
 
 use base64::Engine;
+use mosaic_core::planner::{CreateTask, FutureSessionPolicy, MoveTask, TaskStatus, UpdateTask};
 use mosaic_core::settings::Settings;
 use mosaic_core::{Error, Workspace};
 use rmcp::handler::server::{router::tool::ToolRouter, wrapper::Parameters};
@@ -206,6 +207,141 @@ struct ImportArgs {
     path: String,
     /// The file's bytes, base64-encoded (at most 20 MB).
     data: String,
+}
+
+#[derive(Clone, Copy, Deserialize, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+enum PlannerTaskStatusArg {
+    New,
+    Blocked,
+    InProgress,
+    InQa,
+    Done,
+}
+
+impl From<PlannerTaskStatusArg> for TaskStatus {
+    fn from(value: PlannerTaskStatusArg) -> Self {
+        match value {
+            PlannerTaskStatusArg::New => Self::New,
+            PlannerTaskStatusArg::Blocked => Self::Blocked,
+            PlannerTaskStatusArg::InProgress => Self::InProgress,
+            PlannerTaskStatusArg::InQa => Self::InQa,
+            PlannerTaskStatusArg::Done => Self::Done,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+enum FutureSessionPolicyArg {
+    Cancel,
+    Keep,
+}
+
+impl From<FutureSessionPolicyArg> for FutureSessionPolicy {
+    fn from(value: FutureSessionPolicyArg) -> Self {
+        match value {
+            FutureSessionPolicyArg::Cancel => Self::Cancel,
+            FutureSessionPolicyArg::Keep => Self::Keep,
+        }
+    }
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct PlannerListArgs {
+    /// Include archived items (default false).
+    #[serde(default)]
+    include_archived: bool,
+    /// Include items in Trash (default false).
+    #[serde(default)]
+    include_trashed: bool,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct PlannerTaskIdArgs {
+    /// Planner task UUID, obtained from list_planner_tasks.
+    id: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct CreatePlannerTaskArgs {
+    /// Epic UUID from list_planner_epics, or null for Unassigned.
+    #[serde(default)]
+    epic_id: Option<String>,
+    /// Parent task UUID for a subtask, or null for a top-level task.
+    #[serde(default)]
+    parent_id: Option<String>,
+    title: String,
+    #[serde(default)]
+    description: String,
+    /// Initial status; defaults to new. Completing an existing task uses complete_planner_task.
+    #[serde(default)]
+    status: Option<PlannerTaskStatusArg>,
+    /// ISO date such as 2026-10-27.
+    #[serde(default)]
+    due_date: Option<String>,
+    #[serde(default)]
+    estimate_minutes: Option<i64>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct UpdatePlannerTaskArgs {
+    /// Planner task UUID.
+    id: String,
+    /// Revision returned by the latest read; stale revisions are refused.
+    expected_revision: i64,
+    #[serde(default)]
+    title: Option<String>,
+    #[serde(default)]
+    description: Option<String>,
+    /// ISO date such as 2026-10-27. Use clear_due_date to remove it.
+    #[serde(default)]
+    due_date: Option<String>,
+    #[serde(default)]
+    clear_due_date: bool,
+    #[serde(default)]
+    estimate_minutes: Option<i64>,
+    #[serde(default)]
+    clear_estimate: bool,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct MovePlannerTaskArgs {
+    /// Planner task UUID.
+    id: String,
+    /// Revision returned by the latest read; stale revisions are refused.
+    expected_revision: i64,
+    /// Complete destination epic UUID, or null for Unassigned.
+    #[serde(default)]
+    epic_id: Option<String>,
+    /// Complete destination parent UUID, or null for a top-level task.
+    #[serde(default)]
+    parent_id: Option<String>,
+    /// Complete destination status. Use complete_planner_task/reopen_planner_task to cross Done.
+    status: PlannerTaskStatusArg,
+    /// Board position. Omit to append after the other tasks in the destination group.
+    #[serde(default)]
+    position: Option<i64>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct CompletePlannerTaskArgs {
+    id: String,
+    /// Revision returned by the latest read; stale revisions are refused.
+    expected_revision: i64,
+    /// Confirm completion even when subtasks remain incomplete (default false).
+    #[serde(default)]
+    allow_incomplete_subtasks: bool,
+    /// What to do with future scheduled work sessions; defaults to cancel.
+    #[serde(default)]
+    future_sessions: Option<FutureSessionPolicyArg>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct PlannerTaskRevisionArgs {
+    id: String,
+    /// Revision returned by the latest read; stale revisions are refused.
+    expected_revision: i64,
 }
 
 /// Notes listed as MCP resources at most (clients show them in a picker).
@@ -486,6 +622,233 @@ impl MosaicMcp {
         let day = a.day.unwrap_or_else(mosaic_core::days::today);
         self.ws()
             .carry_over(&day, None, None)
+            .map_err(err)
+            .and_then(ok)
+    }
+
+    #[tool(
+        description = "List planner epics with their IDs, colors, positions, revisions and lifecycle state. Use an epic ID when assigning a planner task. These are app-owned planner items, separate from Markdown checkboxes."
+    )]
+    async fn list_planner_epics(&self, Parameters(a): Parameters<PlannerListArgs>) -> ToolResult {
+        self.ws()
+            .planner
+            .epics(a.include_archived, a.include_trashed)
+            .map_err(err)
+            .and_then(ok)
+    }
+
+    #[tool(
+        description = "List app-owned planner tasks, including IDs, hierarchy, epic, status, due date, estimate, board position and revision. Separate from Markdown checkbox tasks. Include archived or trashed tasks only when requested."
+    )]
+    async fn list_planner_tasks(&self, Parameters(a): Parameters<PlannerListArgs>) -> ToolResult {
+        self.ws()
+            .planner
+            .tasks(a.include_archived, a.include_trashed)
+            .map_err(err)
+            .and_then(ok)
+    }
+
+    #[tool(
+        description = "Read one app-owned planner task by UUID. Returns its latest revision, which must be passed to every change so concurrent edits are refused instead of overwritten."
+    )]
+    async fn get_planner_task(&self, Parameters(a): Parameters<PlannerTaskIdArgs>) -> ToolResult {
+        let task = self
+            .ws()
+            .planner
+            .tasks(true, true)
+            .map_err(err)?
+            .into_iter()
+            .find(|task| task.id == a.id)
+            .ok_or_else(|| err(Error::NotFound(format!("planner task/{}", a.id))))?;
+        ok(task)
+    }
+
+    #[tool(
+        description = "Read the complete activity history of one app-owned planner task, oldest first, including before/after snapshots for creation, edits, moves, completion and lifecycle changes."
+    )]
+    async fn planner_task_history(
+        &self,
+        Parameters(a): Parameters<PlannerTaskIdArgs>,
+    ) -> ToolResult {
+        // Refuse an unknown task rather than returning an ambiguous empty history.
+        self.ws()
+            .planner
+            .tasks(true, true)
+            .map_err(err)?
+            .into_iter()
+            .find(|task| task.id == a.id)
+            .ok_or_else(|| err(Error::NotFound(format!("planner task/{}", a.id))))?;
+        self.ws()
+            .planner
+            .activity("task", &a.id)
+            .map_err(err)
+            .and_then(ok)
+    }
+
+    #[tool(
+        description = "Create an app-owned planner task or subtask. Use list_planner_epics for epic IDs and list_planner_tasks for parent IDs. Returns the created task and revision."
+    )]
+    async fn create_planner_task(
+        &self,
+        Parameters(a): Parameters<CreatePlannerTaskArgs>,
+    ) -> ToolResult {
+        self.ws()
+            .planner
+            .create_task(CreateTask {
+                epic_id: a.epic_id,
+                parent_id: a.parent_id,
+                title: a.title,
+                description: a.description,
+                status: a.status.unwrap_or(PlannerTaskStatusArg::New).into(),
+                due_date: a.due_date,
+                estimate_minutes: a.estimate_minutes,
+            })
+            .map_err(err)
+            .and_then(ok)
+    }
+
+    #[tool(
+        description = "Edit an app-owned planner task's title, description, due date or estimate. Pass the latest expected_revision from get/list; a stale revision returns conflict. This does not move, complete or archive the task."
+    )]
+    async fn update_planner_task(
+        &self,
+        Parameters(a): Parameters<UpdatePlannerTaskArgs>,
+    ) -> ToolResult {
+        self.ws()
+            .planner
+            .update_task(
+                &a.id,
+                UpdateTask {
+                    expected_revision: a.expected_revision,
+                    title: a.title,
+                    description: a.description,
+                    due_date: a.due_date,
+                    clear_due_date: a.clear_due_date,
+                    estimate_minutes: a.estimate_minutes,
+                    clear_estimate: a.clear_estimate,
+                },
+            )
+            .map_err(err)
+            .and_then(ok)
+    }
+
+    #[tool(
+        description = "Move or reorder an app-owned planner task by supplying its complete destination epic, parent and non-Done status. Omit position to append in the destination. Use complete_planner_task or reopen_planner_task when crossing Done."
+    )]
+    async fn move_planner_task(
+        &self,
+        Parameters(a): Parameters<MovePlannerTaskArgs>,
+    ) -> ToolResult {
+        let status: TaskStatus = a.status.into();
+        let position = match a.position {
+            Some(position) => position,
+            None => {
+                self.ws()
+                    .planner
+                    .tasks(true, true)
+                    .map_err(err)?
+                    .into_iter()
+                    .filter(|task| {
+                        task.id != a.id
+                            && task.epic_id == a.epic_id
+                            && task.parent_id == a.parent_id
+                            && task.status == status
+                    })
+                    .map(|task| task.position)
+                    .max()
+                    .unwrap_or(0)
+                    + 1024
+            }
+        };
+        self.ws()
+            .planner
+            .move_task(
+                &a.id,
+                MoveTask {
+                    expected_revision: a.expected_revision,
+                    epic_id: a.epic_id,
+                    parent_id: a.parent_id,
+                    status,
+                    position,
+                },
+            )
+            .map_err(err)
+            .and_then(ok)
+    }
+
+    #[tool(
+        description = "Complete an app-owned planner task. By default this refuses incomplete subtasks and cancels future work sessions. Set the confirmation/policy fields deliberately when another outcome is intended."
+    )]
+    async fn complete_planner_task(
+        &self,
+        Parameters(a): Parameters<CompletePlannerTaskArgs>,
+    ) -> ToolResult {
+        self.ws()
+            .planner
+            .complete_task(
+                &a.id,
+                a.expected_revision,
+                a.allow_incomplete_subtasks,
+                a.future_sessions
+                    .unwrap_or(FutureSessionPolicyArg::Cancel)
+                    .into(),
+            )
+            .map_err(err)
+            .and_then(ok)
+    }
+
+    #[tool(
+        description = "Reopen a completed app-owned planner task as New. Pass its latest expected_revision. Move it afterward if another active status is wanted."
+    )]
+    async fn reopen_planner_task(
+        &self,
+        Parameters(a): Parameters<PlannerTaskRevisionArgs>,
+    ) -> ToolResult {
+        self.ws()
+            .planner
+            .reopen_task(&a.id, a.expected_revision)
+            .map_err(err)
+            .and_then(ok)
+    }
+
+    #[tool(
+        description = "Archive an app-owned planner task while keeping it recoverable. Pass its latest expected_revision."
+    )]
+    async fn archive_planner_task(
+        &self,
+        Parameters(a): Parameters<PlannerTaskRevisionArgs>,
+    ) -> ToolResult {
+        self.ws()
+            .planner
+            .archive_task(&a.id, a.expected_revision)
+            .map_err(err)
+            .and_then(ok)
+    }
+
+    #[tool(
+        description = "Restore an archived or trashed app-owned planner task. Pass its latest expected_revision."
+    )]
+    async fn restore_planner_task(
+        &self,
+        Parameters(a): Parameters<PlannerTaskRevisionArgs>,
+    ) -> ToolResult {
+        self.ws()
+            .planner
+            .restore_task(&a.id, a.expected_revision)
+            .map_err(err)
+            .and_then(ok)
+    }
+
+    #[tool(
+        description = "Move an archived app-owned planner task to Trash, where it remains recoverable. Archive it first and pass its latest expected_revision."
+    )]
+    async fn trash_planner_task(
+        &self,
+        Parameters(a): Parameters<PlannerTaskRevisionArgs>,
+    ) -> ToolResult {
+        self.ws()
+            .planner
+            .trash_task(&a.id, a.expected_revision)
             .map_err(err)
             .and_then(ok)
     }

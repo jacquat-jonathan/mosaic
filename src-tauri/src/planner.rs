@@ -12,13 +12,13 @@ use std::sync::Arc;
 use tauri::{AppHandle, Emitter, State};
 
 #[derive(Clone, Serialize)]
-struct PlannerChanged {
+pub(crate) struct PlannerChanged {
     root: String,
     revision: i64,
     affected_ids: Vec<String>,
 }
 
-fn changed(
+pub(crate) fn changed(
     app: &AppHandle,
     workspace: &Arc<Workspace>,
     affected_ids: Vec<String>,

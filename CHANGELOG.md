@@ -4,6 +4,20 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **HTML reports can be trusted per vault:** optionally allow scripts by default for every HTML file
+  in a vault while keeping network access blocked, and override that choice for one page until Mosaic
+  quits. Mermaid blocks embedded in HTML now render as diagrams even when page scripts stay blocked.
+- **Long file trees keep moving while you drag:** holding a file or folder near the top or bottom of
+  the tree scrolls it automatically, including while importing from Finder.
+- **A plain new line from anywhere:** the editor's adjacent + action is available on every line and
+  inserts the same blank line as pressing Enter; heading drag handles still reorder whole sections.
+- **More flexible planning:** reorder epic swimlanes by dragging or with Move up/down, and open any
+  work session in the right panel to enter exact start and end times instead of quarter-hour values.
+  Calendar dragging and resizing continue to snap to 15-minute steps.
+- **Agents can manage Board tasks:** MCP tools can list epics and tasks, read full task history, and
+  create, edit, move, complete, reopen, archive, restore or trash tasks with revision conflict checks.
+  Their changes refresh an open Board or Calendar automatically.
+
 ## 0.25.0 — 2026-10-21
 
 - **Calendar cards focus on the event name:** cards now show only the title, keep its beginning

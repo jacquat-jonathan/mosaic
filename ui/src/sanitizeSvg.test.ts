@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { expect, test } from "vitest";
-import { sanitizeSvg } from "./sanitizeSvg";
+import { sanitizeMermaidSvg, sanitizeSvg } from "./sanitizeSvg";
 
 test("removes scripts, event handlers and javascript links from SVG", () => {
   const out = sanitizeSvg(
@@ -21,4 +21,17 @@ test("keeps what diagrams need: styles, markers, gradients and text", () => {
   for (const part of ["<style>", "<marker", "<linearGradient", 'marker-end="url(#m)"', "Label"]) {
     expect(out).toContain(part);
   }
+});
+
+test("sanitizes Mermaid SVG while retaining foreignObject labels", () => {
+  const out = sanitizeMermaidSvg(
+    '<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"><foreignObject>' +
+      '<div xmlns="http://www.w3.org/1999/xhtml"><span onclick="alert(2)">Safe label</span>' +
+      "<script>alert(3)</script></div></foreignObject><style>.node{fill:red}</style>" +
+      '<a href="javascript:alert(4)"><text>Link</text></a></svg>',
+  );
+  expect(out).not.toMatch(/onload|onclick|<script|javascript:/i);
+  expect(out).toContain("<foreignObject>");
+  expect(out).toContain("Safe label");
+  expect(out).toContain("<style>");
 });

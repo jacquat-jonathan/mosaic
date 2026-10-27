@@ -1002,6 +1002,11 @@ export type VaultPreferences = {
 	attachment_location?: AttachmentLocation,
 	attachment_folder?: string,
 	show_attachments_in_tree?: boolean,
+	/**
+	 *  Allows scripts by default in sandboxed HTML previews. Individual previews may override this
+	 *  for the current app session; the preview CSP still denies network access.
+	 */
+	allow_html_scripts?: boolean,
 	link_style?: LinkStyle,
 	startup_note?: string,
 	folder_colors?: { [key in string]: string },

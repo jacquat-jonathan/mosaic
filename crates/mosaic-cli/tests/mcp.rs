@@ -221,6 +221,18 @@ fn every_tool_works_end_to_end() {
         "list_bookmarks",
         "add_bookmark",
         "remove_bookmark",
+        "list_planner_epics",
+        "list_planner_tasks",
+        "get_planner_task",
+        "planner_task_history",
+        "create_planner_task",
+        "update_planner_task",
+        "move_planner_task",
+        "complete_planner_task",
+        "reopen_planner_task",
+        "archive_planner_task",
+        "restore_planner_task",
+        "trash_planner_task",
     ] {
         assert!(
             names.contains(&expected),
@@ -383,6 +395,131 @@ fn every_tool_works_end_to_end() {
     let (err, _) = c.call("create_folder", json!({ "path": "AI/Later" }));
     assert!(!err);
     assert!(dir.path().join("AI/Later").is_dir());
+}
+
+#[test]
+fn agents_can_read_edit_and_inspect_planner_task_history() {
+    let dir = fixture();
+    let mut c = Client::start(dir.path());
+
+    let (err, epics) = c.call(
+        "list_planner_epics",
+        json!({ "include_archived": false, "include_trashed": false }),
+    );
+    assert!(!err, "{epics}");
+    assert_eq!(epics, json!([]));
+
+    let (err, created) = c.call(
+        "create_planner_task",
+        json!({
+            "title": "Agent-owned follow-up",
+            "description": "Created through MCP",
+            "status": "new",
+            "due_date": "2026-10-30",
+            "estimate_minutes": 25
+        }),
+    );
+    assert!(!err, "{created}");
+    let id = created["id"].as_str().unwrap().to_string();
+    assert_eq!(created["revision"], 1);
+
+    let (err, listed) = c.call(
+        "list_planner_tasks",
+        json!({ "include_archived": false, "include_trashed": false }),
+    );
+    assert!(!err, "{listed}");
+    assert!(
+        listed
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|task| task["id"] == id)
+    );
+
+    let (err, updated) = c.call(
+        "update_planner_task",
+        json!({
+            "id": id,
+            "expected_revision": created["revision"],
+            "title": "Reviewed follow-up",
+            "clear_due_date": true,
+            "estimate_minutes": 30
+        }),
+    );
+    assert!(!err, "{updated}");
+    assert_eq!(updated["due_date"], Value::Null);
+    assert_eq!(updated["revision"], 2);
+
+    let (err, stale) = c.call(
+        "update_planner_task",
+        json!({ "id": id, "expected_revision": 1, "description": "stale" }),
+    );
+    assert!(err, "{stale}");
+    assert_eq!(stale["code"], "conflict");
+
+    let (err, moved) = c.call(
+        "move_planner_task",
+        json!({
+            "id": id,
+            "expected_revision": updated["revision"],
+            "epic_id": null,
+            "parent_id": null,
+            "status": "in-progress"
+        }),
+    );
+    assert!(!err, "{moved}");
+    assert_eq!(moved["status"], "in-progress");
+
+    let (err, completed) = c.call(
+        "complete_planner_task",
+        json!({
+            "id": id,
+            "expected_revision": moved["revision"],
+            "future_sessions": "keep"
+        }),
+    );
+    assert!(!err, "{completed}");
+    assert_eq!(completed["status"], "done");
+
+    let (err, history) = c.call("planner_task_history", json!({ "id": id }));
+    assert!(!err, "{history}");
+    let actions: Vec<&str> = history
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|entry| entry["action"].as_str().unwrap())
+        .collect();
+    assert_eq!(actions, ["created", "updated", "moved", "completed"]);
+    assert!(history[1]["before"].is_object());
+    assert!(history[1]["after"].is_object());
+
+    let (err, reopened) = c.call(
+        "reopen_planner_task",
+        json!({ "id": id, "expected_revision": completed["revision"] }),
+    );
+    assert!(!err, "{reopened}");
+    let (err, archived) = c.call(
+        "archive_planner_task",
+        json!({ "id": id, "expected_revision": reopened["revision"] }),
+    );
+    assert!(!err, "{archived}");
+    let (err, trashed) = c.call(
+        "trash_planner_task",
+        json!({ "id": id, "expected_revision": archived["revision"] }),
+    );
+    assert!(!err, "{trashed}");
+    let (err, restored) = c.call(
+        "restore_planner_task",
+        json!({ "id": id, "expected_revision": trashed["revision"] }),
+    );
+    assert!(!err, "{restored}");
+    assert_eq!(restored["archived_at"], Value::Null);
+    assert_eq!(restored["trashed_at"], Value::Null);
+
+    let (err, read) = c.call("get_planner_task", json!({ "id": id }));
+    assert!(!err, "{read}");
+    assert_eq!(read["title"], "Reviewed follow-up");
+    assert_eq!(read["revision"], restored["revision"]);
 }
 
 /// Points the "app" (settings.json) at `vault`, as opening it in Mosaic does.

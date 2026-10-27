@@ -58,6 +58,7 @@ export function WeekView({
   show,
   selectedRange,
   onEvent,
+  onSession,
   onOverlay,
   onEmptyRange,
   onTaskDrop,
@@ -77,6 +78,7 @@ export function WeekView({
   show: { events: boolean; sessions: boolean; due: boolean };
   selectedRange: SelectedRange | null;
   onEvent(id: string, key: string): void;
+  onSession(session: PlannerWorkSession): void;
   onOverlay(item: CalendarOverlayOccurrence): void;
   onEmptyRange(day: string, startHour: number, endHour: number): void;
   onTaskDrop(taskId: string, day: string, hour: number | null): void;
@@ -297,6 +299,7 @@ export function WeekView({
                   onMenu={(event, session) =>
                     setContextTarget({ kind: "session", session, x: event.clientX, y: event.clientY })
                   }
+                  onSelect={onSession}
                 />
               ))}
             </div>
@@ -378,6 +381,7 @@ export function WeekView({
                   item={item}
                   hourHeight={hourHeight}
                   onEvent={onEvent}
+                  onSession={onSession}
                   onOverlay={onOverlay}
                   onDragPreviewStart={(preview) =>
                     setDropPreview({ ...preview, targetDay: day, targetHour: item.start })
@@ -425,14 +429,18 @@ function SessionChip({
   item,
   onDragStart,
   onMenu,
+  onSelect,
 }: {
   item: CalendarWorkSession;
   onDragStart(): void;
   onMenu(event: MouseEvent, session: PlannerWorkSession): void;
+  onSelect(session: PlannerWorkSession): void;
 }) {
   return (
     <span
       className={`planner-session-chip status-${item.task_status}`}
+      role="button"
+      tabIndex={0}
       draggable
       onDragStart={(event) => {
         event.dataTransfer.setData(SESSION_DRAG, item.session.id);
@@ -442,6 +450,13 @@ function SessionChip({
       onContextMenu={(event) => {
         event.preventDefault();
         onMenu(event, item.session);
+      }}
+      onClick={() => onSelect(item.session)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onSelect(item.session);
+        }
       }}
       style={{ borderColor: item.color ?? "var(--accent)" }}
     >
@@ -454,6 +469,7 @@ function TimedItem({
   item,
   hourHeight,
   onEvent,
+  onSession,
   onOverlay,
   onDragPreviewStart,
   onEventResizePreview,
@@ -466,6 +482,7 @@ function TimedItem({
   item: ReturnType<typeof timedLayout>[number];
   hourHeight: number;
   onEvent(id: string, key: string): void;
+  onSession(session: PlannerWorkSession): void;
   onOverlay(item: CalendarOverlayOccurrence): void;
   onDragPreviewStart(preview: Omit<DropPreview, "targetDay" | "targetHour">): void;
   onEventResizePreview(event: EventOccurrence, minutes: number): void;
@@ -599,6 +616,8 @@ function TimedItem({
   return (
     <div
       className={`planner-timed-item session status-${session.task_status}`}
+      role="button"
+      tabIndex={0}
       draggable
       onDragStart={(event) => {
         event.dataTransfer.setData(SESSION_DRAG, session.session.id);
@@ -612,6 +631,13 @@ function TimedItem({
       onContextMenu={(event) => {
         event.preventDefault();
         onSessionMenu(event, session.session);
+      }}
+      onClick={() => onSession(session.session)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onSession(session.session);
+        }
       }}
       style={style}
     >

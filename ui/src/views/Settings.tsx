@@ -26,6 +26,7 @@ import {
   AppPreference,
   CalendarLinks,
   SectionReset,
+  VaultToggle,
   VaultFolders,
   WorkspacePreferences,
 } from "./Personalization";
@@ -131,7 +132,7 @@ export function Settings() {
 const SETTING_WORDS: Partial<Record<SettingsSection, string>> = {
   appearance:
     "theme system light dark note text size width font code font line spacing heading scale accent color interface scale density preview local fallback",
-  editor: "spellcheck source line numbers trash confirmation",
+  editor: "spellcheck source line numbers trash confirmation HTML preview scripts vault security",
   vault:
     "agents daily notes folder template new notes attachments folder colors creation discovery current root fixed missing create folder",
   templates: "templates defaults folder assignments rules starters preview",
@@ -289,6 +290,12 @@ function EditorFiles() {
           onChange={(v) => s.set("confirmTrash", v)}
         />
       </Row>
+      <p className="settings-note">HTML preview policy is stored for the open vault.</p>
+      <VaultToggle
+        name="allow_html_scripts"
+        label="Allow scripts in HTML previews"
+        hint="Allows scripts by default for HTML files in this vault. Each preview can override this for the current session. Internet access is requested separately and remains blocked by default."
+      />
       <p className="settings-note">
         Daily notes, new note destinations and attachments are configured per vault in Vault folders. Connections and
         agent safety are in the AI workspace.

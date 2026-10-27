@@ -491,7 +491,23 @@ export function BoardView() {
                     void moveEpic(movedId, lane.id);
                   }}
                 >
-                  <header className="planner-lane-title">
+                  <header
+                    className="planner-lane-title"
+                    draggable={lifecycle === "active" && !!lane.epic && !epicFilter && !epicsBusy}
+                    onDragStart={(event) => {
+                      if (!lane.epic || (event.target as HTMLElement).closest("button, a, input, select, textarea")) {
+                        event.preventDefault();
+                        return;
+                      }
+                      event.dataTransfer.setData(EPIC_DRAG_TYPE, lane.epic.id);
+                      event.dataTransfer.effectAllowed = "move";
+                      setDraggedEpicId(lane.epic.id);
+                    }}
+                    onDragEnd={() => {
+                      setDraggedEpicId(null);
+                      setEpicDropTarget(undefined);
+                    }}
+                  >
                     <button
                       aria-expanded={!closed}
                       onClick={() =>
@@ -511,18 +527,10 @@ export function BoardView() {
                       <>
                         <span
                           className="planner-lane-drag"
-                          draggable={!epicFilter && !epicsBusy}
                           aria-hidden="true"
-                          title={epicFilter ? "Clear the epic filter to reorder epics" : "Drag to reorder epic"}
-                          onDragStart={(event) => {
-                            event.dataTransfer.setData(EPIC_DRAG_TYPE, lane.epic!.id);
-                            event.dataTransfer.effectAllowed = "move";
-                            setDraggedEpicId(lane.epic!.id);
-                          }}
-                          onDragEnd={() => {
-                            setDraggedEpicId(null);
-                            setEpicDropTarget(undefined);
-                          }}
+                          title={
+                            epicFilter ? "Clear the epic filter to reorder epics" : "Drag the epic card to reorder"
+                          }
                         >
                           ⠿
                         </span>

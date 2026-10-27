@@ -4607,6 +4607,15 @@ pre.template-preview {
   border-left: 0;
   border-radius: 0 8px 8px 0;
 }
+.planner-lane-title[draggable="true"] {
+  cursor: grab;
+}
+.planner-lane-title[draggable="true"]:active {
+  cursor: grabbing;
+}
+.planner-lane-title[draggable="true"] button {
+  cursor: pointer;
+}
 .planner-lane-title strong {
   margin-right: auto;
 }
@@ -4620,17 +4629,12 @@ pre.template-preview {
   padding: 3px 5px;
   border-radius: 4px;
   color: var(--muted);
-  cursor: grab;
   user-select: none;
 }
 .planner-lane-drag:hover,
 .planner-lane-drag:focus-visible {
   color: var(--fg);
   background: color-mix(in srgb, var(--accent) 10%, transparent);
-}
-.planner-lane-drag[draggable="false"] {
-  cursor: not-allowed;
-  opacity: 0.45;
 }
 .planner-lane .board-lane {
   padding: 8px 0 0 8px;

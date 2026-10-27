@@ -5,9 +5,12 @@ import { api, fileUrl, htmlPreviewDocumentUrl } from "../ipc/api";
 import { parentOf } from "../state/vault";
 import { CodeEditor } from "./CodeEditor";
 import { Segmented, Toolbar } from "./Toolbar";
+import { useVaultPreferences } from "../state/vaultPreferences";
+import { renderMermaid } from "../editor/render";
+import { sanitizeMermaidSvg } from "../sanitizeSvg";
 
-/** Pages opted in to scripts this session (never persisted: it's an explicit, per-file choice). */
-const scriptsAllowed = new Set<string>();
+/** Per-page overrides for this session. Vault preferences provide the default and stay persistent. */
+const scriptOverrides = new Map<string, boolean>();
 export const HTML_ZOOM_MIN = 0.5;
 export const HTML_ZOOM_MAX = 2;
 export const HTML_ZOOM_STEP = 0.1;
@@ -39,6 +42,22 @@ export function htmlPreviewCsp(scripts: boolean): string {
     `connect-src data: ${local}`,
     scripts ? `script-src data: ${local}` : "script-src 'none'",
   ].join("; ");
+}
+
+export type HtmlScriptPermission = { allowed: boolean; source: "vault" | "page"; label: string };
+
+/** Resolves a page's session override against the vault-wide default and supplies clear UI copy. */
+export function htmlScriptPermission(vaultDefault: boolean, pageOverride?: boolean): HtmlScriptPermission {
+  const allowed = pageOverride ?? vaultDefault;
+  const source = pageOverride === undefined ? "vault" : "page";
+  return {
+    allowed,
+    source,
+    label:
+      source === "page"
+        ? `Scripts ${allowed ? "allowed" : "blocked"} for this page`
+        : `Scripts ${allowed ? "allowed" : "blocked"} by vault setting`,
+  };
 }
 
 const scriptType = (el: Element) =>
@@ -82,6 +101,33 @@ export async function embedLocalFetches(
   return out;
 }
 
+type MermaidRenderer = (source: string) => Promise<string>;
+
+/** Replaces common static Mermaid containers with sanitized SVG from Mosaic's bundled renderer.
+ * This happens before the document enters its iframe, so it works even when page scripts are off. */
+export async function renderHtmlMermaid(doc: Document, renderer: MermaidRenderer = renderMermaid): Promise<void> {
+  const found = [
+    ...doc.querySelectorAll<HTMLElement>(".mermaid"),
+    ...[...doc.querySelectorAll<HTMLElement>("pre > code.language-mermaid")].map((code) => code.parentElement!),
+  ];
+  const targets = [...new Set(found)].filter(
+    (candidate) => !found.some((other) => other !== candidate && other.contains(candidate)),
+  );
+  await Promise.all(
+    targets.map(async (target) => {
+      const source = target.textContent ?? "";
+      try {
+        const rendered = doc.createElement("div");
+        rendered.className = "mosaic-mermaid";
+        rendered.innerHTML = sanitizeMermaidSvg(await renderer(source));
+        target.replaceWith(rendered);
+      } catch {
+        // Leave invalid diagrams as source so the rest of the HTML preview still renders.
+      }
+    }),
+  );
+}
+
 /**
  * Builds the sandboxed document. Its base URL makes linked CSS/scripts and relative fetches (for
  * example JSON data) resolve beside the HTML file; CSP still blocks every network scheme.
@@ -107,6 +153,7 @@ async function sandboxedDoc(path: string, html: string, scripts: boolean): Promi
       el.setAttribute("src", `data:text/javascript;charset=utf-8,${encodeURIComponent(source)}`);
     }),
   ]);
+  await renderHtmlMermaid(doc);
   const base = doc.createElement("base");
   base.href = await fileUrl(path);
   const csp = doc.createElement("meta");
@@ -119,7 +166,12 @@ async function sandboxedDoc(path: string, html: string, scripts: boolean): Promi
 
 export function HtmlViewer({ buffer }: { buffer: Buffer }) {
   const [mode, setMode] = useState<"preview" | "source">("preview");
-  const [scripts, setScripts] = useState(scriptsAllowed.has(buffer.path));
+  const [, setOverrideRevision] = useState(0);
+  const vaultRoot = useVaultPreferences((state) => state.root);
+  const vaultScripts = useVaultPreferences((state) => state.value.allow_html_scripts);
+  const overrideKey = `${vaultRoot ?? ""}\0${buffer.path}`;
+  const permission = htmlScriptPermission(vaultScripts, scriptOverrides.get(overrideKey));
+  const scripts = permission.allowed;
   const [zoom, setZoom] = useState(1);
   // Each built document gets a fresh iframe: swapping srcdoc on a live sandboxed frame can leave it blank.
   const [doc, setDoc] = useState<{ url: string; seq: number } | null>(null);
@@ -141,9 +193,9 @@ export function HtmlViewer({ buffer }: { buffer: Buffer }) {
 
   const toggleScripts = () => {
     const next = !scripts;
-    if (next) scriptsAllowed.add(buffer.path);
-    else scriptsAllowed.delete(buffer.path);
-    setScripts(next);
+    if (next === vaultScripts) scriptOverrides.delete(overrideKey);
+    else scriptOverrides.set(overrideKey, next);
+    setOverrideRevision((revision) => revision + 1);
   };
 
   return (
@@ -185,10 +237,10 @@ export function HtmlViewer({ buffer }: { buffer: Buffer }) {
             <button
               className={scripts ? "warn-toggle on" : "warn-toggle"}
               onClick={toggleScripts}
-              title="Scripts never get network access either way"
+              title="Override the vault setting for this page until Mosaic quits. Scripts never get network access."
             >
               {scripts ? <ShieldAlert size={14} /> : <ShieldCheck size={14} />}
-              {scripts ? "Scripts allowed for this page" : "Scripts blocked"}
+              {permission.label}
             </button>
           </>
         )}

@@ -14,9 +14,17 @@ import { MigrationWizard } from "./MigrationWizard";
 import { TaskEditor } from "./TaskEditor";
 import { ActivityTimeline } from "./ActivityTimeline";
 import { EpicEditor } from "./EpicEditor";
-import { descendantsFrom, PLANNER_STATUSES, swimlanes, taskChildren, taskLifecycles } from "./plannerModel";
+import {
+  descendantsFrom,
+  PLANNER_STATUSES,
+  reorderEpics,
+  swimlanes,
+  taskChildren,
+  taskLifecycles,
+} from "./plannerModel";
 
 const DRAG_TYPE = "application/x-mosaic-planner-task";
+const EPIC_DRAG_TYPE = "application/x-mosaic-planner-epic";
 const DEFAULT_EPIC_COLOR = "#6477d4";
 const startedKey = (root: string) => `mosaic:planner-started:${root}`;
 const wasStarted = (root: string) => {
@@ -50,6 +58,9 @@ export function BoardView() {
     [historyEpic, setHistoryEpic] = useState<PlannerEpic | null>(null),
     [epicEditor, setEpicEditor] = useState<PlannerEpic | "new" | null>(null),
     [draggedId, setDraggedId] = useState<string | null>(null),
+    [draggedEpicId, setDraggedEpicId] = useState<string | null>(null),
+    [epicDropTarget, setEpicDropTarget] = useState<string | null | undefined>(undefined),
+    [epicsBusy, setEpicsBusy] = useState(false),
     [dropTarget, setDropTarget] = useState<string | null>(null),
     [collapsed, setCollapsed] = useState(new Set<string>()),
     [busy, setBusy] = useState(new Set<string>()),
@@ -131,6 +142,28 @@ export function BoardView() {
       else next.delete(id);
       return next;
     });
+  const moveEpic = async (movedId: string, beforeId: string | null) => {
+    if (lifecycle !== "active" || epicFilter || epicsBusy) return;
+    const next = reorderEpics(epics, movedId, beforeId),
+      changed = next.filter((item) => epics.find((epic) => epic.id === item.id)?.position !== item.position);
+    if (!changed.length) return;
+    setEpicsBusy(true);
+    setError(null);
+    try {
+      for (const epic of changed) {
+        const current = epics.find((item) => item.id === epic.id)!;
+        await api.updatePlannerEpic(epic.id, { expected_revision: current.revision, position: epic.position });
+      }
+      await load();
+    } catch (reason) {
+      setError(errorMessage(reason));
+      await load();
+    } finally {
+      setEpicsBusy(false);
+      setDraggedEpicId(null);
+      setEpicDropTarget(undefined);
+    }
+  };
   const futurePolicy = async (taskId: string) => {
     const now = new Date(),
       today = now.toISOString().slice(0, 10),
@@ -424,6 +457,8 @@ export function BoardView() {
             {lanes.map((lane) => {
               const key = lane.id ?? "__unassigned",
                 closed = collapsed.has(key),
+                orderedEpics = [...epics].sort((a, b) => a.position - b.position),
+                epicIndex = lane.id ? orderedEpics.findIndex((item) => item.id === lane.id) : -1,
                 epicInView =
                   lane.epic &&
                   (lifecycle === "active"
@@ -433,9 +468,28 @@ export function BoardView() {
                       : !!lane.epic.trashed_at);
               return (
                 <section
-                  className={`planner-lane ${lane.epic?.archived_at ? "archived" : ""}`}
+                  className={`planner-lane ${lane.epic?.archived_at ? "archived" : ""} ${epicDropTarget === lane.id ? "epic-drop-target" : ""}`}
                   key={key}
                   style={{ "--epic-color": lane.color ?? "var(--border)" } as CSSProperties}
+                  onDragOver={(event) => {
+                    if (
+                      lifecycle === "active" &&
+                      !epicFilter &&
+                      draggedEpicId &&
+                      event.dataTransfer.types.includes(EPIC_DRAG_TYPE)
+                    ) {
+                      event.preventDefault();
+                      event.dataTransfer.dropEffect = "move";
+                      setEpicDropTarget(lane.id);
+                    }
+                  }}
+                  onDrop={(event) => {
+                    const movedId = event.dataTransfer.getData(EPIC_DRAG_TYPE);
+                    if (!movedId) return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    void moveEpic(movedId, lane.id);
+                  }}
                 >
                   <header className="planner-lane-title">
                     <button
@@ -453,6 +507,43 @@ export function BoardView() {
                     </button>
                     <strong>{lane.title}</strong>
                     <span className="panel-meta">{lane.tasks.length} tasks</span>
+                    {lifecycle === "active" && lane.epic && (
+                      <>
+                        <span
+                          className="planner-lane-drag"
+                          draggable={!epicFilter && !epicsBusy}
+                          aria-hidden="true"
+                          title={epicFilter ? "Clear the epic filter to reorder epics" : "Drag to reorder epic"}
+                          onDragStart={(event) => {
+                            event.dataTransfer.setData(EPIC_DRAG_TYPE, lane.epic!.id);
+                            event.dataTransfer.effectAllowed = "move";
+                            setDraggedEpicId(lane.epic!.id);
+                          }}
+                          onDragEnd={() => {
+                            setDraggedEpicId(null);
+                            setEpicDropTarget(undefined);
+                          }}
+                        >
+                          ⠿
+                        </span>
+                        <button
+                          aria-label={`Move ${lane.title} up`}
+                          title="Move epic up"
+                          disabled={!!epicFilter || epicsBusy || epicIndex <= 0}
+                          onClick={() => void moveEpic(lane.epic!.id, orderedEpics[epicIndex - 1]?.id ?? null)}
+                        >
+                          ↑
+                        </button>
+                        <button
+                          aria-label={`Move ${lane.title} down`}
+                          title="Move epic down"
+                          disabled={!!epicFilter || epicsBusy || epicIndex < 0 || epicIndex >= orderedEpics.length - 1}
+                          onClick={() => void moveEpic(lane.epic!.id, orderedEpics[epicIndex + 2]?.id ?? null)}
+                        >
+                          ↓
+                        </button>
+                      </>
+                    )}
                     {lifecycle === "active" && <button onClick={() => void createTask(lane.id)}>+ Task</button>}
                     {epicInView && (
                       <>
@@ -658,6 +749,7 @@ function TaskCard({
         }
       }}
       onDrop={(event) => {
+        if (!event.dataTransfer.types.includes(DRAG_TYPE)) return;
         event.preventDefault();
         event.stopPropagation();
         const dragged = allTasks.find((item) => item.id === event.dataTransfer.getData(DRAG_TYPE));

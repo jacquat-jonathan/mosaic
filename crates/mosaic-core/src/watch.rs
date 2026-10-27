@@ -144,6 +144,37 @@ pub fn watch_history(
     watch_files(&dir, &["history.db", "history.db-wal"], on_change).map(Some)
 }
 
+/// Watches the planner database inside a vault so changes made by an MCP server or the CLI can be
+/// pushed into the open app instead of waiting for the Board or Calendar to be reopened.
+pub fn watch_planner(
+    root: &std::path::Path,
+    on_change: impl Fn() + Send + 'static,
+) -> Result<Watcher> {
+    watch_directory(&root.join(".mosaic"), on_change)
+}
+
+/// Calls `on_change` (debounced) when anything immediately inside `dir` changes.
+fn watch_directory(
+    dir: &std::path::Path,
+    on_change: impl Fn() + Send + 'static,
+) -> Result<Watcher> {
+    let io = |e: std::io::Error| Error::io(dir.display().to_string(), e);
+    std::fs::create_dir_all(dir).map_err(io)?;
+    let mut debouncer = new_debouncer(DEBOUNCE, None, move |res: DebounceEventResult| {
+        if res.is_ok_and(|events| !events.is_empty()) {
+            on_change();
+        }
+    })
+    .map_err(|e| io(std::io::Error::other(e.to_string())))?;
+    debouncer
+        .watch(dir, RecursiveMode::NonRecursive)
+        .map_err(|e| io(std::io::Error::other(e.to_string())))?;
+    Ok(Watcher {
+        _debouncer: debouncer,
+        stop: None,
+    })
+}
+
 /// Calls `on_change` (debounced) when a file named one of `names` in `dir` changes.
 fn watch_files(
     dir: &std::path::Path,
@@ -194,6 +225,30 @@ mod tests {
         let history = crate::history::History::open_at(&dir.path().join("history.db")).unwrap();
         history
             .begin_rename("a.md", "b.md", &["c.md".to_string()])
+            .unwrap();
+        assert!(rx.recv_timeout(Duration::from_secs(2)).is_ok());
+    }
+
+    #[test]
+    fn a_changed_planner_database_is_reported() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut planner = crate::planner::PlannerStore::open(dir.path()).unwrap();
+        let (tx, rx) = mpsc::channel();
+        let _watcher = watch_planner(dir.path(), move || {
+            let _ = tx.send(());
+        })
+        .unwrap();
+        std::thread::sleep(Duration::from_millis(200));
+        planner
+            .create_task(crate::planner::CreateTask {
+                epic_id: None,
+                parent_id: None,
+                title: "From an agent".into(),
+                description: String::new(),
+                status: crate::planner::TaskStatus::New,
+                due_date: None,
+                estimate_minutes: None,
+            })
             .unwrap();
         assert!(rx.recv_timeout(Duration::from_secs(2)).is_ok());
     }

@@ -29,6 +29,8 @@ pub(crate) struct AppState {
     watcher: Mutex<Option<mosaic_core::watch::Watcher>>,
     /// Reports proposals and history written by agents (MCP servers, the CLI) as `history-changed`.
     history_watcher: Mutex<Option<mosaic_core::watch::Watcher>>,
+    /// Reports planner writes made by agents or other Mosaic processes as `planner-changed`.
+    planner_watcher: Mutex<Option<mosaic_core::watch::Watcher>>,
     settings_watcher: Mutex<Option<mosaic_core::watch::Watcher>>,
 }
 
@@ -115,6 +117,13 @@ fn activate(app: AppHandle, state: &AppState, ws: Workspace) -> CmdResult<VaultI
         })
         .ok()
         .flatten();
+    let planner_events = app.clone();
+    let planner_ws = ws.clone();
+    *state.planner_watcher.lock().expect("watcher lock poisoned") =
+        mosaic_core::watch::watch_planner(ws.vault.root(), move || {
+            let _ = planner::changed(&planner_events, &planner_ws, Vec::new());
+        })
+        .ok();
     let out = info(&ws);
     *state.ws.write().expect("workspace lock poisoned") = Some(ws.clone());
     tessera::reset_events(&app, &ws);

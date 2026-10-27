@@ -75,3 +75,13 @@ test("planner migration preview imports selected items only once", async () => {
   expect(repeated.imported_epic_ids).toHaveLength(0);
   expect(repeated.skipped_duplicates).toEqual([candidate!.fingerprint]);
 });
+
+test("epic positions update with revision conflict protection", async () => {
+  vi.stubGlobal("window", { dispatchEvent: vi.fn() });
+  const epic = await api.createPlannerEpic({ title: "Reorder me", description: "", color: "#6477d4" });
+  const moved = await api.updatePlannerEpic(epic.id, { expected_revision: epic.revision, position: 512 });
+  expect(moved.position).toBe(512);
+  await expect(
+    api.updatePlannerEpic(epic.id, { expected_revision: epic.revision, position: 256 }),
+  ).rejects.toMatchObject({ code: "conflict" });
+});

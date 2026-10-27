@@ -287,7 +287,7 @@ function VaultField({
     </>
   );
 }
-function VaultToggle({ name, label, hint }: { name: keyof VaultPreferences; label: string; hint: string }) {
+export function VaultToggle({ name, label, hint }: { name: keyof VaultPreferences; label: string; hint: string }) {
   const value = useVaultPreferences((s) => Boolean(s.value[name]));
   const [busy, setBusy] = useState(false);
   const update = async (next: boolean) => {

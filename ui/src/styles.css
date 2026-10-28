@@ -139,19 +139,6 @@ button.secondary {
   display: flex;
   flex-direction: column;
 }
-.tree-toolbar {
-  display: flex;
-  gap: 2px;
-  padding: 4px 8px 0;
-  color: var(--muted);
-  flex: none;
-}
-.tree-toolbar button {
-  padding: 4px 5px;
-}
-.tree-toolbar .spacer {
-  flex: 1;
-}
 .main {
   flex: 1;
   min-width: 0;

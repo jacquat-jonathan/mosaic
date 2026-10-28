@@ -443,3 +443,9 @@ attachment visibility, colors, explicit folder creation, cancelled/confirmed res
 of unrelated data, themes, and narrow layouts including expanded colors. Component checks
 cover serialized writes, stale callbacks after vault switches, associated save errors, explicit
 creation, reset scope, and refused preference repair.
+
+`views/FileTree.tsx` adopts shared icon buttons for the Files toolbar and scoped tokens for
+its custom multi-select tree, file-kind icons, selection, drops, and inline rename input.
+Rows use 14px text and 30px height (28px Compact); folder colors and note typography remain
+independent. Tree keyboard selection, menus, imports, drag scrolling, and file actions retain
+their behavior. The tree and toolbar own sibling theme scopes; Find panels remain separate.

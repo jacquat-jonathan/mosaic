@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { FilePlus, FolderPlus, Shapes, ChevronsDownUp, CalendarDays } from "lucide-react";
 import { api, onIndexProgress } from "./ipc/api";
 import { Welcome } from "./views/Welcome";
 import { WindowChrome } from "./views/WindowChrome";
@@ -8,10 +7,10 @@ import { SidebarHeader } from "./views/SidebarHeader";
 import { DesignSystemScope } from "./views/DesignSystemScope";
 import { errorMessage } from "./ipc/types";
 import { useVault } from "./state/vault";
-import { FileTree } from "./views/FileTree";
+import { FileTree, FileTreeToolbar } from "./views/FileTree";
 import { Workspace } from "./views/Workspace";
 import { ConfirmDialog, ContextMenu, ErrorToast, PromptDialog } from "./views/Overlays";
-import { newNote, newNoteDir, NEW_KINDS, newOfKind, openDailyNote, revealInTree } from "./actions";
+import { revealInTree } from "./actions";
 import { useShortcuts } from "./shortcuts";
 import { RIGHT_DEFAULT, SIDEBAR_DEFAULT, useUi } from "./state/ui";
 import { RightPanel } from "./views/RightPanel";
@@ -28,7 +27,6 @@ import { useWorkspace } from "./state/workspace";
 import { contextKind, isSpecialTab } from "./views/specialTabs";
 import { startAttention } from "./state/attention";
 import { useReview } from "./state/review";
-import { shortcutOf } from "./commands";
 
 export function App() {
   const vault = useVault((s) => s.vault);
@@ -164,51 +162,7 @@ function Main() {
             <SidebarHeader key={vault.root} vault={vault} />
             {tab === "notes" && (
               <>
-                <div className="tree-toolbar">
-                  <button
-                    aria-label="New note"
-                    title={`New note (${shortcutOf("new-note")})`}
-                    onClick={() => void newNote(newNoteDir())}
-                  >
-                    <FilePlus size={15} />
-                  </button>
-                  <button
-                    aria-label="New…"
-                    title="New diagram, drawing, chart or graph"
-                    onClick={(e) => {
-                      const r = e.currentTarget.getBoundingClientRect();
-                      ui().showMenu(
-                        r.left,
-                        r.bottom + 4,
-                        NEW_KINDS.map((k) => ({ label: k.label, action: () => void newOfKind("", k) })),
-                      );
-                    }}
-                  >
-                    <Shapes size={15} />
-                  </button>
-                  <button
-                    aria-label="New folder"
-                    title={`New folder (${shortcutOf("new-folder")})`}
-                    onClick={() => void useVault.getState().newFolder("")}
-                  >
-                    <FolderPlus size={15} />
-                  </button>
-                  <button
-                    aria-label="Today's note"
-                    title={`Open today's daily note (${shortcutOf("daily-note")})`}
-                    onClick={() => void openDailyNote()}
-                  >
-                    <CalendarDays size={15} />
-                  </button>
-                  <span className="spacer" />
-                  <button
-                    aria-label="Collapse all folders"
-                    title="Collapse all folders"
-                    onClick={() => useVault.setState({ expanded: new Set() })}
-                  >
-                    <ChevronsDownUp size={15} />
-                  </button>
-                </div>
+                <FileTreeToolbar />
                 <FileTree />
               </>
             )}

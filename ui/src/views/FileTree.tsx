@@ -1,6 +1,11 @@
 import { useMemo, useRef, useEffect, useState, type DragEvent, type KeyboardEvent, type MouseEvent } from "react";
 import {
   Bookmark,
+  FilePlus,
+  FolderPlus,
+  Shapes,
+  ChevronsDownUp,
+  CalendarDays,
   ChevronRight,
   File,
   FileCode,
@@ -30,6 +35,8 @@ import {
   NEW_KINDS,
   canvasFromFiles,
   newNote,
+  newNoteDir,
+  openDailyNote,
   newOfKind,
   openToTheRight,
   pickFolderAndMove,
@@ -43,6 +50,10 @@ import { kindOf } from "../ipc/kinds";
 import { useVaultPreferences } from "../state/vaultPreferences";
 import { isQuietAttachment } from "../attachments";
 import { treeAutoScrollStep } from "./treeAutoScroll";
+
+import { IconButton } from "../design-system/components";
+import { DesignSystemScope } from "./DesignSystemScope";
+import "./fileTree.css";
 
 const DRAG_TYPE = "application/x-mosaic-path";
 
@@ -81,6 +92,56 @@ export function displayName(e: { name: string; kind: FileKind | null }) {
 /** Paths being dragged from the tree (the drag data can't be read during dragover). */
 let dragging: string[] = [];
 const OPEN_ON_HOVER_MS = 600;
+
+export function FileTreeToolbar() {
+  return (
+    <DesignSystemScope className="tree-toolbar" role="toolbar" aria-label="Files actions">
+      <IconButton
+        label="New note"
+        title={`New note (${shortcutOf("new-note")})`}
+        onClick={() => void newNote(newNoteDir())}
+      >
+        <FilePlus aria-hidden="true" />
+      </IconButton>
+      <IconButton
+        label="New…"
+        title="New diagram, drawing, chart or graph"
+        onClick={(e) => {
+          const r = e.currentTarget.getBoundingClientRect();
+          useUi.getState().showMenu(
+            r.left,
+            r.bottom + 4,
+            NEW_KINDS.map((k) => ({ label: k.label, action: () => void newOfKind("", k) })),
+          );
+        }}
+      >
+        <Shapes aria-hidden="true" />
+      </IconButton>
+      <IconButton
+        label="New folder"
+        title={`New folder (${shortcutOf("new-folder")})`}
+        onClick={() => void useVault.getState().newFolder("")}
+      >
+        <FolderPlus aria-hidden="true" />
+      </IconButton>
+      <IconButton
+        label="Today's note"
+        title={`Open today's daily note (${shortcutOf("daily-note")})`}
+        onClick={() => void openDailyNote()}
+      >
+        <CalendarDays aria-hidden="true" />
+      </IconButton>
+      <span className="spacer" />
+      <IconButton
+        label="Collapse all folders"
+        title="Collapse all folders"
+        onClick={() => useVault.setState({ expanded: new Set() })}
+      >
+        <ChevronsDownUp aria-hidden="true" />
+      </IconButton>
+    </DesignSystemScope>
+  );
+}
 
 export function FileTree() {
   const entries = useVault((s) => s.entries);
@@ -234,45 +295,50 @@ export function FileTree() {
   };
 
   return (
-    <div
-      ref={treeRef}
-      className={`tree ${dropTarget === "" ? "drop" : ""}`}
-      role="tree"
-      aria-multiselectable="true"
-      tabIndex={0}
-      onKeyDown={onKeyDown}
-      onClick={(ev) => ev.target === ev.currentTarget && useVault.getState().clearSelection()}
-      onContextMenu={onRootMenu}
-      onDragOverCapture={(ev) => {
-        const finder = isFinderDrag(ev.dataTransfer);
-        if (finder || ev.dataTransfer.types.includes(DRAG_TYPE)) updateAutoScroll(ev.clientY);
-        else stopAutoScroll();
-      }}
-      onDragLeaveCapture={(ev) => {
-        if (!ev.currentTarget.contains(ev.relatedTarget as Node | null)) stopAutoScroll();
-      }}
-      onDropCapture={stopAutoScroll}
-      onDragEnd={() => {
-        dragging = [];
-        stopAutoScroll();
-        setDropTarget(null);
-        cancelHover();
-      }}
-      {...drop("")}
-    >
-      {rows.map(({ entry, depth }) => (
-        <TreeRow
-          key={entry.path}
-          entry={entry}
-          depth={depth}
-          open={expanded.has(entry.path)}
-          order={order}
-          dropping={dropTarget === entry.path}
-          dropProps={entry.is_dir ? drop(entry.path, !expanded.has(entry.path)) : drop(parentOf(entry.path))}
-        />
-      ))}
-      {rows.length === 0 && <p className="tree-empty">This vault is empty. Right-click to create a note.</p>}
-    </div>
+    <DesignSystemScope className="files-panel">
+      <div
+        ref={treeRef}
+        className={`tree ${dropTarget === "" ? "drop" : ""}`}
+        role="tree"
+        aria-label="Files"
+        aria-multiselectable="true"
+        tabIndex={0}
+        onKeyDown={onKeyDown}
+        onClick={(ev) => ev.target === ev.currentTarget && useVault.getState().clearSelection()}
+        onContextMenu={onRootMenu}
+        onDragOverCapture={(ev) => {
+          const finder = isFinderDrag(ev.dataTransfer);
+          if (finder || ev.dataTransfer.types.includes(DRAG_TYPE)) updateAutoScroll(ev.clientY);
+          else stopAutoScroll();
+        }}
+        onDragLeaveCapture={(ev) => {
+          if (!ev.currentTarget.contains(ev.relatedTarget as Node | null)) stopAutoScroll();
+        }}
+        onDropCapture={stopAutoScroll}
+        onDragEnd={() => {
+          dragging = [];
+          stopAutoScroll();
+          setDropTarget(null);
+          cancelHover();
+        }}
+        {...drop("")}
+      >
+        {rows.map(({ entry, depth }) => (
+          <TreeRow
+            key={entry.path}
+            entry={entry}
+            depth={depth}
+            open={expanded.has(entry.path)}
+            order={order}
+            dropping={dropTarget === entry.path}
+            dropProps={entry.is_dir ? drop(entry.path, !expanded.has(entry.path)) : drop(parentOf(entry.path))}
+          />
+        ))}
+        {rows.length === 0 && (
+          <p className="tree-empty">This vault is empty. Use New note or right-click to create one.</p>
+        )}
+      </div>
+    </DesignSystemScope>
   );
 }
 
@@ -483,6 +549,7 @@ function TreeRow({
       className={`tree-row ${active ? "active" : ""} ${selected ? "selected" : ""} ${dropping ? "drop" : ""}`}
       role="treeitem"
       aria-selected={selected}
+      aria-level={depth + 1}
       aria-expanded={entry.is_dir ? open : undefined}
       data-path={entry.path}
       data-folder-color={folderColor}
@@ -546,7 +613,7 @@ function RenameInput({ entry }: { entry: Entry }) {
     <input
       aria-label="New name"
       ref={ref}
-      className="tree-rename"
+      className="mds-input tree-rename"
       defaultValue={shown}
       onClick={(e) => e.stopPropagation()}
       onBlur={() => void commit()}

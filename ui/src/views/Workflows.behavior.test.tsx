@@ -515,6 +515,7 @@ describe("workflow list actions", () => {
     await waitFor(() => expect(api.tesseraPauseAgent).toHaveBeenCalled());
 
     const more = screen.getByRole("button", { name: "More actions for Agent ready" });
+    await waitFor(() => expect((more as HTMLButtonElement).disabled).toBe(false));
     vi.spyOn(more, "getBoundingClientRect").mockReturnValue({ left: 10, bottom: 20 } as DOMRect);
     fireEvent.click(more);
     const menu = useUi.getState().menu!;

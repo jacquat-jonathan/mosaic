@@ -179,7 +179,7 @@ test("sidebar resizing respects scale, persists width and fits narrow windows", 
   await expect
     .poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("mosaic:ui") ?? "{}").sidebarWidth))
     .toBe(300);
-  await expect(page.getByRole("tree")).toHaveCSS("font-size", "13px");
+  await expect(page.getByRole("tree")).toHaveCSS("font-size", "14px");
   await page.setViewportSize({ width: 320, height: 900 });
   await page.getByRole("tab", { name: "Files", exact: true }).click();
   await expect(header.getByRole("button", { name: "Hide sidebar", exact: true })).toBeInViewport();

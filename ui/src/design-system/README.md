@@ -207,6 +207,15 @@ are retryable. `ChatContext.tsx` shares scoped metadata, statuses, source action
 The last legacy transcript consumer has migrated, so old chat/transcript CSS and mode are removed.
 The surrounding context frame remains scheduled separately.
 
+`views/ActivityPanel.tsx` adopts `ChangeRow`, notices, outlined review/undo controls, and scoped
+page headings. The row accepts semantic timestamps, action-specific icons, file buttons, list
+semantics, and inline errors. Pending proposals remain oldest first, before newest applied changes;
+stale warnings stay explicit. Loading, empty, failed-load/retry, deleted-file, and undo-conflict
+states retain their recovery actions. Undo serializes mutations and guards its vault; late loads
+and event-listener setup are ignored after unmount. Review/history close restores focus; successful
+undo focuses History when its own button becomes disabled. The existing review dialog renders as
+a sibling outside the adopted theme until Step 19. Unused legacy activity-row styles are removed.
+
 **Contrast decision for this pilot:** retain the approved palettes and existing user-selected
 accents. The migrated controls use normal/muted text, quiet or outlined buttons, and neutral
 selected segments. They introduce no white-on-accent or white-on-danger text. Decisions about

@@ -42,17 +42,7 @@ export function SpecialView({ path }: { path: string }) {
     case "run":
       return <RunDetail id={id} />;
     case "activity":
-      return (
-        <div className="workspace-page">
-          <header className="workspace-heading">
-            <div>
-              <h1>Activity & review</h1>
-              <p>Decide on proposed changes, then browse file history.</p>
-            </div>
-          </header>
-          <ActivityPanel />
-        </div>
-      );
+      return <ActivityPanel />;
     case "connections":
       return <ConnectAiSection />;
     case "settings":

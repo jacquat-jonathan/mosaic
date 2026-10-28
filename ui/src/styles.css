@@ -2989,100 +2989,7 @@ svg path.flow-on {
 .history-diff .diff {
   max-height: none;
 }
-.activity {
-  padding: 0;
-}
-.activity-empty {
-  padding: 12px 0;
-  line-height: 1.5;
-}
-.activity-ledger > section > h2 {
-  font-size: 15px;
-  font-weight: 500;
-  margin: 0 0 8px;
-}
-.activity-item {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12px;
-  padding: 16px 0;
-  border-bottom: 1px solid var(--border);
-}
-.activity-icon {
-  color: var(--muted);
-  flex: none;
-}
-.activity-main {
-  flex: 1;
-  min-width: min(160px, 100%);
-  overflow-wrap: anywhere;
-}
-.activity-name,
-.activity-path {
-  font-size: 13px;
-}
-.activity-path {
-  display: block;
-  max-width: 100%;
-  background: none;
-  border: 0;
-  border-radius: 0;
-  color: var(--fg);
-  padding: 0;
-  text-align: left;
-}
-.activity-path:hover:not(:disabled) {
-  color: var(--accent);
-}
-.activity-path:disabled {
-  color: var(--muted);
-  text-decoration: line-through;
-}
-.activity-meta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 2px 7px;
-  font-size: 12px;
-  color: var(--muted);
-  margin-top: 4px;
-}
-.activity-meta > * + *::before {
-  content: "·";
-  margin-right: 7px;
-}
-.activity-folder {
-  color: var(--muted);
-  font-size: 11px;
-  margin-top: 3px;
-}
-.activity-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-}
-.activity-actions button {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 5px 8px;
-  font-size: 12px;
-  color: var(--muted);
-}
-.activity-actions button:hover:not(:disabled) {
-  color: var(--fg);
-}
-.activity-actions .activity-undo {
-  border: 1px solid var(--border);
-}
-.activity-item > .error-text {
-  flex-basis: 100%;
-  margin: 0;
-}
-.modal-actions button:disabled,
-.activity-actions button:disabled {
+.modal-actions button:disabled {
   opacity: 0.5;
   pointer-events: none;
 }
@@ -3388,22 +3295,6 @@ svg path.flow-on {
   font-weight: 700;
   line-height: 14px;
   text-align: center;
-}
-.review-inbox {
-  padding-top: 14px;
-  border-top: 2px solid light-dark(#956114, #edbd70);
-  margin-bottom: 30px;
-}
-.activity-ledger .review-inbox h2 {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-}
-.review-item .activity-actions button.primary {
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 12%, var(--bg));
-  border-color: transparent;
 }
 .review-stale {
   color: var(--danger);

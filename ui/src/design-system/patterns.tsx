@@ -399,18 +399,24 @@ export function ChangeRow({
   time,
   stale,
   children,
+  icon = <FilePenLine size={16} aria-hidden="true" />,
+  rowProps,
+  notice,
 }: {
-  name: string;
+  name: ReactNode;
   path: string;
   actor: string;
   action: string;
-  time: string;
+  time: ReactNode;
+  icon?: ReactNode;
+  rowProps?: ComponentPropsWithRef<"div">;
+  notice?: ReactNode;
   stale?: boolean;
   children: ReactNode;
 }) {
   return (
-    <div className="mds-change-row">
-      <FilePenLine size={16} aria-hidden="true" />
+    <div {...rowProps} className={["mds-change-row", rowProps?.className].filter(Boolean).join(" ")}>
+      {icon}
       <div className="mds-change-main">
         <strong>{name}</strong>
         <div className="mds-change-meta">
@@ -420,6 +426,7 @@ export function ChangeRow({
         {stale && <span className="mds-change-stale">File changed since proposal</span>}
       </div>
       <div className="mds-change-actions">{children}</div>
+      {notice}
     </div>
   );
 }

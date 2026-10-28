@@ -22,7 +22,7 @@ vi.mock("./Workflows", () => ({
   WorkflowForm: () => <div>workflow-form</div>,
   RunDetail: ({ id }: { id: string }) => <div>run:{id}</div>,
 }));
-vi.mock("./ActivityPanel", () => ({ ActivityPanel: () => <div>activity-panel</div> }));
+vi.mock("./ActivityPanel", () => ({ ActivityPanel: () => <div>Activity &amp; review</div> }));
 vi.mock("./ConnectAi", () => ({ ConnectAiSection: () => <div>Connections</div> }));
 vi.mock("./Settings", () => ({ Settings: () => <div>settings</div> }));
 vi.mock("./SearchPanel", () => ({ SearchPanel: () => <div>search</div> }));

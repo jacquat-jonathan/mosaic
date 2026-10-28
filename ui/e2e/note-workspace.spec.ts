@@ -1,4 +1,80 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+
+async function readIdeas(page: Page) {
+  return page.evaluate(() =>
+    (
+      window as unknown as { __mosaic: { mockInvoke(command: string, args: object): Promise<{ content: string }> } }
+    ).__mosaic
+      .mockInvoke("read_file", { path: "Ideas.md" })
+      .then((result) => result.content),
+  );
+}
+
+test("note formatting preserves selection, undo, toolbar keys and cancelled-link focus", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open folder…", exact: true }).click();
+  await page.getByRole("treeitem", { name: "Ideas", exact: true }).click();
+  const editor = page.locator(".cm-content");
+  await editor.click();
+  await editor.press("Meta+a");
+  await page.keyboard.insertText("Format this text");
+  await editor.press("Meta+a");
+  const toolbar = page.getByRole("toolbar", { name: "Format selected text", exact: true });
+  await toolbar.getByRole("button", { name: "Bold (⌘B)", exact: true }).click();
+  await expect.poll(() => readIdeas(page)).toBe("**Format this text**");
+  await toolbar.getByRole("button", { name: "Bold (⌘B)", exact: true }).focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(toolbar.getByRole("button", { name: "Italic (⌘I)", exact: true })).toBeFocused();
+  await page.keyboard.press("End");
+  await expect(toolbar.getByRole("button", { name: "Link to a Mosaic note", exact: true })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(editor).toBeFocused();
+  await toolbar.getByRole("button", { name: "Add web link (⌘K)", exact: true }).click();
+  await page.locator(".modal").getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(editor).toBeFocused();
+  await editor.press("Meta+z");
+  await expect.poll(() => readIdeas(page)).toBe("Format this text");
+});
+
+test("note formatting follows themes without changing note typography at maximum scale", async ({ page }, testInfo) => {
+  await page.addInitScript(() =>
+    localStorage.setItem("mosaic:settings", JSON.stringify({ noteFont: "Georgia", noteSize: 20 })),
+  );
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open folder…", exact: true }).click();
+  await page.getByRole("treeitem", { name: "Ideas", exact: true }).click();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.getByLabel("Interface density", { exact: true }).selectOption("compact");
+  await page.getByRole("slider", { name: "Interface scale", exact: true }).press("End");
+  const toolbar = page.getByRole("toolbar", { name: "Format selected text", exact: true });
+  const editor = page.locator(".cm-content");
+  for (const theme of ["Light", "Dark", "System"] as const) {
+    await page
+      .getByRole("radiogroup", { name: "Theme", exact: true })
+      .getByRole("radio", { name: theme, exact: true })
+      .check();
+    await page.getByRole("tab", { name: "Ideas Close tab", exact: true }).click();
+    await editor.click();
+    await editor.press("Meta+a");
+    await expect(toolbar).toBeVisible();
+    await expect(toolbar).toBeInViewport();
+    await expect(toolbar).toHaveCSS("font-size", "14px");
+    await expect(toolbar).toHaveCSS("background-color", theme === "Light" ? "rgb(246, 246, 248)" : "rgb(24, 25, 29)");
+    await expect(editor).toHaveCSS("font-size", "20px");
+    await expect(editor).toHaveCSS("font-family", /Georgia/);
+    await page.evaluate(
+      () => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))),
+    );
+    if (theme !== "System")
+      await page.screenshot({ path: testInfo.outputPath(`note-formatting-${theme.toLowerCase()}.png`) });
+    if (theme !== "System") await page.getByRole("tab", { name: "Settings Close tab", exact: true }).click();
+  }
+  await page.setViewportSize({ width: 320, height: 900 });
+  for (const button of await toolbar.getByRole("button").all()) await expect(button).toBeInViewport();
+  await page.screenshot({ path: testInfo.outputPath("note-formatting-narrow.png") });
+});
 
 test("workspace tabs preserve keyboard selection, closing, splits and resize controls", async ({ page }) => {
   await page.goto("/");

@@ -474,3 +474,9 @@ split handles expose orientation, current size, arrow resizing, Home/End limits,
 balancing, with listener cleanup on unmount. Active tabs stay visible as panels resize;
 very narrow bars move split/sidebar/context actions into their shared workspace menu.
 Document bodies keep their independent typography.
+
+`editor/selectionToolbar.ts` keeps CodeMirror’s native tooltip lifecycle while applying shared
+button classes and tokens. Its small preference adapter updates theme/density and unsubscribes
+when the tooltip closes. Arrow/Home/End navigation and Escape retain the selection; cancelled
+link prompts return to the editor and late choices check both the vault and connected editor.
+The large-note read-only notice owns a separate scope, preserving document typography.

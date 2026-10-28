@@ -15,6 +15,8 @@ import { parentOf, baseName } from "../state/vault";
 import { useUi } from "../state/ui";
 import { prefs } from "../state/settings";
 import { vaultPrefs } from "../state/vaultPreferences";
+import { Notice } from "../design-system/components";
+import { DesignSystemScope } from "../views/DesignSystemScope";
 
 /** "Pasted image 2026-10-02 143005.png" (a second image in one paste gets " 2"). */
 export function pastedName(file: { type: string }, index: number, now = new Date()): string {
@@ -138,9 +140,9 @@ export function MarkdownEditor({ buffer }: { buffer: Buffer }) {
   return (
     <div className="md-scroll">
       {readOnly && (
-        <div className="notice warn">
-          <span>This file is larger than 5 MB and opened read-only.</span>
-        </div>
+        <DesignSystemScope className="note-readonly">
+          <Notice tone="warning">This file is larger than 5 MB and opened read-only.</Notice>
+        </DesignSystemScope>
       )}
       <CodeMirror
         className="md-editor"

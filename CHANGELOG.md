@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Note formatting:** shared typography, focus rings, theme-aware selection controls, and a consistent read-only notice. Keyboard navigation and cancelled link prompts return to the note; late link choices leave closed notes and other vaults alone.
+
 - **Workspace tabs:** shared controls and typography clarify active tabs and unsaved changes. Split dividers now support keyboard resizing and balancing while retaining tab dragging and saved layouts.
 
 - **Search:** shared labelled fields, result rows, and bookmark controls improve readability. Failed searches can be retried, empty results are explicit, and stale results cannot open while a new query is loading.

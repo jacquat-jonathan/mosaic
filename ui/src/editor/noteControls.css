@@ -1,0 +1,28 @@
+.mosaic-ds.cm-tooltip.cm-selection-toolbar {
+  display: flex;
+  gap: var(--mds-space-1);
+  padding: var(--mds-space-2);
+  border: 1px solid var(--mds-border);
+  border-radius: var(--mds-radius-menu);
+  background: var(--mds-surface-subtle);
+  box-shadow: var(--mds-shadow-floating);
+}
+.mosaic-ds.cm-selection-toolbar .mds-button {
+  min-width: 28px;
+  height: 28px;
+  padding: 0 var(--mds-space-3);
+  font-size: var(--mds-text-body);
+  color: var(--mds-text);
+}
+.mosaic-ds.cm-selection-toolbar .strong {
+  font-weight: var(--mds-weight-strong);
+}
+.mosaic-ds.cm-selection-toolbar .emphasis {
+  font-style: italic;
+}
+.mosaic-ds.cm-selection-toolbar .note-link {
+  font-family: var(--mds-font-mono);
+}
+.mosaic-ds.note-readonly {
+  background: var(--mds-surface);
+}

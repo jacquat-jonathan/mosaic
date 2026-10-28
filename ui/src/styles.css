@@ -644,42 +644,6 @@ button.secondary {
   text-transform: none;
 }
 
-.cm-tooltip.cm-selection-toolbar {
-  display: flex;
-  gap: 2px;
-  padding: 3px;
-  border: 0 !important;
-  border-radius: 8px;
-  background: var(--bg-side);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.32);
-}
-.cm-selection-toolbar button {
-  min-width: 28px;
-  height: 27px;
-  padding: 0 7px;
-  border: 0;
-  border-radius: 5px;
-  background: transparent;
-  color: var(--fg);
-  box-shadow: none;
-  font: 500 12px / 1 var(--font-ui);
-}
-.cm-selection-toolbar button.strong {
-  font-weight: 750;
-}
-.cm-selection-toolbar button.emphasis {
-  font-style: italic;
-}
-.cm-selection-toolbar button.note-link {
-  font-family: var(--font-mono);
-}
-.cm-selection-toolbar button:hover,
-.cm-selection-toolbar button:focus-visible {
-  background: var(--bg-hover);
-  color: var(--accent);
-  outline: none;
-}
-
 /* Code editor */
 .code-editor .cm-scroller {
   font: 13px / 1.6 var(--font-mono);

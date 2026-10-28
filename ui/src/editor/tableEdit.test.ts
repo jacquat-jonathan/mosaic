@@ -6,11 +6,27 @@ import {
   insertColumn,
   insertRow,
   parseTable,
+  pasteCells,
   setAlign,
   setCell,
 } from "./tableEdit";
 
 const src = "| Name | Qty |\n|:--|--:|\n| Apple | 3 |\n| Kiwi |\n";
+
+test("spreadsheet paste expands a table, preserves alignment, and escapes literal pipes", () => {
+  const t = parseTable(src);
+  const next = pasteCells(t, 1, 1, "x|y\tnew\r\nlast\tcell\r\n");
+  expect(next.header).toEqual(["Name", "Qty", ""]);
+  expect(next.align).toEqual(["left", "right", null]);
+  expect(next.rows).toEqual([
+    ["Apple", "3", ""],
+    ["Kiwi", "x|y", "new"],
+    ["", "last", "cell"],
+  ]);
+  expect(parseTable(formatTable(next))).toEqual(next);
+  expect(t.rows[1]).toEqual(["Kiwi", ""]);
+  expect(pasteCells(t, -1, 0, "Title\tCount\nPear\t5").header).toEqual(["Title", "Count"]);
+});
 
 test("parses cells and alignment, padding short rows", () => {
   const t = parseTable(src);

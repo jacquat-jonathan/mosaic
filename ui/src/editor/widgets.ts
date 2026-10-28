@@ -21,6 +21,7 @@ import {
   insertColumn,
   insertRow,
   parseTable,
+  pasteCells,
   setAlign,
   type TableModel,
 } from "./tableEdit";
@@ -422,6 +423,26 @@ export class TableWidget extends WidgetType {
     const model = parseTable(this.source);
     const table = document.createElement("table");
     const cellEls: HTMLElement[][] = [];
+    let active = { row: -1, col: 0 };
+    const toolbar = document.createElement("div");
+    toolbar.className = "table-toolbar";
+    toolbar.setAttribute("role", "group");
+    toolbar.setAttribute("aria-label", "Table editing");
+    const position = document.createElement("span");
+    position.className = "table-position";
+    const alignSelect = document.createElement("select");
+    alignSelect.setAttribute("aria-label", "Column alignment");
+    for (const value of ["left", "center", "right"]) {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = `Align ${value}`;
+      alignSelect.append(option);
+    }
+    const updateToolbar = (row: number, col: number) => {
+      active = { row, col };
+      position.textContent = `${row < 0 ? "Header" : `Row ${row + 1}`} · Column ${col + 1}`;
+      alignSelect.value = model.align[col] ?? "left";
+    };
     const addRow = (parent: HTMLElement, cells: string[], row: number) => {
       const tr = document.createElement("tr");
       const els: HTMLElement[] = [];
@@ -452,6 +473,7 @@ export class TableWidget extends WidgetType {
       cell.textContent = cell.dataset.source ?? "";
     };
     const renderCell = (cell: HTMLElement) => {
+      if (cell.dataset.editing !== "true") return;
       cell.dataset.source = cell.textContent ?? cell.dataset.source ?? "";
       cell.dataset.editing = "false";
       cell.innerHTML = renderInlineMarkdown(cell.dataset.source);
@@ -459,7 +481,10 @@ export class TableWidget extends WidgetType {
     // Render formatting at rest; reveal and edit the exact Markdown source on focus.
     table.addEventListener("focusin", (e) => {
       const cell = (e.target as HTMLElement).closest<HTMLElement>("th, td");
-      if (cell) editCell(cell);
+      if (cell) {
+        editCell(cell);
+        updateToolbar(Number(cell.dataset.row), Number(cell.dataset.col));
+      }
     });
     table.addEventListener("mousedown", (e) => {
       const cell = (e.target as HTMLElement).closest<HTMLElement>("th, td");
@@ -481,7 +506,7 @@ export class TableWidget extends WidgetType {
     const inner = document.createElement("div");
     inner.className = "cm-table-inner";
     inner.append(table, addColButton, addRowButton);
-    wrap.append(inner);
+    wrap.append(toolbar, inner);
 
     const from = () => view.posAtDOM(wrap);
     let widths: number[] | null = null;
@@ -706,7 +731,12 @@ export class TableWidget extends WidgetType {
       return [
         { label: "Insert row above", disabled: row < 0, action: () => commit(insertRow(t(), row), at({ row, col })) },
         { label: "Insert row below", action: () => commit(insertRow(t(), row + 1), at({ row: row + 1, col })) },
-        { label: "Delete row", disabled: row < 0, danger: true, action: () => commit(deleteRow(t(), row)) },
+        {
+          label: "Delete row",
+          disabled: row < 0,
+          danger: true,
+          action: () => commit(deleteRow(t(), row), { row: Math.min(row, model.rows.length - 2), col }),
+        },
         { label: "", separator: true },
         {
           label: "Insert column left",
@@ -728,7 +758,7 @@ export class TableWidget extends WidgetType {
           danger: true,
           action: () => {
             resizeColumns(col, false);
-            commit(deleteColumn(t(), col));
+            commit(deleteColumn(t(), col), { row, col: Math.min(col, model.header.length - 2) });
           },
         },
         { label: "", separator: true },
@@ -741,9 +771,76 @@ export class TableWidget extends WidgetType {
           })),
         },
         { label: "Reset column widths", action: resetWidths },
-        { label: "Edit as Markdown", action: () => (view.dispatch({ selection: { anchor: from() } }), view.focus()) },
+        {
+          label: "Edit as Markdown",
+          action: () => {
+            const start = from();
+            commit(typed());
+            view.dispatch({ selection: { anchor: start } });
+            view.focus();
+          },
+        },
       ];
     };
+    const actionSelect = (label: string, prefix: string) => {
+      const select = document.createElement("select");
+      select.setAttribute("aria-label", label);
+      const placeholder = document.createElement("option");
+      placeholder.value = "";
+      placeholder.textContent = label;
+      select.append(placeholder);
+      // Keep the action labels and behavior identical to the cell's context menu.
+      const actions = menuFor(active.row, active.col).filter((item) => item.label.toLowerCase().includes(prefix));
+      actions.forEach((item) => {
+        const option = document.createElement("option");
+        option.value = item.label;
+        option.textContent = item.label;
+        select.append(option);
+      });
+      select.addEventListener("focus", () => {
+        for (const option of select.options) {
+          option.disabled = !!menuFor(active.row, active.col).find((item) => item.label === option.value)?.disabled;
+        }
+      });
+      select.addEventListener("change", () => {
+        const action = menuFor(active.row, active.col).find((item) => item.label === select.value);
+        select.value = "";
+        if (!action?.disabled) action?.action?.();
+      });
+      return select;
+    };
+    if (!view.state.readOnly) {
+      const rowSelect = actionSelect("Row actions", "row");
+      const colSelect = actionSelect("Column actions", "column");
+      // Alignment is its own direct control, rather than a nested menu.
+      colSelect.querySelector('option[value="Align column"]')?.remove();
+      alignSelect.addEventListener("change", () => {
+        const value = alignSelect.value as "left" | "center" | "right";
+        commit(setAlign(typed(), active.col, value === "left" ? null : value), active);
+      });
+      const sourceButton = document.createElement("button");
+      sourceButton.textContent = "Markdown";
+      sourceButton.title = "Edit table as Markdown";
+      sourceButton.addEventListener("click", () => {
+        const start = from();
+        commit(typed());
+        view.dispatch({ selection: { anchor: start } });
+        view.focus();
+      });
+      toolbar.append(position, rowSelect, colSelect, alignSelect, sourceButton);
+      updateToolbar(-1, 0);
+    } else toolbar.hidden = true;
+    table.addEventListener("paste", (e) => {
+      if (view.state.readOnly) return;
+      const cell = (e.target as HTMLElement).closest<HTMLElement>("th, td");
+      const text = e.clipboardData?.getData("text/plain");
+      if (!cell || !text || !/[\t\r\n]/.test(text.replace(/\r?\n$/, ""))) return;
+      e.preventDefault();
+      const { row, col } = posOf(cell);
+      const next = pasteCells(typed(), row, col, text);
+      while (widths && widths.length < next.header.length) resizeColumns(widths.length, true);
+      commit(next, { row, col });
+    });
     wrap.addEventListener("contextmenu", (e) => {
       if (view.state.readOnly) return;
       const cell = (e.target as HTMLElement).closest<HTMLElement>("th, td");
@@ -769,7 +866,7 @@ export class TableWidget extends WidgetType {
     });
     // Clicking beside the cells shows the Markdown source.
     wrap.addEventListener("mousedown", (e) => {
-      if ((e.target as HTMLElement).closest("th, td, button")) return;
+      if ((e.target as HTMLElement).closest("th, td, button, .table-toolbar")) return;
       e.preventDefault();
       view.dispatch({ selection: { anchor: from() } });
       view.focus();

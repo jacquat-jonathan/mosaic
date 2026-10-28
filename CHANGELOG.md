@@ -4,6 +4,10 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Workflow run logs:** follow answers and tool calls as a workflow runs, open the notes it reads or changes, and revisit its saved log afterward. Markdown formatting and review links match chat; older runs still show their recorded result.
+- **Easier table editing:** visible row, column and alignment controls keep the selected cell in view. Paste a spreadsheet rectangle to fill cells and grow the table while keeping the note as Markdown.
+- **Readable update notes:** release descriptions wrap within the settings pane, including long links, instead of being clipped horizontally.
+
 ## 0.26.0 — 2026-10-27
 
 - **HTML reports can be trusted per vault:** optionally allow scripts by default for every HTML file

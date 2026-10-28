@@ -129,3 +129,26 @@ export function setCell(t: TableModel, row: number, col: number, text: string): 
   else n.rows[row][col] = text;
   return n;
 }
+
+/** Paste a spreadsheet rectangle starting at a cell, growing the table as needed. */
+export function pasteCells(t: TableModel, row: number, col: number, text: string): TableModel {
+  const lines = text
+    .replace(/\r\n?/g, "\n")
+    .replace(/\n$/, "")
+    .split("\n")
+    .map((line) => line.split("\t"));
+  const next = clone(t);
+  const width = Math.max(next.header.length, col + Math.max(...lines.map((line) => line.length)));
+  while (next.header.length < width) {
+    next.header.push("");
+    next.align.push(null);
+  }
+  for (const cells of next.rows) while (cells.length < width) cells.push("");
+  while (next.rows.length < row + lines.length) next.rows.push(Array(width).fill(""));
+  lines.forEach((line, r) =>
+    line.forEach((value, c) => {
+      (row + r < 0 ? next.header : next.rows[row + r])[col + c] = value;
+    }),
+  );
+  return next;
+}

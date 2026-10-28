@@ -2,6 +2,7 @@
 import { create } from "zustand";
 import { prefs } from "./settings";
 import { api, onChatEvent } from "../ipc/api";
+import { appendTranscriptEvent } from "./transcript";
 import { errorMessage, type ChatEvent } from "../ipc/types";
 
 export type ChatItem =
@@ -186,31 +187,9 @@ export const useChat = create<ChatState>((set, get) => ({
         get().update(c.id, { session: e.session_id || c.session, noMosaic: !e.mosaic });
         break;
       case "text":
-        get().update(c.id, { items: [...items, { kind: "text", text: e.text }] });
-        break;
       case "tool":
-        get().update(c.id, {
-          items: [
-            ...items,
-            {
-              kind: "tool",
-              id: e.id,
-              summary: e.summary,
-              path: e.path,
-              writes: e.writes,
-              error: null,
-              review: null,
-              done: false,
-            },
-          ],
-        });
-        break;
       case "tool_done":
-        get().update(c.id, {
-          items: items.map((i) =>
-            i.kind === "tool" && i.id === e.id ? { ...i, error: e.error, review: e.review, done: true } : i,
-          ),
-        });
+        get().update(c.id, { items: appendTranscriptEvent(items, e) });
         break;
       case "done":
         if (e.error) items.push({ kind: "error", text: e.error });

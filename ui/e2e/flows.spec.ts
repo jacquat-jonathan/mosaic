@@ -342,7 +342,9 @@ test("manage workflows and inspect every AI workspace", async ({ page }) => {
   const firstWorkflow = page.locator(".workflow-card").first();
   await firstWorkflow.getByRole("button", { name: "Run now" }).click();
   const workspacePane = page.getByRole("region", { name: "Workspace pane" });
-  await expect(workspacePane.getByRole("heading", { name: "Result" })).toBeVisible();
+  await expect(workspacePane.getByRole("heading", { name: "Run log" })).toBeVisible();
+  await expect(workspacePane.locator(".run-transcript strong")).toHaveText("Mock run completed.");
+  await expect(workspacePane.getByRole("button", { name: "Read Ideas" })).toBeVisible();
   await workspacePane.getByRole("button", { name: "Open activity and reviews" }).click();
   await expect(page.getByRole("heading", { name: "AI activity" })).toBeVisible();
 
@@ -489,4 +491,67 @@ test("create calendar events, subscriptions and work sessions", async ({ page })
   const sessionEditor = page.getByRole("complementary", { name: "Edit work session for Calendar coverage task" });
   await sessionEditor.getByLabel("All day").check();
   await sessionEditor.getByRole("button", { name: "Save" }).click();
+});
+
+test("release notes wrap inside a narrow settings pane", async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 700 });
+  await openVault(page);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page
+    .getByRole("navigation", { name: "Settings sections" })
+    .getByRole("button", { name: "About & updates" })
+    .click();
+  await page.getByRole("button", { name: "Check for updates" }).click();
+  const note = page.locator(".release li").first();
+  await expect(note).toContainText("release notes");
+  await expect(note).toHaveCSS("white-space", "normal");
+  const bounds = await note.evaluate((el) => ({
+    width: el.clientWidth,
+    scroll: el.scrollWidth,
+    height: el.clientHeight,
+    line: Number.parseFloat(getComputedStyle(el).lineHeight),
+    pane: el.closest(".settings-scroll")!.getBoundingClientRect().right,
+    right: el.getBoundingClientRect().right,
+  }));
+  expect(bounds.scroll).toBeLessThanOrEqual(bounds.width + 1);
+  expect(bounds.height).toBeGreaterThan(bounds.line * 1.5);
+  expect(bounds.right).toBeLessThanOrEqual(bounds.pane);
+  for (const note of await page.locator(".release li").all()) {
+    const overflow = await note.evaluate((el) => el.scrollWidth - el.clientWidth);
+    expect(overflow).toBeLessThanOrEqual(1);
+  }
+});
+
+test("edit a table with visible row, column and alignment controls", async ({ page }) => {
+  await openVault(page);
+  await page.evaluate(async () => {
+    const m = (window as unknown as { __mosaic: { mockInvoke(c: string, a: object): Promise<unknown> } }).__mosaic;
+    await m.mockInvoke("create_file", {
+      path: "Table editing.md",
+      content: "# Table editing\n\n| Name | Qty |\n| --- | --- |\n| Apple | 3 |\n\nAfter table.\n",
+      root: null,
+    });
+  });
+  await openMockPath(page, "Table editing.md");
+  const table = page.locator(".cm-table-wrap");
+  await expect(table.getByRole("group", { name: "Table editing" })).toBeVisible();
+  await table.getByRole("combobox", { name: "Row actions" }).click();
+  await page.keyboard.press("Escape");
+  await expect(table).toBeVisible();
+  const cell = table.locator("td").first();
+  await cell.fill("**Pear**");
+  await table.getByRole("combobox", { name: "Row actions" }).selectOption("Insert row below");
+  await expect(table.locator("tbody tr")).toHaveCount(2);
+  await expect(table.locator("tbody tr").last().locator("td").first()).toBeFocused();
+  await expect(table.locator("td strong")).toHaveText("Pear");
+  await table.getByRole("combobox", { name: "Column actions" }).selectOption("Insert column right");
+  await expect(table.locator("th")).toHaveCount(3);
+  await table.getByRole("combobox", { name: "Column alignment" }).selectOption("right");
+  await expect(table.locator("tbody tr").last().locator("td").nth(1)).toHaveCSS("text-align", "right");
+  await table.locator("tbody tr").last().locator("td").nth(1).fill("pasted");
+  await table.getByRole("combobox", { name: "Column actions" }).selectOption("Delete column");
+  await expect(table.locator("th")).toHaveCount(2);
+  await page.locator(".cm-line").last().click();
+  await expect.poll(() => readMockFile(page, "Table editing.md")).toContain("**Pear**");
+  expect(await readMockFile(page, "Table editing.md")).not.toContain("pasted");
 });

@@ -267,6 +267,49 @@ describe("workflow helpers and detail views", () => {
 });
 
 describe("workflow list actions", () => {
+  it("streams run answers and tool outcomes, retaining readable older results", async () => {
+    const events: NonNullable<AgentRun["transcript"]>["events"] = [
+      { kind: "text", text: "Reading **the note**." },
+      { kind: "tool", id: "read", summary: "Read Other", path: "Other.md", writes: false },
+    ];
+    useAttention.setState({
+      status: { ...status, runs: [run(77, "ready", "running", { transcript: { events, truncated: false } })] },
+    });
+    const { rerender } = render(<RunDetail id="77" />);
+    expect(screen.getByText("the note").tagName).toBe("STRONG");
+    fireEvent.click(screen.getByRole("button", { name: "Read Other" }));
+    expect(useWorkspace.getState().open).toHaveBeenCalledWith("Other.md", { newTab: true });
+    act(() =>
+      useAttention.setState({
+        status: {
+          ...status,
+          runs: [
+            run(77, "ready", "failed", {
+              transcript: {
+                truncated: true,
+                events: [
+                  ...events,
+                  { kind: "tool_done", id: "read", error: "Permission denied", review: null },
+                  { kind: "tool", id: "write", summary: "Proposed Other", path: "Other.md", writes: true },
+                  { kind: "tool_done", id: "write", error: null, review: 9 },
+                  { kind: "done", session_id: null, cost_usd: null, error: "Workflow stopped" },
+                ],
+              },
+            }),
+          ],
+        },
+      }),
+    );
+    expect(screen.getByTitle("Permission denied")).toBeTruthy();
+    expect(screen.getByText("Workflow stopped")).toBeTruthy();
+    expect(screen.getByText(/log was shortened/)).toBeTruthy();
+    expect(screen.queryByText("Working…")).toBeNull();
+    expect(screen.getByRole("button", { name: "proposed — review" })).toBeTruthy();
+    act(() => useAttention.setState({ status }));
+    rerender(<RunDetail id="3" />);
+    expect(screen.getByText("Finished")).toBeTruthy();
+  });
+
   it("renders every state and runs, pauses, tests and opens menu actions", async () => {
     render(<Workflows />);
     expect(screen.getByText("Queued · 2")).toBeTruthy();

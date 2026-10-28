@@ -12,6 +12,9 @@ import { viewPath } from "./specialTabs";
 import { vaultPrefs } from "../state/vaultPreferences";
 import { registerDraft } from "../state/drafts";
 import { FolderChoices } from "./FolderChoices";
+import { TranscriptItem, openTranscriptLink } from "./Transcript";
+import { appendTranscriptEvent } from "../state/transcript";
+import type { ChatItem } from "../state/chat";
 
 export function pendingForRun(run: AgentRun | undefined, pending: Proposal[]) {
   if (!run) return [];
@@ -40,8 +43,18 @@ export const workflowDeleteTarget = (agent: Agent) => (agent.skill_folder ? pare
 export function RunDetail({ id, compact = false }: { id: string; compact?: boolean }) {
   const run = useAttention((s) => s.status?.runs.find((r) => String(r.id) === id));
   const pending = useReview((s) => s.pending);
+  const log = useRef<HTMLDivElement>(null);
+  const follow = useRef(true);
+  const events = run?.transcript?.events;
+  useEffect(() => {
+    follow.current = true;
+  }, [id]);
+  useEffect(() => {
+    if (follow.current && log.current) log.current.scrollTop = log.current.scrollHeight;
+  }, [events]);
   if (!run) return <p className="panel-meta">This run is unavailable.</p>;
   const proposals = pendingForRun(run, pending);
+  const items = (events ?? []).reduce<ChatItem[]>(appendTranscriptEvent, []);
   return (
     <div className={compact ? "context-content" : "workspace-page"}>
       <h2>{run.title}</h2>
@@ -74,8 +87,34 @@ export function RunDetail({ id, compact = false }: { id: string; compact?: boole
           </>
         )}
       </dl>
-      <h3>Result</h3>
-      <div className="tessera-answer">{run.error || run.answer || "Working…"}</div>
+      <h3>{items.length ? "Run log" : "Result"}</h3>
+      {run.transcript?.truncated && (
+        <p className="panel-meta">Only the latest activity is shown; this log was shortened.</p>
+      )}
+      <div
+        className="run-transcript"
+        aria-label="Run log"
+        tabIndex={0}
+        ref={log}
+        onClick={openTranscriptLink}
+        onScroll={() => {
+          const el = log.current;
+          if (el) follow.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+        }}
+      >
+        {items.length ? (
+          items.map((item, i) => <TranscriptItem key={i} item={item} />)
+        ) : (
+          <TranscriptItem
+            item={{
+              kind: run.error ? "error" : "text",
+              text:
+                run.error || run.answer || (run.status === "running" ? "Waiting for output…" : "No output recorded."),
+            }}
+          />
+        )}
+        {run.status === "running" && items.length > 0 && <p className="chat-thinking">Working…</p>}
+      </div>
       <h3>Changed files</h3>
       {run.changed_paths?.length ? (
         run.changed_paths.map((path) => (

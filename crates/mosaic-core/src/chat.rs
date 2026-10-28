@@ -5,7 +5,7 @@
 //! Claude Code runs in the vault folder with only Mosaic's MCP server. It reads and changes files
 //! only through Mosaic's tools, so folder rules apply and every change has history, Undo and review.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 /// Built-in tools that would change files behind Mosaic's back, or read them past the folder
@@ -88,7 +88,8 @@ pub fn system_prompt(
     s
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ChatEvent {
     /// The session started (or resumed); `mosaic` says whether Mosaic's tools are connected.
@@ -115,6 +116,48 @@ pub enum ChatEvent {
         cost_usd: Option<f64>,
         error: Option<String>,
     },
+}
+
+/// A bounded, portable transcript of a workflow's answers and tool activity.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+pub struct RunTranscript {
+    pub events: Vec<ChatEvent>,
+    pub truncated: bool,
+}
+
+impl RunTranscript {
+    pub fn push(&mut self, mut event: ChatEvent) {
+        // Session metadata isn't part of the visible transcript.
+        if matches!(event, ChatEvent::Started { .. }) {
+            return;
+        }
+        let text = match &mut event {
+            ChatEvent::Text { text } => Some(text),
+            ChatEvent::Tool { summary, .. } => Some(summary),
+            ChatEvent::ToolDone { error, .. } | ChatEvent::Done { error, .. } => error.as_mut(),
+            _ => None,
+        };
+        if let Some(text) = text
+            && text.len() > 16_384
+        {
+            let mut end = 16_384;
+            while !text.is_char_boundary(end) {
+                end -= 1;
+            }
+            text.truncate(end);
+            text.push('…');
+            self.truncated = true;
+        }
+        self.events.push(event);
+        // Limit both count and serialized bytes, including unusually long paths or tool IDs.
+        while self.events.len() > 500
+            || serde_json::to_vec(&self.events).is_ok_and(|bytes| bytes.len() > 131_072)
+        {
+            self.events.remove(0);
+            self.truncated = true;
+        }
+    }
 }
 
 fn s<'a>(v: &'a Value, key: &str) -> Option<&'a str> {
@@ -326,6 +369,40 @@ pub fn parse_line(line: &str) -> Vec<ChatEvent> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn workflow_transcript_bounds_unicode_payloads_and_keeps_recent_activity() {
+        let mut log = super::RunTranscript::default();
+        log.push(super::ChatEvent::Text {
+            text: "🧩".repeat(20_000),
+        });
+        assert!(log.truncated);
+        assert!(serde_json::to_vec(&log).unwrap().len() < 132_000);
+        for i in 0..600 {
+            log.push(super::ChatEvent::Text {
+                text: format!("Step {i}"),
+            });
+        }
+        assert_eq!(log.events.len(), 500);
+        assert_eq!(
+            log.events.last(),
+            Some(&super::ChatEvent::Text {
+                text: "Step 599".into()
+            })
+        );
+        let saved = serde_json::to_string(&log).unwrap();
+        assert_eq!(
+            serde_json::from_str::<super::RunTranscript>(&saved).unwrap(),
+            log
+        );
+        log.push(super::ChatEvent::Tool {
+            id: "id".into(),
+            summary: "Read".into(),
+            path: Some("a".repeat(140_000)),
+            writes: false,
+        });
+        assert!(serde_json::to_vec(&log.events).unwrap().len() <= 131_072);
+    }
+
     use super::*;
     use serde_json::json;
 

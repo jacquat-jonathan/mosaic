@@ -2130,6 +2130,15 @@ export const mockCommands: typeof commands = {
         late: false,
         status: "done",
         answer: "Mock run completed. No files were changed.",
+        transcript: {
+          truncated: false,
+          events: [
+            { kind: "text", text: "I'll read [[Ideas]] first." },
+            { kind: "tool", id: "workflow-read", summary: "Read Ideas", path: "Ideas.md", writes: false },
+            { kind: "tool_done", id: "workflow-read", error: null, review: null },
+            { kind: "text", text: "**Mock run completed.** No files were changed." },
+          ],
+        },
         error: null,
         proposals: 0,
         changes: [],
@@ -2721,6 +2730,8 @@ export const mockCommands: typeof commands = {
           notes: [
             "**Movable window:** drag the sidebar header, tab bar or welcome screen. Updates show the current `version` and *release notes*.",
             "A running update can be cancelled; the installed app stays as it was.",
+            "**HTML reports can be trusted per vault:** optionally allow scripts by default for every HTML file in a vault while keeping network access blocked, and override that choice for one page until Mosaic quits. Mermaid blocks embedded in HTML now render as diagrams even when page scripts stay blocked.",
+            `Long update references wrap too: https://example.com/releases/${"release-notes-".repeat(30)}`,
           ],
         },
       ],

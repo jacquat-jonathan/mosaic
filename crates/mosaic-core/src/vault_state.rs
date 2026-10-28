@@ -373,9 +373,19 @@ mod tests {
             changes: vec![],
             changed_paths: vec![],
             proposal_ids: vec![],
+            transcript: crate::chat::RunTranscript {
+                events: vec![crate::chat::ChatEvent::Text {
+                    text: "Working on [[Note]]".into(),
+                }],
+                truncated: false,
+            },
         });
         state.set_tessera(&t).unwrap();
         assert_eq!(state.tessera().last_checked, 99);
+        assert_eq!(
+            VaultState::open_in(&root, &support).unwrap().tessera().runs[0].transcript,
+            t.runs[0].transcript
+        );
         assert_eq!(
             std::fs::read(support.join("settings.json")).unwrap(),
             before

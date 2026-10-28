@@ -162,11 +162,11 @@ export const commands = {
 
 /* Types */
 /**  What agents may do in a folder (and everything inside it). */
-export type Access = 
+export type Access =
 /**  Agents can read and search it, but not change anything. */
-"read-only" | 
+"read-only" |
 /**  Agents can't see it: it's left out of listings and search, and reading it says "not found". */
-"hidden" | 
+"hidden" |
 /**  Agents' changes become proposals that the person accepts or rejects in the app. */
 "review";
 
@@ -231,6 +231,8 @@ export type AgentRun = {
 	changes?: string[],
 	changed_paths?: string[],
 	proposal_ids?: number[],
+	/**  Saved answers and tool calls; older runs have no transcript. */
+	transcript?: RunTranscript,
 };
 
 export type AttachmentLocation = "next-to-note" | "folder";
@@ -271,6 +273,20 @@ export type CarryOver = {
 	/**  True when the day's note was created for them. */
 	created: boolean,
 };
+
+export type ChatEvent =
+/**  The session started (or resumed); `mosaic` says whether Mosaic's tools are connected. */
+{ kind: "started"; session_id: string; mosaic: boolean } |
+/**  Text from Claude (Markdown). */
+{ kind: "text"; text: string } |
+/**  Claude uses a tool: a short line for the person, and the note it's about if any. */
+{ kind: "tool"; id: string; summary: string; path: string | null;
+/**  True for tools that change the vault. */
+writes: boolean } |
+/**  A tool's outcome: failed, or (in a reviewed folder) became a proposal. */
+{ kind: "tool_done"; id: string; error: string | null; review: number | null } |
+/**  The answer is complete. */
+{ kind: "done"; session_id: string | null; cost_usd: number | null; error: string | null };
 
 export type ClaudeInfo = {
 	/**  Where `claude` was found, if it was. */
@@ -797,6 +813,12 @@ export type Renamed_Serialize = {
 	failed_links_in?: FailedLink[],
 	/**  Set when the rename is waiting for review rather than applied. */
 	review?: number | null,
+};
+
+/**  A bounded, portable transcript of a workflow's answers and tool activity. */
+export type RunTranscript = {
+	events: ChatEvent[],
+	truncated: boolean,
 };
 
 export type SearchHit = {

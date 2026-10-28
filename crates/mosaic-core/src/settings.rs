@@ -87,6 +87,9 @@ pub struct AgentRun {
     pub changed_paths: Vec<String>,
     #[serde(default)]
     pub proposal_ids: Vec<i64>,
+    /// Saved answers and tool calls; older runs have no transcript.
+    #[serde(default)]
+    pub transcript: crate::chat::RunTranscript,
 }
 
 fn one_attempt() -> u8 {
@@ -317,6 +320,7 @@ mod tests {
         let run: super::AgentRun = serde_json::from_str(r#"{"id":1,"agent":"review","title":"Review","started":1,"finished":2,"late":false,"status":"done","answer":"OK","error":null,"proposals":1,"changes":["Edited note"]}"#).unwrap();
         assert!(run.proposal_ids.is_empty());
         assert!(run.changed_paths.is_empty());
+        assert!(run.transcript.events.is_empty());
         assert_eq!(run.changes, vec!["Edited note"]);
         assert_eq!(run.attempts, 1);
         assert_eq!(run.trigger, None);

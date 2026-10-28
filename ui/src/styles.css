@@ -1330,7 +1330,13 @@ button.secondary {
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
-  margin-bottom: 6px;
+  margin: 0 0 4px 26px;
+  padding: 6px 8px;
+  width: fit-content;
+  max-width: calc(100% - 26px);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-side);
   font: 12px var(--font-ui);
   color: var(--muted);
   white-space: normal;
@@ -1349,7 +1355,23 @@ button.secondary {
   border-radius: 5px;
 }
 .table-position {
-  margin-right: auto;
+  margin-right: 6px;
+  padding-right: 10px;
+  border-right: 1px solid var(--border);
+  font-size: 11px;
+}
+.table-toolbar-label {
+  color: var(--fg);
+  font-weight: 500;
+}
+.table-toolbar button[aria-label="Bold"] {
+  font-weight: 700;
+}
+.table-toolbar button[aria-label="Italic"] {
+  font-style: italic;
+}
+.table-toolbar button[aria-label="Strikethrough"] {
+  text-decoration: line-through;
 }
 
 /* Syntax tokens */
@@ -6429,9 +6451,11 @@ pre.template-preview {
   top: 18px;
 }
 .table-axis:hover,
+.table-axis[data-near],
 .table-axis:focus-visible,
 .table-axis:active,
 .table-insert:hover,
+.table-insert[data-near],
 .table-insert:focus-visible,
 .table-insert:active {
   opacity: 1;

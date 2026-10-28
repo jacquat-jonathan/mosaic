@@ -87,6 +87,9 @@ export class TableWidget extends WidgetType {
     toolbar.className = "table-toolbar";
     toolbar.setAttribute("role", "group");
     toolbar.setAttribute("aria-label", "Table editing");
+    const tableLabel = document.createElement("span");
+    tableLabel.className = "table-toolbar-label";
+    tableLabel.textContent = "Table";
     const position = document.createElement("span");
     position.className = "table-position";
     const alignSelect = document.createElement("select");
@@ -199,8 +202,13 @@ export class TableWidget extends WidgetType {
     model.header.forEach(() => colgroup.append(document.createElement("col")));
     table.prepend(colgroup);
     const handles: HTMLButtonElement[] = [];
-    const axes: { el: HTMLButtonElement; kind: "row" | "column" | "insert-row" | "insert-column"; index: number }[] =
-      [];
+    const axes: {
+      el: HTMLButtonElement;
+      kind: "row" | "column" | "insert-row" | "insert-column";
+      index: number;
+      x?: number;
+      y?: number;
+    }[] = [];
     const positionHandles = () => {
       const bounds = inner.getBoundingClientRect();
       cellEls[0].forEach((cell, i) => {
@@ -218,14 +226,40 @@ export class TableWidget extends WidgetType {
           const x =
             kind === "column" ? rect.left + rect.width / 2 : index === model.header.length ? rect.right : rect.left;
           el.style.left = `${x - bounds.left - (kind === "column" ? 10 : 7)}px`;
+          control.x = x - bounds.left;
+          control.y = kind === "column" ? 10 : 25;
         } else {
           const row = kind === "row" ? index + 1 : Math.min(index + 1, cellEls.length - 1);
           const rect = cellEls[row][0].getBoundingClientRect();
           const y = kind === "row" ? rect.top + rect.height / 2 : index === model.rows.length ? rect.bottom : rect.top;
           el.style.top = `${y - bounds.top - (kind === "row" ? 10 : 7)}px`;
+          control.x = kind === "row" ? 10 : 24;
+          control.y = y - bounds.top;
         }
       }
     };
+    // Reveal nearby controls without enlarging their clickable boxes over editable cells.
+    // Positions are cached during layout so pointer movement only checks numbers, not each cell.
+    scroll.addEventListener("pointermove", (event) => {
+      if (event.pointerType === "touch") return;
+      const bounds = inner.getBoundingClientRect();
+      const x = event.clientX - bounds.left,
+        y = event.clientY - bounds.top;
+      for (const control of axes) {
+        const radius = (control.kind.startsWith("insert-") ? 7 : 10) + 12;
+        const near =
+          control.x !== undefined &&
+          control.y !== undefined &&
+          Math.abs(x - control.x) <= radius &&
+          Math.abs(y - control.y) <= radius;
+        if (control.el.hasAttribute("data-near") !== near) control.el.toggleAttribute("data-near", near);
+      }
+    });
+    const clearNearby = () => {
+      for (const control of axes) control.el.removeAttribute("data-near");
+    };
+    scroll.addEventListener("pointerleave", clearNearby);
+    scroll.addEventListener("scroll", clearNearby, { passive: true });
     const applyWidths = () => {
       if (!widths) return;
       const current = widths;
@@ -750,7 +784,7 @@ export class TableWidget extends WidgetType {
         button.addEventListener("click", () => formatCells(command));
         formatButtons.push(button);
       }
-      toolbar.append(position, ...formatButtons, alignSelect, sourceButton);
+      toolbar.append(tableLabel, position, ...formatButtons, alignSelect, sourceButton);
       updateToolbar(-1, 0);
     } else toolbar.hidden = true;
     table.addEventListener("copy", (event) => {

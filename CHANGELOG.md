@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Review dialog:** a wider, consistent diff view with partial acceptance, rejection feedback, stale-change comparison, and focus restoration. Decisions disable while saving, failed comparisons can be retried, and older WebKit versions use a focus-managed modal fallback.
+
 - **Activity & review:** consistent change rows keep proposals first and History/Undo beside each applied change. Failed loads can be retried, undo actions disable while pending, and dialogs return focus to their opener.
 
 - **Chat:** consistent messages, expandable tool activity, attachments, model choice, and send/stop controls. Connection failures can be retried, saved-note writes stay tied to the vault, and context details use readable metadata.

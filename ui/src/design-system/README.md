@@ -213,19 +213,28 @@ semantics, and inline errors. Pending proposals remain oldest first, before newe
 stale warnings stay explicit. Loading, empty, failed-load/retry, deleted-file, and undo-conflict
 states retain their recovery actions. Undo serializes mutations and guards its vault; late loads
 and event-listener setup are ignored after unmount. Review/history close restores focus; successful
-undo focuses History when its own button becomes disabled. The existing review dialog renders as
-a sibling outside the adopted theme until Step 19. Unused legacy activity-row styles are removed.
+undo focuses History when its own button becomes disabled. The review dialog renders as
+a sibling with its own adopted theme. Unused legacy activity-row styles are removed.
+
+`views/ReviewModal.tsx` adopts the wide `Dialog`, shared diff, selectable hunks, notices,
+segmented stale-change comparison, rejection text area, and outlined actions. Failed comparisons
+can be retried and cannot be accepted until the file was read; a missing file remains distinct.
+Conflicts reread the current file before offering Accept anyway. Accept/reject serialize, disable
+fields and dismissal while pending, guard the vault, and retain failed drafts. An accepted change
+is not repeated if opening its file fails. Shared DiffView supports labelled views and optional
+hunk controls. Native and fallback dialogs are checked for keyboard containment, Escape, background
+focus blocking, return focus, themes, and narrow layouts at 130% scale.
 
 **Contrast decision for this pilot:** retain the approved palettes and existing user-selected
 accents. The migrated controls use normal/muted text, quiet or outlined buttons, and neutral
 selected segments. They introduce no white-on-accent or white-on-danger text. Decisions about
 those filled variants remain required before their first application adoption.
 
-**Dialog compatibility strategy:** retain the existing app confirmation for the pilot's section
-reset, including cancellation and return to its opener. Before adopting `Dialog` in the app,
-feature-detect `showModal` and provide a focus-managed fallback for supported older WebKit
-versions. Do not raise the macOS minimum as a side effect of the visual migration. The native
-gallery dialog is not imported by this pilot.
+**Dialog compatibility strategy:** `Dialog` feature-detects native modal support. Supported
+older WebKit receives an open dialog in a fixed backdrop, explicit focus containment, background
+ARIA hiding (plus inertness when available), scroll blocking, Escape handling, and focus return.
+Prior background state is restored on close. Backdrop clicks do not dismiss either implementation.
+The app's remaining confirmations stay on their existing implementation until Step 28.
 
 ## Provenance
 
@@ -285,14 +294,17 @@ Approved during the 2026-10-28 design review, before component migration:
   hover highlight never leaves two active rows. Nested menus, context positioning,
   collision detection, and typeahead are not included in this candidate.
   The trigger uses a centered 14px Lucide `ChevronDown`, rather than a baseline-aligned text glyph.
-- Native modal dialogs with explicit Tab wrapping, Escape, and focus restoration. Pass
+- Modal dialogs use native support when available and a focus-managed fallback otherwise. Both
+  provide explicit Tab wrapping, Escape, and focus restoration. Pass
   `returnFocusRef` to restore the opener after mouse activation too (Safari does not focus
-  buttons on mouse clicks). Without it, the previously focused element is restored. These require
-  Safari 15.4+; Mosaic's macOS 12 minimum can include earlier WebKit versions. Resolve the
-  compatibility strategy before adopting this component in the app. Backdrop clicks do not
+  buttons on mouse clicks). Without it, the previously focused element is restored. Native `showModal` is
+  available in Safari 15.4+; earlier supported WebKit uses the fallback without raising Mosaic's
+  macOS minimum. Backdrop clicks do not
   dismiss a dialog; explicit Cancel, the close button, and Escape do. Heading/description,
   body, and footer actions have separate layout regions. `size="wide"` accommodates diffs.
   `initialFocusRef` can focus the main field after the dialog opens, instead of its close button.
+  `dismissible={false}` disables close/Escape during a pending decision. Notice roles can be
+  explicitly set to alert when an urgent warning needs announcement.
 - A tooltip surface derived from existing floating surfaces, displayed on hover/focus,
   associated with its child via `aria-describedby`, and dismissible with Escape. Tooltips
   supplement an existing accessible label. Viewport collision handling is deferred.

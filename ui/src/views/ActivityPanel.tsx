@@ -116,6 +116,7 @@ function Ledger({ root }: { root?: string }) {
       </DesignSystemScope>
       {open && (
         <ReviewModal
+          returnFocusRef={opener}
           proposal={open}
           onClose={() => {
             setOpen(null);

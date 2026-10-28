@@ -20,9 +20,9 @@ test("activity keeps pending proposals first and restores review history and und
   const review = pending.getByRole("button", { name: "Review", exact: true });
   await review.click();
   const dialog = page.getByRole("dialog", { name: /Review the change to Welcome/ });
-  await expect(dialog).toHaveCSS("font-size", "13px");
-  expect(await dialog.evaluate((element) => element.closest(".mosaic-ds") === null)).toBe(true);
-  await dialog.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(dialog).toHaveCSS("font-size", "14px");
+  expect(await dialog.evaluate((element) => element.closest(".mosaic-ds") !== null)).toBe(true);
+  await dialog.getByRole("button", { name: "Close dialog", exact: true }).click();
   await expect(review).toBeFocused();
   const row = applied
     .getByRole("listitem")

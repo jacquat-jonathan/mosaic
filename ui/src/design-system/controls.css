@@ -231,9 +231,9 @@
 }
 .mosaic-ds .mds-dialog {
   width: var(--mds-dialog-width);
-  max-width: calc(100vw - 32px);
-  max-height: calc(100vh - 32px);
-  overflow: auto;
+  max-width: calc(100% - 32px);
+  max-height: calc(100% - 32px);
+  overflow: hidden;
   padding: 0;
   color: var(--mds-text);
   background: var(--mds-surface);
@@ -241,6 +241,10 @@
   border-radius: var(--mds-radius-dialog);
   box-shadow: var(--mds-shadow-floating);
   font: inherit;
+}
+.mosaic-ds .mds-dialog[open] {
+  display: flex;
+  flex-direction: column;
 }
 .mosaic-ds .mds-dialog::backdrop {
   background: var(--mds-overlay);
@@ -254,6 +258,7 @@
   color: var(--mds-text-muted);
 }
 .mosaic-ds .mds-dialog-actions {
+  flex: none;
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
@@ -266,6 +271,7 @@
   width: 720px;
 }
 .mosaic-ds .mds-dialog-header {
+  flex: none;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -280,6 +286,8 @@
   color: var(--mds-text-muted);
 }
 .mosaic-ds .mds-dialog-body {
+  min-height: 0;
+  overflow: auto;
   padding: 0 var(--mds-space-9) var(--mds-space-9);
   display: grid;
   gap: var(--mds-space-8);
@@ -365,4 +373,25 @@
 .mosaic-ds .mds-tooltip-anchor:hover .mds-tooltip:not([data-dismissed]),
 .mosaic-ds .mds-tooltip-anchor:focus-within .mds-tooltip:not([data-dismissed]) {
   display: block;
+}
+
+/* A focus-managed modal for supported WebKit versions without showModal. */
+.mosaic-ds .mds-dialog-fallback-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--mds-overlay);
+}
+.mosaic-ds .mds-dialog-fallback-backdrop[hidden],
+.mosaic-ds .mds-dialog:not([open]) {
+  display: none;
+}
+.mosaic-ds .mds-dialog--fallback[open] {
+  display: flex;
+  position: relative;
+  inset: auto;
+  margin: 0;
 }

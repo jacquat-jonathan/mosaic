@@ -431,12 +431,19 @@ export function ChangeRow({
   );
 }
 
-export function DiffView({ lines }: { lines: readonly { type: "context" | "add" | "remove"; text: string }[] }) {
+export function DiffView({
+  lines,
+  label = "Proposed changes",
+}: {
+  lines: readonly { type: "context" | "add" | "remove"; text: string; control?: ReactNode }[];
+  label?: string;
+}) {
   return (
-    <pre className="mds-diff" aria-label="Proposed changes">
+    <pre className="mds-diff" aria-label={label}>
       <code>
         {lines.map((line, index) => (
           <span className={`mds-diff-line mds-diff-line--${line.type}`} key={index}>
+            {line.control}
             <span className="mds-diff-sign">{line.type === "add" ? "+" : line.type === "remove" ? "−" : " "}</span>
             {line.text}
             {"\n"}

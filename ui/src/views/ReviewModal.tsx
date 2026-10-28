@@ -1,61 +1,112 @@
-// Reviewing one agent proposal: the change as a diff against the file as it is now, then accept
-// (applied and logged as the agent's change, so it can still be undone) or reject with a reason the
-// agent can read.
-
-import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Check, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { Check, X } from "lucide-react";
+import { Button, Dialog, Notice, SegmentedControl, TextArea } from "../design-system/components";
+import { DiffView } from "../design-system/patterns";
 import { api } from "../ipc/api";
 import { errorMessage, type Proposal } from "../ipc/types";
 import { acceptHunks, diffLines, reviewHunks } from "../diff";
 import { useReview } from "../state/review";
+import { useVault } from "../state/vault";
 import { useWorkspace } from "../state/workspace";
 import { ago } from "../time";
+import { DesignSystemScope } from "./DesignSystemScope";
+import "../design-system/patterns.css";
+import "./reviewModal.css";
 
-export const proposalWho = (p: Proposal) => p.actor ?? (p.source === "cli" ? "mosaic command" : "an agent");
-
-export function proposalWhat(p: Proposal): string {
-  return p.action === "created"
+export const proposalWho = (proposal: Proposal) =>
+  proposal.actor ?? (proposal.source === "cli" ? "mosaic command" : "an agent");
+export function proposalWhat(proposal: Proposal): string {
+  return proposal.action === "created"
     ? "wants to create"
-    : p.action === "deleted"
+    : proposal.action === "deleted"
       ? "wants to delete"
-      : p.action === "renamed"
+      : proposal.action === "renamed"
         ? "wants to rename"
         : "wants to change";
 }
-
-export function ReviewModal({ proposal, onClose }: { proposal: Proposal; onClose(): void }) {
-  const [proposed, setProposed] = useState<string | null | undefined>(undefined);
-  const [current, setCurrent] = useState<string | null | undefined>(undefined);
+type Props = { proposal: Proposal; onClose(): void; returnFocusRef?: RefObject<HTMLElement | null> };
+export function ReviewModal(props: Props) {
+  const root = useVault((state) => state.vault?.root);
+  return <Review key={`${root}:${props.proposal.id}`} {...props} root={root} />;
+}
+function Review({ proposal, onClose, returnFocusRef, root }: Props & { root?: string }) {
+  const [proposed, setProposed] = useState<string | null | undefined>();
+  const [current, setCurrent] = useState<string | null | undefined>();
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState("");
   const [conflict, setConflict] = useState(proposal.stale ?? false);
-  // The file as the agent saw it, to show what the person changed since (on a conflict).
-  const [base, setBase] = useState<string | null | undefined>(undefined);
+  const [base, setBase] = useState<string | null | undefined>();
   const [showYours, setShowYours] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState(false);
+  const [loadTick, setLoadTick] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [decision, setDecision] = useState<"accepted" | "rejected" | null>(null);
   const [selectedHunks, setSelectedHunks] = useState<Set<number>>(new Set());
-
+  const reasonField = useRef<HTMLTextAreaElement>(null);
+  const rejectButton = useRef<HTMLButtonElement>(null);
+  const lock = useRef(false);
+  const mounted = useRef(true);
+  const currentVault = () => mounted.current && !!root && useVault.getState().vault?.root === root;
   useEffect(() => {
-    api.proposalContent(proposal.id).then(setProposed, (e) => setError(errorMessage(e)));
-    api.read(proposal.path).then(
-      (f) => setCurrent(f.content ?? ""),
-      () => setCurrent(null),
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  useEffect(() => {
+    let live = true;
+    setError(null);
+    setLoadError(false);
+    setProposed(undefined);
+    setCurrent(undefined);
+    void Promise.all([
+      api.proposalContent(proposal.id),
+      api
+        .read(proposal.path)
+        .then((file) => file.content ?? "")
+        .catch((cause) => {
+          if ((cause as { code?: string }).code === "not_found") return null;
+          throw cause;
+        }),
+    ]).then(
+      ([next, existing]) => {
+        if (live) {
+          setProposed(next);
+          setCurrent(existing);
+        }
+      },
+      (cause) => {
+        if (live) {
+          setError(errorMessage(cause));
+          setLoadError(true);
+        }
+      },
     );
-  }, [proposal.id, proposal.path]);
-
+    return () => {
+      live = false;
+    };
+  }, [proposal.id, proposal.path, loadTick]);
   useEffect(() => {
-    if (conflict && base === undefined) api.proposalBase(proposal.id).then(setBase, () => setBase(null));
+    if (!conflict || base !== undefined) return;
+    let live = true;
+    void api.proposalBase(proposal.id).then(
+      (value) => {
+        if (live) setBase(value);
+      },
+      () => {
+        if (live) setBase(null);
+      },
+    );
+    return () => {
+      live = false;
+    };
   }, [conflict, base, proposal.id]);
-
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
+    if (rejecting) reasonField.current?.focus();
+  }, [rejecting]);
   const lines = useMemo(() => {
     if (proposed === undefined || current === undefined) return null;
-    // A new file is all added lines, a deletion all removed ones (no empty "other side" line).
     if (current === null) return (proposed ?? "").split("\n").map((text) => ({ op: "add" as const, text }));
     if (proposed === null) return current.split("\n").map((text) => ({ op: "del" as const, text }));
     return diffLines(current, proposed);
@@ -67,68 +118,130 @@ export function ReviewModal({ proposal, onClose }: { proposal: Proposal; onClose
     [selectable, current, proposed],
   );
   const hunkCount = useMemo(
-    () => (reviewLines ? Math.max(-1, ...reviewLines.map((l) => l.hunk ?? -1)) + 1 : 0),
+    () => (reviewLines ? Math.max(-1, ...reviewLines.map((line) => line.hunk ?? -1)) + 1 : 0),
     [reviewLines],
   );
   useEffect(() => {
-    if (hunkCount) setSelectedHunks(new Set(Array.from({ length: hunkCount }, (_, i) => i)));
-  }, [proposal.id, hunkCount]);
-  // What the person changed since the proposal: the file then → the file now.
+    setSelectedHunks(new Set(Array.from({ length: hunkCount }, (_, index) => index)));
+  }, [hunkCount]);
   const yours = useMemo(
     () => (typeof base === "string" && typeof current === "string" ? diffLines(base, current) : null),
     [base, current],
   );
-  const shown = useMemo(() => {
-    const baseLines = showYours && yours ? yours : (reviewLines ?? lines);
-    return baseLines?.map((l) => ({ ...l, hunk: (l as { hunk?: number | null }).hunk ?? null })) ?? null;
-  }, [showYours, yours, reviewLines, lines]);
-
-  const done = () => {
-    void useReview.getState().refresh();
-    onClose();
-  };
-  const accept = async (force: boolean) => {
+  const shown = useMemo(
+    () =>
+      (showYours && yours ? yours : (reviewLines ?? lines))?.map((line) => ({
+        ...line,
+        hunk: (line as { hunk?: number | null }).hunk ?? null,
+      })) ?? null,
+    [showYours, yours, reviewLines, lines],
+  );
+  const accept = async () => {
+    if (!currentVault() || lock.current || decision || !lines || (selectable && selectedHunks.size === 0)) return;
+    lock.current = true;
+    setBusy(true);
     setError(null);
+    let applied = false;
     try {
       const partial =
         selectable && selectedHunks.size < hunkCount ? acceptHunks(current!, proposed!, selectedHunks) : null;
-      const path = await api.acceptProposal(proposal.id, force, partial);
-      done();
-      if (proposal.action !== "deleted") void useWorkspace.getState().open(path, { newTab: false });
-    } catch (e) {
-      if ((e as { code?: string }).code === "conflict") setConflict(true);
-      else setError(errorMessage(e));
+      const path = await api.acceptProposal(proposal.id, conflict, partial);
+      if (!currentVault()) return;
+      applied = true;
+      setDecision("accepted");
+      await useReview.getState().refresh();
+      if (!currentVault()) return;
+      if (proposal.action !== "deleted") await useWorkspace.getState().open(path, { newTab: false });
+      if (currentVault()) onClose();
+    } catch (cause) {
+      if (!currentVault()) return;
+      if (applied) setError(`The change was accepted, but the file could not be opened: ${errorMessage(cause)}`);
+      else if ((cause as { code?: string }).code === "conflict") {
+        setConflict(true);
+        setBase(undefined);
+        setLoadTick((tick) => tick + 1);
+      } else setError(errorMessage(cause));
+    } finally {
+      lock.current = false;
+      if (currentVault()) setBusy(false);
     }
   };
   const reject = async () => {
+    if (!currentVault() || lock.current || decision) return;
+    lock.current = true;
+    setBusy(true);
     setError(null);
     try {
       await api.rejectProposal(proposal.id, reason.trim() || null);
-      done();
-    } catch (e) {
-      setError(errorMessage(e));
+      if (!currentVault()) return;
+      setDecision("rejected");
+      await useReview.getState().refresh();
+      if (currentVault()) onClose();
+    } catch (cause) {
+      if (currentVault()) setError(errorMessage(cause));
+    } finally {
+      lock.current = false;
+      if (currentVault()) setBusy(false);
     }
   };
-
   const name = proposal.path.split("/").pop()!.replace(/\.md$/, "");
   return (
-    <div className="modal-backdrop" onMouseDown={onClose}>
-      <div
-        className="modal history review"
-        role="dialog"
-        aria-label={`Review the change to ${name}`}
-        onMouseDown={(e) => e.stopPropagation()}
+    <DesignSystemScope className="review-dialog-scope">
+      <Dialog
+        open
+        size="wide"
+        title={`Review the change to ${name}`}
+        description={`${proposal.path} · proposed ${ago(proposal.updated)}`}
+        onClose={onClose}
+        returnFocusRef={returnFocusRef}
+        dismissible={!busy}
+        actions={
+          decision ? (
+            <Button variant="secondary" disabled={busy} onClick={onClose}>
+              Close
+            </Button>
+          ) : rejecting ? (
+            <>
+              <Button
+                disabled={busy}
+                onClick={() => {
+                  setRejecting(false);
+                  requestAnimationFrame(() => rejectButton.current?.focus());
+                }}
+              >
+                Back
+              </Button>
+              <Button variant="secondary" disabled={busy} onClick={() => void reject()}>
+                <X aria-hidden="true" />
+                {busy ? "Rejecting…" : "Reject"}
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button ref={rejectButton} disabled={busy} onClick={() => setRejecting(true)}>
+                <X aria-hidden="true" />
+                Reject…
+              </Button>
+              <Button
+                variant="secondary"
+                disabled={busy || lines === null || (selectable && selectedHunks.size === 0)}
+                onClick={() => void accept()}
+              >
+                <Check aria-hidden="true" />
+                {busy
+                  ? "Accepting…"
+                  : conflict
+                    ? "Accept anyway"
+                    : selectable && selectedHunks.size < hunkCount
+                      ? `Accept ${selectedHunks.size} of ${hunkCount}`
+                      : "Accept"}
+              </Button>
+            </>
+          )
+        }
       >
-        <div className="history-head">
-          <h2>
-            {proposalWho(proposal)} {proposalWhat(proposal)} “{name}”
-          </h2>
-          <button className="icon" aria-label="Close" onClick={onClose}>
-            <X size={16} />
-          </button>
-        </div>
-        <p className="settings-note">
-          <code>{proposal.path}</code> · proposed {ago(proposal.updated)}.{" "}
+        <p>
+          {proposalWho(proposal)} {proposalWhat(proposal)} “{name}”.{" "}
           {proposal.action === "renamed"
             ? `Accepting renames it to ${proposal.to_path}.`
             : proposal.binary
@@ -144,113 +257,85 @@ export function ReviewModal({ proposal, onClose }: { proposal: Proposal; onClose
             ? "Binary changes are applied after your review."
             : "Accepted changes show in AI activity, with Undo."}
         </p>
-        {proposal.binary && (
-          <div className="history-diff">
-            <p className="tree-empty">Binary files do not have a text diff.</p>
-          </div>
-        )}
-        {proposal.action === "renamed" && (
-          <div className="history-diff">
-            <p>
-              <code>{proposal.path}</code> → <code>{proposal.to_path}</code>
-              {proposal.update_links ? "; links will follow." : "."}
-            </p>
-          </div>
-        )}
         {conflict && (
-          <div className="review-conflict" role="alert">
-            <AlertTriangle size={16} />
-            <div>
-              <strong>The file changed after the agent proposed this.</strong>{" "}
-              {proposal.action === "deleted"
-                ? "Accepting deletes it, with those changes."
-                : "Accepting replaces those changes with the agent's version."}{" "}
-              They stay in the file's history.
-              {yours && (
-                <div className="review-toggle" role="group" aria-label="Which change to show">
-                  <button className={showYours ? "" : "on"} onClick={() => setShowYours(false)}>
-                    What accepting does
-                  </button>
-                  <button className={showYours ? "on" : ""} onClick={() => setShowYours(true)}>
-                    What changed since
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-        {!proposal.binary && proposal.action !== "renamed" && (
-          <div className="history-diff">
-            {shown && (
-              <pre className="diff">
-                {shown.map((l, i) => (
-                  <div key={i} className={`diff-${l.op}`}>
-                    {!showYours && l.hunk !== null && (i === 0 || shown[i - 1].hunk !== l.hunk) && (
-                      <input
-                        type="checkbox"
-                        className="diff-hunk"
-                        checked={selectedHunks.has(l.hunk)}
-                        aria-label={`Accept change ${l.hunk + 1}`}
-                        onChange={(e) =>
-                          setSelectedHunks((s) => {
-                            const next = new Set(s);
-                            if (e.target.checked) next.add(l.hunk!);
-                            else next.delete(l.hunk!);
-                            return next;
-                          })
-                        }
-                      />
-                    )}
-                    <span className="diff-sign">{l.op === "add" ? "+" : l.op === "del" ? "−" : " "}</span>
-                    {l.text || " "}
-                  </div>
-                ))}
-              </pre>
+          <Notice tone="warning" role="alert">
+            <strong>The file changed after the agent proposed this.</strong>{" "}
+            {proposal.action === "deleted"
+              ? "Accepting deletes it, with those changes."
+              : "Accepting replaces those changes with the agent's version."}{" "}
+            They stay in the file's history.
+            {yours && (
+              <SegmentedControl
+                label="Which change to show"
+                value={showYours ? "yours" : "accepting"}
+                options={[
+                  { value: "accepting", label: "What accepting does" },
+                  { value: "yours", label: "What changed since" },
+                ]}
+                onChange={(value) => setShowYours(value === "yours")}
+                disabled={busy}
+              />
             )}
-          </div>
+          </Notice>
+        )}
+        {proposal.binary ? (
+          <Notice>Binary files do not have a text diff.</Notice>
+        ) : proposal.action === "renamed" ? (
+          <p>
+            <code>{proposal.path}</code> → <code>{proposal.to_path}</code>
+            {proposal.update_links ? "; links will follow." : "."}
+          </p>
+        ) : shown ? (
+          <DiffView
+            label={showYours ? "Changes since proposal" : "Proposed changes"}
+            lines={shown.map((line, index) => ({
+              type: line.op === "add" ? "add" : line.op === "del" ? "remove" : "context",
+              text: line.text || " ",
+              control:
+                !showYours && line.hunk !== null && (index === 0 || shown[index - 1].hunk !== line.hunk) ? (
+                  <input
+                    className="review-hunk"
+                    type="checkbox"
+                    checked={selectedHunks.has(line.hunk)}
+                    disabled={busy || !!decision}
+                    aria-label={`Accept change ${line.hunk + 1}`}
+                    onChange={(event) =>
+                      setSelectedHunks((previous) => {
+                        const next = new Set(previous);
+                        if (event.target.checked) next.add(line.hunk!);
+                        else next.delete(line.hunk!);
+                        return next;
+                      })
+                    }
+                  />
+                ) : undefined,
+            }))}
+          />
+        ) : (
+          !loadError && <Notice>Loading comparison…</Notice>
         )}
         {rejecting && (
-          <label className="review-reason">
-            Tell the agent why (optional; it sees this when it checks its proposals)
-            <textarea
-              autoFocus
-              value={reason}
-              rows={2}
-              onChange={(e) => setReason(e.target.value)}
-              placeholder="e.g. keep the old wording"
-            />
-          </label>
+          <TextArea
+            ref={reasonField}
+            label="Tell the agent why (optional; it sees this when it checks its proposals)"
+            value={reason}
+            rows={2}
+            onChange={(event) => setReason(event.target.value)}
+            placeholder="e.g. keep the old wording"
+            disabled={busy || !!decision}
+          />
         )}
-        {error && <p className="error-text">{error}</p>}
-        <div className="modal-actions">
-          {rejecting ? (
-            <>
-              <button onClick={() => setRejecting(false)}>Back</button>
-              <button className="primary danger" onClick={() => void reject()}>
-                <X size={14} /> Reject
-              </button>
-            </>
-          ) : (
-            <>
-              <button onClick={() => setRejecting(true)}>
-                <X size={14} /> Reject…
-              </button>
-              <button
-                className={conflict ? "primary danger" : "primary"}
-                disabled={lines === null || (selectable && selectedHunks.size === 0)}
-                onClick={() => void accept(conflict)}
-              >
-                <Check size={14} />{" "}
-                {conflict
-                  ? "Accept anyway"
-                  : selectable && selectedHunks.size < hunkCount
-                    ? `Accept ${selectedHunks.size} of ${hunkCount}`
-                    : "Accept"}
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-    </div>
+        {error && (
+          <Notice tone="error">
+            {error}
+            {loadError && (
+              <Button variant="secondary" onClick={() => setLoadTick((tick) => tick + 1)}>
+                Retry comparison
+              </Button>
+            )}
+          </Notice>
+        )}
+      </Dialog>
+    </DesignSystemScope>
   );
 }

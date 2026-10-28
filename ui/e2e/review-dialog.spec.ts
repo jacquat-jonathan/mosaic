@@ -10,7 +10,7 @@ async function openReview(page: Page) {
     ),
   );
   await page.getByRole("tab", { name: "AI", exact: true }).click();
-  await page.getByRole("button", { name: "Automations", exact: true }).click();
+  await page.getByRole("radio", { name: "Automations", exact: true }).click();
   await page.getByRole("button", { name: /Activity & review/ }).click();
   await page
     .getByRole("region", { name: "Waiting for your review", exact: true })

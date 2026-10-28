@@ -28,8 +28,20 @@ export function ChatHistoryPage() {
     </DesignSystemScope>
   );
 }
-export function ChatList({ fallback }: { fallback?: RefObject<HTMLButtonElement | null> }) {
+export function ChatList({
+  fallback,
+  inheritScope = false,
+}: {
+  fallback?: RefObject<HTMLButtonElement | null>;
+  inheritScope?: boolean;
+}) {
   const root = useChat((state) => state.root);
+  if (inheritScope)
+    return (
+      <div className="chat-history-list" role="group" aria-label="Saved chats">
+        <ChatRows key={root} fallback={fallback} />
+      </div>
+    );
   return (
     <DesignSystemScope className="chat-history-list" role="group" aria-label="Saved chats">
       <ChatRows key={root} fallback={fallback} />

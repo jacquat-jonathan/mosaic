@@ -4,8 +4,9 @@ A standalone inventory of Mosaic's existing interface and a candidate component 
 The visual design and gallery were approved on 2026-10-28 after review of typography,
 icons, focus behavior, overlays, workflows, runs, chat, and Activity & review.
 **Settings → Appearance** was visually accepted on 2026-10-28. Settings navigation, header,
-and sections, Connections & safety, and workflow lists are migrated. **Workflow editor/detail** is the current migration; remaining AI
-and workspace surfaces keep their existing controls.
+and sections, Connections & safety, workflows, runs, chats, Activity & review, file history,
+Welcome, and app navigation are migrated. **Files and Find** are next; remaining workspace
+and planning surfaces keep their existing controls.
 
 ## Open the gallery
 
@@ -253,6 +254,16 @@ does not steal keyboard focus from the rail. Click-to-toggle sidebar behavior an
 Attention counts use readable neutral badges and a full screen-reader description. IconButton
 preserves an explicit title so app shortcut hints can accompany its accessible label. Unused legacy
 rail/badge styles are removed; sidebar and workspace content remain scoped separately.
+
+`views/SidebarHeader.tsx` adopts shared vault/menu controls, disabled loading state, inline errors,
+and focus return across menu/picker/prompt cancellation. Recent-vault failures retain open/create
+recovery actions; stale responses and actions guard the vault. AreaSidebar adopts shared navigation
+buttons and the radio-based AI section switch; ChatList can inherit that scope without nesting a
+second theme. The file tree and Find panel bodies retain their own migration boundaries. Scoped
+indexing metadata and width caps keep the frame usable in narrow windows. Resizer adopts a scoped
+focus ring, keyboard arrows/Home/End/reset, scale-correct dragging, and unmount cleanup, preserving
+saved widths and defaults. Legacy navigation/header/resize styles are removed after their consumers
+migrate.
 
 **Contrast decision for this pilot:** retain the approved palettes and existing user-selected
 accents. The migrated controls use normal/muted text, quiet or outlined buttons, and neutral

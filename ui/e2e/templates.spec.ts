@@ -165,6 +165,6 @@ test("template controls and expanded previews match themes and fit narrow panes"
   await page.screenshot({ path: testInfo.outputPath("templates-narrow.png") });
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.getByRole("button", { name: "Show sidebar", exact: true }).click();
-  await expect(page.locator(".sidebar .mosaic-ds")).toHaveCount(0);
+  await expect(page.locator(".sidebar .tree.mosaic-ds")).toHaveCount(0);
   await expect(page.locator(".sidebar")).toHaveCSS("font-size", "13px");
 });

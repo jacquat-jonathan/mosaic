@@ -131,42 +131,13 @@ button.secondary {
   display: flex;
 }
 .sidebar {
+  max-width: calc(100% - 44px);
   position: relative;
   flex: none;
   background: var(--bg-side);
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-}
-.sidebar-head {
-  height: var(--titlebar);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 4px;
-  padding: 0 8px 0 34px;
-  flex: none;
-  border-bottom: 1px solid var(--border);
-}
-.vault-name {
-  font-weight: 600;
-  min-width: 0;
-  padding: 4px 6px;
-  gap: 3px;
-}
-.vault-name span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.vault-name svg {
-  flex: none;
-  color: var(--muted);
-}
-.head-button {
-  flex: none;
-  padding: 4px;
-  color: var(--muted);
 }
 .tree-toolbar {
   display: flex;
@@ -1486,25 +1457,6 @@ mark {
   overflow: auto;
 }
 
-/* Side panel resize handles */
-.panel-resizer {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 7px;
-  z-index: 6;
-  cursor: col-resize;
-}
-.panel-resizer.right {
-  right: -4px;
-}
-.panel-resizer.left {
-  left: -3px;
-}
-.panel-resizer:hover,
-body.resizing .panel-resizer {
-  background: linear-gradient(to right, transparent 3px, var(--accent) 3px, var(--accent) 4px, transparent 4px);
-}
 .right-panel section {
   padding: 4px 12px 16px;
 }
@@ -3364,33 +3316,8 @@ svg path.flow-on {
   min-height: 0;
   position: relative;
 }
-.sidebar-head {
-  padding-left: 8px;
-}
 .shell.no-left .pane.top-left .tabbar {
   padding-left: 8px;
-}
-.area-nav {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 12px;
-  overflow: auto;
-}
-.area-nav > button {
-  justify-content: flex-start;
-  min-height: 30px;
-}
-.area-nav h3 {
-  color: var(--muted);
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin: 18px 6px 7px;
-}
-.area-nav button[aria-pressed="true"] {
-  background: var(--bg-active);
-  color: var(--accent);
 }
 .context-head {
   height: 38px;
@@ -3560,7 +3487,7 @@ textarea:focus-visible {
     bottom: 0;
     z-index: 30;
     box-shadow: var(--shadow);
-    max-width: calc(100vw - 100px);
+    max-width: calc(100% - 44px);
   }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -5045,84 +4972,6 @@ pre.template-preview {
   }
 }
 
-/* Focused AI workspace: stable navigation, separate conversation history and automation work. */
-.ai-nav {
-  flex: 1;
-  min-height: 0;
-  gap: 16px;
-}
-.ai-section-switch {
-  display: flex;
-  gap: 3px;
-  padding: 3px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--bg);
-  flex: none;
-}
-.ai-section-switch button {
-  flex: 1;
-  justify-content: center;
-  border-radius: 5px;
-}
-.ai-section-content {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  min-width: 0;
-}
-.ai-section-content > button,
-.ai-workflow-list button,
-.ai-automation-nav button,
-.ai-manage button {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 8px;
-  min-width: 0;
-  width: 100%;
-  text-align: left;
-}
-.ai-nav button > svg {
-  flex: none;
-}
-.ai-nav button > span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.ai-nav button[aria-current="page"] {
-  background: var(--bg-active);
-  color: var(--accent);
-}
-.ai-new-chat {
-  margin-bottom: 10px;
-}
-.ai-workflow-list {
-  padding-left: 12px;
-  margin: 4px 0 12px;
-  border-left: 1px solid var(--border);
-}
-.ai-workflow-list button {
-  color: var(--muted);
-  font-size: 12px;
-}
-.ai-automation-nav {
-  margin-top: 14px;
-  display: grid;
-  gap: 4px;
-}
-.ai-manage {
-  margin-top: auto;
-  padding-top: 14px;
-  border-top: 1px solid var(--border);
-}
-.ai-nav summary {
-  color: var(--muted);
-  font-size: 12px;
-  padding: 7px 6px;
-  cursor: pointer;
-}
 /* Tables stay visual while typing. Handles own structure; cells own text. */
 .cm-table-inner {
   display: inline-block;

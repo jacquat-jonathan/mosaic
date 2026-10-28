@@ -4,7 +4,7 @@ async function openEditor(page: Page) {
   await page.goto("/");
   await page.getByRole("button", { name: "Open folder…", exact: true }).click();
   await page.getByRole("tab", { name: "AI", exact: true }).click();
-  await page.getByRole("button", { name: "Automations", exact: true }).click();
+  await page.getByRole("radio", { name: "Automations", exact: true }).click();
   await page
     .getByRole("navigation", { name: "AI views", exact: true })
     .getByRole("button", { name: "Workflows", exact: true })

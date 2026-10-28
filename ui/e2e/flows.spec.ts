@@ -176,7 +176,7 @@ test("accept an agent's proposal from review", async ({ page }) => {
     ),
   );
   await page.getByRole("tab", { name: "AI" }).click();
-  await page.getByRole("button", { name: "Automations", exact: true }).click();
+  await page.getByRole("radio", { name: "Automations", exact: true }).click();
   await page.getByRole("button", { name: /Activity & review · 1/ }).click();
   await page.getByRole("region", { name: "Waiting for your review" }).getByRole("button", { name: "Review" }).click();
   await page.getByRole("button", { name: "Accept", exact: true }).click();
@@ -193,7 +193,7 @@ test("reject an agent's proposal with feedback", async ({ page }) => {
     ),
   );
   await page.getByRole("tab", { name: "AI" }).click();
-  await page.getByRole("button", { name: "Automations", exact: true }).click();
+  await page.getByRole("radio", { name: "Automations", exact: true }).click();
   await page.getByRole("button", { name: /Activity & review · 1/ }).click();
   await page.getByRole("region", { name: "Waiting for your review" }).getByRole("button", { name: "Review" }).click();
   await page.getByRole("button", { name: "Reject…" }).click();
@@ -332,7 +332,7 @@ test("manage workflows and inspect every AI workspace", async ({ page }) => {
   await openVault(page);
   await page.getByRole("tab", { name: "AI" }).click();
 
-  await page.getByRole("button", { name: "Automations", exact: true }).click();
+  await page.getByRole("radio", { name: "Automations", exact: true }).click();
   await page.locator(".ai-manage summary").click();
   await page.getByRole("button", { name: "Agent library", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Agents", exact: true })).toBeVisible();
@@ -394,7 +394,7 @@ test("Ledger activity keeps reviews first and exposes history and undo beside ea
     ),
   );
   await page.getByRole("tab", { name: "AI", exact: true }).click();
-  await page.getByRole("button", { name: "Automations", exact: true }).click();
+  await page.getByRole("radio", { name: "Automations", exact: true }).click();
   await page.getByRole("button", { name: /Activity & review · 1/ }).click();
   const review = page.getByRole("region", { name: "Waiting for your review" });
   const applied = page.getByRole("region", { name: "Applied changes" });
@@ -623,7 +623,7 @@ test("Focused separates chat history from automation navigation and compacts run
   await page.getByRole("tab", { name: "AI", exact: true }).click();
   const sidebar = page.getByRole("navigation", { name: "AI views" });
   await expect(sidebar.getByRole("button", { name: "+ New chat" })).toBeVisible();
-  await sidebar.getByRole("button", { name: "Automations", exact: true }).click();
+  await sidebar.getByRole("radio", { name: "Automations", exact: true }).click();
   await expect(sidebar.getByRole("button", { name: "+ New chat" })).toHaveCount(0);
   await sidebar.getByRole("button", { name: "Workflows", exact: true }).click();
   await page.locator(".mds-workflow-card").first().getByRole("button", { name: "Run now" }).click();
@@ -634,7 +634,7 @@ test("Focused separates chat history from automation navigation and compacts run
   await details.locator("summary").click();
   await expect(details.locator("dl")).toContainText("Trigger");
   await expect(page.locator(".right-wrap")).toHaveCount(0);
-  await sidebar.getByRole("button", { name: "Chats", exact: true }).click();
+  await sidebar.getByRole("radio", { name: "Chats", exact: true }).click();
   await expect(sidebar.getByRole("button", { name: "+ New chat" })).toBeVisible();
   await expect(sidebar.getByRole("button", { name: "All runs" })).toHaveCount(0);
 });

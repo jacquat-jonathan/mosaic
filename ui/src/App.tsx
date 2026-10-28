@@ -1,26 +1,19 @@
 import { useEffect, useState } from "react";
-import { FilePlus, FolderPlus, Shapes, ChevronDown, ChevronsDownUp, PanelLeftClose, CalendarDays } from "lucide-react";
-import { api, onIndexProgress, revealInFinder } from "./ipc/api";
+import { FilePlus, FolderPlus, Shapes, ChevronsDownUp, CalendarDays } from "lucide-react";
+import { api, onIndexProgress } from "./ipc/api";
 import { Welcome } from "./views/Welcome";
 import { WindowChrome } from "./views/WindowChrome";
 import { DestinationNavigation } from "./views/DestinationNavigation";
+import { SidebarHeader } from "./views/SidebarHeader";
+import { DesignSystemScope } from "./views/DesignSystemScope";
 import { errorMessage } from "./ipc/types";
 import { useVault } from "./state/vault";
 import { FileTree } from "./views/FileTree";
 import { Workspace } from "./views/Workspace";
 import { ConfirmDialog, ContextMenu, ErrorToast, PromptDialog } from "./views/Overlays";
-import {
-  createVault,
-  newNote,
-  newNoteDir,
-  NEW_KINDS,
-  newOfKind,
-  openDailyNote,
-  openVaultFolder,
-  revealInTree,
-} from "./actions";
+import { newNote, newNoteDir, NEW_KINDS, newOfKind, openDailyNote, revealInTree } from "./actions";
 import { useShortcuts } from "./shortcuts";
-import { RIGHT_DEFAULT, SIDEBAR_DEFAULT, useUi, type MenuItem } from "./state/ui";
+import { RIGHT_DEFAULT, SIDEBAR_DEFAULT, useUi } from "./state/ui";
 import { RightPanel } from "./views/RightPanel";
 import { QuickSwitcher } from "./views/QuickSwitcher";
 import { startBookmarkSync, startVaultSync } from "./sync";
@@ -100,40 +93,6 @@ export function App() {
   );
 }
 
-/** Dropdown under the vault name: recent vaults, open or create another, reveal in Finder. */
-async function showVaultMenu(anchor: DOMRect) {
-  const current = useVault.getState().vault;
-  const recent = await api.recentVaults().catch(() => []);
-  const others = recent.filter((v) => v.root !== current?.root);
-  const items: MenuItem[] = [
-    ...recent.map<MenuItem>((v) => ({
-      label: v.name,
-      detail: v.exists ? v.root.replace(/^\/Users\/[^/]+/, "~") : "Folder not found",
-      checked: v.root === current?.root,
-      disabled: !v.exists,
-      action: () => v.root !== current?.root && void useVault.getState().openVault(v.root),
-    })),
-    { label: "", separator: true },
-    { label: "Open folder as vault…", action: () => void openVaultFolder() },
-    { label: "Create new vault…", action: () => void createVault() },
-    { label: "", separator: true },
-    { label: "Reveal vault in Finder", action: () => void revealInFinder("") },
-    ...(others.length
-      ? [
-          {
-            label: "Remove from list",
-            children: others.map<MenuItem>((v) => ({
-              label: v.name,
-              detail: v.exists ? undefined : "Folder not found",
-              action: () => void api.forgetVault(v.root),
-            })),
-          },
-        ]
-      : []),
-  ];
-  useUi.getState().showMenu(anchor.left, anchor.bottom + 4, items);
-}
-
 function Main() {
   const vault = useVault((s) => s.vault)!;
   const [version, setVersion] = useState<string>("");
@@ -202,25 +161,7 @@ function Main() {
             data-focus-region
             tabIndex={-1}
           >
-            <div className="sidebar-head">
-              <button
-                className="vault-name"
-                title={`${vault.root}\nSwitch, open or create a vault`}
-                aria-haspopup="menu"
-                onClick={(e) => void showVaultMenu(e.currentTarget.getBoundingClientRect())}
-              >
-                <span>{vault.name}</span>
-                <ChevronDown size={13} />
-              </button>
-              <button
-                className="head-button"
-                aria-label="Hide sidebar"
-                title={`Hide sidebar (${shortcutOf("toggle-left")})`}
-                onClick={() => ui().toggleLeftSidebar()}
-              >
-                <PanelLeftClose size={16} />
-              </button>
-            </div>
+            <SidebarHeader key={vault.root} vault={vault} />
             {tab === "notes" && (
               <>
                 <div className="tree-toolbar">
@@ -273,9 +214,9 @@ function Main() {
             )}
             {tab !== "notes" && <AreaSidebar destination={tab} />}
             {indexing && (
-              <div className="status">
+              <DesignSystemScope className="sidebar-indexing" role="status">
                 Indexing {indexing.done.toLocaleString()} / {indexing.total.toLocaleString()}
-              </div>
+              </DesignSystemScope>
             )}
             <Resizer
               side="right"

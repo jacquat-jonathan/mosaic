@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Sidebar navigation:** shared vault, area, and chat-section controls with clearer selected states and focus return. Side panels resize with the keyboard, account for interface scale while dragging, and stay within narrow windows.
+
 - **Destination navigation:** shared controls, clearer selected states, readable attention counts, and keyboard focus that stays on the rail when moving between areas.
 
 - **Window title:** shared theme and typography make the vault name and app version clearer while retaining the native drag area and narrow-window truncation.

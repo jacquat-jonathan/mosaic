@@ -116,6 +116,6 @@ test("Editor follows the approved themes and stays scoped at maximum scale", asy
   await page.screenshot({ path: testInfo.outputPath("editor-files-narrow.png") });
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.getByRole("button", { name: "Show sidebar", exact: true }).click();
-  await expect(page.locator(".sidebar .mosaic-ds")).toHaveCount(0);
+  await expect(page.locator(".sidebar .tree.mosaic-ds")).toHaveCount(0);
   await expect(page.locator(".sidebar")).toHaveCSS("font-size", "13px");
 });

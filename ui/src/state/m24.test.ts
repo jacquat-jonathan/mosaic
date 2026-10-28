@@ -73,7 +73,7 @@ test("context changes with workspace kind and has no stale fallback", () => {
       "mosaic:settings",
       null,
     ].map(contextKind),
-  ).toEqual(["note", "chat", "workflow", "run", "calendar", null, null]);
+  ).toEqual(["note", "chat", "workflow", null, "calendar", null, null]);
 });
 test("chat messages, title, draft, attachments and session survive restart, isolated by vault", async () => {
   vi.spyOn(api, "chatSend").mockResolvedValue(42);

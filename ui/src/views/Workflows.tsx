@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { CheckCircle2, CircleAlert, LoaderCircle, TriangleAlert } from "lucide-react";
 import { parseDocument } from "yaml";
 import { api } from "../ipc/api";
 import { errorMessage, type Agent, type AgentRun, type Proposal } from "../ipc/types";
@@ -29,7 +30,7 @@ export function runState(run: AgentRun, needsReview = false) {
         ? "Skipped"
         : needsReview
           ? "Needs review"
-          : "Successful";
+          : "Completed";
 }
 export const eventFolder = (event: string) =>
   /^created in\s+(.+)$/i.exec(event.trim())?.[1].replace(/^\/+|\/+$/g, "") ?? null;
@@ -55,38 +56,76 @@ export function RunDetail({ id, compact = false }: { id: string; compact?: boole
   if (!run) return <p className="panel-meta">This run is unavailable.</p>;
   const proposals = pendingForRun(run, pending);
   const items = (events ?? []).reduce<ChatItem[]>(appendTranscriptEvent, []);
+  const state =
+    run.status === "done" || run.status === "successful"
+      ? proposals.length
+        ? "Needs review"
+        : "Completed"
+      : runState(run, proposals.length > 0);
+  const warnings = items.filter((item) => item.kind === "tool" && item.error).length;
+  const Icon =
+    run.status === "running"
+      ? LoaderCircle
+      : run.status === "failed" || run.status === "skipped"
+        ? CircleAlert
+        : CheckCircle2;
   return (
-    <div className={compact ? "context-content" : "workspace-page"}>
-      <h2>{run.title}</h2>
-      <p className="state-label">{runState(run, proposals.length > 0)}</p>
-      <p>
-        {new Date(run.started * 1000).toLocaleString()}
-        {run.late ? " · Started late" : ""}
-      </p>
-      <dl>
-        <dt>Trigger</dt>
-        <dd>{run.trigger || "Manual"}</dd>
-        {run.model && (
-          <>
-            <dt>Model</dt>
-            <dd>{run.model}</dd>
-          </>
-        )}
-        {(run.attempts ?? 1) > 1 && (
-          <>
-            <dt>Attempts</dt>
-            <dd>{run.attempts}</dd>
-          </>
-        )}
-        {run.chain_id && (
-          <>
-            <dt>Workflow chain</dt>
-            <dd>
-              Depth {run.chain_depth ?? 0} · {run.chain_id}
-            </dd>
-          </>
-        )}
-      </dl>
+    <div className={`${compact ? "context-content" : "workspace-page"} run-detail`}>
+      <header className="run-heading">
+        <h2>{run.title}</h2>
+        <span className={`run-status ${run.status}`}>
+          <Icon size={15} className={run.status === "running" ? "spin" : undefined} />
+          {state}
+        </span>
+      </header>
+      <div className="run-meta">
+        <time dateTime={new Date(run.started * 1000).toISOString()}>
+          {new Date(run.started * 1000).toLocaleString(undefined, {
+            month: "short",
+            day: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+          })}
+        </time>
+        <span>{run.trigger || "Manual run"}</span>
+        <span>{run.model || "Default model"}</span>
+        {run.late && <span>Started late</span>}
+      </div>
+      <details className="run-details">
+        <summary>Run details</summary>
+        <dl>
+          <dt>Trigger</dt>
+          <dd>{run.trigger || "Manual"}</dd>
+          <dt>Model</dt>
+          <dd>{run.model || "Claude Code default"}</dd>
+          <dt>Started</dt>
+          <dd>{new Date(run.started * 1000).toLocaleString()}</dd>
+          {run.finished && (
+            <>
+              <dt>Finished</dt>
+              <dd>{new Date(run.finished * 1000).toLocaleString()}</dd>
+            </>
+          )}
+          <dt>Attempts</dt>
+          <dd>{run.attempts ?? 1}</dd>
+          {run.chain_id && (
+            <>
+              <dt>Workflow chain</dt>
+              <dd>
+                Depth {run.chain_depth ?? 0} · {run.chain_id}
+              </dd>
+            </>
+          )}
+          {!!warnings && (
+            <>
+              <dt>Tool calls</dt>
+              <dd>
+                {warnings} failed {warnings === 1 ? "call" : "calls"}
+              </dd>
+            </>
+          )}
+        </dl>
+      </details>
       <h3>{items.length ? "Run log" : "Result"}</h3>
       {run.transcript?.truncated && (
         <p className="panel-meta">Only the latest activity is shown; this log was shortened.</p>
@@ -115,31 +154,41 @@ export function RunDetail({ id, compact = false }: { id: string; compact?: boole
         )}
         {run.status === "running" && items.length > 0 && <p className="chat-thinking">Working…</p>}
       </div>
-      <h3>Changed files</h3>
-      {run.changed_paths?.length ? (
-        run.changed_paths.map((path) => (
-          <button key={path} onClick={() => void useWorkspace.getState().open(path, { newTab: true })}>
-            {path}
-          </button>
-        ))
-      ) : (
-        <p>No changed files recorded.</p>
+      <footer className="run-outcome">
+        {!!warnings && (
+          <span className="run-warning">
+            <TriangleAlert size={14} />
+            {warnings} tool {warnings === 1 ? "warning" : "warnings"}
+          </span>
+        )}
+        <span>{run.changed_paths?.length ?? 0} files changed</span>
+        <span>{proposals.length ? `${proposals.length} pending reviews` : "No pending reviews"}</span>
+      </footer>
+      {!!run.changed_paths?.length && (
+        <details className="run-details">
+          <summary>Changed files</summary>
+          <div className="run-files">
+            {run.changed_paths.map((path) => (
+              <button key={path} onClick={() => void useWorkspace.getState().open(path, { newTab: true })}>
+                {path}
+              </button>
+            ))}
+          </div>
+        </details>
       )}
-      {!!run.changes?.length && (
-        <>
-          <h3>Tool activity</h3>
+      {!!run.changes?.length && !events?.length && (
+        <details className="run-details">
+          <summary>Tool activity</summary>
           <ul>
-            {(run.changes ?? []).map((c, i) => (
+            {run.changes.map((c, i) => (
               <li key={i}>{c}</li>
             ))}
           </ul>
-        </>
+        </details>
       )}
-      <h3>Review</h3>
-      <p>
-        {run.proposals} proposals created during this run. {proposals.length} pending from this run.
-      </p>
-      <button onClick={() => useUi.getState().openView("activity")}>Open activity and reviews</button>
+      <button className="run-review-link" onClick={() => useUi.getState().openView("activity")}>
+        Open activity and reviews
+      </button>
     </div>
   );
 }

@@ -152,3 +152,24 @@ export function pasteCells(t: TableModel, row: number, col: number, text: string
   );
   return next;
 }
+
+/** Move a body row to an insertion boundary; the header is never a body row. */
+export function moveRow(t: TableModel, from: number, to: number): TableModel {
+  if (from < 0 || from >= t.rows.length) return t;
+  const n = clone(t);
+  const at = Math.max(0, Math.min(to, n.rows.length));
+  const [row] = n.rows.splice(from, 1);
+  n.rows.splice(at > from ? at - 1 : at, 0, row);
+  return n;
+}
+
+export function moveColumn(t: TableModel, from: number, to: number): TableModel {
+  if (from < 0 || from >= t.header.length) return t;
+  const n = clone(t);
+  const at = Math.max(0, Math.min(to, n.header.length));
+  for (const cells of [n.header, n.align, ...n.rows]) {
+    const [value] = cells.splice(from, 1);
+    cells.splice(at > from ? at - 1 : at, 0, value as never);
+  }
+  return n;
+}

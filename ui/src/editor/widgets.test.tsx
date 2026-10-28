@@ -191,8 +191,8 @@ test("table widget edits cells, opens its menu and exposes add controls", async 
   const addTable = new TableWidget("| A |\n| --- |\n| one |\n").toDOM(addView);
   document.body.append(addTable);
   addTable
-    .querySelector<HTMLButtonElement>(".table-add.row")
-    ?.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+    .querySelector<HTMLButtonElement>('[aria-label="Insert row 2"]')
+    ?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
   expect(addView.dispatch).toHaveBeenCalled();
 });
 
@@ -204,8 +204,13 @@ test("table toolbar preserves drafts on alignment, spreadsheet paste grows the t
   await Promise.resolve();
   const cell = dom.querySelector("td")!;
   cell.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
-  cell.textContent = "**draft**";
+  cell.innerHTML = "<strong>draft</strong>";
   cell.dispatchEvent(new InputEvent("input", { bubbles: true }));
+  expect(view.dispatch).toHaveBeenCalledTimes(1);
+  new TableWidget(
+    (vi.mocked(view.dispatch).mock.calls[0][0] as { changes: { insert: string } }).changes.insert,
+  ).updateDOM(dom);
+  vi.mocked(view.dispatch).mockClear();
   const align = dom.querySelector<HTMLSelectElement>('[aria-label="Column alignment"]')!;
   align.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
   expect(view.dispatch).not.toHaveBeenCalled();

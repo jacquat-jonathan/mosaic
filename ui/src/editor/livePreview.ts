@@ -36,6 +36,9 @@ import {
 } from "./widgets";
 import { PdfViewer } from "../viewers/PdfViewer";
 
+import { editTableSource, tableSource, TableSourceButton } from "./tableSource";
+import { focusTableAtSelection } from "./TableWidget";
+
 const hide = Decoration.replace({});
 const mark = (cls: string, attrs?: Record<string, string>) => Decoration.mark({ class: cls, attributes: attrs });
 const line = (cls: string) => Decoration.line({ class: cls });
@@ -187,7 +190,8 @@ function buildBlocks(state: EditorState): Blocks {
         case "Table": {
           if (from < bodyStart || inside(blocked, from, to)) return false;
           code.push({ from, to });
-          if (!selectionTouches(state, from, to)) {
+          const source = state.field(tableSource, false);
+          if (!source || source.from !== doc.lineAt(from).from) {
             const start = doc.lineAt(from).from;
             const end = doc.lineAt(to).to;
             out.push(
@@ -197,6 +201,12 @@ function buildBlocks(state: EditorState): Blocks {
               ),
             );
             blocked.push({ from: start, to: end });
+          } else {
+            out.push(
+              Decoration.widget({ widget: new TableSourceButton(), block: true, side: -1 }).range(
+                doc.lineAt(from).from,
+              ),
+            );
           }
           return false;
         }
@@ -492,7 +502,7 @@ const needsRebuild = (tr: Transaction) =>
   !!tr.selection ||
   syntaxTree(tr.state) !== syntaxTree(tr.startState) ||
   tr.reconfigured ||
-  tr.effects.some((e) => e.is(refreshPreview));
+  tr.effects.some((e) => e.is(refreshPreview) || e.is(editTableSource));
 
 const blockField = StateField.define<Blocks>({
   create: buildBlocks,
@@ -551,6 +561,39 @@ const themeRedraw = ViewPlugin.define((view) => {
   return { destroy: stop };
 });
 
+const tableKeyboardFocus = ViewPlugin.define((view) => {
+  const focus = () =>
+    queueMicrotask(() => {
+      if (!view.state.field(tableSource, false)) focusTableAtSelection(view);
+    });
+  focus();
+  return {
+    update(update) {
+      if (
+        update.selectionSet ||
+        update.viewportChanged ||
+        update.docChanged ||
+        update.transactions.some((tr) => tr.effects.some((effect) => effect.is(editTableSource)))
+      )
+        focus();
+    },
+  };
+});
 export function livePreview(): Extension {
-  return [blockField, inlinePlugin, linkClicks, themeRedraw];
+  return [
+    tableSource,
+    blockField,
+    inlinePlugin,
+    linkClicks,
+    themeRedraw,
+    tableKeyboardFocus,
+    EditorView.domEventHandlers({
+      focus: (_event, view) => {
+        queueMicrotask(() => {
+          if (!view.state.field(tableSource, false)) focusTableAtSelection(view);
+        });
+        return false;
+      },
+    }),
+  ];
 }

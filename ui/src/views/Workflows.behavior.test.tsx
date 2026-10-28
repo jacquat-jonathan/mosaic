@@ -151,7 +151,7 @@ const status: TesseraStatus = {
     },
     {
       name: "successful",
-      title: "Successful",
+      title: "Completed",
       schedule: null,
       on: [],
       model: null,
@@ -215,7 +215,7 @@ describe("workflow helpers and detail views", () => {
     expect(runState(run(1, "a", "failed"))).toBe("Failed");
     expect(runState(run(1, "a", "skipped"))).toBe("Skipped");
     expect(runState(run(1, "a", "successful"), true)).toBe("Needs review");
-    expect(runState(run(1, "a", "successful"))).toBe("Successful");
+    expect(runState(run(1, "a", "successful"))).toBe("Completed");
     expect(workflowTrigger(agent("manual"))).toBe("Manual");
     expect(workflowTrigger(agent("event", { on: ["created in /", "tagged #ready"] }))).toContain("tagged #ready");
 
@@ -307,7 +307,7 @@ describe("workflow list actions", () => {
     expect(screen.getByRole("button", { name: "proposed — review" })).toBeTruthy();
     act(() => useAttention.setState({ status }));
     rerender(<RunDetail id="3" />);
-    expect(screen.getByText("Finished")).toBeTruthy();
+    expect(screen.getByText("Finished", { selector: "p" })).toBeTruthy();
   });
 
   it("renders every state and runs, pauses, tests and opens menu actions", async () => {

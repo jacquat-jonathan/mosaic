@@ -68,3 +68,16 @@ test("a header-only table and cells with line breaks", () => {
   const t = setCell(parseTable("| A | B |\n|---|---|"), -1, 0, "two\nlines");
   expect(formatTable(t)).toBe("| two lines | B   |\n| --------- | --- |");
 });
+
+test("reordering keeps headers, alignment and body values together without mutating the source", async () => {
+  const { moveRow, moveColumn } = await import("./tableEdit");
+  const t = parseTable(src);
+  expect(moveRow(t, 0, 2).rows.map((r) => r[0])).toEqual(["Kiwi", "Apple"]);
+  const next = moveColumn(t, 0, 2);
+  expect(next.header).toEqual(["Qty", "Name"]);
+  expect(next.align).toEqual(["right", "left"]);
+  expect(next.rows[0]).toEqual(["3", "Apple"]);
+  expect(parseTable(formatTable(next))).toEqual(next);
+  expect(t.header).toEqual(["Name", "Qty"]);
+  expect(moveRow(t, -1, 0)).toBe(t);
+});

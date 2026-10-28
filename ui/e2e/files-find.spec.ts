@@ -1,5 +1,41 @@
 import { expect, test } from "@playwright/test";
 
+test("tags retain keyboard search and wrap within themed narrow panels", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open folder…", exact: true }).click();
+  await page.getByRole("tab", { name: "Find", exact: true }).click();
+  const nav = page.getByRole("navigation", { name: "Find views", exact: true });
+  await nav.getByRole("button", { name: "Tags", exact: true }).click();
+  const panel = page.getByRole("group", { name: "Tags", exact: true });
+  const tag = panel.getByRole("listitem").first().getByRole("button");
+  await expect(tag).toBeVisible();
+  const label = await tag.locator(".tag-name").textContent();
+  await tag.press("Enter");
+  await expect(page.getByRole("textbox", { name: "Search notes", exact: true })).toHaveValue(`tag:${label?.slice(1)}`);
+  await nav.getByRole("button", { name: "Tags", exact: true }).click();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  for (const theme of ["Light", "Dark", "System"] as const) {
+    await page
+      .getByRole("radiogroup", { name: "Theme", exact: true })
+      .getByRole("radio", { name: theme, exact: true })
+      .check();
+    await expect(panel).toHaveCSS("font-size", "14px");
+    await expect(panel).toHaveCSS("background-color", theme === "Light" ? "rgb(246, 246, 248)" : "rgb(24, 25, 29)");
+    if (theme !== "System") await page.screenshot({ path: testInfo.outputPath(`tags-${theme.toLowerCase()}.png`) });
+  }
+  await page.getByRole("slider", { name: "Interface scale", exact: true }).press("End");
+  await page.getByLabel("Interface density", { exact: true }).selectOption("compact");
+  await page.setViewportSize({ width: 320, height: 900 });
+  await page.getByRole("tab", { name: "Find", exact: true }).click();
+  await expect(tag).toBeInViewport();
+  await expect
+    .poll(() => panel.evaluate((element) => element.scrollWidth - element.clientWidth))
+    .toBeLessThanOrEqual(1);
+  await page.screenshot({ path: testInfo.outputPath("tags-narrow.png") });
+});
+
 test("bookmarks support keyboard opening, saved queries, reordering and menu focus return", async ({
   page,
 }, testInfo) => {

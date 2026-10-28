@@ -45,7 +45,13 @@ export function AreaSidebar({ destination }: { destination: Destination }) {
             Open search in workspace
           </Button>
         </DesignSystemScope>
-        {tab === "tags" ? <TagsPanel /> : tab === "bookmarks" ? <BookmarksPanel key={root} /> : <SearchPanel />}
+        {tab === "tags" ? (
+          <TagsPanel key={root} />
+        ) : tab === "bookmarks" ? (
+          <BookmarksPanel key={root} />
+        ) : (
+          <SearchPanel />
+        )}
       </>
     );
   if (destination === "plan")

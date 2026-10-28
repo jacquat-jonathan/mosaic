@@ -1,0 +1,32 @@
+.mosaic-ds.tags-panel {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+  padding: var(--mds-space-4) var(--mds-space-3) var(--mds-space-8);
+  background: var(--mds-surface-subtle);
+}
+.mosaic-ds.tags-panel > .mds-hint {
+  margin: 0;
+  padding: var(--mds-space-4) var(--mds-space-3) var(--mds-space-6);
+  overflow-wrap: anywhere;
+}
+.mosaic-ds.tags-panel .tag-row {
+  width: 100%;
+  min-height: 32px;
+  justify-content: space-between;
+  text-align: left;
+  padding: var(--mds-space-3);
+  white-space: normal;
+}
+.mosaic-ds.tags-panel[data-density="compact"] .tag-row {
+  min-height: 28px;
+}
+.mosaic-ds.tags-panel .tag-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.mosaic-ds.tags-panel .mds-badge {
+  flex: none;
+  color: var(--mds-text-muted);
+}

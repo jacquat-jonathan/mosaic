@@ -1352,8 +1352,7 @@ button.secondary {
 .search-box input:focus-visible {
   outline: none;
 }
-.results,
-.tag-list {
+.results {
   flex: 1;
   overflow: auto;
   padding: 0 6px 16px;
@@ -1389,17 +1388,6 @@ mark {
   border-radius: 2px;
   padding: 0 1px;
 }
-.tag-row {
-  display: flex;
-  justify-content: space-between;
-  width: 100%;
-  padding: 4px 8px;
-}
-.tag-count {
-  color: var(--faint);
-  font-size: 12px;
-}
-
 /* Right panel */
 .right-wrap {
   position: relative;

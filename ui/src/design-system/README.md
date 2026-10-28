@@ -455,3 +455,7 @@ Each bookmark has a native open button and an accessible action menu; missing ta
 their removal action. Alt+Arrow Up/Down and menu commands complement drag reordering. Writes
 serialize and update the list after acknowledgement; cancelled query prompts restore focus,
 failed writes retain saved order, and stale query choices cannot change a different vault.
+
+`views/TagsPanel.tsx` uses shared buttons, count badges, and retry notices. Loading, empty,
+and error states stay distinct, and cancelled/stale loads cannot replace a newer vault or
+revision. Tag labels wrap in narrow panels; selecting a tag retains the existing Find query.

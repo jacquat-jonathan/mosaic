@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Tags:** shared tag rows and readable counts keep tag searches one click away. Loading, empty, and failed loads are distinct, with a Retry action.
+
 - **Bookmarks:** shared rows and actions add keyboard opening/reordering, visible missing-file states, focus return, and inline save errors while preserving saved searches, queries, and drag/drop.
 
 - **Files:** shared toolbar controls, clearer file tree selection and typography, and a consistent inline rename field preserve file actions, folder colors, and drag/drop.

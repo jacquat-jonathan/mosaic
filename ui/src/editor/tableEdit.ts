@@ -129,3 +129,47 @@ export function setCell(t: TableModel, row: number, col: number, text: string): 
   else n.rows[row][col] = text;
   return n;
 }
+
+/** Paste a spreadsheet rectangle starting at a cell, growing the table as needed. */
+export function pasteCells(t: TableModel, row: number, col: number, text: string): TableModel {
+  const lines = text
+    .replace(/\r\n?/g, "\n")
+    .replace(/\n$/, "")
+    .split("\n")
+    .map((line) => line.split("\t"));
+  const next = clone(t);
+  const width = Math.max(next.header.length, col + Math.max(...lines.map((line) => line.length)));
+  while (next.header.length < width) {
+    next.header.push("");
+    next.align.push(null);
+  }
+  for (const cells of next.rows) while (cells.length < width) cells.push("");
+  while (next.rows.length < row + lines.length) next.rows.push(Array(width).fill(""));
+  lines.forEach((line, r) =>
+    line.forEach((value, c) => {
+      (row + r < 0 ? next.header : next.rows[row + r])[col + c] = value;
+    }),
+  );
+  return next;
+}
+
+/** Move a body row to an insertion boundary; the header is never a body row. */
+export function moveRow(t: TableModel, from: number, to: number): TableModel {
+  if (from < 0 || from >= t.rows.length) return t;
+  const n = clone(t);
+  const at = Math.max(0, Math.min(to, n.rows.length));
+  const [row] = n.rows.splice(from, 1);
+  n.rows.splice(at > from ? at - 1 : at, 0, row);
+  return n;
+}
+
+export function moveColumn(t: TableModel, from: number, to: number): TableModel {
+  if (from < 0 || from >= t.header.length) return t;
+  const n = clone(t);
+  const at = Math.max(0, Math.min(to, n.header.length));
+  for (const cells of [n.header, n.align, ...n.rows]) {
+    const [value] = cells.splice(from, 1);
+    cells.splice(at > from ? at - 1 : at, 0, value as never);
+  }
+  return n;
+}

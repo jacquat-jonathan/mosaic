@@ -9,7 +9,7 @@ import { parse as parseMarkdownHeadings } from "./outline";
 import { useUi } from "../state/ui";
 import { useChat } from "../state/chat";
 import { usePlanning } from "../state/planning";
-import { RunDetail, WorkflowContext } from "./Workflows";
+import { WorkflowContext } from "./Workflows";
 import { addSiblingNoteSection, dropNoteSection, moveNoteSection, revealNotePosition } from "../editor/noteViews";
 import { PropertiesEditor } from "../editor/PropertiesEditor";
 import { FRONTMATTER_RE } from "../editor/livePreview";
@@ -40,8 +40,6 @@ export function RightPanel() {
         <ChatContext id={id} />
       ) : kind === "workflow" ? (
         <WorkflowContext name={id} />
-      ) : kind === "run" ? (
-        <RunDetail id={id} compact />
       ) : (
         <CalendarContext />
       )}

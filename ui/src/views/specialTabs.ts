@@ -28,7 +28,7 @@ const names: Record<string, string> = {
   "new-workflow": "Create workflow",
   run: "Run",
   runs: "Runs",
-  activity: "AI activity",
+  activity: "Activity & review",
   connections: "Connections",
   settings: "Settings",
   planning: "Planning view",
@@ -37,10 +37,10 @@ export const specialTabName = (path: string) => {
   const { kind, id } = parseView(path);
   return `${names[kind] ?? kind}${id && ["workflow", "run", "planning"].includes(kind) ? ` · ${id}` : ""}`;
 };
-export function contextKind(path: string | null): "note" | "chat" | "workflow" | "run" | "calendar" | null {
+export function contextKind(path: string | null): "note" | "chat" | "workflow" | "calendar" | null {
   if (!path) return null;
   if (!isSpecialTab(path)) return "note";
   const { kind } = parseView(path);
   if (["calendar", "today", "week"].includes(kind)) return "calendar";
-  return kind === "chat" || kind === "workflow" || kind === "run" ? kind : null;
+  return kind === "chat" || kind === "workflow" ? kind : null;
 }

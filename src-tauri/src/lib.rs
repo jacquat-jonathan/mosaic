@@ -916,6 +916,13 @@ mod bindings_tests {
             )
             .expect("export bindings");
         let fresh = std::fs::read_to_string(fresh).unwrap();
+        // Documented enum variants can leave spaces before line breaks in the exporter.
+        let fresh = fresh
+            .lines()
+            .map(str::trim_end)
+            .collect::<Vec<_>>()
+            .join("\n")
+            + "\n";
         if std::env::var_os("MOSAIC_WRITE_BINDINGS").is_some() {
             std::fs::write(&path, &fresh).unwrap();
         }

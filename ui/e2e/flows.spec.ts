@@ -176,7 +176,8 @@ test("accept an agent's proposal from review", async ({ page }) => {
     ),
   );
   await page.getByRole("tab", { name: "AI" }).click();
-  await page.getByRole("button", { name: /Activity · 1 need review/ }).click();
+  await page.getByRole("button", { name: "Automations", exact: true }).click();
+  await page.getByRole("button", { name: /Activity & review · 1/ }).click();
   await page.getByRole("region", { name: "Waiting for your review" }).getByRole("button", { name: "Review" }).click();
   await page.getByRole("button", { name: "Accept", exact: true }).click();
   await page.getByRole("treeitem", { name: /^Welcome/ }).click();
@@ -192,7 +193,8 @@ test("reject an agent's proposal with feedback", async ({ page }) => {
     ),
   );
   await page.getByRole("tab", { name: "AI" }).click();
-  await page.getByRole("button", { name: /Activity · 1 need review/ }).click();
+  await page.getByRole("button", { name: "Automations", exact: true }).click();
+  await page.getByRole("button", { name: /Activity & review · 1/ }).click();
   await page.getByRole("region", { name: "Waiting for your review" }).getByRole("button", { name: "Review" }).click();
   await page.getByRole("button", { name: "Reject…" }).click();
   await page.getByPlaceholder("e.g. keep the old wording").fill("Keep the original welcome copy.");
@@ -330,7 +332,9 @@ test("manage workflows and inspect every AI workspace", async ({ page }) => {
   await openVault(page);
   await page.getByRole("tab", { name: "AI" }).click();
 
-  await page.getByRole("button", { name: "Agents", exact: true }).click();
+  await page.getByRole("button", { name: "Automations", exact: true }).click();
+  await page.locator(".ai-manage summary").click();
+  await page.getByRole("button", { name: "Agent library", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Agents", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Workflows", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Workflows", exact: true })).toBeVisible();
@@ -342,9 +346,11 @@ test("manage workflows and inspect every AI workspace", async ({ page }) => {
   const firstWorkflow = page.locator(".workflow-card").first();
   await firstWorkflow.getByRole("button", { name: "Run now" }).click();
   const workspacePane = page.getByRole("region", { name: "Workspace pane" });
-  await expect(workspacePane.getByRole("heading", { name: "Result" })).toBeVisible();
+  await expect(workspacePane.getByRole("heading", { name: "Run log" })).toBeVisible();
+  await expect(workspacePane.locator(".run-transcript strong")).toHaveText("Mock run completed.");
+  await expect(workspacePane.getByRole("button", { name: "Read Ideas" })).toBeVisible();
   await workspacePane.getByRole("button", { name: "Open activity and reviews" }).click();
-  await expect(page.getByRole("heading", { name: "AI activity" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Activity & review" })).toBeVisible();
 
   await page.getByRole("button", { name: "Workflows", exact: true }).click();
   await page.getByRole("button", { name: "Create workflow" }).click();
@@ -359,10 +365,55 @@ test("manage workflows and inspect every AI workspace", async ({ page }) => {
   await page.getByRole("button", { name: "Create workflow" }).click();
   await expect(workspacePane.getByRole("heading", { name: "Coverage sweep" })).toBeVisible();
 
-  await page.getByRole("button", { name: "Runs", exact: true }).click();
+  await page.getByRole("button", { name: "All runs", exact: true }).click();
   await expect(workspacePane.getByRole("heading", { name: "Runs", exact: true })).toBeVisible();
+  const ledger = workspacePane.getByRole("table", { name: "Workflow runs" });
+  await expect(ledger.getByRole("columnheader")).toHaveText(["Workflow", "Status", "Started", "Duration"]);
+  await expect(ledger.locator("tbody tr").first()).toContainText("Completed");
+  const runTitle = await ledger.locator("tbody tr").first().getByRole("button").innerText();
+  await page.setViewportSize({ width: 480, height: 900 });
+  await expect(ledger.locator(".run-mobile-started").first()).toBeVisible();
+  expect(await ledger.evaluate((el) => el.scrollWidth <= el.parentElement!.clientWidth + 1)).toBe(true);
+  await ledger.getByRole("button", { name: runTitle, exact: true }).first().click();
+  await expect(workspacePane.getByRole("heading", { name: "Run log" })).toBeVisible();
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.getByRole("button", { name: "Show sidebar", exact: true }).click();
+  if (!(await page.locator(".ai-manage").evaluate((el) => (el as HTMLDetailsElement).open))) {
+    await page.locator(".ai-manage summary").click();
+  }
   await page.getByRole("button", { name: "Connections", exact: true }).click();
   await expect(workspacePane.getByRole("heading", { name: "Connections", exact: true })).toBeVisible();
+});
+
+test("Ledger activity keeps reviews first and exposes history and undo beside each file", async ({ page }) => {
+  await openVault(page);
+  await page.evaluate(() =>
+    (globalThis as unknown as { mosaicMock: { propose(p: string, c: string): number } }).mosaicMock.propose(
+      "Welcome.md",
+      "# Welcome\n\nProposed edit.\n",
+    ),
+  );
+  await page.getByRole("tab", { name: "AI", exact: true }).click();
+  await page.getByRole("button", { name: "Automations", exact: true }).click();
+  await page.getByRole("button", { name: /Activity & review · 1/ }).click();
+  const review = page.getByRole("region", { name: "Waiting for your review" });
+  const applied = page.getByRole("region", { name: "Applied changes" });
+  await expect(review).toContainText("Welcome");
+  expect((await review.boundingBox())!.y).toBeLessThan((await applied.boundingBox())!.y);
+  const change = applied
+    .getByRole("listitem")
+    .filter({ has: page.getByRole("button", { name: "Agent notes", exact: true }) });
+  await expect(change).toContainText("claude-code");
+  await expect(change).toContainText("Created");
+  await change.getByRole("button", { name: "File history" }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.getByRole("dialog").getByRole("button", { name: "Close" }).first().click();
+  await page.setViewportSize({ width: 700, height: 900 });
+  expect(await applied.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+  await change.getByRole("button", { name: "Undo", exact: true }).click();
+  await expect(applied.getByRole("button", { name: "Undone", exact: true })).toBeDisabled();
+  await review.getByRole("button", { name: "Review", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: /Review the change to Welcome/ })).toBeVisible();
 });
 
 test("chat with the assistant and manage the saved conversation", async ({ page }) => {
@@ -386,7 +437,7 @@ test("chat with the assistant and manage the saved conversation", async ({ page 
   await page.locator(".modal input").fill("Coverage conversation");
   await page.getByRole("button", { name: "OK" }).click();
   await expect(page.getByRole("heading", { name: "Coverage conversation" })).toBeVisible();
-  await page.getByRole("button", { name: "Chats", exact: true }).click();
+  await page.getByRole("button", { name: "All chats", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Chats", exact: true })).toBeVisible();
 });
 
@@ -489,4 +540,239 @@ test("create calendar events, subscriptions and work sessions", async ({ page })
   const sessionEditor = page.getByRole("complementary", { name: "Edit work session for Calendar coverage task" });
   await sessionEditor.getByLabel("All day").check();
   await sessionEditor.getByRole("button", { name: "Save" }).click();
+});
+
+test("release notes wrap inside a narrow settings pane", async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 700 });
+  await openVault(page);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page
+    .getByRole("navigation", { name: "Settings sections" })
+    .getByRole("button", { name: "About & updates" })
+    .click();
+  await page.getByRole("button", { name: "Check for updates" }).click();
+  const note = page.locator(".release li").first();
+  await expect(note).toContainText("release notes");
+  await expect(note).toHaveCSS("white-space", "normal");
+  const bounds = await note.evaluate((el) => ({
+    width: el.clientWidth,
+    scroll: el.scrollWidth,
+    height: el.clientHeight,
+    line: Number.parseFloat(getComputedStyle(el).lineHeight),
+    pane: el.closest(".settings-scroll")!.getBoundingClientRect().right,
+    right: el.getBoundingClientRect().right,
+  }));
+  expect(bounds.scroll).toBeLessThanOrEqual(bounds.width + 1);
+  expect(bounds.height).toBeGreaterThan(bounds.line * 1.5);
+  expect(bounds.right).toBeLessThanOrEqual(bounds.pane);
+  for (const note of await page.locator(".release li").all()) {
+    const overflow = await note.evaluate((el) => el.scrollWidth - el.clientWidth);
+    expect(overflow).toBeLessThanOrEqual(1);
+  }
+});
+
+test("edit a table with visible row, column and alignment controls", async ({ page }) => {
+  await openVault(page);
+  await page.evaluate(async () => {
+    const m = (window as unknown as { __mosaic: { mockInvoke(c: string, a: object): Promise<unknown> } }).__mosaic;
+    await m.mockInvoke("create_file", {
+      path: "Table editing.md",
+      content: "# Table editing\n\n| Name | Qty |\n| --- | --- |\n| Apple | 3 |\n\nAfter table.\n",
+      root: null,
+    });
+  });
+  await openMockPath(page, "Table editing.md");
+  const table = page.locator(".cm-table-wrap");
+  await expect(table.getByRole("group", { name: "Table editing" })).toBeVisible();
+  await table.getByRole("button", { name: "Header row options" }).click();
+  await page.keyboard.press("Escape");
+  await expect(table).toBeVisible();
+  const cell = table.locator("td").first();
+  await cell.fill("Pear");
+  await cell.evaluate((el) => {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const selection = window.getSelection()!;
+    selection.removeAllRanges();
+    selection.addRange(range);
+  });
+  await table.getByRole("button", { name: "Bold", exact: true }).click();
+  await expect(table.locator("td strong,td b")).toHaveText("Pear");
+  await table.getByRole("button", { name: "Row 1 options", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Insert row below", exact: true }).click();
+  await expect(table.locator("tbody tr")).toHaveCount(2);
+  await expect(table.locator("tbody tr").last().locator("td").first()).toBeFocused();
+  await expect(table.locator("td strong,td b")).toHaveText("Pear");
+  await table.getByRole("button", { name: "Column 1 options", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Insert column right", exact: true }).click();
+  await expect(table.locator("th")).toHaveCount(3);
+  await table.getByRole("combobox", { name: "Column alignment" }).selectOption("right");
+  await expect(table.locator("tbody tr").last().locator("td").nth(1)).toHaveCSS("text-align", "right");
+  await table.locator("tbody tr").last().locator("td").nth(1).fill("pasted");
+  await table.getByRole("button", { name: "Column 2 options", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Delete column", exact: true }).click();
+  await expect(table.locator("th")).toHaveCount(2);
+  await page.locator(".cm-line").last().click();
+  await expect.poll(() => readMockFile(page, "Table editing.md")).toContain("**Pear**");
+  expect(await readMockFile(page, "Table editing.md")).not.toContain("pasted");
+});
+
+test("Focused separates chat history from automation navigation and compacts run metadata", async ({ page }) => {
+  await openVault(page);
+  await page.getByRole("tab", { name: "AI", exact: true }).click();
+  const sidebar = page.getByRole("navigation", { name: "AI views" });
+  await expect(sidebar.getByRole("button", { name: "+ New chat" })).toBeVisible();
+  await sidebar.getByRole("button", { name: "Automations", exact: true }).click();
+  await expect(sidebar.getByRole("button", { name: "+ New chat" })).toHaveCount(0);
+  await sidebar.getByRole("button", { name: "Workflows", exact: true }).click();
+  await page.locator(".workflow-card").first().getByRole("button", { name: "Run now" }).click();
+  await expect(page.locator(".run-heading .run-status")).toHaveText("Completed");
+  await expect(page.locator(".run-meta")).toContainText("Default model");
+  const details = page.locator(".run-details").first();
+  await expect(details.locator("dl")).not.toBeVisible();
+  await details.locator("summary").click();
+  await expect(details.locator("dl")).toContainText("Trigger");
+  await expect(page.locator(".right-wrap")).toHaveCount(0);
+  await sidebar.getByRole("button", { name: "Chats", exact: true }).click();
+  await expect(sidebar.getByRole("button", { name: "+ New chat" })).toBeVisible();
+  await expect(sidebar.getByRole("button", { name: "All runs" })).toHaveCount(0);
+});
+
+test("tables keep rich cells, save while typing, reorder with handles, and offer explicit source mode", async ({
+  page,
+}) => {
+  await openVault(page);
+  await page.evaluate(async () => {
+    const m = (window as unknown as { __mosaic: { mockInvoke(c: string, a: object): Promise<unknown> } }).__mosaic;
+    await m.mockInvoke("create_file", {
+      path: "Visual table.md",
+      content: "# Visual table\n\n| Name | Qty |\n| --- | ---: |\n| **Apple** | 3 |\n| Banana | 7 |\n\nAfter table.\n",
+      root: null,
+    });
+  });
+  await openMockPath(page, "Visual table.md");
+  const table = page.locator(".cm-table-wrap");
+  const first = table.locator("td").first();
+  await first.click();
+  await expect(first.locator("strong")).toHaveText("Apple");
+  await first.evaluate((el) => {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    range.collapse(false);
+    const selection = window.getSelection()!;
+    selection.removeAllRanges();
+    selection.addRange(range);
+  });
+  await first.pressSequentially(" pear tree");
+  await expect(first).toContainText("Apple pear tree");
+  await expect.poll(() => readMockFile(page, "Visual table.md")).toContain("pear tree");
+  await expect(first).toBeFocused();
+  await table.getByRole("button", { name: "Row 1 options", exact: true }).press("Alt+ArrowDown");
+  await expect(table.locator("tbody tr").first().locator("td").first()).toHaveText("Banana");
+  await table.getByRole("button", { name: "Column 1 options", exact: true }).press("Alt+ArrowRight");
+  await expect(table.locator("th").first()).toHaveText("Qty");
+  await table.getByRole("button", { name: "Insert row 2", exact: true }).click();
+  await expect(table.locator("tbody tr")).toHaveCount(3);
+  await page.keyboard.press("Meta+z");
+  await expect(table.locator("tbody tr")).toHaveCount(2);
+  await page.keyboard.press("Meta+Shift+z");
+  await expect(table.locator("tbody tr")).toHaveCount(3);
+  await table.getByRole("button", { name: "Markdown", exact: true }).click();
+  await expect(page.locator(".cm-table-wrap")).toHaveCount(0);
+  await expect(page.locator(".cm-content")).toContainText("| Qty");
+  await page.getByRole("button", { name: "Back to table", exact: true }).click();
+  await expect(table).toBeVisible();
+  await expect(table.locator("td strong,td b")).toContainText("Apple");
+});
+
+test("columns move onto adjacent handles and resize beyond the pane with local scrolling", async ({ page }) => {
+  await openVault(page);
+  await page.evaluate(async () => {
+    const m = (window as unknown as { __mosaic: { mockInvoke(c: string, a: object): Promise<unknown> } }).__mosaic;
+    await m.mockInvoke("create_file", {
+      path: "Wide table.md",
+      content: "# Wide table\n\n| Name | Qty | Owner |\n| --- | --- | --- |\n| Apple | 3 | Sam |\n\nAfter.\n",
+      root: null,
+    });
+  });
+  await openMockPath(page, "Wide table.md");
+  const table = page.locator(".cm-table-wrap");
+  await table
+    .getByRole("button", { name: "Column 1 options", exact: true })
+    .dragTo(table.getByRole("button", { name: "Column 2 options", exact: true }));
+  await expect(table.locator("th")).toHaveText(["Qty", "Name", "Owner"]);
+  await expect(table.locator("td")).toHaveText(["3", "Apple", "Sam"]);
+  const resize = table.getByRole("separator", { name: "Resize column 2", exact: true });
+  const before = Number(await resize.getAttribute("aria-valuenow"));
+  // Keyboard growth must remain possible after the table fills its pane.
+  await resize.focus();
+  for (let i = 0; i < 30; i++) await resize.press("Shift+ArrowRight");
+  expect(Number(await resize.getAttribute("aria-valuenow"))).toBeGreaterThan(before + 1000);
+  const scroll = table.locator(".cm-table-scroll");
+  await expect.poll(() => scroll.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeGreaterThan(400);
+  await scroll.evaluate((el) => {
+    el.scrollLeft = el.scrollWidth;
+  });
+  await expect(table.getByRole("button", { name: "Column 3 options", exact: true })).toBeInViewport();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await expect.poll(() => readMockFile(page, "Wide table.md")).toMatch(/\| Qty\s*\| Name\s*\| Owner\s*\|/);
+  // A cell's context menu stays short; structural commands live one level down.
+  await table.locator("td").last().click({ button: "right" });
+  const menu = page.getByRole("menu");
+  await expect(menu.getByRole("menuitem")).toHaveCount(5);
+  expect((await menu.boundingBox())!.height).toBeLessThan(230);
+  await menu.getByRole("menuitem", { name: /^Column/ }).hover();
+  await page.getByRole("menuitem", { name: "Move column left", exact: true }).click();
+  await expect(table.locator("th")).toHaveText(["Qty", "Owner", "Name"]);
+});
+
+test("table drag handles move rows and columns, rectangle selection clears cells, and paste stays plain", async ({
+  page,
+}) => {
+  await openVault(page);
+  await page.evaluate(async () => {
+    const m = (window as unknown as { __mosaic: { mockInvoke(c: string, a: object): Promise<unknown> } }).__mosaic;
+    await m.mockInvoke("create_file", {
+      path: "Table moves.md",
+      content: "# Table moves\n\n| Name | Qty |\n| --- | --- |\n| Apple | 3 |\n| Banana | 7 |\n\nAfter.\n",
+      root: null,
+    });
+  });
+  await openMockPath(page, "Table moves.md");
+  const table = page.locator(".cm-table-wrap");
+  const last = table.locator("tbody tr").last().locator("td").first();
+  const rowBounds = await last.boundingBox();
+  await table
+    .getByRole("button", { name: "Row 1 options", exact: true })
+    .dragTo(last, { targetPosition: { x: 12, y: rowBounds!.height - 3 } });
+  await expect(table.locator("td").first()).toHaveText("Banana");
+  const header = table.locator("th").last();
+  const headerBounds = await header.boundingBox();
+  await table
+    .getByRole("button", { name: "Column 1 options", exact: true })
+    .dragTo(header, { targetPosition: { x: headerBounds!.width * 0.75, y: 10 } });
+  await expect(table.locator("th").first()).toHaveText("Qty");
+  await table.locator("td").first().click();
+  await table
+    .locator("td")
+    .last()
+    .click({ modifiers: ["Shift"] });
+  await expect(table.locator(".table-selected")).toHaveCount(4);
+  await table.getByRole("button", { name: "Bold", exact: true }).click();
+  await expect(table.locator("td b,td strong")).toHaveCount(4);
+  await page.keyboard.press("Backspace");
+  await expect(table.locator("td")).toHaveText(["", "", "", ""]);
+  await table.locator("td").first().click();
+  await table
+    .locator("td")
+    .first()
+    .evaluate((el) => {
+      const clipboard = new DataTransfer();
+      clipboard.setData("text/plain", "x|y\tnew\nnext\tlast");
+      clipboard.setData("text/html", '<img src="x" onerror="alert(1)">');
+      el.dispatchEvent(new ClipboardEvent("paste", { clipboardData: clipboard, bubbles: true, cancelable: true }));
+    });
+  await expect(table.locator("td")).toHaveText(["x|y", "new", "next", "last"]);
+  await expect(table.locator("img")).toHaveCount(0);
+  await expect.poll(() => readMockFile(page, "Table moves.md")).toContain("x\\|y");
 });

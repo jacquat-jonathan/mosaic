@@ -39,9 +39,9 @@ const context: EditorContext = {
 
 const state = () =>
   EditorState.create({ doc: "| A | B |\n| --- | --- |\n| one | two |\n", extensions: [editorContext.of(context)] });
-const fakeView = () =>
+const fakeView = (editorState = state()) =>
   ({
-    state: state(),
+    state: editorState,
     dispatch: vi.fn(),
     focus: vi.fn(),
     posAtDOM: vi.fn(() => 0),
@@ -182,7 +182,11 @@ test("table widget edits cells, opens its menu and exposes add controls", async 
   cell.textContent = "changed";
   cell.dispatchEvent(new InputEvent("input", { bubbles: true }));
   cell.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 5, clientY: 6 }));
-  expect(useUi.getState().menu?.items.some((item) => item.label === "Insert row below")).toBe(true);
+  const menu = useUi.getState().menu!.items;
+  expect(menu.filter((item) => !item.separator)).toHaveLength(5);
+  expect(menu.find((item) => item.label === "Row")?.children?.some((item) => item.label === "Insert row below")).toBe(
+    true,
+  );
   cell.dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget: document.body }));
   expect(view.dispatch).toHaveBeenCalled();
   widget.destroy(table);
@@ -191,7 +195,57 @@ test("table widget edits cells, opens its menu and exposes add controls", async 
   const addTable = new TableWidget("| A |\n| --- |\n| one |\n").toDOM(addView);
   document.body.append(addTable);
   addTable
-    .querySelector<HTMLButtonElement>(".table-add.row")
-    ?.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+    .querySelector<HTMLButtonElement>('[aria-label="Insert row 2"]')
+    ?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
   expect(addView.dispatch).toHaveBeenCalled();
+});
+
+test("table toolbar preserves drafts on alignment, spreadsheet paste grows the table, and read-only tables hide editing", async () => {
+  const view = fakeView();
+  const widget = new TableWidget("| A | B |\n| --- | --- |\n| one | two |\n");
+  const dom = widget.toDOM(view);
+  document.body.append(dom);
+  await Promise.resolve();
+  const cell = dom.querySelector("td")!;
+  cell.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+  cell.innerHTML = "<strong>draft</strong>";
+  cell.dispatchEvent(new InputEvent("input", { bubbles: true }));
+  expect(view.dispatch).toHaveBeenCalledTimes(1);
+  new TableWidget(
+    (vi.mocked(view.dispatch).mock.calls[0][0] as { changes: { insert: string } }).changes.insert,
+  ).updateDOM(dom);
+  vi.mocked(view.dispatch).mockClear();
+  const align = dom.querySelector<HTMLSelectElement>('[aria-label="Column alignment"]')!;
+  align.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+  expect(view.dispatch).not.toHaveBeenCalled();
+  cell.dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget: align }));
+  expect(view.dispatch).not.toHaveBeenCalled();
+  align.value = "right";
+  align.dispatchEvent(new Event("change", { bubbles: true }));
+  expect(vi.mocked(view.dispatch).mock.calls[0][0]).toMatchObject({
+    changes: { insert: expect.stringContaining("**draft**") },
+  });
+  widget.destroy(dom);
+
+  const pasteView = fakeView();
+  const paste = new TableWidget("| A |\n| --- |\n| one |\n");
+  const pasteDom = paste.toDOM(pasteView);
+  document.body.append(pasteDom);
+  await Promise.resolve();
+  const event = new Event("paste", { bubbles: true, cancelable: true });
+  Object.defineProperty(event, "clipboardData", { value: { getData: () => "left\tright\nnext\trow\n" } });
+  pasteDom.querySelector("td")!.dispatchEvent(event);
+  expect(event.defaultPrevented).toBe(true);
+  expect(vi.mocked(pasteView.dispatch).mock.calls[0][0]).toMatchObject({
+    changes: { insert: expect.stringContaining("right") },
+  });
+  paste.destroy(pasteDom);
+
+  const readonly = fakeView(EditorState.create({ doc: "", extensions: [EditorState.readOnly.of(true)] }));
+  const readonlyWidget = new TableWidget("| A |\n| --- |\n| one |\n");
+  const readonlyDom = readonlyWidget.toDOM(readonly);
+  expect(readonlyDom.querySelector<HTMLElement>(".table-toolbar")?.hidden).toBe(true);
+  expect(readonlyDom.querySelector("select")).toBeNull();
+  expect(readonlyDom.querySelector<HTMLElement>("td")?.contentEditable).toBe("false");
+  readonlyWidget.destroy(readonlyDom);
 });

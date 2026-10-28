@@ -24,6 +24,7 @@ import {
   WorkflowForm,
   Workflows,
   runState,
+  runDuration,
   workflowContent,
   workflowTrigger,
 } from "./Workflows";
@@ -151,7 +152,7 @@ const status: TesseraStatus = {
     },
     {
       name: "successful",
-      title: "Successful",
+      title: "Completed",
       schedule: null,
       on: [],
       model: null,
@@ -215,7 +216,12 @@ describe("workflow helpers and detail views", () => {
     expect(runState(run(1, "a", "failed"))).toBe("Failed");
     expect(runState(run(1, "a", "skipped"))).toBe("Skipped");
     expect(runState(run(1, "a", "successful"), true)).toBe("Needs review");
-    expect(runState(run(1, "a", "successful"))).toBe("Successful");
+    expect(runState(run(1, "a", "successful"))).toBe("Completed");
+    expect(runDuration(run(1, "a", "running"))).toBe("In progress");
+    expect(runDuration(run(1, "a", "skipped", { finished: null }))).toBe("—");
+    expect(runDuration(run(1, "a", "successful", { started: 10, finished: 52 }))).toBe("42s");
+    expect(runDuration(run(1, "a", "successful", { started: 10, finished: 82 }))).toBe("1m 12s");
+    expect(runDuration(run(1, "a", "successful", { started: 10, finished: 3730 }))).toBe("1h 2m");
     expect(workflowTrigger(agent("manual"))).toBe("Manual");
     expect(workflowTrigger(agent("event", { on: ["created in /", "tagged #ready"] }))).toContain("tagged #ready");
 
@@ -267,6 +273,49 @@ describe("workflow helpers and detail views", () => {
 });
 
 describe("workflow list actions", () => {
+  it("streams run answers and tool outcomes, retaining readable older results", async () => {
+    const events: NonNullable<AgentRun["transcript"]>["events"] = [
+      { kind: "text", text: "Reading **the note**." },
+      { kind: "tool", id: "read", summary: "Read Other", path: "Other.md", writes: false },
+    ];
+    useAttention.setState({
+      status: { ...status, runs: [run(77, "ready", "running", { transcript: { events, truncated: false } })] },
+    });
+    const { rerender } = render(<RunDetail id="77" />);
+    expect(screen.getByText("the note").tagName).toBe("STRONG");
+    fireEvent.click(screen.getByRole("button", { name: "Read Other" }));
+    expect(useWorkspace.getState().open).toHaveBeenCalledWith("Other.md", { newTab: true });
+    act(() =>
+      useAttention.setState({
+        status: {
+          ...status,
+          runs: [
+            run(77, "ready", "failed", {
+              transcript: {
+                truncated: true,
+                events: [
+                  ...events,
+                  { kind: "tool_done", id: "read", error: "Permission denied", review: null },
+                  { kind: "tool", id: "write", summary: "Proposed Other", path: "Other.md", writes: true },
+                  { kind: "tool_done", id: "write", error: null, review: 9 },
+                  { kind: "done", session_id: null, cost_usd: null, error: "Workflow stopped" },
+                ],
+              },
+            }),
+          ],
+        },
+      }),
+    );
+    expect(screen.getByTitle("Permission denied")).toBeTruthy();
+    expect(screen.getByText("Workflow stopped")).toBeTruthy();
+    expect(screen.getByText(/log was shortened/)).toBeTruthy();
+    expect(screen.queryByText("Working…")).toBeNull();
+    expect(screen.getByRole("button", { name: "proposed — review" })).toBeTruthy();
+    act(() => useAttention.setState({ status }));
+    rerender(<RunDetail id="3" />);
+    expect(screen.getByText("Finished", { selector: "p" })).toBeTruthy();
+  });
+
   it("renders every state and runs, pauses, tests and opens menu actions", async () => {
     render(<Workflows />);
     expect(screen.getByText("Queued · 2")).toBeTruthy();
@@ -298,6 +347,20 @@ describe("workflow list actions", () => {
     await menu.items.find((item) => item.label === "Edit agent source")?.action?.();
     await menu.items.find((item) => item.label === "Delete workflow…")?.action?.();
     await waitFor(() => expect(useVault.getState().remove).toHaveBeenCalledWith("Agents/ready.md"));
+  });
+
+  it("orders the Ledger by newest run and updates review status after a decision", () => {
+    render(<Workflows runsOnly />);
+    const rows = screen.getByRole("table", { name: "Workflow runs" }).querySelectorAll("tbody tr");
+    expect(rows[0].textContent).toContain("Run 5");
+    const reviewRow = screen.getByRole("button", { name: "Run 2" }).closest("tr")!;
+    expect(reviewRow.textContent).toContain("Needs review");
+    expect(reviewRow.textContent).toContain("1 pending change");
+    fireEvent.click(screen.getByRole("button", { name: "Run 2" }));
+    expect(useUi.getState().openView).toHaveBeenCalledWith("run", "2");
+    act(() => useReview.setState({ pending: [] }));
+    expect(reviewRow.textContent).toContain("Completed");
+    expect(reviewRow.textContent).not.toContain("pending change");
   });
 
   it("covers named, runs-only, agents-only, paused and empty layouts", () => {

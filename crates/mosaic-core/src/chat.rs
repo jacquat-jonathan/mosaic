@@ -5,7 +5,7 @@
 //! Claude Code runs in the vault folder with only Mosaic's MCP server. It reads and changes files
 //! only through Mosaic's tools, so folder rules apply and every change has history, Undo and review.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 /// Built-in tools that would change files behind Mosaic's back, or read them past the folder
@@ -88,7 +88,8 @@ pub fn system_prompt(
     s
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ChatEvent {
     /// The session started (or resumed); `mosaic` says whether Mosaic's tools are connected.
@@ -115,6 +116,48 @@ pub enum ChatEvent {
         cost_usd: Option<f64>,
         error: Option<String>,
     },
+}
+
+/// A bounded, portable transcript of a workflow's answers and tool activity.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+pub struct RunTranscript {
+    pub events: Vec<ChatEvent>,
+    pub truncated: bool,
+}
+
+impl RunTranscript {
+    pub fn push(&mut self, mut event: ChatEvent) {
+        // Session metadata isn't part of the visible transcript.
+        if matches!(event, ChatEvent::Started { .. }) {
+            return;
+        }
+        let text = match &mut event {
+            ChatEvent::Text { text } => Some(text),
+            ChatEvent::Tool { summary, .. } => Some(summary),
+            ChatEvent::ToolDone { error, .. } | ChatEvent::Done { error, .. } => error.as_mut(),
+            _ => None,
+        };
+        if let Some(text) = text
+            && text.len() > 16_384
+        {
+            let mut end = 16_384;
+            while !text.is_char_boundary(end) {
+                end -= 1;
+            }
+            text.truncate(end);
+            text.push('…');
+            self.truncated = true;
+        }
+        self.events.push(event);
+        // Limit both count and serialized bytes, including unusually long paths or tool IDs.
+        while self.events.len() > 500
+            || serde_json::to_vec(&self.events).is_ok_and(|bytes| bytes.len() > 131_072)
+        {
+            self.events.remove(0);
+            self.truncated = true;
+        }
+    }
 }
 
 fn s<'a>(v: &'a Value, key: &str) -> Option<&'a str> {
@@ -326,6 +369,148 @@ pub fn parse_line(line: &str) -> Vec<ChatEvent> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn workflow_transcript_roundtrips_tool_outcomes_and_omits_session_metadata() {
+        let mut log = super::RunTranscript::default();
+        log.push(super::ChatEvent::Started {
+            session_id: "session".into(),
+            mosaic: true,
+        });
+        assert!(log.events.is_empty());
+        let events = vec![
+            super::ChatEvent::Tool {
+                id: "edit".into(),
+                summary: "Edited Daily".into(),
+                path: Some("Daily.md".into()),
+                writes: true,
+            },
+            super::ChatEvent::ToolDone {
+                id: "edit".into(),
+                error: None,
+                review: Some(7),
+            },
+            super::ChatEvent::ToolDone {
+                id: "read".into(),
+                error: Some("Permission denied".into()),
+                review: None,
+            },
+            super::ChatEvent::Text {
+                text: "The change is waiting for review.".into(),
+            },
+            super::ChatEvent::Done {
+                session_id: Some("session".into()),
+                cost_usd: Some(0.02),
+                error: Some("Workflow stopped".into()),
+            },
+        ];
+        for event in &events {
+            log.push(event.clone());
+        }
+        assert_eq!(log.events, events);
+        assert!(!log.truncated);
+        let saved = serde_json::to_string(&log).unwrap();
+        assert_eq!(
+            serde_json::from_str::<super::RunTranscript>(&saved).unwrap(),
+            log
+        );
+    }
+
+    #[test]
+    fn workflow_transcript_truncates_unicode_tool_errors_without_losing_their_identity() {
+        let long = format!("a{}", "🧩".repeat(5000));
+        let mut log = super::RunTranscript::default();
+        for event in [
+            super::ChatEvent::Tool {
+                id: "tool".into(),
+                summary: long.clone(),
+                path: Some("Daily.md".into()),
+                writes: true,
+            },
+            super::ChatEvent::ToolDone {
+                id: "tool".into(),
+                error: Some(long.clone()),
+                review: Some(7),
+            },
+            super::ChatEvent::Done {
+                session_id: None,
+                cost_usd: None,
+                error: Some(long),
+            },
+        ] {
+            log.push(event);
+        }
+        assert!(log.truncated);
+        assert_eq!(log.events.len(), 3);
+        let super::ChatEvent::Tool {
+            id,
+            summary,
+            path,
+            writes,
+        } = &log.events[0]
+        else {
+            panic!("expected tool")
+        };
+        assert_eq!(id, "tool");
+        assert_eq!(path.as_deref(), Some("Daily.md"));
+        assert!(*writes);
+        let super::ChatEvent::ToolDone {
+            id,
+            error: Some(tool_error),
+            review,
+        } = &log.events[1]
+        else {
+            panic!("expected tool result")
+        };
+        assert_eq!(id, "tool");
+        assert_eq!(*review, Some(7));
+        let super::ChatEvent::Done {
+            error: Some(run_error),
+            ..
+        } = &log.events[2]
+        else {
+            panic!("expected result")
+        };
+        for text in [summary, tool_error, run_error] {
+            assert!(text.ends_with('…'));
+            assert!(text.len() <= 16_384 + '…'.len_utf8());
+            assert!(text.starts_with('a'));
+        }
+    }
+
+    #[test]
+    fn workflow_transcript_bounds_unicode_payloads_and_keeps_recent_activity() {
+        let mut log = super::RunTranscript::default();
+        log.push(super::ChatEvent::Text {
+            text: "🧩".repeat(20_000),
+        });
+        assert!(log.truncated);
+        assert!(serde_json::to_vec(&log).unwrap().len() < 132_000);
+        for i in 0..600 {
+            log.push(super::ChatEvent::Text {
+                text: format!("Step {i}"),
+            });
+        }
+        assert_eq!(log.events.len(), 500);
+        assert_eq!(
+            log.events.last(),
+            Some(&super::ChatEvent::Text {
+                text: "Step 599".into()
+            })
+        );
+        let saved = serde_json::to_string(&log).unwrap();
+        assert_eq!(
+            serde_json::from_str::<super::RunTranscript>(&saved).unwrap(),
+            log
+        );
+        log.push(super::ChatEvent::Tool {
+            id: "id".into(),
+            summary: "Read".into(),
+            path: Some("a".repeat(140_000)),
+            writes: false,
+        });
+        assert!(serde_json::to_vec(&log.events).unwrap().len() <= 131_072);
+    }
+
     use super::*;
     use serde_json::json;
 

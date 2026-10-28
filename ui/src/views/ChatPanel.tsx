@@ -3,17 +3,16 @@
 // reviewed folders becomes a proposal. The open note is attached as context; agents from Agents/
 // start a message (pick one, or type /name).
 
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
-import { Bot, Eye, Paperclip, Pencil, Plus, Save, Square, TextSelect, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { Bot, Paperclip, Plus, Save, Square, TextSelect, X } from "lucide-react";
 import { api } from "../ipc/api";
 import { errorMessage, type Agent, type ClaudeInfo } from "../ipc/types";
-import { renderMarkdown } from "../markdown";
-import { resolveLink } from "../links";
 import { chatAsMarkdown, listenToChat, useChat, type ChatItem } from "../state/chat";
 import { useUi } from "../state/ui";
 import { useVault } from "../state/vault";
 import { useWorkspace } from "../state/workspace";
 import { isSpecialTab } from "./specialTabs";
+import { TranscriptItem, openTranscriptLink } from "./Transcript";
 import { dayStamp } from "../daily";
 import { noteSelection } from "../editor/noteViews";
 import { vaultPrefs } from "../state/vaultPreferences";
@@ -154,7 +153,7 @@ function ConversationView({ id }: { id: string }) {
         </button>
       </header>
       {storageError && <p className="error-text">{storageError}</p>}
-      <div className="chat-list" ref={list} onClick={(e) => openLink(e)}>
+      <div className="chat-list" ref={list} onClick={openTranscriptLink}>
         {items.length === 0 && (
           <div className="chat-empty">
             <Bot size={22} />
@@ -174,7 +173,7 @@ function ConversationView({ id }: { id: string }) {
           </div>
         )}
         {items.map((it, i) => (
-          <Item key={i} item={it} />
+          <TranscriptItem key={i} item={it} />
         ))}
         {run !== null && <div className="chat-thinking">Working…</div>}
       </div>
@@ -283,71 +282,4 @@ function ConversationView({ id }: { id: string }) {
       </div>
     </div>
   );
-}
-
-function Item({ item }: { item: ChatItem }) {
-  switch (item.kind) {
-    case "user":
-      return (
-        <div className="chat-msg user">
-          {item.agent && (
-            <div className="chat-agent">
-              <Bot size={11} /> {item.agent}
-            </div>
-          )}
-          {(item.selection || item.model) && (
-            <div className="chat-agent">
-              {item.selection ? `Selection from ${noteName(item.selection.path)}` : ""}
-              {item.selection && item.model ? " · " : ""}
-              {item.model ?? ""}
-            </div>
-          )}
-          {item.text}
-        </div>
-      );
-    case "text": {
-      const { entries, aliases } = useVault.getState();
-      const html = renderMarkdown(item.text, (t) => resolveLink(t, entries, null, aliases));
-      // biome-ignore lint/security/noDangerouslySetInnerHtml: renderMarkdown output, sanitized by DOMPurify
-      return <div className="chat-msg assistant md-render" dangerouslySetInnerHTML={{ __html: html }} />;
-    }
-    case "tool":
-      return (
-        <div className={`chat-tool ${item.error ? "failed" : ""}`}>
-          {item.writes ? <Pencil size={11} /> : <Eye size={11} />}
-          {item.path ? (
-            <button className="chat-tool-link" data-path={item.path}>
-              {item.summary}
-            </button>
-          ) : (
-            <span>{item.summary}</span>
-          )}
-          {item.review !== null && (
-            <button
-              className="chat-review"
-              onClick={() => useUi.getState().setSidebarTab("activity")}
-              title="Waiting for your review in AI activity"
-            >
-              proposed — review
-            </button>
-          )}
-          {item.error && (
-            <span className="chat-tool-error" title={item.error}>
-              failed
-            </span>
-          )}
-        </div>
-      );
-    case "error":
-      return <div className="chat-msg error">{item.text}</div>;
-  }
-}
-
-/** Clicks on [[links]] in answers and on tool lines open the note. */
-function openLink(e: MouseEvent) {
-  const el = (e.target as HTMLElement).closest<HTMLElement>("[data-target], [data-path]");
-  if (!el) return;
-  const { entries, aliases } = useVault.getState();
-  const path = el.dataset.path ?? resolveLink(el.dataset.target ?? "", entries, null, aliases);
-  if (path && entries.some((x) => x.path === path)) void useWorkspace.getState().open(path, { newTab: true });
 }

@@ -83,12 +83,7 @@ export function errorMessage(e: unknown): string {
 }
 
 /** What a chat answer is made of, as it streams in (crates/mosaic-core/src/chat.rs). */
-export type ChatEvent =
-  | { kind: "started"; session_id: string; mosaic: boolean }
-  | { kind: "text"; text: string }
-  | { kind: "tool"; id: string; summary: string; path: string | null; writes: boolean }
-  | { kind: "tool_done"; id: string; error: string | null; review: number | null }
-  | { kind: "done"; session_id: string | null; cost_usd: number | null; error: string | null };
+export type ChatEvent = B.ChatEvent;
 
 export interface PlannerChanged {
   root: string;

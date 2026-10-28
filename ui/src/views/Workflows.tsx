@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { CheckCircle2, CircleAlert, Clock3, LoaderCircle, TriangleAlert } from "lucide-react";
 import { parseDocument } from "yaml";
 import { api } from "../ipc/api";
 import { errorMessage, type Agent, type AgentRun, type Proposal } from "../ipc/types";
@@ -12,6 +13,10 @@ import { viewPath } from "./specialTabs";
 import { vaultPrefs } from "../state/vaultPreferences";
 import { registerDraft } from "../state/drafts";
 import { FolderChoices } from "./FolderChoices";
+import { TranscriptItem, openTranscriptLink } from "./Transcript";
+import { appendTranscriptEvent } from "../state/transcript";
+import type { ChatItem } from "../state/chat";
+import { dayLabel } from "../time";
 
 export function pendingForRun(run: AgentRun | undefined, pending: Proposal[]) {
   if (!run) return [];
@@ -26,7 +31,113 @@ export function runState(run: AgentRun, needsReview = false) {
         ? "Skipped"
         : needsReview
           ? "Needs review"
-          : "Successful";
+          : "Completed";
+}
+export function runDuration(run: AgentRun) {
+  if (run.status === "running") return "In progress";
+  if (run.finished === null) return "—";
+  const seconds = Math.max(0, Math.round(run.finished - run.started));
+  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+  return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
+}
+
+function RunsLedger({ runs, pending }: { runs: AgentRun[]; pending: Proposal[] }) {
+  return (
+    <div className="runs-ledger">
+      <table className="run-ledger-table" aria-label="Workflow runs">
+        <thead>
+          <tr>
+            <th scope="col">Workflow</th>
+            <th scope="col">Status</th>
+            <th scope="col" className="run-ledger-started">
+              Started
+            </th>
+            <th scope="col" className="run-ledger-duration">
+              Duration
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {[...runs]
+            .sort((a, b) => b.started - a.started || b.id - a.id)
+            .map((r) => {
+              const reviews = pendingForRun(r, pending).length;
+              const warnings = (r.transcript?.events ?? [])
+                .reduce<ChatItem[]>(appendTranscriptEvent, [])
+                .filter((item) => item.kind === "tool" && item.error).length;
+              const state = runState(r, reviews > 0);
+              const tone =
+                r.status === "running"
+                  ? "running"
+                  : r.status === "failed"
+                    ? "failed"
+                    : r.status === "skipped" || reviews
+                      ? "review"
+                      : r.status;
+              const Icon =
+                r.status === "running"
+                  ? LoaderCircle
+                  : r.status === "failed" || r.status === "skipped"
+                    ? CircleAlert
+                    : reviews
+                      ? Clock3
+                      : CheckCircle2;
+              const started = new Date(r.started * 1000);
+              const day = dayLabel(started.getTime());
+              const date =
+                day === "Today" || day === "Yesterday"
+                  ? day
+                  : started.toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" });
+              const stamp = `${date}, ${started.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+              return (
+                <tr key={r.id}>
+                  <td>
+                    <button className="run-ledger-title" onClick={() => useUi.getState().openView("run", String(r.id))}>
+                      {r.title}
+                    </button>
+                    <small>
+                      {r.trigger || "Manual"} · {r.model || "Default model"}
+                    </small>
+                    <time className="run-mobile-started" dateTime={started.toISOString()}>
+                      {stamp}
+                    </time>
+                  </td>
+                  <td>
+                    <span className={`ledger-status ${tone}`}>
+                      <Icon size={14} aria-hidden="true" className={r.status === "running" ? "spin" : undefined} />
+                      {state}
+                    </span>
+                    <div className="run-ledger-notes">
+                      {!!reviews && (
+                        <small>
+                          {reviews} pending {reviews === 1 ? "change" : "changes"}
+                        </small>
+                      )}
+                      {!!warnings && (
+                        <small>
+                          {warnings} tool {warnings === 1 ? "warning" : "warnings"}
+                        </small>
+                      )}
+                      {r.error && (
+                        <small className="run-ledger-error" title={r.error}>
+                          {r.error}
+                        </small>
+                      )}
+                    </div>
+                    <small className="run-mobile-duration">{runDuration(r)}</small>
+                  </td>
+                  <td className="run-ledger-started">
+                    <time dateTime={started.toISOString()}>{stamp}</time>
+                  </td>
+                  <td className="run-ledger-duration">{runDuration(r)}</td>
+                </tr>
+              );
+            })}
+        </tbody>
+      </table>
+    </div>
+  );
 }
 export const eventFolder = (event: string) =>
   /^created in\s+(.+)$/i.exec(event.trim())?.[1].replace(/^\/+|\/+$/g, "") ?? null;
@@ -40,67 +151,151 @@ export const workflowDeleteTarget = (agent: Agent) => (agent.skill_folder ? pare
 export function RunDetail({ id, compact = false }: { id: string; compact?: boolean }) {
   const run = useAttention((s) => s.status?.runs.find((r) => String(r.id) === id));
   const pending = useReview((s) => s.pending);
+  const log = useRef<HTMLDivElement>(null);
+  const follow = useRef(true);
+  const events = run?.transcript?.events;
+  useEffect(() => {
+    follow.current = true;
+  }, [id]);
+  useEffect(() => {
+    if (follow.current && log.current) log.current.scrollTop = log.current.scrollHeight;
+  }, [events]);
   if (!run) return <p className="panel-meta">This run is unavailable.</p>;
   const proposals = pendingForRun(run, pending);
+  const items = (events ?? []).reduce<ChatItem[]>(appendTranscriptEvent, []);
+  const state =
+    run.status === "done" || run.status === "successful"
+      ? proposals.length
+        ? "Needs review"
+        : "Completed"
+      : runState(run, proposals.length > 0);
+  const warnings = items.filter((item) => item.kind === "tool" && item.error).length;
+  const Icon =
+    run.status === "running"
+      ? LoaderCircle
+      : run.status === "failed" || run.status === "skipped"
+        ? CircleAlert
+        : CheckCircle2;
   return (
-    <div className={compact ? "context-content" : "workspace-page"}>
-      <h2>{run.title}</h2>
-      <p className="state-label">{runState(run, proposals.length > 0)}</p>
-      <p>
-        {new Date(run.started * 1000).toLocaleString()}
-        {run.late ? " · Started late" : ""}
-      </p>
-      <dl>
-        <dt>Trigger</dt>
-        <dd>{run.trigger || "Manual"}</dd>
-        {run.model && (
-          <>
-            <dt>Model</dt>
-            <dd>{run.model}</dd>
-          </>
-        )}
-        {(run.attempts ?? 1) > 1 && (
-          <>
-            <dt>Attempts</dt>
-            <dd>{run.attempts}</dd>
-          </>
-        )}
-        {run.chain_id && (
-          <>
-            <dt>Workflow chain</dt>
-            <dd>
-              Depth {run.chain_depth ?? 0} · {run.chain_id}
-            </dd>
-          </>
-        )}
-      </dl>
-      <h3>Result</h3>
-      <div className="tessera-answer">{run.error || run.answer || "Working…"}</div>
-      <h3>Changed files</h3>
-      {run.changed_paths?.length ? (
-        run.changed_paths.map((path) => (
-          <button key={path} onClick={() => void useWorkspace.getState().open(path, { newTab: true })}>
-            {path}
-          </button>
-        ))
-      ) : (
-        <p>No changed files recorded.</p>
+    <div className={`${compact ? "context-content" : "workspace-page"} run-detail`}>
+      <header className="run-heading">
+        <h2>{run.title}</h2>
+        <span className={`run-status ${run.status}`}>
+          <Icon size={15} className={run.status === "running" ? "spin" : undefined} />
+          {state}
+        </span>
+      </header>
+      <div className="run-meta">
+        <time dateTime={new Date(run.started * 1000).toISOString()}>
+          {new Date(run.started * 1000).toLocaleString(undefined, {
+            month: "short",
+            day: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+          })}
+        </time>
+        <span>{run.trigger || "Manual run"}</span>
+        <span>{run.model || "Default model"}</span>
+        {run.late && <span>Started late</span>}
+      </div>
+      <details className="run-details">
+        <summary>Run details</summary>
+        <dl>
+          <dt>Trigger</dt>
+          <dd>{run.trigger || "Manual"}</dd>
+          <dt>Model</dt>
+          <dd>{run.model || "Claude Code default"}</dd>
+          <dt>Started</dt>
+          <dd>{new Date(run.started * 1000).toLocaleString()}</dd>
+          {run.finished && (
+            <>
+              <dt>Finished</dt>
+              <dd>{new Date(run.finished * 1000).toLocaleString()}</dd>
+            </>
+          )}
+          <dt>Attempts</dt>
+          <dd>{run.attempts ?? 1}</dd>
+          {run.chain_id && (
+            <>
+              <dt>Workflow chain</dt>
+              <dd>
+                Depth {run.chain_depth ?? 0} · {run.chain_id}
+              </dd>
+            </>
+          )}
+          {!!warnings && (
+            <>
+              <dt>Tool calls</dt>
+              <dd>
+                {warnings} failed {warnings === 1 ? "call" : "calls"}
+              </dd>
+            </>
+          )}
+        </dl>
+      </details>
+      <h3>{items.length ? "Run log" : "Result"}</h3>
+      {run.transcript?.truncated && (
+        <p className="panel-meta">Only the latest activity is shown; this log was shortened.</p>
       )}
-      {!!run.changes?.length && (
-        <>
-          <h3>Tool activity</h3>
+      <div
+        className="run-transcript"
+        aria-label="Run log"
+        tabIndex={0}
+        ref={log}
+        onClick={openTranscriptLink}
+        onScroll={() => {
+          const el = log.current;
+          if (el) follow.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+        }}
+      >
+        {items.length ? (
+          items.map((item, i) => <TranscriptItem key={i} item={item} />)
+        ) : (
+          <TranscriptItem
+            item={{
+              kind: run.error ? "error" : "text",
+              text:
+                run.error || run.answer || (run.status === "running" ? "Waiting for output…" : "No output recorded."),
+            }}
+          />
+        )}
+        {run.status === "running" && items.length > 0 && <p className="chat-thinking">Working…</p>}
+      </div>
+      <footer className="run-outcome">
+        {!!warnings && (
+          <span className="run-warning">
+            <TriangleAlert size={14} />
+            {warnings} tool {warnings === 1 ? "warning" : "warnings"}
+          </span>
+        )}
+        <span>{run.changed_paths?.length ?? 0} files changed</span>
+        <span>{proposals.length ? `${proposals.length} pending reviews` : "No pending reviews"}</span>
+      </footer>
+      {!!run.changed_paths?.length && (
+        <details className="run-details">
+          <summary>Changed files</summary>
+          <div className="run-files">
+            {run.changed_paths.map((path) => (
+              <button key={path} onClick={() => void useWorkspace.getState().open(path, { newTab: true })}>
+                {path}
+              </button>
+            ))}
+          </div>
+        </details>
+      )}
+      {!!run.changes?.length && !events?.length && (
+        <details className="run-details">
+          <summary>Tool activity</summary>
           <ul>
-            {(run.changes ?? []).map((c, i) => (
+            {run.changes.map((c, i) => (
               <li key={i}>{c}</li>
             ))}
           </ul>
-        </>
+        </details>
       )}
-      <h3>Review</h3>
-      <p>
-        {run.proposals} proposals created during this run. {proposals.length} pending from this run.
-      </p>
-      <button onClick={() => useUi.getState().openView("activity")}>Open activity and reviews</button>
+      <button className="run-review-link" onClick={() => useUi.getState().openView("activity")}>
+        Open activity and reviews
+      </button>
     </div>
   );
 }
@@ -232,7 +427,11 @@ export function Workflows({
       <header className="workspace-heading">
         <div>
           <h1>{selected?.title ?? (runsOnly ? "Runs" : agentsOnly ? "Agents" : "Workflows")}</h1>
-          <p>Repeatable work on your vault files. Schedules and events run while Mosaic is open.</p>
+          <p>
+            {runsOnly
+              ? "Workflow history, newest first."
+              : "Repeatable work on your vault files. Schedules and events run while Mosaic is open."}
+          </p>
         </div>
         {!runsOnly && (
           <button
@@ -242,7 +441,7 @@ export function Workflows({
             {selected ? "Edit workflow" : "Create workflow"}
           </button>
         )}
-        {!name && !agentsOnly && (
+        {!name && !agentsOnly && !runsOnly && (
           <button
             disabled={!!busy || !status}
             onClick={() => void act("all", () => api.tesseraPauseAll(!status?.paused))}
@@ -376,16 +575,13 @@ export function Workflows({
         </p>
       )}
       {!agentsOnly && (
-        <section>
-          <h2>Recent runs</h2>
-          {!runs.length && <p>No runs yet.</p>}
-          {runs.map((r) => (
-            <button className="run-row" key={r.id} onClick={() => useUi.getState().openView("run", String(r.id))}>
-              <strong>{r.title}</strong>
-              <time>{new Date(r.started * 1000).toLocaleString()}</time>
-              <span>{runState(r, pendingForRun(r, pending).length > 0)}</span>
-            </button>
-          ))}
+        <section aria-label={runsOnly ? "Run history" : "Recent runs"}>
+          {!runsOnly && <h2>Recent runs</h2>}
+          {!runs.length ? (
+            <p className="panel-meta">{status ? "No runs yet." : "Loading runs…"}</p>
+          ) : (
+            <RunsLedger runs={runs} pending={pending} />
+          )}
         </section>
       )}
     </div>

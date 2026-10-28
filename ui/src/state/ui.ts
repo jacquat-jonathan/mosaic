@@ -76,6 +76,7 @@ const PREFS_KEY = "mosaic:ui";
 
 interface Prefs {
   destination: Destination;
+  aiSection: "chats" | "automations";
   sidebarWidth: number;
   rightWidth: number;
   leftSidebar: boolean;
@@ -88,6 +89,7 @@ function loadPrefs(): Prefs {
   const defaults = appPrefs();
   const d: Prefs = {
     destination: "notes",
+    aiSection: "chats",
     sidebarWidth: defaults.sidebarWidth,
     rightWidth: defaults.contextWidth,
     leftSidebar: defaults.sidebarVisible,
@@ -100,6 +102,7 @@ function loadPrefs(): Prefs {
       destination: ["notes", "find", "plan", "ai"].includes(saved.destination ?? "")
         ? saved.destination!
         : d.destination,
+      aiSection: saved.aiSection === "automations" ? "automations" : "chats",
       sidebarWidth: typeof saved.sidebarWidth === "number" ? clampPanel(saved.sidebarWidth) : d.sidebarWidth,
       rightWidth: typeof saved.rightWidth === "number" ? clampPanel(saved.rightWidth) : d.rightWidth,
       leftSidebar: saved.leftSidebar ?? d.leftSidebar,
@@ -115,6 +118,8 @@ interface UiState {
   destination: Destination;
   selectDestination(destination: Destination): void;
   openView(kind: string, id?: string): void;
+  aiSection: "chats" | "automations";
+  setAiSection(section: "chats" | "automations"): void;
   sidebarTab: SidebarTab;
   searchQuery: string;
   /** Bumped to focus the search box. */
@@ -162,7 +167,14 @@ export const useUi = create<UiState>((set, get) => ({
   destination: prefs.destination,
   selectDestination: (destination) =>
     set((s) => ({ destination, leftSidebar: s.destination === destination ? !s.leftSidebar : true })),
+  aiSection: prefs.aiSection,
+  setAiSection: (aiSection) => set({ aiSection }),
   openView: (kind, id) => {
+    if (["chat", "chats"].includes(kind)) set({ aiSection: "chats" });
+    else if (
+      ["agents", "workflows", "workflow", "new-workflow", "runs", "run", "activity", "connections"].includes(kind)
+    )
+      set({ aiSection: "automations" });
     void useWorkspace.getState().open(viewPath(kind, id), { newTab: true });
   },
   sidebarTab: "files",
@@ -185,7 +197,7 @@ export const useUi = create<UiState>((set, get) => ({
   closeHistory: () => set({ history: null }),
   rightPanel: prefs.rightPanel,
   showChat: () => {
-    set({ destination: "ai", leftSidebar: true });
+    set({ destination: "ai", leftSidebar: true, aiSection: "chats" });
     const active = useWorkspace.getState().activePath();
     const note = active && !isSpecialTab(active) ? active : null;
     const id = useChat.getState().create(note ? [note] : []);
@@ -243,6 +255,7 @@ export const useUi = create<UiState>((set, get) => ({
 useUi.subscribe((s, prev) => {
   if (
     s.destination === prev.destination &&
+    s.aiSection === prev.aiSection &&
     s.sidebarWidth === prev.sidebarWidth &&
     s.rightWidth === prev.rightWidth &&
     s.leftSidebar === prev.leftSidebar &&
@@ -252,6 +265,7 @@ useUi.subscribe((s, prev) => {
   try {
     const p: Prefs = {
       destination: s.destination,
+      aiSection: s.aiSection,
       sidebarWidth: s.sidebarWidth,
       rightWidth: s.rightWidth,
       leftSidebar: s.leftSidebar,

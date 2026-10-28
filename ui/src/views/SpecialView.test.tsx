@@ -12,7 +12,7 @@ vi.mock("./CalendarView", () => ({
   CalendarView: ({ initialMode }: { initialMode?: string }) => <div>calendar:{initialMode}</div>,
 }));
 vi.mock("./ChatPanel", () => ({ ChatPanel: ({ id }: { id: string }) => <div>chat:{id}</div> }));
-vi.mock("./AreaSidebar", () => ({ ChatList: () => <div>chat-list</div> }));
+vi.mock("./ChatHistory", () => ({ ChatHistoryPage: () => <div>Chats</div> }));
 vi.mock("./Workflows", () => ({
   Workflows: ({ name, runsOnly, agentsOnly }: { name?: string; runsOnly?: boolean; agentsOnly?: boolean }) => (
     <div>

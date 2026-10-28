@@ -3,12 +3,11 @@ import { api } from "../ipc/api";
 import { errorMessage, type QueryResult } from "../ipc/types";
 import { useVault } from "../state/vault";
 import { useWorkspace } from "../state/workspace";
-import { useUi } from "../state/ui";
 import { usePlanning } from "../state/planning";
 import { parseView } from "./specialTabs";
 import { CalendarView } from "./CalendarView";
 import { ChatPanel } from "./ChatPanel";
-import { ChatList } from "./AreaSidebar";
+import { ChatHistoryPage } from "./ChatHistory";
 import { Workflows, WorkflowForm, RunDetail } from "./Workflows";
 import { ActivityPanel } from "./ActivityPanel";
 import { ConnectAiSection } from "./ConnectAi";
@@ -29,15 +28,7 @@ export function SpecialView({ path }: { path: string }) {
     case "chat":
       return <ChatPanel id={id} />;
     case "chats":
-      return (
-        <div className="workspace-page">
-          <h1>Chats</h1>
-          <button className="primary" onClick={() => useUi.getState().showChat()}>
-            New chat
-          </button>
-          <ChatList />
-        </div>
-      );
+      return <ChatHistoryPage />;
     case "agents":
       return <Workflows agentsOnly />;
     case "workflows":

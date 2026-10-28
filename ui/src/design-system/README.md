@@ -188,6 +188,14 @@ Tool activity supports all run states and distinguishes reads from writes. Older
 shortened logs, chain/attempt metadata, changed files, and review outcomes remain available.
 Changed-file and transcript-link failures show an inline notice. Legacy run-only styles are removed.
 
+`views/ChatHistory.tsx` scopes All chats and the sidebar's saved rows independently. Shared
+buttons, badges, and notices retain date groups, newest-first order, older-history disclosure,
+selection, new chat, rename, and deletion. Long titles wrap in both locations. Menu and dialog
+cancellation return focus; deleting a row chooses the next available row or New chat. Pending
+rename/delete decisions check both the chat store and active vault before applying. The existing
+menu/prompt/confirmation overlays remain scheduled separately. The surrounding AI navigation and
+chat conversation stay in their own migration steps; unused legacy chat-row CSS is removed.
+
 **Contrast decision for this pilot:** retain the approved palettes and existing user-selected
 accents. The migrated controls use normal/muted text, quiet or outlined buttons, and neutral
 selected segments. They introduce no white-on-accent or white-on-danger text. Decisions about

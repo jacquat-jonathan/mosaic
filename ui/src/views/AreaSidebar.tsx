@@ -1,7 +1,8 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { Bot, CalendarClock, Inbox, ListChecks, MessagesSquare, Plug, Workflow } from "lucide-react";
 import { useUi, type Destination } from "../state/ui";
-import { useChat, chatGroup } from "../state/chat";
+import { ChatList } from "./ChatHistory";
+export { ChatList } from "./ChatHistory";
 import { useWorkspace } from "../state/workspace";
 import { useAttention } from "../state/attention";
 import { useReview } from "../state/review";
@@ -44,6 +45,7 @@ export function AreaSidebar({ destination }: { destination: Destination }) {
   return <AiSidebar />;
 }
 export function AiSidebar() {
+  const newChat = useRef<HTMLButtonElement>(null);
   const open = useUi.getState().openView;
   const section = useUi((s) => s.aiSection);
   const active = useWorkspace((s) => s.panes.find((p) => p.id === s.focused)?.active);
@@ -59,7 +61,6 @@ export function AiSidebar() {
   const agents = useAttention((s) => s.agents);
   const pending = useReview((s) => s.pending.length);
   const disconnected = useAttention((s) => s.disconnected);
-  const chats = useChat((s) => s.chats);
   const item = (kind: string, label: string, Icon: typeof Workflow, id?: string) => (
     <button
       key={kind + (id ?? "")}
@@ -83,12 +84,11 @@ export function AiSidebar() {
       <div className="ai-section-content">
         {section === "chats" ? (
           <>
-            <button className="primary ai-new-chat" onClick={() => useUi.getState().showChat()}>
+            <button ref={newChat} className="primary ai-new-chat" onClick={() => useUi.getState().showChat()}>
               + New chat
             </button>
             {item("chats", "All chats", MessagesSquare)}
-            <ChatList />
-            {!Object.keys(chats).length && <p className="panel-meta">Your saved conversations appear here.</p>}
+            <ChatList fallback={newChat} />
           </>
         ) : (
           <>
@@ -111,74 +111,5 @@ export function AiSidebar() {
         {item("connections", `Connections${disconnected ? " · Disconnected" : ""}`, Plug)}
       </details>
     </nav>
-  );
-}
-export function ChatList() {
-  const active = useWorkspace((s) => s.panes.find((p) => p.id === s.focused)?.active);
-  const chats = useChat((s) => s.chats);
-  return (
-    <>
-      {["Today", "Previous 7 days", "Older"].map((group) => {
-        const list = Object.values(chats)
-          .filter((c) => chatGroup(c.updated) === group)
-          .sort((a, b) => b.updated - a.updated);
-        return list.length ? (
-          <details key={group} open={group !== "Older"}>
-            <summary>{group}</summary>
-            {list.map((c) => (
-              <div className="chat-nav-row" key={c.id}>
-                <button
-                  aria-current={active === viewPath("chat", c.id) ? "page" : undefined}
-                  onClick={() => useUi.getState().openView("chat", c.id)}
-                >
-                  {c.title}
-                  {c.run !== null
-                    ? " · Running"
-                    : c.items.at(-1)?.kind === "error"
-                      ? " · Failed"
-                      : c.noMosaic
-                        ? " · Tools disconnected"
-                        : ""}
-                </button>
-                <button
-                  aria-label={`Actions for ${c.title}`}
-                  onClick={(e) => {
-                    const r = e.currentTarget.getBoundingClientRect();
-                    useUi.getState().showMenu(r.left, r.bottom, [
-                      {
-                        label: "Rename",
-                        action: async () => {
-                          const title = await useUi.getState().askText({ title: "Rename chat", value: c.title });
-                          if (title?.trim()) useChat.getState().update(c.id, { title: title.trim() });
-                        },
-                      },
-                      {
-                        label: "Delete chat",
-                        danger: true,
-                        action: async () => {
-                          if (
-                            !(await useUi
-                              .getState()
-                              .ask({ title: "Delete chat?", body: c.title, confirmLabel: "Delete", danger: true }))
-                          )
-                            return;
-                          useChat.getState().remove(c.id);
-                          const ws = useWorkspace.getState();
-                          for (const pane of ws.panes)
-                            if (pane.tabs.includes(viewPath("chat", c.id)))
-                              ws.closeTab(pane.id, viewPath("chat", c.id));
-                        },
-                      },
-                    ]);
-                  }}
-                >
-                  ⋯
-                </button>
-              </div>
-            ))}
-          </details>
-        ) : null;
-      })}
-    </>
   );
 }

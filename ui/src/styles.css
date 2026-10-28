@@ -3964,21 +3964,6 @@ svg path.flow-on {
   background: var(--bg-active);
   color: var(--accent);
 }
-.chat-nav-row {
-  display: flex;
-  min-width: 0;
-}
-.chat-nav-row > button:first-child {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  text-align: left;
-  display: block;
-}
-.chat-nav-row > button:last-child {
-  flex: none;
-}
 .context-head {
   height: 38px;
   display: flex;

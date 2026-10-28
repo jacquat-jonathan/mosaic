@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Chats list:** clearer saved-conversation rows, date groups, selection, and actions. Cancelled rename/delete dialogs restore focus, and pending decisions stay tied to their vault.
+
 - **Run details:** consistent status, metadata, logs, and review outcomes. Expand a tool call to inspect its file, error, or review action; live output follows the log while you stay near the bottom.
 
 - **Run history:** All runs and Recent runs now share the larger table, clear status icons, review counts, tool warnings, and errors. Narrow panes keep dates and durations readable beneath each row.

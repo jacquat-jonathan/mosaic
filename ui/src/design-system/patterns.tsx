@@ -16,7 +16,7 @@ import {
   Zap,
   X,
 } from "lucide-react";
-import { Badge, Button, IconButton } from "./components";
+import { Badge, Button, IconButton, type ButtonProps } from "./components";
 
 export type RunState = "ready" | "queued" | "running" | "paused" | "completed" | "needs-review" | "failed" | "skipped";
 const states = {
@@ -285,6 +285,14 @@ export function ChatComposer({
   model = "",
   modelOptions,
   onModelChange,
+  canSend = !!value.trim(),
+  messageLabel = "Message",
+  textareaProps,
+  attachmentContent,
+  footerStart,
+  annotation = <Badge>Preview</Badge>,
+  sendVariant = "primary",
+  stopVariant = "danger",
 }: {
   value: string;
   onChange(value: string): void;
@@ -297,6 +305,14 @@ export function ChatComposer({
   model?: string;
   modelOptions?: readonly { value: string; label: string }[];
   onModelChange?(value: string): void;
+  canSend?: boolean;
+  messageLabel?: string;
+  textareaProps?: ComponentPropsWithRef<"textarea">;
+  attachmentContent?: ReactNode;
+  footerStart?: ReactNode;
+  annotation?: ReactNode;
+  sendVariant?: ButtonProps["variant"];
+  stopVariant?: ButtonProps["variant"];
 }) {
   const id = useId();
   return (
@@ -304,20 +320,21 @@ export function ChatComposer({
       className="mds-composer"
       onSubmit={(event) => {
         event.preventDefault();
-        if (!busy && value.trim()) onSend();
+        if (!busy && canSend) onSend();
       }}
     >
       <div className="mds-composer-attachments">
-        {attachments.map((name) => (
-          <span className="mds-attachment" key={name}>
-            {name}
-            {onRemoveAttachment && (
-              <IconButton label={`Remove attachment ${name}`} onClick={() => onRemoveAttachment(name)}>
-                <X size={12} />
-              </IconButton>
-            )}
-          </span>
-        ))}
+        {attachmentContent ??
+          attachments.map((name) => (
+            <span className="mds-attachment" key={name}>
+              {name}
+              {onRemoveAttachment && (
+                <IconButton label={`Remove attachment ${name}`} onClick={() => onRemoveAttachment(name)}>
+                  <X size={12} />
+                </IconButton>
+              )}
+            </span>
+          ))}
         {onAttach && (
           <Button onClick={onAttach}>
             <Plus />
@@ -326,19 +343,21 @@ export function ChatComposer({
         )}
       </div>
       <label htmlFor={id} className="mds-label">
-        Message
+        {messageLabel}
       </label>
       <textarea
         id={id}
         className="mds-input"
         rows={3}
         placeholder="Ask about your notes…"
-        value={value}
         disabled={busy}
+        {...textareaProps}
+        value={value}
         onChange={(event) => onChange(event.target.value)}
       />
       <footer>
-        <Badge>Preview</Badge>
+        {footerStart}
+        {annotation}
         {modelOptions && (
           <label className="mds-composer-model">
             Model{" "}
@@ -358,12 +377,12 @@ export function ChatComposer({
           </label>
         )}
         {busy ? (
-          <Button variant="danger" onClick={onStop} disabled={!onStop}>
+          <Button variant={stopVariant} onClick={onStop} disabled={!onStop}>
             <Square />
             Stop
           </Button>
         ) : (
-          <Button type="submit" variant="primary" disabled={!value.trim()}>
+          <Button type="submit" variant={sendVariant} disabled={!canSend}>
             Send
           </Button>
         )}

@@ -1,7 +1,6 @@
 import type { MouseEvent } from "react";
 import { Button, Notice } from "../design-system/components";
 import { ToolActivity, TranscriptMessage } from "../design-system/patterns";
-import { Bot, Eye, Pencil } from "lucide-react";
 import { renderMarkdown } from "../markdown";
 import { resolveLink } from "../links";
 import type { ChatItem } from "../state/chat";
@@ -9,68 +8,11 @@ import { useVault } from "../state/vault";
 import { useWorkspace } from "../state/workspace";
 import { useUi } from "../state/ui";
 
+import "./transcript.css";
+
 const noteName = (p: string) => (p.split("/").pop() ?? p).replace(/\.md$/i, "");
 
-export function TranscriptItem({ item, designSystem = false }: { item: ChatItem; designSystem?: boolean }) {
-  if (designSystem) return <DesignSystemTranscriptItem item={item} />;
-  switch (item.kind) {
-    case "user":
-      return (
-        <div className="chat-msg user">
-          {item.agent && (
-            <div className="chat-agent">
-              <Bot size={11} /> {item.agent}
-            </div>
-          )}
-          {(item.selection || item.model) && (
-            <div className="chat-agent">
-              {item.selection ? `Selection from ${noteName(item.selection.path)}` : ""}
-              {item.selection && item.model ? " · " : ""}
-              {item.model ?? ""}
-            </div>
-          )}
-          {item.text}
-        </div>
-      );
-    case "text": {
-      const { entries, aliases } = useVault.getState();
-      const html = renderMarkdown(item.text, (t) => resolveLink(t, entries, null, aliases));
-      // biome-ignore lint/security/noDangerouslySetInnerHtml: renderMarkdown output, sanitized by DOMPurify
-      return <div className="chat-msg assistant md-render" dangerouslySetInnerHTML={{ __html: html }} />;
-    }
-    case "tool":
-      return (
-        <div className={`chat-tool ${item.error ? "failed" : ""}`}>
-          {item.writes ? <Pencil size={11} /> : <Eye size={11} />}
-          {item.path ? (
-            <button className="chat-tool-link" data-path={item.path}>
-              {item.summary}
-            </button>
-          ) : (
-            <span>{item.summary}</span>
-          )}
-          {item.review !== null && (
-            <button
-              className="chat-review"
-              onClick={() => useUi.getState().setSidebarTab("activity")}
-              title="Waiting for your review in AI activity"
-            >
-              proposed — review
-            </button>
-          )}
-          {item.error && (
-            <span className="chat-tool-error" title={item.error}>
-              failed
-            </span>
-          )}
-        </div>
-      );
-    case "error":
-      return <div className="chat-msg error">{item.text}</div>;
-  }
-}
-
-function DesignSystemTranscriptItem({ item }: { item: ChatItem }) {
+export function TranscriptItem({ item }: { item: ChatItem }) {
   switch (item.kind) {
     case "user":
       return (

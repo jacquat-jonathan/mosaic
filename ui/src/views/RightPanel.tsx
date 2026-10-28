@@ -7,7 +7,7 @@ import { useVault } from "../state/vault";
 import { useWorkspace } from "../state/workspace";
 import { parse as parseMarkdownHeadings } from "./outline";
 import { useUi } from "../state/ui";
-import { useChat } from "../state/chat";
+import { ChatContext } from "./ChatContext";
 import { usePlanning } from "../state/planning";
 import { WorkflowContext } from "./Workflows";
 import { addSiblingNoteSection, dropNoteSection, moveNoteSection, revealNotePosition } from "../editor/noteViews";
@@ -44,51 +44,6 @@ export function RightPanel() {
         <CalendarContext />
       )}
     </aside>
-  );
-}
-function ChatContext({ id }: { id: string }) {
-  const chat = useChat((s) => s.chats[id]);
-  if (!chat) return <p className="panel-meta">Chat unavailable.</p>;
-  const last = [...chat.items].reverse().find((i) => i.kind === "user");
-  return (
-    <div className="context-content">
-      <h3>Attachments</h3>
-      {chat.attached.length ? (
-        chat.attached.map((p) => (
-          <button key={p} onClick={() => void useWorkspace.getState().open(p, { newTab: true })}>
-            {p}
-          </button>
-        ))
-      ) : (
-        <p>No attached files.</p>
-      )}
-      {(chat.selection || last?.selection) && (
-        <>
-          <h3>Selection</h3>
-          <blockquote>{(chat.selection || last?.selection)?.text}</blockquote>
-        </>
-      )}
-      <dl>
-        <dt>Provider</dt>
-        <dd>Claude Code</dd>
-        <dt>Model</dt>
-        <dd>{chat.model || "Default"}</dd>
-        <dt>Session</dt>
-        <dd>{chat.session || "Not started"}</dd>
-        <dt>Cost</dt>
-        <dd>${chat.cost.toFixed(2)}</dd>
-        <dt>Status</dt>
-        <dd>{chat.run !== null ? "Running" : chat.noMosaic ? "Tools disconnected" : "Ready"}</dd>
-      </dl>
-      {last && (
-        <>
-          <h3>Last message context</h3>
-          {last.context.map((p) => (
-            <p key={p}>{p}</p>
-          ))}
-        </>
-      )}
-    </div>
   );
 }
 function CalendarContext() {

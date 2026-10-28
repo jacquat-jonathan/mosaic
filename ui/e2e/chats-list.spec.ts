@@ -90,6 +90,8 @@ test("chats list follows themes and wraps long titles in narrow panes", async ({
   await history
     .getByRole("button", { name: "Planning the next release and reviewing the remaining work", exact: true })
     .click();
-  await expect(page.locator(".chat")).toHaveCSS("font-size", "13px");
-  await expect(page.locator(".chat.mosaic-ds")).toHaveCount(0);
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.getByRole("button", { name: "Show right panel", exact: true }).click();
+  await expect(page.locator(".context-head")).toHaveCSS("font-size", "13px");
+  await expect(page.locator(".context-head.mosaic-ds")).toHaveCount(0);
 });

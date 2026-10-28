@@ -152,10 +152,9 @@ function RunView({ id, compact, root }: { id: string; compact: boolean; root?: s
         >
           {run.transcript?.truncated && <Notice>Only the latest activity is shown; this log was shortened.</Notice>}
           {items.length ? (
-            items.map((item, index) => <TranscriptItem designSystem key={index} item={item} />)
+            items.map((item, index) => <TranscriptItem key={index} item={item} />)
           ) : (
             <TranscriptItem
-              designSystem
               item={{
                 kind: run.error ? "error" : "text",
                 text:

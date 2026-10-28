@@ -82,22 +82,3 @@
 .mosaic-ds.run-detail[data-density="compact"] .mds-run-panel {
   padding: var(--mds-space-7);
 }
-/* Transcript content shares controls while chat's remaining legacy consumer stays independent. */
-.mosaic-ds.workflow-status-scope .mds-tool--failed > summary {
-  color: var(--mds-text);
-}
-.mosaic-ds.workflow-status-scope .mds-tool-detail {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--mds-space-4);
-}
-.mosaic-ds.workflow-status-scope .mds-tool-detail .mds-notice {
-  flex-basis: 100%;
-}
-.mosaic-ds.workflow-status-scope .mds-transcript .md-render {
-  min-width: 0;
-}
-.mosaic-ds.workflow-status-scope .mds-transcript .md-render pre {
-  max-width: 100%;
-  overflow: auto;
-}

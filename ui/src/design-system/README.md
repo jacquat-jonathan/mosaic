@@ -182,8 +182,8 @@ Legacy ledger styles are removed after their final consumer migrated.
 `views/RunDetail.tsx` adopts `RunPanel`, status labels, notices, and shared actions. The panel
 accepts a heading level, structured metadata, expandable details, a log title, and transcript
 DOM props so the app retains its focusable scroll region and follow-at-bottom behavior.
-`TranscriptItem` has a scoped design-system mode for sanitized Markdown, tool details, source
-links, errors, and proposed-change actions; chat keeps its existing mode until its own step.
+`TranscriptItem` shares sanitized Markdown, tool details, source
+links, errors, and proposed-change actions with chat.
 Tool activity supports all run states and distinguishes reads from writes. Older saved results,
 shortened logs, chain/attempt metadata, changed files, and review outcomes remain available.
 Changed-file and transcript-link failures show an inline notice. Legacy run-only styles are removed.
@@ -195,6 +195,17 @@ cancellation return focus; deleting a row chooses the next available row or New 
 rename/delete decisions check both the chat store and active vault before applying. The existing
 menu/prompt/confirmation overlays remain scheduled separately. The surrounding AI navigation and
 chat conversation stay in their own migration steps; unused legacy chat-row CSS is removed.
+
+`views/ChatPanel.tsx` adopts `ChatComposer`, transcript messages, tool details, attachments,
+model choice, notices, and outlined send/stop actions. The composer exposes controlled attachment,
+footer, annotation, textarea, and action-variant options; its gallery annotation stays out of the
+app. Enter/Shift+Enter/composition rules, agent-only sends, typing while running, stop, cost,
+saved-note export, slash agents, and selected-text context remain intact. Attachment picker and
+rename cancellation restore focus. Saved-note writes serialize and pin their vault root; async
+picker/rename/save continuations check the original chat and vault. Connection-check failures
+are retryable. `ChatContext.tsx` shares scoped metadata, statuses, source actions, and errors.
+The last legacy transcript consumer has migrated, so old chat/transcript CSS and mode are removed.
+The surrounding context frame remains scheduled separately.
 
 **Contrast decision for this pilot:** retain the approved palettes and existing user-selected
 accents. The migrated controls use normal/muted text, quiet or outlined buttons, and neutral

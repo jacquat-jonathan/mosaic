@@ -428,7 +428,8 @@ test("chat with the assistant and manage the saved conversation", async ({ page 
   await page.getByRole("button", { name: "Send" }).click();
   await expect(page.getByText("Done: I added a line to")).toBeVisible({ timeout: 5_000 });
   await expect(page.getByTitle("What this chat has cost so far")).toBeVisible();
-  await page.getByRole("button", { name: "Read Ideas" }).click();
+  await page.locator(".chat .mds-tool summary").filter({ hasText: "Read Ideas" }).click();
+  await page.getByRole("button", { name: "Open Ideas.md", exact: true }).click();
   await expect(page.locator(".cm-content")).toContainText("Ideas");
 
   await page.getByRole("tab", { name: "AI", exact: true }).click();

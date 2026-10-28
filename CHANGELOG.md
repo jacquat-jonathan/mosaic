@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Welcome:** consistent open/create controls, loading feedback, and persistent errors. Cancelled choices restore focus, pending actions disable duplicates, and stale choices leave an already-opened vault alone.
+
 - **File history:** consistent version entries, keyboard selection, comparisons, and restore actions. Failed reads can be retried, restores disable while pending, and history closes when switching vaults.
 
 - **Review dialog:** a wider, consistent diff view with partial acceptance, rejection feedback, stale-change comparison, and focus restoration. Decisions disable while saving, failed comparisons can be retried, and older WebKit versions use a focus-managed modal fallback.

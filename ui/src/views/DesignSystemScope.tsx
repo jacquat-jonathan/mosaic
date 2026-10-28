@@ -9,7 +9,7 @@ export function DesignSystemScope({
   className,
   style,
   ...props
-}: HTMLAttributes<HTMLElement> & { as?: "div" | "nav" | "header" }) {
+}: HTMLAttributes<HTMLElement> & { as?: "div" | "nav" | "header" | "main" }) {
   const theme = useSettings((s) => s.theme);
   const density = useSettings((s) => s.density);
   return (

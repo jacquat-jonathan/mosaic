@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import {
   FilePlus,
   FolderPlus,
-  FolderOpen,
   Files,
   Search,
   Shapes,
@@ -13,7 +12,9 @@ import {
   Settings as Gear,
   CalendarDays,
 } from "lucide-react";
-import { api, onIndexProgress, pickFolder, revealInFinder } from "./ipc/api";
+import { api, onIndexProgress, revealInFinder } from "./ipc/api";
+import { Welcome } from "./views/Welcome";
+import { errorMessage } from "./ipc/types";
 import { useVault } from "./state/vault";
 import { FileTree } from "./views/FileTree";
 import { Workspace } from "./views/Workspace";
@@ -52,12 +53,23 @@ export function App() {
   const [booting, setBooting] = useState(true);
 
   useEffect(() => {
-    (async () => {
-      const current = await api.currentVault();
-      const last = current?.root ?? (await api.lastVault());
-      if (last) await useVault.getState().openVault(last);
-      setBooting(false);
+    let live = true;
+    void (async () => {
+      try {
+        const current = await api.currentVault();
+        if (!live) return;
+        const last = current?.root ?? (await api.lastVault());
+        if (!live) return;
+        if (last) await useVault.getState().openVault(last);
+      } catch (cause) {
+        if (live) useVault.getState().setError(errorMessage(cause));
+      } finally {
+        if (live) setBooting(false);
+      }
     })();
+    return () => {
+      live = false;
+    };
   }, []);
 
   useShortcuts();
@@ -83,7 +95,7 @@ export function App() {
     };
   }, []);
 
-  if (booting) return <div className="app-loading" data-tauri-drag-region />;
+  if (booting) return <Welcome loading />;
   return (
     <>
       {vault ? <Main /> : <Welcome />}
@@ -94,32 +106,8 @@ export function App() {
       <Picker />
       <NewNoteDialog />
       <HistoryModal />
-      <ErrorToast />
+      {vault && <ErrorToast />}
     </>
-  );
-}
-
-async function chooseVault() {
-  const path = await pickFolder();
-  if (!path) return;
-  await useVault.getState().openVault(path);
-}
-
-function Welcome() {
-  return (
-    <main className="welcome" data-tauri-drag-region>
-      <img src="/icon.png" alt="" width={96} height={96} />
-      <h1>Mosaic</h1>
-      <p>Open a folder to use it as your vault. Existing Obsidian vaults work as they are.</p>
-      <div className="welcome-actions">
-        <button className="primary" onClick={() => void chooseVault()}>
-          <FolderOpen size={16} /> Open folder…
-        </button>
-        <button className="secondary" onClick={() => void createVault()}>
-          <FolderPlus size={16} /> Create new vault…
-        </button>
-      </div>
-    </main>
   );
 }
 

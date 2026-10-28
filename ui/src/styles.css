@@ -111,9 +111,6 @@ input {
   color: inherit;
 }
 
-.app-loading {
-  height: 100%;
-}
 .empty {
   height: 100%;
   display: grid;
@@ -124,35 +121,10 @@ input {
 }
 
 /* Welcome */
-.welcome {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-}
-.welcome h1 {
-  margin: 6px 0 0;
-  font-size: 28px;
-  font-weight: 650;
-}
-.welcome-actions {
-  display: flex;
-  gap: 8px;
-}
 button.secondary {
   border: 1px solid var(--border);
   padding: 7px 14px;
 }
-.welcome p {
-  color: var(--muted);
-  margin: 0 0 12px;
-  max-width: 360px;
-  text-align: center;
-  line-height: 1.5;
-}
-
 /* Shell */
 .shell {
   height: 100%;

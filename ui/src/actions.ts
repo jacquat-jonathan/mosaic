@@ -201,22 +201,24 @@ export async function openToTheRight(path: string) {
   await useWorkspace.getState().open(path);
 }
 
-export async function openVaultFolder() {
+export async function openVaultFolder(isCurrent: () => boolean = () => true) {
+  if (!isCurrent()) return;
   const path = await pickFolder();
-  if (path) await useVault.getState().openVault(path);
+  if (path && isCurrent()) await useVault.getState().openVault(path);
 }
 
 /** Asks where and under which name, then creates and opens a new, empty vault. */
-export async function createVault() {
-  const parent = await pickFolder("Choose where to create the new vault");
-  if (!parent) return;
-  const name = await useUi.getState().askText({ title: "Name of the new vault", value: "", placeholder: "My vault" });
-  if (!name?.trim()) return;
+export async function createVault(isCurrent: () => boolean = () => true) {
+  if (!isCurrent()) return;
   try {
+    const parent = await pickFolder("Choose where to create the new vault");
+    if (!parent || !isCurrent()) return;
+    const name = await useUi.getState().askText({ title: "Name of the new vault", value: "", placeholder: "My vault" });
+    if (!name?.trim() || !isCurrent()) return;
     const vault = await api.createVault(parent, name.trim());
-    await useVault.getState().openVault(vault.root);
-  } catch (e) {
-    useVault.getState().setError(errorMessage(e));
+    if (isCurrent()) await useVault.getState().openVault(vault.root);
+  } catch (cause) {
+    if (isCurrent()) useVault.getState().setError(errorMessage(cause));
   }
 }
 

@@ -234,6 +234,14 @@ and report success; a vault change closes the dialog. The body becomes one colum
 while header/actions remain visible. Shared legacy diff CSS remains for ConflictBar until its step;
 unused history-specific styles are removed.
 
+`views/Welcome.tsx` adopts the shared scope, outlined actions, notices, saved theme/density/scale,
+and a bounded scroll layout. Native picker/naming cancellation restores focus; pending actions
+serialize and stay disabled until completion. Inline errors remain visible until retry, including
+store-handled open/create failures. The common vault actions accept an optional validity guard so
+late choices cannot replace a newly opened vault. Startup failures reach Welcome instead of leaving
+a blank loading screen; loading uses the same scoped presentation. Existing naming/picker overlays
+stay independent until their migration. Legacy Welcome styles are removed.
+
 **Contrast decision for this pilot:** retain the approved palettes and existing user-selected
 accents. The migrated controls use normal/muted text, quiet or outlined buttons, and neutral
 selected segments. They introduce no white-on-accent or white-on-danger text. Decisions about

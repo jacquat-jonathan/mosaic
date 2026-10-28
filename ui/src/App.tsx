@@ -1,20 +1,9 @@
 import { useEffect, useState } from "react";
-import {
-  FilePlus,
-  FolderPlus,
-  Files,
-  Search,
-  Shapes,
-  Bot,
-  ChevronDown,
-  ChevronsDownUp,
-  PanelLeftClose,
-  Settings as Gear,
-  CalendarDays,
-} from "lucide-react";
+import { FilePlus, FolderPlus, Shapes, ChevronDown, ChevronsDownUp, PanelLeftClose, CalendarDays } from "lucide-react";
 import { api, onIndexProgress, revealInFinder } from "./ipc/api";
 import { Welcome } from "./views/Welcome";
 import { WindowChrome } from "./views/WindowChrome";
+import { DestinationNavigation } from "./views/DestinationNavigation";
 import { errorMessage } from "./ipc/types";
 import { useVault } from "./state/vault";
 import { FileTree } from "./views/FileTree";
@@ -31,7 +20,7 @@ import {
   revealInTree,
 } from "./actions";
 import { useShortcuts } from "./shortcuts";
-import { RIGHT_DEFAULT, SIDEBAR_DEFAULT, useUi, type MenuItem, type Destination } from "./state/ui";
+import { RIGHT_DEFAULT, SIDEBAR_DEFAULT, useUi, type MenuItem } from "./state/ui";
 import { RightPanel } from "./views/RightPanel";
 import { QuickSwitcher } from "./views/QuickSwitcher";
 import { startBookmarkSync, startVaultSync } from "./sync";
@@ -44,8 +33,7 @@ import { HistoryModal } from "./views/HistoryModal";
 import { AreaSidebar } from "./views/AreaSidebar";
 import { useWorkspace } from "./state/workspace";
 import { contextKind, isSpecialTab } from "./views/specialTabs";
-import { useChat } from "./state/chat";
-import { useAttention, startAttention } from "./state/attention";
+import { startAttention } from "./state/attention";
 import { useReview } from "./state/review";
 import { shortcutOf } from "./commands";
 
@@ -112,13 +100,6 @@ export function App() {
   );
 }
 
-const TABS: { id: Destination; label: string; section: string; icon: typeof Files }[] = [
-  { id: "notes", label: "Files", section: "Files", icon: Files },
-  { id: "find", label: "Find", section: "Files", icon: Search },
-  { id: "plan", label: "Plan", section: "Plan", icon: CalendarDays },
-  { id: "ai", label: "AI", section: "AI", icon: Bot },
-];
-
 /** Dropdown under the vault name: recent vaults, open or create another, reveal in Finder. */
 async function showVaultMenu(anchor: DOMRect) {
   const current = useVault.getState().vault;
@@ -164,12 +145,6 @@ function Main() {
   const indexing = useVault((s) => s.indexing);
   const offline = useVault((s) => s.offline);
   const unfinishedRenames = useVault((s) => s.unfinishedRenames);
-  const pendingReviews = useReview((s) => s.pending.length);
-  const chatAttention = useChat(
-    (s) =>
-      Object.values(s.chats).filter((c) => c.run === null && (c.items.at(-1)?.kind === "error" || c.noMosaic)).length,
-  );
-  const attention = useAttention((s) => s.count);
   const active = useWorkspace((s) => s.panes.find((p) => p.id === s.focused)?.active ?? null);
   useEffect(() => startAttention(), [vault.root]);
   useEffect(() => {
@@ -218,58 +193,7 @@ function Main() {
     <div className={`shell ${left ? "" : "no-left"}`}>
       <WindowChrome vaultName={vault.name} version={version} />
       <div className="shell-body">
-        <nav className="icon-bar" aria-label="Destinations" data-focus-region tabIndex={-1}>
-          <div role="tablist" aria-orientation="vertical" className="icon-bar-group">
-            {TABS.map((t, index) => (
-              <button
-                key={t.id}
-                data-section={t.section}
-                data-section-start={index > 0 && TABS[index - 1].section !== t.section ? "true" : undefined}
-                role="tab"
-                aria-selected={tab === t.id}
-                tabIndex={tab === t.id ? 0 : -1}
-                onKeyDown={(e) => {
-                  if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) return;
-                  e.preventDefault();
-                  const i = TABS.indexOf(t);
-                  const at =
-                    e.key === "Home"
-                      ? 0
-                      : e.key === "End"
-                        ? TABS.length - 1
-                        : (i + (e.key === "ArrowDown" ? 1 : -1) + TABS.length) % TABS.length;
-                  useUi.setState({ destination: TABS[at].id, leftSidebar: true });
-                  (e.currentTarget.parentElement?.children[at] as HTMLElement)?.focus();
-                }}
-                aria-label={t.label}
-                title={left && tab === t.id ? `${t.label} — click to hide the sidebar` : t.label}
-                className={tab === t.id ? "active" : ""}
-                onClick={() => ui().selectDestination(t.id)}
-              >
-                <t.icon size={18} />
-                {t.id === "ai" && pendingReviews + attention + chatAttention > 0 && (
-                  <span
-                    className="tab-badge"
-                    aria-label={`${pendingReviews + attention + chatAttention} need attention`}
-                  >
-                    {pendingReviews + attention + chatAttention}
-                  </span>
-                )}
-              </button>
-            ))}
-          </div>
-          <button
-            data-section="Settings"
-            data-section-start="true"
-            className={active === "mosaic:settings" ? "active" : ""}
-            aria-pressed={active === "mosaic:settings"}
-            title={`Settings (${shortcutOf("settings")})`}
-            aria-label="Settings"
-            onClick={() => ui().openSettings()}
-          >
-            <Gear size={18} />
-          </button>
-        </nav>
+        <DestinationNavigation />
         {left && (
           <aside
             className="sidebar"

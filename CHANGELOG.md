@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Destination navigation:** shared controls, clearer selected states, readable attention counts, and keyboard focus that stays on the rail when moving between areas.
+
 - **Window title:** shared theme and typography make the vault name and app version clearer while retaining the native drag area and narrow-window truncation.
 
 - **Welcome:** consistent open/create controls, loading feedback, and persistent errors. Cancelled choices restore focus, pending actions disable duplicates, and stale choices leave an already-opened vault alone.

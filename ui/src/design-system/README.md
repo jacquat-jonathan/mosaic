@@ -247,6 +247,13 @@ while retaining native drag regions and the space reserved for macOS window cont
 names truncate within the strip. The rest of the shell remains scoped separately for subsequent
 navigation passes.
 
+`views/DestinationNavigation.tsx` adopts shared icon buttons and neutral selected surfaces for
+the destination rail. Arrow Up/Down and Home/End retain activation and roving focus; mounting Search
+does not steal keyboard focus from the rail. Click-to-toggle sidebar behavior and Settings remain.
+Attention counts use readable neutral badges and a full screen-reader description. IconButton
+preserves an explicit title so app shortcut hints can accompany its accessible label. Unused legacy
+rail/badge styles are removed; sidebar and workspace content remain scoped separately.
+
 **Contrast decision for this pilot:** retain the approved palettes and existing user-selected
 accents. The migrated controls use normal/muted text, quiet or outlined buttons, and neutral
 selected segments. They introduce no white-on-accent or white-on-danger text. Decisions about

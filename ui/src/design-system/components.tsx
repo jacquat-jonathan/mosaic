@@ -23,8 +23,13 @@ export function Button({ variant = "quiet", className, type = "button", ...props
   return <button {...props} type={type} className={classes("mds-button", `mds-button--${variant}`, className)} />;
 }
 
-export function IconButton({ label, className, ...props }: Omit<ButtonProps, "aria-label"> & { label: string }) {
-  return <Button {...props} aria-label={label} title={label} className={classes("mds-icon-button", className)} />;
+export function IconButton({
+  label,
+  className,
+  title = label,
+  ...props
+}: Omit<ButtonProps, "aria-label"> & { label: string }) {
+  return <Button {...props} aria-label={label} title={title} className={classes("mds-icon-button", className)} />;
 }
 
 export function TextField({

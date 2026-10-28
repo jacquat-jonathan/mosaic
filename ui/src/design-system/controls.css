@@ -62,12 +62,14 @@
 }
 .mosaic-ds .mds-button:disabled,
 .mosaic-ds .mds-input:disabled,
+.mosaic-ds .mds-range:disabled,
 .mosaic-ds .mds-switch:disabled {
   opacity: var(--mds-disabled-opacity);
   cursor: default;
 }
 .mosaic-ds .mds-button:focus-visible,
 .mosaic-ds .mds-input:focus-visible,
+.mosaic-ds .mds-range:focus-visible,
 .mosaic-ds .mds-switch:focus-visible,
 .mosaic-ds .mds-segmented input:focus-visible + span {
   outline: var(--mds-focus-width) solid var(--mds-accent);
@@ -106,6 +108,11 @@
 .mosaic-ds .mds-input[aria-invalid="true"]:focus {
   border-color: transparent;
   outline-color: var(--mds-danger);
+}
+.mosaic-ds .mds-range {
+  width: 160px;
+  min-width: 0;
+  accent-color: var(--mds-accent);
 }
 .mosaic-ds .mds-hint {
   color: var(--mds-text-muted);

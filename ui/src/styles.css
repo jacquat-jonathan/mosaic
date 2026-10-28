@@ -6080,29 +6080,6 @@ pre.template-preview {
 .setting-reset {
   color: var(--muted);
 }
-.settings-preview {
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--bg);
-  padding: 24px;
-  margin: 20px 0;
-  font: var(--note-size, 16px) / var(--note-leading, 1.7) var(--font-text);
-  max-width: var(--note-width, 760px);
-}
-.settings-preview h1 {
-  font-size: calc(1.9em * var(--heading-scale, 1));
-}
-.settings-preview h2 {
-  font-size: calc(1.5em * var(--heading-scale, 1));
-}
-.settings-preview pre {
-  font-family: var(--font-mono);
-  overflow: auto;
-}
-.settings-preview a {
-  color: var(--fg);
-  text-decoration: underline;
-}
 .settings-nav > input {
   width: 100%;
   min-width: 0;

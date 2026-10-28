@@ -109,21 +109,25 @@ export function Switch({
 
 /** Single-choice controls use native radios, including arrow-key navigation and form semantics. */
 export function SegmentedControl<T extends string>({
+  id,
   label,
   value,
   options,
   onChange,
   disabled,
+  "aria-describedby": describedBy,
 }: {
+  id?: string;
   label: string;
   value: T;
   options: readonly { value: T; label: string }[];
   onChange(value: T): void;
   disabled?: boolean;
+  "aria-describedby"?: string;
 }) {
   const name = useId();
   return (
-    <div className="mds-segmented" role="radiogroup" aria-label={label}>
+    <div id={id} className="mds-segmented" role="radiogroup" aria-label={label} aria-describedby={describedBy}>
       {options.map((option) => (
         <label key={option.value}>
           <input
@@ -163,12 +167,34 @@ export function Notice({
   );
 }
 
-export function SettingRow({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
+export function SettingRow({
+  label,
+  hint,
+  controlId,
+  hintId,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  controlId?: string;
+  hintId?: string;
+  children: ReactNode;
+}) {
   return (
     <div className="mds-setting-row">
       <div className="mds-setting-text">
-        <div className="mds-label">{label}</div>
-        {hint && <div className="mds-hint">{hint}</div>}
+        {controlId ? (
+          <label className="mds-label" htmlFor={controlId}>
+            {label}
+          </label>
+        ) : (
+          <div className="mds-label">{label}</div>
+        )}
+        {hint && (
+          <div id={hintId} className="mds-hint">
+            {hint}
+          </div>
+        )}
       </div>
       <div className="mds-setting-control">{children}</div>
     </div>

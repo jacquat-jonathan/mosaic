@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Appearance settings:** larger interface text, consistent fields and reset controls, and keyboard-friendly theme and note-width choices. Your saved appearance preferences and section reset behavior are preserved.
+
 - **Focused AI workspace:** switch between Chats and Automations, keep older conversations collapsed, and find workflows, runs and reviews together. Run status and metadata use a compact header with expandable details and separate tool warnings.
 
 - **Workflow run logs:** follow answers and tool calls as a workflow runs, open the notes it reads or changes, and revisit its saved log afterward. Markdown formatting and review links match chat; older runs still show their recorded result.

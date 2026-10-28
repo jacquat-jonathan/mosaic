@@ -2,15 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { create } from "zustand";
 import { Download, FolderOpen, Info, Keyboard, Palette, PenLine, RefreshCw, X } from "lucide-react";
 import { useUi, type SettingsSection } from "../state/ui";
-import {
-  DEFAULT_PREFS,
-  NOTE_SIZE_MAX,
-  NOTE_SIZE_MIN,
-  useSettings,
-  type NoteWidth,
-  type Theme,
-  type Prefs,
-} from "../state/settings";
+import { DEFAULT_PREFS, useSettings, type Prefs } from "../state/settings";
 import { useVault } from "../state/vault";
 import { useWorkspace } from "../state/workspace";
 import { leaveAllDrafts } from "../state/drafts";
@@ -21,8 +13,8 @@ import { createVault, openVaultFolder } from "../actions";
 import { renderInlineMarkdown } from "../markdown";
 import { openExternal } from "../ipc/api";
 import { TemplatesSettings } from "./TemplatesSettings";
+import { AppearanceSettings } from "./AppearanceSettings";
 import {
-  AppearanceExtras,
   AppPreference,
   CalendarLinks,
   SectionReset,
@@ -101,7 +93,7 @@ export function Settings() {
             </button>
           </header>
           <div className="settings-scroll">
-            {section === "appearance" && <Appearance />}
+            {section === "appearance" && <AppearanceSettings />}
             {section === "editor" && <EditorFiles />}
             {section === "vault" && (
               <>
@@ -147,9 +139,6 @@ const SETTING_WORDS: Partial<Record<SettingsSection, string>> = {
 function Row({ label, hint, children }: { label: string; hint?: ReactNode; children: ReactNode }) {
   const key = (
     {
-      Theme: "theme",
-      "Note text size": "noteSize",
-      "Note width": "noteWidth",
       Spellcheck: "spellcheck",
       "Ask before moving to the Trash": "confirmTrash",
     } as Record<string, keyof Prefs>
@@ -187,84 +176,6 @@ function Toggle({ checked, onChange, label }: { checked: boolean; onChange(v: bo
     >
       <span />
     </button>
-  );
-}
-
-function Segmented<T extends string>({
-  value,
-  options,
-  onChange,
-  label,
-}: {
-  value: T;
-  options: { value: T; label: string }[];
-  onChange(v: T): void;
-  label: string;
-}) {
-  return (
-    <div className="segmented" role="radiogroup" aria-label={label}>
-      {options.map((o) => (
-        <button
-          key={o.value}
-          role="radio"
-          aria-checked={o.value === value}
-          className={o.value === value ? "on" : ""}
-          onClick={() => onChange(o.value)}
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function Appearance() {
-  const s = useSettings();
-  return (
-    <>
-      <Row label="Theme" hint="System follows macOS. Open diagrams, canvases and drawings switch colours right away.">
-        <Segmented<Theme>
-          label="Theme"
-          value={s.theme}
-          onChange={(v) => s.set("theme", v)}
-          options={[
-            { value: "system", label: "System" },
-            { value: "light", label: "Light" },
-            { value: "dark", label: "Dark" },
-          ]}
-        />
-      </Row>
-      <Row label="Note text size" hint="Text size in Markdown notes.">
-        <div className="range">
-          <input
-            type="range"
-            min={NOTE_SIZE_MIN}
-            max={NOTE_SIZE_MAX}
-            value={s.noteSize}
-            aria-label="Note text size"
-            onChange={(e) => s.set("noteSize", Number(e.target.value))}
-          />
-          <span className="range-value">{s.noteSize}px</span>
-        </div>
-      </Row>
-      <Row
-        label="Note width"
-        hint="How wide the text of a note gets. Full uses the whole pane; the others keep lines comfortable to read."
-      >
-        <Segmented<NoteWidth>
-          label="Note width"
-          value={s.noteWidth}
-          options={[
-            { value: "narrow", label: "Narrow" },
-            { value: "medium", label: "Medium" },
-            { value: "wide", label: "Wide" },
-            { value: "full", label: "Full" },
-          ]}
-          onChange={(v) => s.set("noteWidth", v)}
-        />
-      </Row>
-      <AppearanceExtras />
-    </>
   );
 }
 

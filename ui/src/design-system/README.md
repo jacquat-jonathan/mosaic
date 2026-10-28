@@ -3,8 +3,8 @@
 A standalone inventory of Mosaic's existing interface and a candidate component API (v0.3).
 The visual design and gallery were approved on 2026-10-28 after review of typography,
 icons, focus behavior, overlays, workflows, runs, chat, and Activity & review.
-**No application components have been migrated.** Approval of this gallery is a separate step
-from adopting it in the app.
+**Settings → Appearance** was visually accepted on 2026-10-28. This first pilot is isolated
+from other Settings sections. Settings navigation and header is the next planned surface.
 
 ## Open the gallery
 
@@ -25,7 +25,7 @@ pnpm --dir ui design-system:build
 pnpm --dir ui exec vite preview --config vite.design-system.config.ts --port 1421
 ```
 
-The normal app entry, stylesheet, Tauri configuration, and Vite configuration are unchanged.
+The gallery remains separate from the app entry, Tauri configuration, and Vite configuration.
 The gallery has its own HTML entry and build configuration; it is not an app route. A normal
 app build may clean `ui/dist`, so rebuild the gallery when needed.
 
@@ -51,7 +51,7 @@ review page. They are not new application typography or layout requirements.
 | `tokens.css` | Opt-in theme, color, spacing, type, shape, and motion variables |
 | `controls.css` | Styles for candidate controls under a `.mosaic-ds` ancestor |
 | `components.tsx` | Stateless/controlled React building blocks; no store, IPC, or vault dependencies |
-| `index.ts` | Candidate exports and stylesheet imports, used only by the gallery |
+| `index.ts` | Gallery barrel exports and stylesheet imports |
 | `patterns.tsx`, `patterns.css` | Candidate workflow cards, run ledgers/logs, transcript messages, composer, changes, and diffs |
 | `ProductExamples.tsx` | Interactive product patterns using local sample data, without app stores or a backend |
 | `IconCatalog.tsx` | Searchable catalog of every canonical icon in the installed Lucide package |
@@ -62,6 +62,32 @@ review page. They are not new application typography or layout requirements.
 All tokens use the `--mds-` prefix. All component styles use `mds-` classes and are scoped
 under `.mosaic-ds`. They do not redefine legacy variables or generic app element styles.
 Only the gallery stylesheet resets `body`; never import it into the application.
+
+## Application adoption: Appearance pilot
+
+`views/DesignSystemScope.tsx` adapts the existing app preferences to one opt-in surface.
+It imports only foundation tokens and control styles, sets an explicit local theme scope
+(needed when the app forces a theme different from the system), and maps `--mds-accent`
+to the user's existing accent. Interface scale continues to use the document's existing zoom,
+so it is applied once. Comfortable rows use the approved 14px spacing; Compact uses the
+existing 10px spacing token within this screen. Other sections retain their existing styles.
+
+`views/AppearanceSettings.tsx` uses shared setting rows, icon buttons, buttons, segmented
+choices, and input styles. Native range inputs add a scoped `mds-range` treatment. Setting
+rows can associate their visible label with a control and expose a hint ID; segmented groups
+can reference that hint. The note preview keeps its note font, size, width, line spacing,
+heading scale, and code font preferences independently of interface typography.
+
+**Contrast decision for this pilot:** retain the approved palettes and existing user-selected
+accents. The migrated controls use normal/muted text, quiet or outlined buttons, and neutral
+selected segments. They introduce no white-on-accent or white-on-danger text. Decisions about
+those filled variants remain required before their first application adoption.
+
+**Dialog compatibility strategy:** retain the existing app confirmation for the pilot's section
+reset, including cancellation and return to its opener. Before adopting `Dialog` in the app,
+feature-detect `showModal` and provide a focus-managed fallback for supported older WebKit
+versions. Do not raise the macOS minimum as a side effect of the visual migration. The native
+gallery dialog is not imported by this pilot.
 
 ## Provenance
 
@@ -177,7 +203,7 @@ adjustments before migration. Essential hints use muted text instead of faint te
 
 ## Candidate API
 
-The gallery is currently the only consumer. For a later, approved migration:
+The gallery and the first application pilot share these primitives. For subsequent migrations:
 
 ```tsx
 import { Button, SettingRow, Switch, TextField } from "./design-system";
@@ -206,3 +232,8 @@ pnpm --dir ui e2e design-system.spec.ts --project=chrome --project=webkit
 
 The browser checks exercise actual keyboard behavior, modal focus, validation, menu dismissal,
 theme selection, and responsive overflow. Existing app flows are not changed by this work.
+
+The Appearance pilot additionally runs in both projects via `pnpm --dir ui e2e appearance.spec.ts`.
+It checks theme/keyboard behavior, preference persistence, individual and confirmed section resets,
+preservation of other preferences, and isolation/overflow at maximum interface scale. Review
+screenshots are written to the corresponding Playwright test output folder.

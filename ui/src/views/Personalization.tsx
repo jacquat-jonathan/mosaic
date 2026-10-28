@@ -102,62 +102,6 @@ export function AppPreference({
     </Field>
   );
 }
-export function AppearanceExtras() {
-  return (
-    <>
-      <p className="settings-note">
-        App-wide · Fonts stay local. If a font is not installed, Mosaic uses the system fallback.
-      </p>
-      <AppPreference
-        name="noteFont"
-        label="Note font"
-        hint="Use system or the name of a locally installed font, such as Georgia."
-      />
-      <AppPreference
-        name="codeFont"
-        label="Code font"
-        hint="Separate font for source and code blocks. Use system for the default monospace font."
-      />
-      <AppPreference name="lineSpacing" label="Line spacing" min={1.3} max={2.2} step={0.1} />
-      <AppPreference name="headingScale" label="Heading scale" min={0.85} max={1.3} step={0.05} />
-      <AppPreference name="accent" label="Accent color" options={["blue", "green", "violet", "amber"]} />
-      <AppPreference name="uiScale" label="Interface scale" min={0.85} max={1.3} step={0.05} />
-      <AppPreference name="density" label="Interface density" options={["comfortable", "compact"]} />
-      <div className="settings-preview" aria-label="Appearance preview">
-        <h1>A clearer workspace</h1>
-        <h2>Meeting notes</h2>
-        <p>
-          Capture ideas, connect your{" "}
-          <a href="#" onClick={(e) => e.preventDefault()}>
-            project notes
-          </a>
-          , and decide what comes next.
-        </p>
-        <label>
-          <input type="checkbox" defaultChecked /> Share the next steps
-        </label>
-        <pre>
-          <code>const next = "Make it useful";</code>
-        </pre>
-      </div>
-      <SectionReset
-        keys={[
-          "theme",
-          "noteSize",
-          "noteWidth",
-          "noteFont",
-          "codeFont",
-          "lineSpacing",
-          "headingScale",
-          "accent",
-          "uiScale",
-          "density",
-        ]}
-        label="Appearance"
-      />
-    </>
-  );
-}
 export function SectionReset({ keys, label }: { keys: (keyof Prefs)[]; label: string }) {
   return (
     <button

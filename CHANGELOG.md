@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Connections & safety:** consistent setup commands, copy feedback, folder rules, and workflow-chain controls. Saves disable related controls, failures keep saved choices, and pending folder selections stay tied to their vault.
+
 - **About & updates:** consistent version details, notices, release notes, progress logs, and update controls. Status failures can be retried, cancellation restores focus, and restart controls disable while drafts and notes are checked.
 
 - **Shortcut settings:** labelled binding controls, clearer recording and conflict notices, and visible custom bindings. Escape cancels capture, Tab leaves it, and resetting shortcuts returns keyboard focus to the list.

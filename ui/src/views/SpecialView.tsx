@@ -63,12 +63,7 @@ export function SpecialView({ path }: { path: string }) {
         </div>
       );
     case "connections":
-      return (
-        <div className="workspace-page">
-          <h1>Connections</h1>
-          <ConnectAiSection />
-        </div>
-      );
+      return <ConnectAiSection />;
     case "settings":
       return <Settings />;
     case "search":

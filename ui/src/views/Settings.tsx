@@ -94,13 +94,15 @@ export function Settings() {
             {section === "calendar" && <CalendarLinksSettings />}
             {section === "workspace" && <WorkspaceSettings />}
             {section === "ai" && (
-              <>
-                <p className="settings-note">
+              <DesignSystemScope className="connection-settings-entry">
+                <p className="mds-hint">
                   Connection setup and agent permissions live together in the AI workspace. Folder review rules always
                   take precedence over workflow allowances.
                 </p>
-                <button onClick={() => useUi.getState().openView("connections")}>Open Connections & safety</button>
-              </>
+                <Button variant="secondary" onClick={() => useUi.getState().openView("connections")}>
+                  Open Connections & safety
+                </Button>
+              </DesignSystemScope>
             )}
             {section === "shortcuts" && <ShortcutsSettings />}
             {section === "about" && <AboutSettings />}

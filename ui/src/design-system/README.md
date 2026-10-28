@@ -3,9 +3,9 @@
 A standalone inventory of Mosaic's existing interface and a candidate component API (v0.3).
 The visual design and gallery were approved on 2026-10-28 after review of typography,
 icons, focus behavior, overlays, workflows, runs, chat, and Activity & review.
-**Settings → Appearance** was visually accepted on 2026-10-28. Navigation and header are
-committed along with **Editor & files**, **Vault folders**, **Templates**, **Calendar & links**, **Workspace**, and **Shortcuts**. **About & updates** is the current migration;
-remaining Settings sections keep their existing controls.
+**Settings → Appearance** was visually accepted on 2026-10-28. Settings navigation, header,
+and sections are migrated. **Connections & safety** is the current migration; remaining AI
+and workspace surfaces keep their existing controls.
 
 ## Open the gallery
 
@@ -137,6 +137,13 @@ logs wrap inside narrow panes. `state/updates.ts` retains the shared update stat
 progress survives Settings navigation. Status/check failures are retryable, cancellation restores
 focus, and restart actions serialize draft decisions and note saves before installation. Existing
 draft confirmation overlays remain for their later migration; native update behavior is unchanged.
+
+`views/ConnectAi.tsx` adopts the shared theme, typography, setup/copy controls, notices, badges,
+and setting rows for Connections & safety. The root owns its heading and scroll layout. Folder
+rules and chain depth keep saved values until write acknowledgement, serialize related actions,
+and require a reload when a successful write cannot be reread. Failed writes retain saved choices.
+Folder-picker callbacks check the vault; cancelled/completed selections and CLI installation
+restore focus. Copy failures are announced. The existing picker remains for its later migration.
 
 **Contrast decision for this pilot:** retain the approved palettes and existing user-selected
 accents. The migrated controls use normal/muted text, quiet or outlined buttons, and neutral

@@ -163,7 +163,8 @@ test("template controls and expanded previews match themes and fit narrow panes"
     element.scrollTop = 0;
   });
   await page.screenshot({ path: testInfo.outputPath("templates-narrow.png") });
-  await navigation.getByRole("button", { name: "Connections & safety", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Connections", exact: true })).toBeVisible();
-  await expect(page.locator(".connect-ai .mosaic-ds")).toHaveCount(0);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.getByRole("button", { name: "Show sidebar", exact: true }).click();
+  await expect(page.locator(".sidebar .mosaic-ds")).toHaveCount(0);
+  await expect(page.locator(".sidebar")).toHaveCSS("font-size", "13px");
 });

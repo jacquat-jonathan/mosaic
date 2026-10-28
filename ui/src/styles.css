@@ -2310,37 +2310,6 @@ td.csv-rownum {
   color: var(--muted);
   margin: 18px 0 8px;
 }
-.copy-block {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  overflow: hidden;
-}
-.copy-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 4px 6px 4px 12px;
-  background: var(--bg-side);
-  font-size: 12px;
-  color: var(--muted);
-}
-.copy-block pre {
-  margin: 0;
-  padding: 10px 12px;
-  font: 12px / 1.5 var(--font-mono);
-  white-space: pre-wrap;
-  word-break: break-all;
-  user-select: text;
-  -webkit-user-select: text;
-}
-.cli-status {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.cli-status span {
-  flex: 1;
-}
 .error-text {
   color: var(--danger);
 }
@@ -2567,10 +2536,6 @@ button.secondary {
   to {
     transform: rotate(360deg);
   }
-}
-.connect-ai h3 {
-  font-size: 13px;
-  margin: 20px 0 8px;
 }
 
 /* Diagram shapes on canvases (ui/src/diagrams/shapes.tsx). */
@@ -3136,29 +3101,6 @@ svg path.flow-on {
   pointer-events: none;
 }
 /* Settings › AI › folders agents can't change. */
-.agent-rules {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  align-items: flex-start;
-}
-.agent-rule {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 6px 10px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  color: var(--muted);
-}
-.agent-rule code {
-  color: var(--fg);
-}
-.agent-rule .icon {
-  padding: 2px;
-  color: var(--muted);
-}
 /* Unlinked mentions under Backlinks (RightPanel.tsx). */
 .section-toggle {
   padding: 0;

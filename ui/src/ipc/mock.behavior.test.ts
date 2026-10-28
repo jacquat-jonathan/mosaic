@@ -11,6 +11,12 @@ import type {
 } from "./types";
 import { mockCommands, mockInvoke, mockPropose } from "./mock";
 
+// Seed the mock's relative daily notes before import so fixed-format fixtures stay deterministic.
+vi.hoisted(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-10-28T12:00:00Z"));
+});
+
 const invoke = <T>(cmd: string, args: Record<string, unknown> = {}) => mockInvoke(cmd, args) as Promise<T>;
 const rejects = (cmd: string, args: Record<string, unknown>, code: string) =>
   expect(mockInvoke(cmd, args)).rejects.toMatchObject({ code });

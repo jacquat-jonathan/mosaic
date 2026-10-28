@@ -466,3 +466,11 @@ Escape clearing, indexing feedback, and search bookmarks remain available. New r
 stale hits; failed requests retain a retry action. Bookmark writes serialize, keep saved state
 until acknowledgement, report failures, and avoid local state/focus changes after unmount or a vault switch.
 Acknowledged saves still refresh the matching vault when the query was cleared during a write.
+
+`views/Workspace.tsx` adopts sibling scopes for each tab bar and split divider, with shared
+icon controls and token-based custom tabs. Drag/reorder/split behavior, dirty markers, and
+saved layouts remain. Closing a tab with the keyboard no longer triggers its parent tab;
+split handles expose orientation, current size, arrow resizing, Home/End limits, and Enter
+balancing, with listener cleanup on unmount. Active tabs stay visible as panels resize;
+very narrow bars move split/sidebar/context actions into their shared workspace menu.
+Document bodies keep their independent typography.

@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Workspace tabs:** shared controls and typography clarify active tabs and unsaved changes. Split dividers now support keyboard resizing and balancing while retaining tab dragging and saved layouts.
+
 - **Search:** shared labelled fields, result rows, and bookmark controls improve readability. Failed searches can be retried, empty results are explicit, and stale results cannot open while a new query is loading.
 
 - **Tags:** shared tag rows and readable counts keep tag searches one click away. Loading, empty, and failed loads are distinct, with a Retry action.

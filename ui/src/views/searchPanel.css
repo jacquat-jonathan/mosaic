@@ -1,0 +1,81 @@
+.mosaic-ds.search-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  padding: var(--mds-space-6) var(--mds-space-4) 0;
+  background: var(--mds-surface-subtle);
+}
+.mosaic-ds.search-panel .search-controls {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--mds-space-2);
+  flex: none;
+  min-width: 0;
+}
+.mosaic-ds.search-panel .mds-field {
+  flex: 1;
+  min-width: 0;
+}
+.mosaic-ds.search-panel .mds-input {
+  min-width: 0;
+  width: 100%;
+}
+.mosaic-ds.search-panel .search-save {
+  margin-top: 23px;
+  flex: none;
+  max-width: 45%;
+  overflow-wrap: anywhere;
+}
+.mosaic-ds.search-panel .search-save .mds-notice {
+  font-size: var(--mds-text-small);
+}
+.mosaic-ds.search-panel .search-save [aria-pressed="true"] {
+  color: var(--mds-text);
+  background: var(--mds-surface-selected);
+}
+.mosaic-ds.search-panel .search-summary {
+  flex: none;
+  padding: var(--mds-space-4) var(--mds-space-2);
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.mosaic-ds.search-panel .search-results {
+  min-height: 0;
+  min-width: 0;
+  flex: 1;
+  overflow: auto;
+  padding: var(--mds-space-1) var(--mds-space-2) var(--mds-space-8);
+}
+.mosaic-ds.search-panel .search-result {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--mds-space-1);
+  width: 100%;
+  padding: var(--mds-space-4) var(--mds-space-3);
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.mosaic-ds.search-panel[data-density="compact"] .search-result {
+  padding-block: var(--mds-space-3);
+}
+.mosaic-ds.search-panel .search-result-title {
+  font-weight: var(--mds-weight-strong);
+}
+.mosaic-ds.search-panel .search-result-path {
+  font-size: var(--mds-text-small);
+  color: var(--mds-text-muted);
+}
+.mosaic-ds.search-panel .search-result-snippet {
+  font-size: var(--mds-text-hint);
+  line-height: var(--mds-leading);
+  color: var(--mds-text-muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}

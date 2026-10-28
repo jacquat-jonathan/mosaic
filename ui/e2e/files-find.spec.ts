@@ -1,5 +1,51 @@
 import { expect, test } from "@playwright/test";
 
+test("search preserves results, bookmarks, empty queries and maximum-scale layout", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open folder…", exact: true }).click();
+  await page.getByRole("tab", { name: "Find", exact: true }).click();
+  const panel = page.getByRole("group", { name: "Note search", exact: true });
+  const input = panel.getByRole("textbox", { name: "Search notes", exact: true });
+  await input.fill("Welcome");
+  await expect(panel.getByRole("listitem").first()).toContainText("Welcome");
+  await panel.getByRole("button", { name: "Bookmark this search", exact: true }).click();
+  await expect(panel.getByRole("button", { name: "Remove this search from Bookmarks", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await input.fill("no-such-note-91845");
+  await expect(panel.getByText("No notes match this search.")).toBeVisible();
+  await input.press("Escape");
+  await expect(input).toHaveValue("");
+  await input.fill("Welcome");
+  await expect(panel.getByRole("listitem").first()).toContainText("Welcome");
+  await input.press("Enter");
+  await expect(page.locator(".cm-content")).toContainText("Welcome");
+  await page.getByRole("tab", { name: "Find", exact: true }).click();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  for (const theme of ["Light", "Dark", "System"] as const) {
+    await page
+      .getByRole("radiogroup", { name: "Theme", exact: true })
+      .getByRole("radio", { name: theme, exact: true })
+      .check();
+    await expect(panel).toHaveCSS("font-size", "14px");
+    await expect(panel).toHaveCSS("background-color", theme === "Light" ? "rgb(246, 246, 248)" : "rgb(24, 25, 29)");
+    if (theme !== "System") await page.screenshot({ path: testInfo.outputPath(`search-${theme.toLowerCase()}.png`) });
+  }
+  await page.getByRole("slider", { name: "Interface scale", exact: true }).press("End");
+  await page.getByLabel("Interface density", { exact: true }).selectOption("compact");
+  await page.setViewportSize({ width: 320, height: 900 });
+  await page.getByRole("tab", { name: "Find", exact: true }).click();
+  await expect(input).toBeInViewport();
+  await expect(panel.getByRole("listitem").first()).toBeVisible();
+  await expect
+    .poll(() => panel.evaluate((element) => element.scrollWidth - element.clientWidth))
+    .toBeLessThanOrEqual(1);
+  await page.screenshot({ path: testInfo.outputPath("search-narrow.png") });
+});
+
 test("tags retain keyboard search and wrap within themed narrow panels", async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
@@ -150,5 +196,5 @@ test("file tree preserves creation, rename cancellation, keyboard selection and 
   await expect(toolbar.getByRole("button", { name: "New note", exact: true })).toBeInViewport();
   await page.screenshot({ path: testInfo.outputPath("file-tree-narrow.png") });
   await page.getByRole("tab", { name: "Find", exact: true }).click();
-  await expect(page.getByRole("textbox", { name: "Search notes", exact: true })).toHaveCSS("font-size", "13px");
+  await expect(page.getByRole("textbox", { name: "Search notes", exact: true })).toHaveCSS("font-size", "14px");
 });

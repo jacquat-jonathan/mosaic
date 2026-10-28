@@ -115,7 +115,10 @@ test("create, edit, autosave, find and reopen a note", async ({ page }) => {
 
   await page.getByRole("tab", { name: "Find" }).click();
   await page.getByRole("textbox", { name: "Search notes" }).fill("uniquely searchable");
-  const result = page.locator(".result", { hasText: "E2E journey" });
+  const result = page
+    .getByRole("list", { name: "Search results", exact: true })
+    .getByRole("button")
+    .filter({ hasText: "E2E journey" });
   await expect(result).toBeVisible();
   await result.click();
   await expect(editor).toContainText("uniquely searchable E2E sentence");
@@ -537,6 +540,7 @@ test("create calendar events, subscriptions and work sessions", async ({ page })
   await taskButton.click();
   const sessionCard = page.locator(".planner-timed-item.session", { hasText: "Calendar coverage task" }).first();
   await expect(sessionCard).toBeVisible();
+  await page.getByRole("button", { name: "Hide open tasks", exact: true }).click();
   await sessionCard.click();
   const sessionEditor = page.getByRole("complementary", { name: "Edit work session for Calendar coverage task" });
   await sessionEditor.getByLabel("All day").check();

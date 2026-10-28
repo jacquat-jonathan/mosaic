@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Search:** shared labelled fields, result rows, and bookmark controls improve readability. Failed searches can be retried, empty results are explicit, and stale results cannot open while a new query is loading.
+
 - **Tags:** shared tag rows and readable counts keep tag searches one click away. Loading, empty, and failed loads are distinct, with a Retry action.
 
 - **Bookmarks:** shared rows and actions add keyboard opening/reordering, visible missing-file states, focus return, and inline save errors while preserving saved searches, queries, and drag/drop.

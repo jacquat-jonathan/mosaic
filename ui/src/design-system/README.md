@@ -5,8 +5,8 @@ The visual design and gallery were approved on 2026-10-28 after review of typogr
 icons, focus behavior, overlays, workflows, runs, chat, and Activity & review.
 **Settings → Appearance** was visually accepted on 2026-10-28. Settings navigation, header,
 and sections, Connections & safety, workflows, runs, chats, Activity & review, file history,
-Welcome, and app navigation are migrated. **Files and Find** are next; remaining workspace
-and planning surfaces keep their existing controls.
+Welcome, app navigation, and Files and Find are migrated. **Note workspace** is next;
+remaining workspace and planning surfaces keep their existing controls.
 
 ## Open the gallery
 
@@ -459,3 +459,10 @@ failed writes retain saved order, and stale query choices cannot change a differ
 `views/TagsPanel.tsx` uses shared buttons, count badges, and retry notices. Loading, empty,
 and error states stay distinct, and cancelled/stale loads cannot replace a newer vault or
 revision. Tag labels wrap in narrow panels; selecting a tag retains the existing Find query.
+
+`views/SearchPanel.tsx` shares labelled search fields, result buttons, notices, and bookmark
+controls in both Find and workspace search. Debouncing, snippets, Enter/meta-Enter opening,
+Escape clearing, indexing feedback, and search bookmarks remain available. New requests clear
+stale hits; failed requests retain a retry action. Bookmark writes serialize, keep saved state
+until acknowledgement, report failures, and avoid local state/focus changes after unmount or a vault switch.
+Acknowledged saves still refresh the matching vault when the query was cleared during a write.

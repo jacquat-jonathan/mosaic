@@ -50,7 +50,7 @@ export function AreaSidebar({ destination }: { destination: Destination }) {
         ) : tab === "bookmarks" ? (
           <BookmarksPanel key={root} />
         ) : (
-          <SearchPanel />
+          <SearchPanel key={root} />
         )}
       </>
     );

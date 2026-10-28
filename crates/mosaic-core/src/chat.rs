@@ -370,6 +370,114 @@ pub fn parse_line(line: &str) -> Vec<ChatEvent> {
 #[cfg(test)]
 mod tests {
     #[test]
+    fn workflow_transcript_roundtrips_tool_outcomes_and_omits_session_metadata() {
+        let mut log = super::RunTranscript::default();
+        log.push(super::ChatEvent::Started {
+            session_id: "session".into(),
+            mosaic: true,
+        });
+        assert!(log.events.is_empty());
+        let events = vec![
+            super::ChatEvent::Tool {
+                id: "edit".into(),
+                summary: "Edited Daily".into(),
+                path: Some("Daily.md".into()),
+                writes: true,
+            },
+            super::ChatEvent::ToolDone {
+                id: "edit".into(),
+                error: None,
+                review: Some(7),
+            },
+            super::ChatEvent::ToolDone {
+                id: "read".into(),
+                error: Some("Permission denied".into()),
+                review: None,
+            },
+            super::ChatEvent::Text {
+                text: "The change is waiting for review.".into(),
+            },
+            super::ChatEvent::Done {
+                session_id: Some("session".into()),
+                cost_usd: Some(0.02),
+                error: Some("Workflow stopped".into()),
+            },
+        ];
+        for event in &events {
+            log.push(event.clone());
+        }
+        assert_eq!(log.events, events);
+        assert!(!log.truncated);
+        let saved = serde_json::to_string(&log).unwrap();
+        assert_eq!(
+            serde_json::from_str::<super::RunTranscript>(&saved).unwrap(),
+            log
+        );
+    }
+
+    #[test]
+    fn workflow_transcript_truncates_unicode_tool_errors_without_losing_their_identity() {
+        let long = format!("a{}", "🧩".repeat(5000));
+        let mut log = super::RunTranscript::default();
+        for event in [
+            super::ChatEvent::Tool {
+                id: "tool".into(),
+                summary: long.clone(),
+                path: Some("Daily.md".into()),
+                writes: true,
+            },
+            super::ChatEvent::ToolDone {
+                id: "tool".into(),
+                error: Some(long.clone()),
+                review: Some(7),
+            },
+            super::ChatEvent::Done {
+                session_id: None,
+                cost_usd: None,
+                error: Some(long),
+            },
+        ] {
+            log.push(event);
+        }
+        assert!(log.truncated);
+        assert_eq!(log.events.len(), 3);
+        let super::ChatEvent::Tool {
+            id,
+            summary,
+            path,
+            writes,
+        } = &log.events[0]
+        else {
+            panic!("expected tool")
+        };
+        assert_eq!(id, "tool");
+        assert_eq!(path.as_deref(), Some("Daily.md"));
+        assert!(*writes);
+        let super::ChatEvent::ToolDone {
+            id,
+            error: Some(tool_error),
+            review,
+        } = &log.events[1]
+        else {
+            panic!("expected tool result")
+        };
+        assert_eq!(id, "tool");
+        assert_eq!(*review, Some(7));
+        let super::ChatEvent::Done {
+            error: Some(run_error),
+            ..
+        } = &log.events[2]
+        else {
+            panic!("expected result")
+        };
+        for text in [summary, tool_error, run_error] {
+            assert!(text.ends_with('…'));
+            assert!(text.len() <= 16_384 + '…'.len_utf8());
+            assert!(text.starts_with('a'));
+        }
+    }
+
+    #[test]
     fn workflow_transcript_bounds_unicode_payloads_and_keeps_recent_activity() {
         let mut log = super::RunTranscript::default();
         log.push(super::ChatEvent::Text {

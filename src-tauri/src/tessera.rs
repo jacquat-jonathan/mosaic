@@ -1132,6 +1132,86 @@ mod tests {
     use mosaic_core::{Vault, Workspace, index::Index};
 
     #[test]
+    fn run_cause_preserves_the_trigger_subject_and_chain() {
+        let manual = RunCause::Manual;
+        assert_eq!(manual.label(), "Manual");
+        assert!(manual.path().is_none());
+        assert!(manual.chain().is_none());
+        assert!(manual.request().is_none());
+        assert!(!manual.late());
+
+        let schedule = RunCause::Schedule {
+            text: "daily 08:00".into(),
+            late: true,
+        };
+        assert_eq!(schedule.label(), "Scheduled: daily 08:00");
+        assert!(schedule.late());
+        assert!(schedule.path().is_none());
+        assert!(schedule.chain().is_none());
+        assert!(schedule.request().is_none());
+
+        let chain = Chain {
+            id: "root-run".into(),
+            depth: 2,
+        };
+        for test in [false, true] {
+            let event = RunCause::Event {
+                trigger: "created in Inbox/".into(),
+                path: "Inbox/Subject.md".into(),
+                chain: chain.clone(),
+                test,
+            };
+            assert_eq!(event.path(), Some("Inbox/Subject.md"));
+            assert_eq!(event.chain(), Some(&chain));
+            assert!(!event.late());
+            assert_eq!(
+                event.label(),
+                format!(
+                    "{}created in Inbox/ · Inbox/Subject.md",
+                    if test { "Test: " } else { "" }
+                )
+            );
+            let request = event.request().unwrap();
+            assert!(request.contains("`Inbox/Subject.md` matched `created in Inbox/`"));
+            assert!(request.contains("triggering note is the subject"));
+            assert_eq!(request.contains("This is a test trigger"), test);
+        }
+    }
+
+    #[test]
+    fn run_output_keeps_answer_chunks_and_terminal_errors_without_claiming_reads_as_changes() {
+        let mut out = RunOutput::default();
+        out.apply(ChatEvent::Started {
+            session_id: "session".into(),
+            mosaic: true,
+        });
+        for text in ["Read the task history.", "Here is the summary."] {
+            out.apply(ChatEvent::Text { text: text.into() });
+        }
+        out.apply(ChatEvent::Tool {
+            id: "read".into(),
+            summary: "Read Daily".into(),
+            path: Some("Daily.md".into()),
+            writes: false,
+        });
+        out.apply(ChatEvent::ToolDone {
+            id: "read".into(),
+            error: None,
+            review: None,
+        });
+        out.apply(ChatEvent::Done {
+            session_id: Some("session".into()),
+            cost_usd: Some(0.01),
+            error: Some("Connection interrupted".into()),
+        });
+        assert_eq!(out.answer, "Read the task history.\nHere is the summary.");
+        assert_eq!(out.error.as_deref(), Some("Connection interrupted"));
+        assert!(out.changes.is_empty());
+        assert!(out.changed_paths.is_empty());
+        assert!(out.proposal_ids.is_empty());
+    }
+
+    #[test]
     fn run_details_distinguish_direct_changes_proposals_and_failures() {
         let mut out = RunOutput::default();
         for (id, path, error, review) in [

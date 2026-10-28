@@ -9,8 +9,14 @@ if ! cargo llvm-cov --version >/dev/null 2>&1; then
 fi
 
 mkdir -p coverage
-cargo llvm-cov --workspace --lcov --output-path coverage/rust.lcov --fail-under-lines 70
+rust_coverage_status=0
+# Don't let app bundling overwrite llvm-cov's instrumented CLI during the workspace build.
+TAURI_CONFIG='{"bundle":{"externalBin":[]}}' \
+  cargo llvm-cov --workspace --lcov --output-path coverage/rust.lcov --fail-under-lines 70 || rust_coverage_status=$?
 cargo llvm-cov report --workspace --summary-only | tail -1
+if [[ "$rust_coverage_status" != "0" ]]; then
+  exit "$rust_coverage_status"
+fi
 pnpm --dir ui coverage
 
 echo "Rust LCOV: coverage/rust.lcov"

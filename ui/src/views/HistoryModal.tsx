@@ -1,8 +1,7 @@
-// File history: the versions Mosaic kept of a file, each compared with the file as it is now, and
-// restorable in one click (see crates/mosaic-core/src/history.rs).
-
-import { useEffect, useMemo, useState } from "react";
-import { RotateCcw, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { RotateCcw } from "lucide-react";
+import { Button, Dialog, Notice } from "../design-system/components";
+import { DiffView } from "../design-system/patterns";
 import { api } from "../ipc/api";
 import { errorMessage, type Version } from "../ipc/types";
 import { useUi } from "../state/ui";
@@ -10,136 +9,290 @@ import { useVault } from "../state/vault";
 import { diffLines } from "../diff";
 import { ago } from "../time";
 import { what, who } from "./history";
+import { DesignSystemScope } from "./DesignSystemScope";
+import "../design-system/patterns.css";
+import "./historyModal.css";
 
 export function HistoryModal() {
-  const spec = useUi((s) => s.history);
-  if (!spec) return null;
-  return <History key={spec.path} path={spec.path} focus={spec.focus} />;
+  const spec = useUi((state) => state.history);
+  const root = useVault((state) => state.vault?.root);
+  return spec ? <History key={spec.path} path={spec.path} focus={spec.focus} root={root} /> : null;
 }
-
-function History({ path, focus }: { path: string; focus?: number }) {
-  const close = useUi((s) => s.closeHistory);
-  const revision = useVault((s) => s.revision);
+function History({ path, focus, root }: { path: string; focus?: number; root?: string }) {
+  const close = useUi((state) => state.closeHistory);
+  const revision = useVault((state) => state.revision);
+  const [initialRoot] = useState(root);
   const [versions, setVersions] = useState<Version[] | null>(null);
   const [selected, setSelected] = useState<number | null>(focus ?? null);
-  const [content, setContent] = useState<string | null>(null);
-  const [current, setCurrent] = useState<{ text: string; hash: string } | null>(null);
+  const [content, setContent] = useState<string | null | undefined>();
+  const [current, setCurrent] = useState<{ text: string; hash: string } | null | undefined>();
+  const [listError, setListError] = useState<string | null>(null);
+  const [readError, setReadError] = useState<string | null>(null);
+  const [contentError, setContentError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [refreshTick, setRefreshTick] = useState(0);
+  const [contentTick, setContentTick] = useState(0);
+  const [busy, setBusy] = useState(false);
   const [restored, setRestored] = useState(false);
-
+  const lock = useRef(false);
+  const mounted = useRef(true);
+  const options = useRef(new Map<number, HTMLButtonElement>());
+  const restoreButton = useRef<HTMLButtonElement>(null);
+  const closeButton = useRef<HTMLButtonElement>(null);
+  const returnRestoreFocus = useRef(false);
+  const currentVault = () => mounted.current && !!initialRoot && useVault.getState().vault?.root === initialRoot;
   useEffect(() => {
-    api.fileHistory(path).then(
-      (vs) => {
-        setVersions(vs);
-        setSelected((sel) => sel ?? vs.find((v) => v.action !== "renamed")?.id ?? null);
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  useEffect(() => {
+    if (root !== initialRoot) close();
+  }, [root, initialRoot, close]);
+  useEffect(() => {
+    if (!initialRoot || root !== initialRoot) return;
+    let live = true;
+    setListError(null);
+    setReadError(null);
+    setCurrent(undefined);
+    void api.fileHistory(path).then(
+      (next) => {
+        if (!live) return;
+        setVersions(next);
+        setSelected((previous) =>
+          next.some((version) => version.id === previous && version.action !== "renamed")
+            ? previous
+            : (next.find((version) => version.action !== "renamed")?.id ?? null),
+        );
       },
-      (e) => setError(errorMessage(e)),
+      (cause) => {
+        if (live) setListError(errorMessage(cause));
+      },
     );
-    api.read(path).then(
-      (f) => setCurrent({ text: f.content ?? "", hash: f.hash }),
-      () => setCurrent(null),
+    void api.read(path).then(
+      (file) => {
+        if (live) setCurrent({ text: file.content ?? "", hash: file.hash });
+      },
+      (cause) => {
+        if (!live) return;
+        if ((cause as { code?: string }).code === "not_found") setCurrent(null);
+        else setReadError(errorMessage(cause));
+      },
     );
-  }, [path, revision, restored]);
-
+    return () => {
+      live = false;
+    };
+  }, [path, revision, refreshTick, initialRoot, root]);
+  const chosen = versions?.find((version) => version.id === selected);
+  const chosenId = chosen?.id,
+    chosenAction = chosen?.action;
   useEffect(() => {
-    setContent(null);
-    if (selected !== null) api.versionContent(selected).then(setContent, (e) => setError(errorMessage(e)));
-  }, [selected]);
-
+    if (!initialRoot || root !== initialRoot) return;
+    let live = true;
+    setContent(undefined);
+    setContentError(null);
+    if (chosenId !== undefined && chosenAction !== "renamed")
+      void api.versionContent(chosenId).then(
+        (text) => {
+          if (live) setContent(text);
+        },
+        (cause) => {
+          if (live) setContentError(errorMessage(cause));
+        },
+      );
+    return () => {
+      live = false;
+    };
+  }, [chosenId, chosenAction, contentTick, initialRoot, root]);
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && close();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [close]);
-
-  const lines = useMemo(() => (content === null ? null : diffLines(content, current?.text ?? "")), [content, current]);
-  const same = content !== null && current !== null && content === current.text;
-  const chosen = versions?.find((v) => v.id === selected);
-
-  const restore = async () => {
-    if (selected === null) return;
-    setError(null);
-    try {
-      await api.restoreVersion(path, selected, current?.hash ?? null);
-      setRestored((r) => !r);
-    } catch (e) {
-      setError(errorMessage(e));
+    if (!busy && returnRestoreFocus.current) {
+      (restoreButton.current?.disabled ? closeButton.current : restoreButton.current)?.focus({ preventScroll: true });
+      returnRestoreFocus.current = false;
+    }
+  }, [busy]);
+  const lines = useMemo(
+    () =>
+      content === undefined || content === null || current === undefined
+        ? null
+        : diffLines(content, current?.text ?? ""),
+    [content, current],
+  );
+  const same = typeof content === "string" && !!current && content === current.text;
+  const move = (event: KeyboardEvent<HTMLButtonElement>, id: number) => {
+    if (!["ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    const enabled = (versions ?? []).filter((version) => version.action !== "renamed");
+    const index = enabled.findIndex((version) => version.id === id);
+    const next =
+      event.key === "Home"
+        ? enabled[0]
+        : event.key === "End"
+          ? enabled.at(-1)
+          : enabled[Math.max(0, Math.min(enabled.length - 1, index + (event.key === "ArrowUp" ? -1 : 1)))];
+    if (next) {
+      setSelected(next.id);
+      setError(null);
+      setRestored(false);
+      options.current.get(next.id)?.focus();
     }
   };
-
+  const restore = async () => {
+    if (
+      !currentVault() ||
+      lock.current ||
+      !chosen ||
+      chosen.action === "renamed" ||
+      typeof content !== "string" ||
+      current === undefined ||
+      same
+    )
+      return;
+    lock.current = true;
+    returnRestoreFocus.current = true;
+    setBusy(true);
+    setError(null);
+    setRestored(false);
+    try {
+      await api.restoreVersion(path, chosen.id, current?.hash ?? null);
+      if (!currentVault()) return;
+      setRestored(true);
+      setCurrent(undefined);
+      setRefreshTick((tick) => tick + 1);
+    } catch (cause) {
+      if (currentVault()) setError(errorMessage(cause));
+    } finally {
+      lock.current = false;
+      if (currentVault()) setBusy(false);
+    }
+  };
+  if (root !== initialRoot) return null;
   const name = path.split("/").pop()!.replace(/\.md$/, "");
+  const selectVersion = (id: number) => {
+    setSelected(id);
+    setError(null);
+    setRestored(false);
+  };
   return (
-    <div className="modal-backdrop" onMouseDown={close}>
-      <div
-        className="modal history"
-        role="dialog"
-        aria-label={`History of ${name}`}
-        onMouseDown={(e) => e.stopPropagation()}
+    <DesignSystemScope className="history-dialog-scope">
+      <Dialog
+        open
+        size="wide"
+        title={`History of ${name}`}
+        description={path}
+        onClose={close}
+        dismissible={!busy}
+        actions={
+          <>
+            <Button ref={closeButton} disabled={busy} onClick={close}>
+              Close
+            </Button>
+            <Button
+              ref={restoreButton}
+              variant="secondary"
+              disabled={busy || !chosen || same || typeof content !== "string" || current === undefined || !!readError}
+              onClick={() => void restore()}
+            >
+              <RotateCcw aria-hidden="true" />
+              {busy ? "Restoring…" : "Restore this version"}
+            </Button>
+          </>
+        }
       >
-        <div className="history-head">
-          <h2>History of “{name}”</h2>
-          <button className="icon" aria-label="Close" onClick={close}>
-            <X size={16} />
-          </button>
-        </div>
-        {versions && versions.length === 0 && (
-          <p className="settings-note">
-            No versions yet. Mosaic keeps one each time this file is changed by you, the command line or an AI agent.
-          </p>
+        {listError && (
+          <Notice tone="error">
+            {listError}
+            <Button variant="secondary" onClick={() => setRefreshTick((tick) => tick + 1)}>
+              Retry history
+            </Button>
+          </Notice>
         )}
-        {versions && versions.length > 0 && (
-          <div className="history-body">
-            <ul className="history-list" role="listbox">
-              {versions.map((v) => (
-                <li key={v.id}>
-                  <button
+        {versions === null ? (
+          !listError && <Notice>Loading history…</Notice>
+        ) : !versions.length ? (
+          <Notice>
+            No versions yet. Mosaic keeps one each time this file is changed by you, the command line or an AI agent.
+          </Notice>
+        ) : (
+          <div className="history-columns">
+            <ul className="history-version-list" role="listbox" aria-label="File versions">
+              {versions.map((version) => (
+                <li key={version.id} role="presentation">
+                  <Button
                     role="option"
-                    aria-selected={v.id === selected}
-                    className={v.id === selected ? "selected" : ""}
-                    disabled={v.action === "renamed"}
-                    onClick={() => setSelected(v.id)}
+                    aria-selected={version.id === selected}
+                    disabled={busy || version.action === "renamed"}
+                    tabIndex={version.id === selected ? 0 : -1}
+                    ref={(node) => {
+                      if (node) options.current.set(version.id, node);
+                      else options.current.delete(version.id);
+                    }}
+                    onKeyDown={(event) => move(event, version.id)}
+                    onClick={() => selectVersion(version.id)}
                   >
-                    <span className="history-when">{ago(v.time)}</span>
-                    <span className={`history-who source-${v.source}`}>{who(v)}</span>
-                    <span className="history-what">{what(v)}</span>
-                  </button>
+                    <time
+                      dateTime={new Date(version.time).toISOString()}
+                      title={new Date(version.time).toLocaleString()}
+                    >
+                      {ago(version.time)}
+                    </time>
+                    <strong>{who(version)}</strong>
+                    <span>{what(version)}</span>
+                  </Button>
                 </li>
               ))}
             </ul>
-            <div className="history-diff">
-              {chosen && (
-                <p className="settings-note">
+            <div className="history-comparison" aria-label="Version comparison" role="region">
+              {readError && (
+                <Notice tone="error">
+                  {readError}
+                  <Button variant="secondary" onClick={() => setRefreshTick((tick) => tick + 1)}>
+                    Retry current file
+                  </Button>
+                </Notice>
+              )}
+              {contentError && (
+                <Notice tone="error">
+                  {contentError}
+                  <Button variant="secondary" onClick={() => setContentTick((tick) => tick + 1)}>
+                    Retry version
+                  </Button>
+                </Notice>
+              )}
+              {chosen && current !== undefined && (
+                <p>
                   {current
                     ? "From this version to the file as it is now: red lines would come back, green lines would go."
                     : "The file doesn't exist now (it was deleted or moved). Restore brings this version back."}
                 </p>
               )}
-              {same && <p className="ok-text">This version is the same as the file now.</p>}
+              {same && <Notice>This version is the same as the file now.</Notice>}
               {lines && !same && (
-                <pre className="diff">
-                  {lines.map((l, i) => (
-                    <div key={i} className={`diff-${l.op}`}>
-                      <span className="diff-sign">{l.op === "add" ? "+" : l.op === "del" ? "−" : " "}</span>
-                      {l.text || " "}
-                    </div>
-                  ))}
-                </pre>
+                <DiffView
+                  label="Version comparison"
+                  lines={lines.map((line) => ({
+                    type: line.op === "add" ? "add" : line.op === "del" ? "remove" : "context",
+                    text: line.text || " ",
+                  }))}
+                />
               )}
+              {chosen && !readError && !contentError && (current === undefined || content === undefined) && (
+                <Notice>Loading comparison…</Notice>
+              )}
+              {chosen && content === null && <Notice>This version has no text content to compare.</Notice>}
             </div>
           </div>
         )}
-        {error && <p className="error-text">{error}</p>}
-        <div className="modal-actions">
-          <button onClick={close}>Close</button>
-          <button
-            className="primary"
-            disabled={selected === null || same || content === null}
-            onClick={() => void restore()}
-          >
-            <RotateCcw size={14} /> Restore this version
-          </button>
-        </div>
-      </div>
-    </div>
+        {restored && <Notice>Version restored. The previous file remains available in history.</Notice>}
+        {error && (
+          <Notice tone="error">
+            {error}
+            <Button variant="secondary" onClick={() => setRefreshTick((tick) => tick + 1)}>
+              Reload comparison
+            </Button>
+          </Notice>
+        )}
+      </Dialog>
+    </DesignSystemScope>
   );
 }

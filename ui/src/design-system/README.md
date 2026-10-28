@@ -225,6 +225,15 @@ is not repeated if opening its file fails. Shared DiffView supports labelled vie
 hunk controls. Native and fallback dialogs are checked for keyboard containment, Escape, background
 focus blocking, return focus, themes, and narrow layouts at 130% scale.
 
+`views/HistoryModal.tsx` adopts the compatible wide Dialog, shared diff, notices, and outlined
+restore action. The labelled versions list supports Arrow Up/Down and Home/End, preserves selection,
+and disables rename-only entries. Missing current files stay distinct from failed reads; history,
+current-file, and version failures have retries. Late version responses cannot replace a newer
+selection. Restores serialize, keep the current-file hash guard, block dismissal while pending,
+and report success; a vault change closes the dialog. The body becomes one column in narrow panes,
+while header/actions remain visible. Shared legacy diff CSS remains for ConflictBar until its step;
+unused history-specific styles are removed.
+
 **Contrast decision for this pilot:** retain the approved palettes and existing user-selected
 accents. The migrated controls use normal/muted text, quiet or outlined buttons, and neutral
 selected segments. They introduce no white-on-accent or white-on-danger text. Decisions about

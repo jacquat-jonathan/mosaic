@@ -1,0 +1,83 @@
+.mosaic-ds.history-dialog-scope {
+  display: contents;
+}
+.mosaic-ds.history-dialog-scope .mds-dialog {
+  overflow-wrap: anywhere;
+}
+.mosaic-ds.history-dialog-scope .mds-dialog-body {
+  container: file-history / inline-size;
+}
+.mosaic-ds.history-dialog-scope .history-columns {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.65fr) minmax(0, 1.35fr);
+  gap: var(--mds-space-8);
+  min-width: 0;
+}
+.mosaic-ds.history-dialog-scope .history-version-list {
+  list-style: none;
+  margin: 0;
+  padding: var(--mds-space-3) var(--mds-space-4) var(--mds-space-3) var(--mds-space-3);
+  min-width: 0;
+  max-height: 48vh;
+  overflow: auto;
+  border-right: 1px solid var(--mds-border);
+}
+.mosaic-ds.history-dialog-scope .history-version-list .mds-button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--mds-space-2);
+  width: 100%;
+  text-align: left;
+  padding: var(--mds-space-4) var(--mds-space-5);
+}
+.mosaic-ds.history-dialog-scope .history-version-list [aria-selected="true"] {
+  background: var(--mds-surface-selected);
+}
+.mosaic-ds.history-dialog-scope .history-version-list time {
+  color: var(--mds-text-muted);
+  font-size: var(--mds-text-caption);
+}
+.mosaic-ds.history-dialog-scope .history-version-list strong {
+  font-size: var(--mds-text-small);
+  font-weight: var(--mds-weight-strong);
+}
+.mosaic-ds.history-dialog-scope .history-version-list span {
+  color: var(--mds-text-muted);
+  font-size: var(--mds-text-hint);
+}
+.mosaic-ds.history-dialog-scope .history-comparison {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--mds-space-6);
+}
+.mosaic-ds.history-dialog-scope .history-comparison .mds-diff {
+  max-height: 48vh;
+}
+.mosaic-ds.history-dialog-scope .mds-button {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+@container file-history (max-width: 560px) {
+  .mosaic-ds.history-dialog-scope .history-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .mosaic-ds.history-dialog-scope .history-version-list {
+    max-height: 20vh;
+    border-right: 0;
+    border-bottom: 1px solid var(--mds-border);
+    padding: var(--mds-space-3) var(--mds-space-3) var(--mds-space-4);
+  }
+}
+@media (max-width: 760px) {
+  .mosaic-ds.history-dialog-scope .history-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .mosaic-ds.history-dialog-scope .history-version-list {
+    max-height: 20vh;
+    border-right: 0;
+    border-bottom: 1px solid var(--mds-border);
+    padding: var(--mds-space-3) var(--mds-space-3) var(--mds-space-4);
+  }
+}

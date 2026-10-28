@@ -1,0 +1,28 @@
+.mosaic-ds.window-chrome {
+  position: relative;
+  height: var(--titlebar);
+  flex: none;
+  min-width: 0;
+  padding: 0 90px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--mds-surface-subtle);
+  color: var(--mds-text-muted);
+  font-size: var(--mds-text-small);
+}
+.mosaic-ds.window-chrome span {
+  pointer-events: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mosaic-ds.window-chrome .window-title {
+  max-width: 100%;
+}
+.mosaic-ds.window-chrome .window-version {
+  position: absolute;
+  right: var(--mds-space-6);
+  font-size: var(--mds-text-caption);
+  font-variant-numeric: tabular-nums;
+}

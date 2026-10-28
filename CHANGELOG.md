@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Window title:** shared theme and typography make the vault name and app version clearer while retaining the native drag area and narrow-window truncation.
+
 - **Welcome:** consistent open/create controls, loading feedback, and persistent errors. Cancelled choices restore focus, pending actions disable duplicates, and stale choices leave an already-opened vault alone.
 
 - **File history:** consistent version entries, keyboard selection, comparisons, and restore actions. Failed reads can be retried, restores disable while pending, and history closes when switching vaults.

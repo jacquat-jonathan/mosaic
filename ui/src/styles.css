@@ -3416,33 +3416,6 @@ svg path.flow-on {
 .shell {
   flex-direction: column;
 }
-.window-chrome {
-  position: relative;
-  height: var(--titlebar);
-  flex: none;
-  padding: 0 90px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--bg-side);
-  color: var(--muted);
-  font-size: 12px;
-}
-.window-chrome span {
-  pointer-events: none;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.window-title {
-  max-width: 100%;
-}
-.window-version {
-  position: absolute;
-  right: 12px;
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-}
 .shell-body {
   display: flex;
   flex: 1;

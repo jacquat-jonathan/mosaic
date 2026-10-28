@@ -242,6 +242,11 @@ late choices cannot replace a newly opened vault. Startup failures reach Welcome
 a blank loading screen; loading uses the same scoped presentation. Existing naming/picker overlays
 stay independent until their migration. Legacy Welcome styles are removed.
 
+`views/WindowChrome.tsx` adopts the shared theme, 13px title and 12.5px version metadata,
+while retaining native drag regions and the space reserved for macOS window controls. Long vault
+names truncate within the strip. The rest of the shell remains scoped separately for subsequent
+navigation passes.
+
 **Contrast decision for this pilot:** retain the approved palettes and existing user-selected
 accents. The migrated controls use normal/muted text, quiet or outlined buttons, and neutral
 selected segments. They introduce no white-on-accent or white-on-danger text. Decisions about

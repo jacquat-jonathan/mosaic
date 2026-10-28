@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { api, onIndexProgress, revealInFinder } from "./ipc/api";
 import { Welcome } from "./views/Welcome";
+import { WindowChrome } from "./views/WindowChrome";
 import { errorMessage } from "./ipc/types";
 import { useVault } from "./state/vault";
 import { FileTree } from "./views/FileTree";
@@ -215,14 +216,7 @@ function Main() {
   useEffect(() => useReview.getState().watch(), [vault.root]);
   return (
     <div className={`shell ${left ? "" : "no-left"}`}>
-      <header className="window-chrome" data-tauri-drag-region>
-        <span className="window-title" data-tauri-drag-region>
-          Mosaic — {vault.name}
-        </span>
-        <span className="window-version" data-tauri-drag-region>
-          v{version || "—"}
-        </span>
-      </header>
+      <WindowChrome vaultName={vault.name} version={version} />
       <div className="shell-body">
         <nav className="icon-bar" aria-label="Destinations" data-focus-region tabIndex={-1}>
           <div role="tablist" aria-orientation="vertical" className="icon-bar-group">

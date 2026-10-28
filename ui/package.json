@@ -4,6 +4,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "design-system": "vite --config vite.design-system.config.ts --open /design-system.html",
+    "design-system:build": "tsc --noEmit && vite build --config vite.design-system.config.ts",
     "build": "tsc --noEmit && vite build",
     "lint": "tsc --noEmit",
     "test": "vitest run",

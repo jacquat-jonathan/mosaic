@@ -1,0 +1,113 @@
+/* Candidate tokens extracted from ../styles.css. Opt in with .mosaic-ds.
+   No legacy variables or document styles are changed. See README.md for provenance. */
+.mosaic-ds {
+  color-scheme: light;
+  --mds-surface: #ffffff;
+  --mds-surface-subtle: #f6f6f8;
+  --mds-surface-hover: rgba(0, 0, 0, 0.05);
+  --mds-surface-selected: rgba(64, 120, 242, 0.12);
+  --mds-text: #1d1f26;
+  --mds-text-muted: #6b7080;
+  --mds-text-faint: #a0a4b0;
+  --mds-border: #e4e5ea;
+  --mds-accent: #4078f2;
+  --mds-danger: #d6453d;
+  --mds-warning-surface: #fff4d6;
+  --mds-error-surface: #fde4e2;
+  --mds-on-accent: #ffffff;
+  --mds-overlay: rgba(0, 0, 0, 0.25);
+  --mds-shadow-floating: 0 8px 28px rgba(0, 0, 0, 0.14), 0 0 0 1px rgba(0, 0, 0, 0.06);
+  --mds-shadow-control: 0 1px 2px rgba(0, 0, 0, 0.15);
+  --mds-shadow-thumb: 0 1px 2px rgba(0, 0, 0, 0.25);
+  --mds-font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+  --mds-font-mono: "SF Mono", ui-monospace, Menlo, monospace;
+  /* Review revision: +1px over the existing app's interface scale. */
+  --mds-text-caption: 12.5px;
+  --mds-text-small: 13px;
+  --mds-text-hint: 13.5px;
+  --mds-text-body: 14px;
+  --mds-text-dialog-title: 16px;
+  --mds-text-heading: 17px;
+  --mds-weight-regular: 400;
+  --mds-weight-strong: 600;
+  --mds-leading: 1.5;
+  --mds-space-1: 2px;
+  --mds-space-2: 4px;
+  --mds-space-3: 6px;
+  --mds-space-4: 8px;
+  --mds-space-5: 10px;
+  --mds-space-6: 12px;
+  --mds-space-7: 14px;
+  --mds-space-8: 16px;
+  --mds-space-9: 20px;
+  --mds-space-10: 24px;
+  --mds-radius-item: 5px;
+  --mds-radius-control: 6px;
+  --mds-radius-group: 7px;
+  --mds-radius-menu: 8px;
+  --mds-radius-dialog: 12px;
+  --mds-switch-width: 36px;
+  --mds-switch-height: 20px;
+  --mds-switch-thumb: 16px;
+  --mds-dialog-width: 380px;
+  --mds-icon-size: 16px;
+  --mds-duration: 150ms;
+  --mds-disabled-opacity: 0.5;
+  /* Explicit focus treatment standardizes behavior missing from some legacy controls. */
+  --mds-focus-width: 2px;
+  --mds-focus-offset: 2px;
+  --mds-success: #23754e;
+  --mds-review: #956114;
+  --mds-diff-add: rgba(76, 201, 140, 0.18);
+  --mds-diff-remove: rgba(214, 69, 61, 0.16);
+  font: var(--mds-weight-regular) var(--mds-text-body) / var(--mds-leading) var(--mds-font-ui);
+  color: var(--mds-text);
+  background: var(--mds-surface);
+  -webkit-font-smoothing: antialiased;
+}
+
+@media (prefers-color-scheme: dark) {
+  .mosaic-ds:not([data-theme="light"]) {
+    color-scheme: dark;
+    --mds-surface: #1e1f24;
+    --mds-surface-subtle: #18191d;
+    --mds-surface-hover: rgba(255, 255, 255, 0.06);
+    --mds-surface-selected: rgba(94, 140, 255, 0.2);
+    --mds-text: #e4e5ea;
+    --mds-text-muted: #9a9fad;
+    --mds-text-faint: #6b7080;
+    --mds-border: #2d2f36;
+    --mds-accent: #6d9bff;
+    --mds-danger: #ff6b61;
+    --mds-warning-surface: #3d3420;
+    --mds-error-surface: #43231f;
+    --mds-success: #8bd5ad;
+    --mds-review: #edbd70;
+    --mds-shadow-floating: 0 8px 28px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  }
+}
+
+.mosaic-ds[data-theme="dark"] {
+  color-scheme: dark;
+  --mds-surface: #1e1f24;
+  --mds-surface-subtle: #18191d;
+  --mds-surface-hover: rgba(255, 255, 255, 0.06);
+  --mds-surface-selected: rgba(94, 140, 255, 0.2);
+  --mds-text: #e4e5ea;
+  --mds-text-muted: #9a9fad;
+  --mds-text-faint: #6b7080;
+  --mds-border: #2d2f36;
+  --mds-accent: #6d9bff;
+  --mds-danger: #ff6b61;
+  --mds-warning-surface: #3d3420;
+  --mds-error-surface: #43231f;
+  --mds-success: #8bd5ad;
+  --mds-review: #edbd70;
+  --mds-shadow-floating: 0 8px 28px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mosaic-ds {
+    --mds-duration: 0ms;
+  }
+}

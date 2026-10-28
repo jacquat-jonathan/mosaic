@@ -2,17 +2,7 @@
 # Run every check that must pass before a milestone commit.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-export PATH="/opt/homebrew/opt/rustup/bin:$HOME/.cargo/bin:$PATH"
 
-cargo fmt --all --check
-# The app's build copies the sidecar (src-tauri/binaries/mosaic-<host>) over target/debug/mosaic,
-# which is the binary the CLI tests run. Refresh it before any workspace build so clean checkouts
-# have the sidecar Tauri requires and the tests never use a stale CLI.
-bash scripts/prepare-sidecar.sh debug
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
-pnpm --dir ui lint
-pnpm --dir ui exec biome ci .
-pnpm --dir ui test
-# UI flows (open, rename, conflict, review) in Google Chrome against the dev server's mock vault.
-pnpm --dir ui e2e
+# CI runs these suites as independent jobs. Keep this wrapper as the one-command local gate.
+bash scripts/check-rust.sh
+bash scripts/check-ui.sh

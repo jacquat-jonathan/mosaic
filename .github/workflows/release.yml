@@ -38,6 +38,8 @@ jobs:
         run: echo "version=$(node -p 'JSON.parse(require("fs").readFileSync("src-tauri/tauri.conf.json")).version')" >> "$GITHUB_OUTPUT"
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: Install WebKit test browser
+        run: pnpm --dir ui exec playwright install webkit
       - name: Test before publishing
         run: bash scripts/check.sh
       - name: Build universal app

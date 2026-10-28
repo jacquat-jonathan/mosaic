@@ -163,6 +163,6 @@ test("template controls and expanded previews match themes and fit narrow panes"
     element.scrollTop = 0;
   });
   await page.screenshot({ path: testInfo.outputPath("templates-narrow.png") });
-  await navigation.getByRole("button", { name: "Calendar & links", exact: true }).click();
+  await navigation.getByRole("button", { name: "About & updates", exact: true }).click();
   await expect(page.locator(".settings-scroll .mosaic-ds")).toHaveCount(0);
 });

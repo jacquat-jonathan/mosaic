@@ -114,7 +114,7 @@ test("Editor follows the approved themes and stays scoped at maximum scale", asy
     element.scrollTop = 0;
   });
   await page.screenshot({ path: testInfo.outputPath("editor-files-narrow.png") });
-  await navigation.getByRole("button", { name: "Calendar & links", exact: true }).click();
+  await navigation.getByRole("button", { name: "About & updates", exact: true }).click();
   await expect(page.locator(".settings-scroll .mosaic-ds")).toHaveCount(0);
   await expect(page.locator(".settings-scroll")).toHaveCSS("font-size", "13px");
 });

@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Calendar & links settings:** consistent date, week-start, and link controls, with clearer save errors. Resetting app preferences preserves the vault's file-name format and link syntax.
+
 - **Templates settings:** consistent folder fields, default rules, notices, and starter previews. Failed saves keep your draft, starter installation preserves existing templates, and preview actions restore keyboard focus.
 
 - **Vault folders settings:** consistent folder choices, attachment switches, color controls, and reset actions. Saving disables related controls, missing folders are created only when requested, and pending choices remain tied to the vault where they started.

@@ -4,7 +4,7 @@ A standalone inventory of Mosaic's existing interface and a candidate component 
 The visual design and gallery were approved on 2026-10-28 after review of typography,
 icons, focus behavior, overlays, workflows, runs, chat, and Activity & review.
 **Settings → Appearance** was visually accepted on 2026-10-28. Navigation and header are
-committed along with **Editor & files** and **Vault folders**. **Templates** is the current migration;
+committed along with **Editor & files**, **Vault folders**, and **Templates**. **Calendar & links** is the current migration;
 remaining Settings sections keep their existing controls.
 
 ## Open the gallery
@@ -112,6 +112,12 @@ a rule restores it. Starter previews keep their raw Markdown and placeholders, r
 Add action, preserve existing filenames, and return focus when cancelled or completed. Controls
 are disabled during writes; installation checks the active vault and pins new files to its root.
 The scoped `views/templatesSettings.css` wraps rule controls and preview content in narrow panes.
+
+`views/CalendarLinksSettings.tsx` uses shared setting rows, switches, notices, and reset actions.
+`views/PreferenceControls.tsx` provides app preference controls and the app-only section reset.
+Week start and link opening keep their app scope; daily file names and generated syntax remain
+vault preferences. Vault writes are serialized, disabled when unavailable, and preserve saved
+values after failure. The reset confirmation restores focus and leaves vault preferences intact.
 
 **Contrast decision for this pilot:** retain the approved palettes and existing user-selected
 accents. The migrated controls use normal/muted text, quiet or outlined buttons, and neutral

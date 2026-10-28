@@ -9,7 +9,6 @@ import {
 import { useUi } from "../state/ui";
 import { useVault } from "../state/vault";
 import { api } from "../ipc/api";
-import { dailyPath } from "../daily";
 
 function Field({ label, hint, children, reset }: { label: string; hint?: string; children: ReactNode; reset(): void }) {
   return (
@@ -228,38 +227,6 @@ function VaultField({
           {error}
         </p>
       )}
-    </>
-  );
-}
-export function CalendarLinks() {
-  const { value } = useVaultPreferences();
-  return (
-    <>
-      <p className="settings-note">
-        Week start and link opening apply app-wide. File names and generated syntax belong to the open vault.
-      </p>
-      <AppPreference name="weekStart" label="Week starts on" options={["monday", "sunday"]} />
-      <VaultField
-        name="daily_format"
-        label="Daily file name"
-        options={["YYYY-MM-DD", "DD-MM-YYYY", "YYYYMMDD"]}
-        hint="Unambiguous patterns only. Existing ISO notes still work; duplicate dates require repair. No files are renamed."
-      />
-      <p className="settings-note">
-        Preview: <code>{dailyPath(value.daily_folder, new Date(2026, 9, 8), value.daily_format)}</code>
-      </p>
-      <VaultField
-        name="link_style"
-        label="New link syntax"
-        options={["wiki", "markdown"]}
-        hint="Only new Mosaic-generated links change. Both styles remain readable."
-      />
-      <AppPreference
-        name="openLinksNewTab"
-        label="Open note links in a new tab"
-        hint="Explicit new-tab modifiers and commands take precedence. External links still open in your browser."
-      />
-      <SectionReset keys={["weekStart", "openLinksNewTab"]} label="Calendar app preferences" />
     </>
   );
 }

@@ -17,22 +17,13 @@ import {
   pendingForRun,
   workflowDeleteTarget,
   workflowTrigger,
+  workflowRunState,
 } from "./workflowPresentation";
 import { viewPath } from "./specialTabs";
 import "../design-system/patterns.css";
 import "./workflowList.css";
+import "./workflowStatus.css";
 
-export function workflowRunState(run: AgentRun, needsReview = false): RunState {
-  if (
-    run.status === "running" ||
-    run.status === "queued" ||
-    run.status === "paused" ||
-    run.status === "failed" ||
-    run.status === "skipped"
-  )
-    return run.status;
-  return needsReview ? "needs-review" : "completed";
-}
 function summary(run: AgentRun, reviews: number) {
   if (reviews) return `${reviews} proposed ${reviews === 1 ? "change is" : "changes are"} waiting for review.`;
   const text = (
@@ -44,13 +35,24 @@ function summary(run: AgentRun, reviews: number) {
     .trim();
   return text.length > 240 ? `${text.slice(0, 240)}…` : text;
 }
-export function WorkflowList({ agentsOnly = false }: { agentsOnly?: boolean }) {
+type WorkflowListProps = { agentsOnly?: boolean; name?: string; onEdit?: () => void };
+export function WorkflowList({ agentsOnly = false, name, onEdit }: WorkflowListProps) {
   const root = useVault((state) => state.vault?.root);
-  return <WorkflowCatalog key={root} root={root} agentsOnly={agentsOnly} />;
+  return (
+    <WorkflowCatalog key={`${root}:${name ?? ""}`} root={root} agentsOnly={agentsOnly} name={name} onEdit={onEdit} />
+  );
 }
-function WorkflowCatalog({ root, agentsOnly }: { root?: string; agentsOnly: boolean }) {
+function WorkflowCatalog({
+  root,
+  agentsOnly,
+  name,
+  onEdit,
+}: WorkflowListProps & { root?: string; agentsOnly: boolean }) {
   const { status, agents, error, refresh } = useAttention();
   const pending = useReview((state) => state.pending);
+  const selected = agents.find((agent) => agent.name === name);
+  const shown = name ? agents.filter((agent) => agent.name === name) : agents;
+  const runs = (status?.runs ?? []).filter((run) => !name || run.agent === name);
   const [problem, setProblem] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [focusTarget, restoreFocus] = useState<HTMLElement | null>(null);
@@ -149,28 +151,34 @@ function WorkflowCatalog({ root, agentsOnly }: { root?: string; agentsOnly: bool
   return (
     <div className="workspace-page workflow-list-page">
       <DesignSystemScope
-        className="workflow-list"
+        className="workflow-list workflow-status-scope"
         role="group"
-        aria-label={agentsOnly ? "Agent library" : "Workflow catalog"}
+        aria-label={name ? "Workflow detail" : agentsOnly ? "Agent library" : "Workflow catalog"}
       >
         <header className="workflow-list-heading">
           <div>
-            <h1>{agentsOnly ? "Agents" : "Workflows"}</h1>
+            <h1>
+              {selected?.title ??
+                (name ? (status ? "Workflow unavailable" : "Workflow") : agentsOnly ? "Agents" : "Workflows")}
+            </h1>
             <p className="mds-hint">
               Repeatable work on your vault files. Schedules and events run while Mosaic is open.
             </p>
           </div>
           <Button
             ref={firstAction}
+            data-workflow-edit={name ? "true" : undefined}
             variant="secondary"
-            disabled={!root || busy}
+            disabled={!root || busy || (!!name && !selected)}
             onClick={() => {
-              if (current()) useUi.getState().openView("new-workflow");
+              if (!current()) return;
+              if (name && selected) onEdit?.();
+              else useUi.getState().openView("new-workflow");
             }}
           >
-            Create workflow
+            {name ? "Edit workflow" : "Create workflow"}
           </Button>
-          {!agentsOnly && (
+          {!name && !agentsOnly && (
             <Button
               disabled={busy || !status || !root}
               onClick={(event) => void act(() => api.tesseraPauseAll(!status?.paused), event.currentTarget)}
@@ -199,17 +207,29 @@ function WorkflowCatalog({ root, agentsOnly }: { root?: string; agentsOnly: bool
         )}
         {!root ? (
           <Notice>Open a vault to configure workflows.</Notice>
-        ) : !agents.length ? (
+        ) : !shown.length ? (
           <Notice>
             {status
-              ? "No workflows yet. Create one to choose an agent, trigger, and folders."
+              ? name
+                ? "This workflow is unavailable. Return to the workflow list to choose another."
+                : "No workflows yet. Create one to choose an agent, trigger, and folders."
               : error
                 ? "Workflows could not be loaded."
                 : "Loading workflows…"}
+            {name && status && (
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  if (current()) useUi.getState().openView("workflows");
+                }}
+              >
+                Back to workflows
+              </Button>
+            )}
           </Notice>
         ) : (
           <div className="workflow-list-grid">
-            {agents.map((agent) => {
+            {shown.map((agent) => {
               const schedule = status?.agents.find((entry) => entry.name === agent.name),
                 last = latest.get(agent.name);
               const running = !!schedule?.running || last?.status === "running",
@@ -234,12 +254,16 @@ function WorkflowCatalog({ root, agentsOnly }: { root?: string; agentsOnly: bool
               return (
                 <WorkflowCard
                   key={agent.name}
-                  title={agent.title}
+                  title={name ? "Workflow configuration" : agent.title}
                   description={agent.description}
                   state={state}
-                  onOpen={() => {
-                    if (current()) useUi.getState().openView("workflow", agent.name);
-                  }}
+                  onOpen={
+                    name
+                      ? undefined
+                      : () => {
+                          if (current()) useUi.getState().openView("workflow", agent.name);
+                        }
+                  }
                   trigger={{
                     kind: agent.on.length ? "event" : agent.schedule ? "schedule" : "manual",
                     label: workflowTrigger(agent),
@@ -322,7 +346,9 @@ function WorkflowCatalog({ root, agentsOnly }: { root?: string; agentsOnly: bool
                             {
                               label: "Edit workflow",
                               action: () => {
-                                if (current()) useUi.getState().openView("workflow", agent.name);
+                                if (!current()) return;
+                                if (name === agent.name) onEdit?.();
+                                else useUi.getState().openView("workflow", agent.name);
                               },
                             },
                             {
@@ -364,8 +390,8 @@ function WorkflowCatalog({ root, agentsOnly }: { root?: string; agentsOnly: bool
       {!agentsOnly && (
         <section className="workflow-list-recent" aria-label="Recent runs">
           <h2>Recent runs</h2>
-          {status?.runs.length ? (
-            <RunsLedger runs={status.runs} pending={pending} />
+          {runs.length ? (
+            <RunsLedger runs={runs} pending={pending} />
           ) : (
             <p className="panel-meta">{status ? "No runs yet." : "Loading runs…"}</p>
           )}

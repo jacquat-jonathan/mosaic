@@ -1,3 +1,4 @@
+import type { RunState } from "../design-system/patterns";
 import type { Agent, AgentRun, Proposal } from "../ipc/types";
 import { parentOf } from "../state/vault";
 
@@ -34,3 +35,15 @@ export function workflowTrigger(agent: Agent) {
   return triggers.length ? triggers.join(" · ") : "Manual";
 }
 export const workflowDeleteTarget = (agent: Agent) => (agent.skill_folder ? parentOf(agent.path) : agent.path);
+
+export function workflowRunState(run: AgentRun, needsReview = false): RunState {
+  if (
+    run.status === "running" ||
+    run.status === "queued" ||
+    run.status === "paused" ||
+    run.status === "failed" ||
+    run.status === "skipped"
+  )
+    return run.status;
+  return needsReview ? "needs-review" : "completed";
+}

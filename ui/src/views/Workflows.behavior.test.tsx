@@ -211,6 +211,46 @@ afterEach(() => {
 });
 
 describe("workflow helpers and detail views", () => {
+  it("returns focus between detail, edit, and cancelled draft confirmation", async () => {
+    const user = userEvent.setup();
+    const selected = agents.find((entry) => entry.name === "successful")!;
+    vi.spyOn(api, "read").mockResolvedValue({
+      path: selected.path,
+      kind: "markdown",
+      size: 10,
+      mtime: 1,
+      hash: "hash",
+      content: "---\nname: successful\n---\nBody",
+      review: null,
+    });
+    vi.mocked(useUi.getState().ask).mockResolvedValueOnce(false);
+    render(<Workflows name="successful" />);
+    await user.click(screen.getByRole("button", { name: "Edit workflow" }));
+    const instructions = screen.getByLabelText("Instructions");
+    expect(document.activeElement).toBe(instructions);
+    await user.type(instructions, " changed");
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.getByLabelText("Instructions")).toHaveProperty("value", `${selected.instructions} changed`);
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "Edit workflow" })));
+  });
+
+  it("shows an unavailable workflow with a route back to the list", () => {
+    render(<Workflows name="missing" />);
+    expect(screen.getByRole("heading", { name: "Workflow unavailable" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Edit workflow" })).toHaveProperty("disabled", true);
+    fireEvent.click(screen.getByRole("button", { name: "Back to workflows" }));
+    expect(useUi.getState().openView).toHaveBeenCalledWith("workflows");
+  });
+
+  it("announces source-opening failures in the workflow context", async () => {
+    vi.mocked(useWorkspace.getState().open).mockRejectedValueOnce(new Error("Source unavailable"));
+    render(<WorkflowContext name="ready" />);
+    fireEvent.click(screen.getByRole("button", { name: "Edit source" }));
+    expect((await screen.findByRole("alert")).textContent).toBe("Source unavailable");
+  });
+
   it("describes all run states and frontmatter shapes", () => {
     expect(runState(run(1, "a", "running"))).toBe("Running");
     expect(runState(run(1, "a", "failed"))).toBe("Failed");

@@ -43,22 +43,6 @@
 .mosaic-ds.workflow-list .mds-workflow-card footer {
   flex-wrap: wrap;
 }
-.mosaic-ds.workflow-list .mds-status {
-  color: var(--mds-text);
-}
-.mosaic-ds.workflow-list .mds-status--completed svg {
-  color: var(--mds-success);
-}
-.mosaic-ds.workflow-list .mds-status--needs-review svg,
-.mosaic-ds.workflow-list .mds-status--queued svg {
-  color: var(--mds-review);
-}
-.mosaic-ds.workflow-list .mds-status--failed svg {
-  color: var(--mds-danger);
-}
-.mosaic-ds.workflow-list .mds-status--running svg {
-  color: var(--mds-accent);
-}
 .workflow-list-page .workflow-list-recent {
   margin-top: 24px;
 }

@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Workflow details:** the selected workflow and its context panel now share readable cards, metadata, statuses, and source actions. Editing receives focus, cancelled drafts stay intact, and returning to details restores the Edit button.
+
 - **Workflow editor:** consistent fields, switches, folder choices, validation, and save actions. Failed saves keep drafts, saving disables edits, and manual-only workflows can be created without a YAML initialization error.
 
 - **Workflow and Agent library cards:** clearer triggers, review policies, latest results, and expandable settings. Actions keep their existing behavior, with disabled saving states and guards against stale selections after switching vaults.

@@ -4011,18 +4011,15 @@ svg path.flow-on {
   font-size: 12px;
   color: var(--muted);
 }
-.context-content dl,
-.workflow-card dl {
+.context-content dl {
   margin: 16px 0;
 }
-.context-content dt,
-.workflow-card dt {
+.context-content dt {
   color: var(--muted);
   font-size: 11px;
   margin-top: 10px;
 }
-.context-content dd,
-.workflow-card dd {
+.context-content dd {
   margin: 3px 0 0;
 }
 .links-panel .props-form {
@@ -4072,46 +4069,6 @@ svg path.flow-on {
 .workspace-page > .workspace-heading {
   padding: 0 0 20px;
   margin-bottom: 20px;
-}
-.workflow-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
-  gap: 16px;
-}
-.workflow-card {
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 18px;
-  background: var(--bg);
-}
-.workflow-card header,
-.workflow-card footer {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-.workflow-card header {
-  justify-content: space-between;
-}
-.workflow-title {
-  padding-left: 0;
-  font-size: 16px;
-  font-weight: 600;
-}
-.workflow-card p {
-  color: var(--muted);
-  line-height: 1.5;
-}
-.workflow-card footer {
-  margin-top: 16px;
-}
-.state-label {
-  font-size: 11px;
-  background: var(--bg-side);
-  border: 1px solid var(--border);
-  border-radius: 20px;
-  padding: 4px 8px;
 }
 .runs-ledger {
   container-type: inline-size;

@@ -153,8 +153,8 @@ The card supports an optional title action and notice; an empty result has no fa
 Status labels use normal text with colored, distinct icons to preserve readability across accents;
 filled button variants and faint text remain outside adoption. Actions serialize, guard the vault,
 and restore menu/picker/confirmation focus. Deletion rechecks whether a run started while its
-confirmation was open. Selected workflow detail/forms and the sibling recent-runs ledger retain
-their existing styling for the next migrations. `workflowPresentation.ts` and `RunsLedger.tsx`
+confirmation was open. The sibling recent-runs ledger retains its existing styling for its next
+migration. `workflowPresentation.ts` and `RunsLedger.tsx`
 extract their existing helpers/ledger without changing behavior.
 
 `views/WorkflowForm.tsx` extracts and migrates the shared create/edit form. Fields, text areas,
@@ -164,7 +164,14 @@ include switch edits, refuse navigation during a pending save, and preserve fail
 Writes retain source hashes and vault roots; subsequent refresh/mirror/navigation phases check
 the original vault. Manual-only creation initializes an empty YAML mapping before deleting optional
 keys. The save footer flows after the form in narrow panes so it does not cover the fields.
-The selected workflow detail and context remain the next feature within Step 13.
+
+`views/WorkflowDetail.tsx` reuses the same guarded card actions for a selected workflow, opens
+the shared editor, and restores Edit focus after cancellation or saving. The context body adopts
+17px titles, 13px metadata, status icons, and a guarded source action with inline errors. Missing
+workflows offer a route back to the list. Local styles override legacy context label/title rules;
+the surrounding workspace/context frame remains for its later migration. Obsolete workflow-card
+styles are removed after their final consumer migrated. The run-history page remains scoped
+separately for Step 14.
 
 **Contrast decision for this pilot:** retain the approved palettes and existing user-selected
 accents. The migrated controls use normal/muted text, quiet or outlined buttons, and neutral

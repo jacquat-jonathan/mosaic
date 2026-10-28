@@ -74,7 +74,7 @@ export function WorkflowForm({ agent, onDone }: { agent?: Agent; onDone?: () => 
   const [initialRoot] = useState(root);
   const [draftPath] = useState(() => (agent ? viewPath("workflow", agent.name) : "mosaic:new-workflow"));
   const unregister = useRef<(() => void) | null>(null);
-  const discard = async () => {
+  const discard = async (opener = document.activeElement as HTMLElement | null) => {
     if (saveLock.current) return false;
     if (!dirty) return true;
     const ok = await useUi.getState().ask({
@@ -83,6 +83,7 @@ export function WorkflowForm({ agent, onDone }: { agent?: Agent; onDone?: () => 
       confirmLabel: "Discard changes",
       danger: true,
     });
+    if (opener?.isConnected) opener.focus({ preventScroll: true });
     if (ok) {
       setDirty(false);
       unregister.current?.();
@@ -259,8 +260,8 @@ export function WorkflowForm({ agent, onDone }: { agent?: Agent; onDone?: () => 
       saveLock.current = false;
     }
   };
-  const cancel = async () => {
-    if (await discard()) {
+  const cancel = async (opener: HTMLElement) => {
+    if (await discard(opener)) {
       if (onDone) onDone();
       else useUi.getState().openView("workflows");
     }
@@ -299,8 +300,9 @@ export function WorkflowForm({ agent, onDone }: { agent?: Agent; onDone?: () => 
                 label="Agent"
                 value={choice}
                 onChange={(event) => {
-                  const next = event.target.value;
-                  void discard().then((accepted) => {
+                  const next = event.target.value,
+                    opener = event.currentTarget;
+                  void discard(opener).then((accepted) => {
                     if (accepted && useVault.getState().vault?.root === initialRoot) {
                       setChoice(next);
                       setDirty(false);
@@ -334,6 +336,7 @@ export function WorkflowForm({ agent, onDone }: { agent?: Agent; onDone?: () => 
             )}
             <TextArea
               label="Instructions"
+              autoFocus={!!agent}
               required
               rows={10}
               value={instructions}
@@ -523,7 +526,7 @@ export function WorkflowForm({ agent, onDone }: { agent?: Agent; onDone?: () => 
               this workflow.
             </p>
           </div>
-          <Button disabled={saving} onClick={() => void cancel()}>
+          <Button disabled={saving} onClick={(event) => void cancel(event.currentTarget)}>
             Cancel
           </Button>
           <Button

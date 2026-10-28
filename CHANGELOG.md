@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Workspace settings:** consistent startup choices, sidebar switches, width sliders, and reset actions. The startup-note picker restores focus and keeps pending choices tied to their vault.
+
 - **Calendar & links settings:** consistent date, week-start, and link controls, with clearer save errors. Resetting app preferences preserves the vault's file-name format and link syntax.
 
 - **Templates settings:** consistent folder fields, default rules, notices, and starter previews. Failed saves keep your draft, starter installation preserves existing templates, and preview actions restore keyboard focus.

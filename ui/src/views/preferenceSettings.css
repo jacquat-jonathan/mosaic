@@ -28,3 +28,23 @@
 .mosaic-ds.preference-settings[data-density="compact"] .mds-setting-row {
   padding-block: var(--mds-space-5);
 }
+.mosaic-ds.preference-settings .preference-range {
+  display: flex;
+  align-items: center;
+  gap: var(--mds-space-5);
+  min-width: 0;
+}
+.mosaic-ds.preference-settings .preference-range output {
+  width: 50px;
+  flex: none;
+  text-align: right;
+  font-size: var(--mds-text-hint);
+  font-variant-numeric: tabular-nums;
+  color: var(--mds-text-muted);
+}
+.mosaic-ds.preference-settings .preference-path {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: left;
+}

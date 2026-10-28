@@ -17,7 +17,7 @@ import { EditorFilesSettings } from "./EditorFilesSettings";
 import { VaultFoldersSettings } from "./VaultFoldersSettings";
 import { DesignSystemScope } from "./DesignSystemScope";
 import "./settingsNavigation.css";
-import { WorkspacePreferences } from "./Personalization";
+import { WorkspaceSettings } from "./WorkspaceSettings";
 import { CalendarLinksSettings } from "./CalendarLinksSettings";
 
 const SECTIONS: { id: SettingsSection; label: string; icon: typeof Palette }[] = [
@@ -98,7 +98,7 @@ export function Settings() {
             {section === "vault" && <VaultFoldersSettings />}
             {section === "templates" && <TemplatesSettings />}
             {section === "calendar" && <CalendarLinksSettings />}
-            {section === "workspace" && <WorkspacePreferences />}
+            {section === "workspace" && <WorkspaceSettings />}
             {section === "ai" && (
               <>
                 <p className="settings-note">

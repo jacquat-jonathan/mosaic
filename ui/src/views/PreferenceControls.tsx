@@ -9,11 +9,17 @@ export function AppPreference({
   label,
   hint,
   options,
+  min,
+  max,
+  step,
 }: {
   name: keyof Prefs;
   label: string;
   hint?: string;
   options?: readonly (readonly [string, string])[];
+  min?: number;
+  max?: number;
+  step?: number;
 }) {
   const value = useSettings((state) => state[name]);
   const set = useSettings.getState().set;
@@ -34,6 +40,22 @@ export function AppPreference({
             </option>
           ))}
         </select>
+      ) : typeof value === "number" ? (
+        <div className="preference-range">
+          <input
+            id={id}
+            className="mds-range"
+            type="range"
+            min={min}
+            max={max}
+            step={step}
+            aria-describedby={hint ? `${id}-hint` : undefined}
+            value={value}
+            aria-valuetext={`${value} pixels`}
+            onChange={(event) => set(name, Number(event.target.value) as never)}
+          />
+          <output htmlFor={id}>{value} px</output>
+        </div>
       ) : (
         <Switch
           id={id}

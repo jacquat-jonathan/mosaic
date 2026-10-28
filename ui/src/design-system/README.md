@@ -4,7 +4,7 @@ A standalone inventory of Mosaic's existing interface and a candidate component 
 The visual design and gallery were approved on 2026-10-28 after review of typography,
 icons, focus behavior, overlays, workflows, runs, chat, and Activity & review.
 **Settings → Appearance** was visually accepted on 2026-10-28. Navigation and header are
-committed along with **Editor & files**, **Vault folders**, and **Templates**. **Calendar & links** is the current migration;
+committed along with **Editor & files**, **Vault folders**, **Templates**, and **Calendar & links**. **Workspace** is the current migration;
 remaining Settings sections keep their existing controls.
 
 ## Open the gallery
@@ -118,6 +118,12 @@ The scoped `views/templatesSettings.css` wraps rule controls and preview content
 Week start and link opening keep their app scope; daily file names and generated syntax remain
 vault preferences. Vault writes are serialized, disabled when unavailable, and preserve saved
 values after failure. The reset confirmation restores focus and leaves vault preferences intact.
+
+`views/WorkspaceSettings.tsx` shares the app preference controls, including native width ranges
+with associated outputs. Startup-note choices keep their vault scope, serialized writes, load/save
+errors, and a missing-note notice. Picker callbacks check the vault and restore focus after cancel
+or save. Workspace reset changes only its five app defaults and preserves the selected vault note.
+The former legacy `Personalization.tsx` helpers are removed after their final consumer migrated.
 
 **Contrast decision for this pilot:** retain the approved palettes and existing user-selected
 accents. The migrated controls use normal/muted text, quiet or outlined buttons, and neutral

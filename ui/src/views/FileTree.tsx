@@ -42,6 +42,7 @@ import { shortcutOf } from "../commands";
 import { kindOf } from "../ipc/kinds";
 import { useVaultPreferences } from "../state/vaultPreferences";
 import { isQuietAttachment } from "../attachments";
+import { treeAutoScrollStep } from "./treeAutoScroll";
 
 const DRAG_TYPE = "application/x-mosaic-path";
 
@@ -87,6 +88,45 @@ export function FileTree() {
   const showAttachments = useVaultPreferences((s) => s.value.show_attachments_in_tree);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const hoverTimer = useRef<{ dir: string; t: ReturnType<typeof setTimeout> } | null>(null);
+  const treeRef = useRef<HTMLDivElement>(null);
+  const scrollFrame = useRef<number | null>(null);
+  const scrollStep = useRef(0);
+
+  const stopAutoScroll = () => {
+    scrollStep.current = 0;
+    if (scrollFrame.current !== null) cancelAnimationFrame(scrollFrame.current);
+    scrollFrame.current = null;
+  };
+
+  const autoScrollFrame = () => {
+    scrollFrame.current = null;
+    const tree = treeRef.current;
+    const step = scrollStep.current;
+    if (!tree || step === 0) return;
+    const before = tree.scrollTop;
+    tree.scrollTop += step;
+    // A fresh dragover will restart the loop if content grows after reaching an edge.
+    if (tree.scrollTop === before) return;
+    scrollFrame.current = requestAnimationFrame(autoScrollFrame);
+  };
+
+  const updateAutoScroll = (clientY: number) => {
+    const tree = treeRef.current;
+    if (!tree) return;
+    const bounds = tree.getBoundingClientRect();
+    scrollStep.current = treeAutoScrollStep(clientY, bounds.top, bounds.bottom);
+    if (scrollStep.current === 0) return stopAutoScroll();
+    if (scrollFrame.current === null) scrollFrame.current = requestAnimationFrame(autoScrollFrame);
+  };
+
+  useEffect(
+    () => () => {
+      scrollStep.current = 0;
+      if (scrollFrame.current !== null) cancelAnimationFrame(scrollFrame.current);
+      scrollFrame.current = null;
+    },
+    [],
+  );
 
   const children = useMemo(() => {
     const map = new Map<string, Entry[]>();
@@ -153,6 +193,7 @@ export function FileTree() {
     onDrop: (ev: DragEvent) => {
       ev.preventDefault();
       ev.stopPropagation();
+      stopAutoScroll();
       setDropTarget(null);
       cancelHover();
       if (isFinderDrag(ev.dataTransfer)) {
@@ -194,6 +235,7 @@ export function FileTree() {
 
   return (
     <div
+      ref={treeRef}
       className={`tree ${dropTarget === "" ? "drop" : ""}`}
       role="tree"
       aria-multiselectable="true"
@@ -201,8 +243,18 @@ export function FileTree() {
       onKeyDown={onKeyDown}
       onClick={(ev) => ev.target === ev.currentTarget && useVault.getState().clearSelection()}
       onContextMenu={onRootMenu}
+      onDragOverCapture={(ev) => {
+        const finder = isFinderDrag(ev.dataTransfer);
+        if (finder || ev.dataTransfer.types.includes(DRAG_TYPE)) updateAutoScroll(ev.clientY);
+        else stopAutoScroll();
+      }}
+      onDragLeaveCapture={(ev) => {
+        if (!ev.currentTarget.contains(ev.relatedTarget as Node | null)) stopAutoScroll();
+      }}
+      onDropCapture={stopAutoScroll}
       onDragEnd={() => {
         dragging = [];
+        stopAutoScroll();
         setDropTarget(null);
         cancelHover();
       }}

@@ -105,6 +105,29 @@ export function swimlanes(epics: PlannerEpic[], tasks: PlannerTask[]): Swimlane[
   return active;
 }
 
+/** Return active epics in their new persisted order. A null target means last, before Unassigned. */
+export function reorderEpics(epics: PlannerEpic[], movedId: string, beforeId: string | null): PlannerEpic[] {
+  const ordered = [...epics].sort((a, b) => a.position - b.position),
+    moved = ordered.find((epic) => epic.id === movedId);
+  if (!moved || beforeId === movedId) return ordered;
+  const remaining = ordered.filter((epic) => epic.id !== movedId),
+    target = beforeId === null ? remaining.length : remaining.findIndex((epic) => epic.id === beforeId);
+  const index = target < 0 ? remaining.length : target,
+    previous = remaining[index - 1],
+    next = remaining[index];
+  if (!previous || !next || next.position - previous.position > 1) {
+    const position = !previous
+      ? (next?.position ?? 1024) - 1024
+      : !next
+        ? previous.position + 1024
+        : Math.floor((previous.position + next.position) / 2);
+    remaining.splice(index, 0, { ...moved, position });
+    return remaining;
+  }
+  remaining.splice(index, 0, moved);
+  return remaining.map((epic, normalizedIndex) => ({ ...epic, position: (normalizedIndex + 1) * 1024 }));
+}
+
 export function subtaskProgress(tasks: PlannerTask[], parentId: string): { done: number; total: number } {
   const nested = descendants(tasks, parentId);
   return { done: nested.filter((task) => task.status === "done").length, total: nested.length };

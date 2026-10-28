@@ -1,4 +1,4 @@
-import type { Range } from "@codemirror/state";
+import type { Range, Text } from "@codemirror/state";
 import {
   Decoration,
   type EditorView,
@@ -7,20 +7,20 @@ import {
   type DecorationSet,
   type ViewUpdate,
 } from "@codemirror/view";
-import { insertSiblingSection, moveSectionTo, parse } from "../views/outline";
+import { moveSectionTo, parse } from "../views/outline";
 
 const SECTION_MIME = "application/x-mosaic-section";
 
-class SectionHandleWidget extends WidgetType {
+class LineActionsWidget extends WidgetType {
   constructor(
     readonly line: number,
-    readonly title: string,
+    readonly headingTitle: string | null,
   ) {
     super();
   }
 
-  eq(other: SectionHandleWidget) {
-    return other.line === this.line && other.title === this.title;
+  eq(other: LineActionsWidget) {
+    return other.line === this.line && other.headingTitle === this.headingTitle;
   }
 
   toDOM() {
@@ -30,41 +30,54 @@ class SectionHandleWidget extends WidgetType {
     add.type = "button";
     add.className = "cm-section-add";
     add.dataset.sectionLine = String(this.line);
-    add.title = "Click to add a section below";
-    add.setAttribute("aria-label", `Add a section after ${this.title}`);
+    add.title = "Add a line below";
+    add.setAttribute("aria-label", `Add a line after line ${this.line}`);
     add.textContent = "+";
+    actions.append(add);
+    if (this.headingTitle === null) return actions;
     const button = document.createElement("button");
     button.type = "button";
     button.className = "cm-section-handle";
     button.draggable = true;
     button.tabIndex = -1;
     button.dataset.sectionLine = String(this.line);
-    button.title = `Drag “${this.title}” to reorder this section`;
+    button.title = `Drag “${this.headingTitle}” to reorder this section`;
     button.setAttribute("aria-label", button.title);
-    actions.append(add, button);
+    actions.append(button);
     return actions;
   }
+}
+
+/** A plain newline inserted at the end of a logical editor line, just like pressing Enter there. */
+export function plainLineInsertion(doc: Text, lineNumber: number): { from: number; focus: number } | null {
+  if (lineNumber < 1 || lineNumber > doc.lines) return null;
+  const from = doc.line(lineNumber).to;
+  return { from, focus: from + 1 };
 }
 
 function decorations(view: EditorView): DecorationSet {
   if (view.state.readOnly) return Decoration.none;
   const ranges: Range<Decoration>[] = [];
-  for (const heading of parse(view.state.doc.toString())) {
+  const headings = new Map(parse(view.state.doc.toString()).map((heading) => [heading.line, heading]));
+  for (let lineNumber = 1; lineNumber <= view.state.doc.lines; lineNumber++) {
+    const line = view.state.doc.line(lineNumber);
+    const heading = headings.get(lineNumber);
     ranges.push(
-      Decoration.line({ class: "cm-section-line", attributes: { "data-section-line": String(heading.line) } }).range(
-        heading.offset,
-      ),
+      Decoration.line({
+        class: heading ? "cm-block-line cm-section-line" : "cm-block-line",
+        attributes: heading ? { "data-section-line": String(lineNumber) } : {},
+      }).range(line.from),
     );
     ranges.push(
-      Decoration.widget({ widget: new SectionHandleWidget(heading.line, heading.text), side: -1 }).range(
-        heading.offset,
+      Decoration.widget({ widget: new LineActionsWidget(lineNumber, heading?.text ?? null), side: -1 }).range(
+        line.from,
       ),
     );
   }
   return Decoration.set(ranges, true);
 }
 
-/** AFFiNE-style add and drag controls beside every heading. */
+/** AFFiNE-style add controls beside every line, plus drag controls beside headings. */
 export const sectionDrag = ViewPlugin.fromClass(
   class {
     decorations: DecorationSet;
@@ -159,14 +172,13 @@ export const sectionDrag = ViewPlugin.fromClass(
       event.preventDefault();
       event.stopPropagation();
       const line = Number(add.dataset.sectionLine);
-      const doc = this.view.state.doc.toString();
-      const edit = insertSiblingSection(doc, line);
+      const edit = plainLineInsertion(this.view.state.doc, line);
       if (!edit) return;
       this.view.dispatch({
-        changes: { from: 0, to: doc.length, insert: edit.text },
-        selection: edit.select ?? { anchor: edit.focus },
+        changes: { from: edit.from, insert: "\n" },
+        selection: { anchor: edit.focus },
         scrollIntoView: true,
-        userEvent: "input.section",
+        userEvent: "input.type",
       });
       this.view.focus();
     };

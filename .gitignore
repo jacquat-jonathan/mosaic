@@ -7,3 +7,7 @@ src-tauri/gen/
 src-tauri/binaries/
 ui/test-results/
 ui/playwright-report/
+coverage/
+ui/coverage/
+ui/coverage-unit/
+ui/.nyc_output/

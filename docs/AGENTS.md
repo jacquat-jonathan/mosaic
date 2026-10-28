@@ -50,8 +50,9 @@ write shows up in the app within a second.
 - **Find notes by their properties with `query`** rather than reading many files: see "Queries" below.
 - **Planner data is app-owned.** Board tasks, epics, work sessions and local events are separate from
   Markdown checkboxes and live under `.mosaic/`. CLI/MCP `task:` queries, `tasks_by_day` and
-  `carry_over` operate only on Markdown tasks. Do not inspect or edit `.mosaic/planner.sqlite3`
-  directly, and do not imply that changing a checkbox changes an independent planner item.
+  `carry_over` operate only on Markdown tasks. Use the `*_planner_task` tools for Board tasks and
+  `list_planner_epics` for their epic IDs; never inspect or edit `.mosaic/planner.sqlite3` directly,
+  and do not imply that changing a checkbox changes an independent planner item.
 - **Several files at once:** `move_files` moves a list into one folder in a single call; `import_file`
   adds an image or other binary file from base64 (never overwrites).
 - **Deleting is safe but visible:** files go to the macOS Trash.
@@ -246,3 +247,19 @@ under), `due`. Every filter applies per task: first the task's own `text`, `stat
 #tags in the task or the note's frontmatter tags; plain words must appear in the task's text. Examples:
 `task:open folder:Daily`, `task:open due<=today sort:due`, `task:open tag:project show:status`. To tick a
 task, `patch_file` its line (`- [ ]` → `- [x]`).
+
+## Planner tasks
+
+The independent Board uses planner tasks, not Markdown checkboxes. Discover them with
+`list_planner_tasks`; use `list_planner_epics` to find assignment IDs and `get_planner_task` before a
+change. Every result includes a `revision`. Pass that exact value as `expected_revision` when editing,
+moving, completing, reopening, archiving, restoring or trashing a task. If another person or process
+changed it first, Mosaic returns `conflict`; read it again and reconsider the change.
+
+`planner_task_history` returns the full activity timeline with before/after snapshots. Use
+`create_planner_task`, `update_planner_task`, `move_planner_task`, `complete_planner_task`,
+`reopen_planner_task`, `archive_planner_task`, `restore_planner_task` and `trash_planner_task` for
+changes. Moving requires the complete destination epic, parent and status. Completion refuses open
+subtasks unless explicitly confirmed; future work sessions are cancelled by default or can explicitly
+be kept. Planner
+changes made through MCP appear in the open Board and Calendar automatically.

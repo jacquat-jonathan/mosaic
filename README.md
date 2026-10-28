@@ -153,8 +153,9 @@ The MCP tools are `vault_guide`, `list_files`, `read_file`, `outline`, `search`,
 `edit_file`, `patch_file`, `append_to_file`, `rename`, `copy_file`, `delete_file`, `create_folder`,
 `get_backlinks`, `list_tags`, `query` (notes by tag, frontmatter field, date or links), `list_bookmarks`,
 `add_bookmark`, `remove_bookmark`, `move_files`, `import_file`, `file_history`, `restore_version`,
-`list_proposals`, `withdraw_proposal` and `render` (a PNG of a canvas, so the agent can check what it
-drew). Notes are also MCP resources (`mosaic:///Folder/Note.md`). In AI › Connections you can make folders
+`list_proposals`, `withdraw_proposal`, `render` (a PNG of a canvas, so the agent can check what it
+drew), and revision-safe planner tools to list epics, read/create/edit/move/complete/archive/restore
+Board tasks and inspect their full history. Notes are also MCP resources (`mosaic:///Folder/Note.md`). In AI › Connections you can make folders
 read-only for agents, hide them, or **review** agents' changes there: edits, new files and deletions wait
 under AI activity until you accept or reject them. Edits accept an `expected_hash` so an agent never
 overwrites a newer human edit.
@@ -181,7 +182,9 @@ mosaic note create Meetings/Retro.md      # create using its default; --template
 
 The vault is chosen by `--vault`, then `$MOSAIC_VAULT`, then the vault last opened in the app.
 CLI and MCP task queries, `days`, and `carry-over` continue to operate on Markdown checkboxes only.
-Planner mutation is intentionally app-only in this release.
+MCP planner tools operate on the separate Board tasks and push external changes into an open Board
+or Calendar. Every mutation requires the task revision returned by the latest read, so concurrent
+changes fail with a conflict instead of being overwritten.
 
 ## Planner data and recovery
 
@@ -247,11 +250,18 @@ custom source fields; saving configures the workflow without running or unpausin
 ```sh
 pnpm install
 pnpm dev               # run the app with hot reload
-scripts/check.sh       # rustfmt, clippy, Rust tests, TypeScript, Biome, Vitest (CI runs it on every push to main and PR)
+scripts/check.sh       # formatting, lint, Rust/Vitest tests, and Chrome + WebKit user workflows
+pnpm coverage          # all-source Rust/UI reports; CI enforces the current coverage floors
 scripts/bench.sh       # search/index performance budgets (5,000 notes)
 pnpm --dir ui format   # format the UI with Biome
 pnpm --dir ui dev      # UI only, in a browser, against an in-memory mock vault
 ```
+
+The browser workflows use the in-memory mock vault; they cover user-visible UI behavior but not the
+packaged Tauri process or real disk. Rust integration tests cover the core, CLI/MCP and filesystem
+watchers. Install the optional local test browser once with `pnpm --dir ui exec playwright install webkit`.
+Install coverage support with `cargo install cargo-llvm-cov --locked --version 0.9.1`; reports are
+written to `coverage/rust.lcov` and `ui/coverage/`.
 
 Layout:
 

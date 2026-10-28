@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import type { PlannerEpic, PlannerTask } from "../../ipc/types";
-import { descendants, subtaskProgress, swimlanes, taskLifecycles } from "./plannerModel";
+import { descendants, reorderEpics, subtaskProgress, swimlanes, taskLifecycles } from "./plannerModel";
 
 const epic = (id: string, position: number): PlannerEpic => ({
   id,
@@ -45,6 +45,17 @@ test("epic swimlanes keep nested tasks inside their parent and Unassigned last",
   expect(lanes[2].tasks.map((item) => item.id)).toEqual(["loose"]);
   expect(descendants(tasks, "parent").map((item) => item.id)).toEqual(["child"]);
   expect(subtaskProgress(tasks, "parent")).toEqual({ done: 1, total: 1 });
+});
+
+test("epics can be reordered before another epic or at the end", () => {
+  const epics = [epic("c", 30), epic("a", 10), epic("b", 20)];
+  expect(reorderEpics(epics, "c", "b").map((item) => [item.id, item.position])).toEqual([
+    ["a", 10],
+    ["c", 15],
+    ["b", 20],
+  ]);
+  expect(reorderEpics(epics, "a", null).map((item) => item.id)).toEqual(["b", "c", "a"]);
+  expect(reorderEpics(epics, "missing", "b").map((item) => item.id)).toEqual(["a", "b", "c"]);
 });
 
 test("10k-task board grouping stays within the interactive budget", () => {

@@ -30,9 +30,13 @@ describe("planner calendar browser API", () => {
     await api.updatePlannerWorkSession(first.id, {
       expected_revision: first.revision,
       all_day: false,
-      start_value: "2026-10-13T10:00:00.000Z",
-      end_value: "2026-10-13T11:00:00.000Z",
+      start_value: "2026-10-13T10:07:00.000Z",
+      end_value: "2026-10-13T11:43:00.000Z",
       timezone: "UTC",
+    });
+    expect((await api.plannerWorkSessions(task.id)).find((item) => item.id === first.id)).toMatchObject({
+      start_value: "2026-10-13T10:07:00.000Z",
+      end_value: "2026-10-13T11:43:00.000Z",
     });
     expect((await api.plannerWorkSessions(task.id)).find((item) => item.id === second.id)?.start_value).toBe(
       "2026-10-13T08:30:00.000Z",

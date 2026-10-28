@@ -3,8 +3,8 @@
 A standalone inventory of Mosaic's existing interface and a candidate component API (v0.3).
 The visual design and gallery were approved on 2026-10-28 after review of typography,
 icons, focus behavior, overlays, workflows, runs, chat, and Activity & review.
-**Settings → Appearance** was visually accepted on 2026-10-28. This first pilot is isolated
-from other Settings sections. Settings navigation and header is the next planned surface.
+**Settings → Appearance** was visually accepted on 2026-10-28. The next surface is the
+Settings navigation and header, which awaits review before migrating another section.
 
 ## Open the gallery
 
@@ -63,7 +63,7 @@ All tokens use the `--mds-` prefix. All component styles use `mds-` classes and 
 under `.mosaic-ds`. They do not redefine legacy variables or generic app element styles.
 Only the gallery stylesheet resets `body`; never import it into the application.
 
-## Application adoption: Appearance pilot
+## Application adoption: Settings
 
 `views/DesignSystemScope.tsx` adapts the existing app preferences to one opt-in surface.
 It imports only foundation tokens and control styles, sets an explicit local theme scope
@@ -71,6 +71,15 @@ It imports only foundation tokens and control styles, sets an explicit local the
 to the user's existing accent. Interface scale continues to use the document's existing zoom,
 so it is applied once. Comfortable rows use the approved 14px spacing; Compact uses the
 existing 10px spacing token within this screen. Other sections retain their existing styles.
+
+The adapter supports semantic `nav` and `header` elements. Settings navigation, header, and
+Appearance use separate sibling scopes, so remaining section content keeps its existing
+typography and controls. `views/settingsNavigation.css` owns the migrated layout and replaces
+the old global navigation/header rules. Search uses a visibly labelled field and shared buttons;
+the current section is announced with `aria-current="page"`. Selecting a search result clears
+the query and returns focus to search. Section navigation uses native button keyboard behavior.
+Narrow panes keep navigation in a bounded scroll area above the section body, using the existing
+container breakpoint as well as the narrow-window breakpoint.
 
 `views/AppearanceSettings.tsx` uses shared setting rows, icon buttons, buttons, segmented
 choices, and input styles. Native range inputs add a scoped `mds-range` treatment. Setting
@@ -237,3 +246,8 @@ The Appearance pilot additionally runs in both projects via `pnpm --dir ui e2e a
 It checks theme/keyboard behavior, preference persistence, individual and confirmed section resets,
 preservation of other preferences, and isolation/overflow at maximum interface scale. Review
 screenshots are written to the corresponding Playwright test output folder.
+
+`pnpm --dir ui e2e settings-navigation.spec.ts` checks keyboard search/selection, focus return,
+empty results, section headings, tab closing, theme changes, scale/density, and isolation from
+remaining section content. WebKit uses Option-Tab to include buttons under Safari's native
+keyboard preference. Both test projects save Light/Dark and narrow-pane review screenshots.

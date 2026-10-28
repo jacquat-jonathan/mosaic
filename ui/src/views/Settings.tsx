@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { create } from "zustand";
-import { Download, FolderOpen, Info, Keyboard, Palette, PenLine, RefreshCw, X } from "lucide-react";
+import { ArrowRight, Download, FolderOpen, Info, Keyboard, Palette, PenLine, RefreshCw, X } from "lucide-react";
+import { Button, IconButton, TextField } from "../design-system/components";
 import { useUi, type SettingsSection } from "../state/ui";
 import { DEFAULT_PREFS, useSettings, type Prefs } from "../state/settings";
 import { useVault } from "../state/vault";
@@ -14,6 +15,8 @@ import { renderInlineMarkdown } from "../markdown";
 import { openExternal } from "../ipc/api";
 import { TemplatesSettings } from "./TemplatesSettings";
 import { AppearanceSettings } from "./AppearanceSettings";
+import { DesignSystemScope } from "./DesignSystemScope";
+import "./settingsNavigation.css";
 import {
   AppPreference,
   CalendarLinks,
@@ -37,61 +40,64 @@ const SECTIONS: { id: SettingsSection; label: string; icon: typeof Palette }[] =
 
 export function Settings() {
   const [query, setQuery] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
   const section = useUi((s) => s.settings) ?? "appearance";
   const close = () => {
     const ws = useWorkspace.getState();
     ws.closeTab(ws.focused, "mosaic:settings");
   };
   const current = SECTIONS.find((s) => s.id === section) ?? SECTIONS[0];
+  const matches = SECTIONS.filter((s) =>
+    `${s.label} ${SETTING_WORDS[s.id] ?? ""}`.toLowerCase().includes(query.toLowerCase()),
+  );
   return (
     <div className="settings-workspace">
       <div className="settings" role="region" aria-label="Settings" onMouseDown={(e) => e.stopPropagation()}>
-        <nav className="settings-nav" aria-label="Settings sections">
+        <DesignSystemScope as="nav" className="settings-nav" aria-label="Settings sections">
           <h2>Settings</h2>
-          <input
+          <TextField
+            ref={searchRef}
+            label="Search"
             aria-label="Search settings"
             placeholder="Search settings…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
           {!!query && (
-            <div className="settings-search-results">
-              {SECTIONS.filter((s) =>
-                `${s.label} ${SETTING_WORDS[s.id] ?? ""}`.toLowerCase().includes(query.toLowerCase()),
-              ).map((s) => (
-                <button
+            <div className="settings-search-results" role="region" aria-label="Settings search results">
+              {matches.map((s) => (
+                <Button
                   key={s.id}
                   onClick={() => {
                     useUi.getState().openSettings(s.id);
                     setQuery("");
+                    searchRef.current?.focus({ preventScroll: true });
                   }}
                 >
-                  {s.label} →
-                </button>
+                  <span>{s.label}</span>
+                  <ArrowRight aria-hidden="true" />
+                </Button>
               ))}
-              {!SECTIONS.some((s) =>
-                `${s.label} ${SETTING_WORDS[s.id] ?? ""}`.toLowerCase().includes(query.toLowerCase()),
-              ) && <p role="status">No matching settings.</p>}
+              {matches.length === 0 && <p role="status">No matching settings.</p>}
             </div>
           )}
           {SECTIONS.map((s) => (
-            <button
+            <Button
               key={s.id}
-              className={s.id === section ? "active" : ""}
-              aria-current={s.id === section}
+              aria-current={s.id === section ? "page" : undefined}
               onClick={() => useUi.getState().openSettings(s.id)}
             >
-              <s.icon size={15} /> {s.label}
-            </button>
+              <s.icon aria-hidden="true" /> {s.label}
+            </Button>
           ))}
-        </nav>
+        </DesignSystemScope>
         <section className="settings-body">
-          <header className="settings-head">
+          <DesignSystemScope as="header" className="settings-head">
             <h2>{current.label}</h2>
-            <button aria-label="Close settings" title="Close settings" onClick={close}>
-              <X size={16} />
-            </button>
-          </header>
+            <IconButton label="Close settings" onClick={close}>
+              <X aria-hidden="true" />
+            </IconButton>
+          </DesignSystemScope>
           <div className="settings-scroll">
             {section === "appearance" && <AppearanceSettings />}
             {section === "editor" && <EditorFiles />}

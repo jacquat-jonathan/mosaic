@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { useUi } from "../state/ui";
@@ -18,7 +18,11 @@ test("finds a setting and navigates to its section", async () => {
   render(<Settings />);
 
   await user.type(screen.getByRole("textbox", { name: "Search settings" }), "trash");
-  await user.click(screen.getByRole("button", { name: "Editor & files →" }));
+  await user.click(
+    within(screen.getByRole("region", { name: "Settings search results" })).getByRole("button", {
+      name: "Editor & files",
+    }),
+  );
   expect(screen.getByRole("heading", { name: "Editor & files" })).toBeTruthy();
   expect(screen.getByRole("switch", { name: "Ask before moving to the Trash" })).toBeTruthy();
 });

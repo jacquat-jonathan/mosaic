@@ -92,7 +92,7 @@ test("appearance stays scoped and fits narrow windows", async ({ page }, testInf
   await openAppearance(page);
   const appearance = page.getByRole("group", { name: "Appearance preferences", exact: true });
   const navigation = page.getByRole("navigation", { name: "Settings sections", exact: true });
-  await expect(navigation).toHaveCSS("font-size", "13px");
+  await expect(navigation).toHaveCSS("font-size", "14px");
   await expect(appearance).toHaveCSS("font-size", "14px");
   for (const theme of ["Light", "Dark"] as const) {
     await appearance
@@ -116,7 +116,7 @@ test("appearance stays scoped and fits narrow windows", async ({ page }, testInf
   await page.screenshot({ path: testInfo.outputPath("appearance-narrow.png") });
   await appearance.getByRole("button", { name: "Reset Interface scale", exact: true }).click();
   await navigation.getByRole("button", { name: "Editor & files", exact: true }).click();
-  await expect(page.locator(".settings .mosaic-ds")).toHaveCount(0);
+  await expect(page.locator(".settings-scroll .mosaic-ds")).toHaveCount(0);
   await expect(page.getByRole("switch", { name: "Spellcheck", exact: true })).toHaveClass("toggle on");
   await expect(page.locator(".settings-scroll")).toHaveCSS("font-size", "13px");
 });

@@ -2359,52 +2359,12 @@ code {
   box-shadow: var(--shadow);
   overflow: hidden;
 }
-.settings-nav {
-  width: 200px;
-  flex: none;
-  background: var(--bg-side);
-  border-right: 1px solid var(--border);
-  padding: 16px 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.settings-nav h2 {
-  font-size: 11.5px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--muted);
-  margin: 0 10px 8px;
-}
-.settings-nav button {
-  justify-content: flex-start;
-  padding: 6px 10px;
-  color: var(--muted);
-}
-.settings-nav button.active {
-  background: var(--bg-active);
-  color: var(--fg);
-}
 .settings-body {
   flex: 1;
   min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-}
-.settings-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14px 16px 10px 24px;
-  border-bottom: 1px solid var(--border);
-}
-.settings-head h2 {
-  margin: 0;
-  font-size: 16px;
-}
-.settings-head button {
-  padding: 4px;
-  color: var(--muted);
 }
 .settings-scroll {
   flex: 1;
@@ -4529,15 +4489,6 @@ textarea:focus-visible {
   .settings {
     flex-direction: column;
   }
-  .settings-nav {
-    width: 100%;
-    flex-direction: row;
-    flex-wrap: wrap;
-    padding: 8px;
-  }
-  .settings-nav h2 {
-    display: none;
-  }
   .setting-row {
     align-items: flex-start;
     flex-direction: column;
@@ -6080,17 +6031,6 @@ pre.template-preview {
 .setting-reset {
   color: var(--muted);
 }
-.settings-nav > input {
-  width: 100%;
-  min-width: 0;
-  padding: 8px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-}
-.settings-search-results {
-  padding-block: 8px;
-  border-bottom: 1px solid var(--border);
-}
 .workflow-editor {
   max-width: 920px;
   margin-inline: auto;
@@ -6197,14 +6137,6 @@ pre.template-preview {
   }
   .settings {
     flex-direction: column;
-  }
-  .settings-nav {
-    width: 100%;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-    max-height: 180px;
-    overflow: auto;
   }
   .setting-row {
     align-items: flex-start;

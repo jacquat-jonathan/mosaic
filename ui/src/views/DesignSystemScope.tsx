@@ -4,11 +4,16 @@ import "../design-system/tokens.css";
 import "../design-system/controls.css";
 
 /** App preference adapter. The design-system primitives remain independent of app state. */
-export function DesignSystemScope({ className, style, ...props }: HTMLAttributes<HTMLDivElement>) {
+export function DesignSystemScope({
+  as: Element = "div",
+  className,
+  style,
+  ...props
+}: HTMLAttributes<HTMLElement> & { as?: "div" | "nav" | "header" }) {
   const theme = useSettings((s) => s.theme);
   const density = useSettings((s) => s.density);
   return (
-    <div
+    <Element
       {...props}
       className={["mosaic-ds", className].filter(Boolean).join(" ")}
       data-theme={theme}

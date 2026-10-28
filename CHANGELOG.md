@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Settings navigation:** labelled search, consistent section controls and headings, and clearer keyboard focus. Narrow panes keep the sections in a scrollable navigation area above their settings.
+
 - **Appearance settings:** larger interface text, consistent fields and reset controls, and keyboard-friendly theme and note-width choices. Your saved appearance preferences and section reset behavior are preserved.
 
 - **Focused AI workspace:** switch between Chats and Automations, keep older conversations collapsed, and find workflows, runs and reviews together. Run status and metadata use a compact header with expandable details and separate tool warnings.

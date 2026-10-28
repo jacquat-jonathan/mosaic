@@ -4,8 +4,8 @@ A standalone inventory of Mosaic's existing interface and a candidate component 
 The visual design and gallery were approved on 2026-10-28 after review of typography,
 icons, focus behavior, overlays, workflows, runs, chat, and Activity & review.
 **Settings → Appearance** was visually accepted on 2026-10-28. Navigation and header are
-committed, and continuation to **Editor & files** was authorized. That section is the current
-migration; remaining Settings sections keep their existing controls.
+committed along with **Editor & files**. **Vault folders** is the current migration;
+remaining Settings sections keep their existing controls.
 
 ## Open the gallery
 
@@ -95,6 +95,15 @@ retains its app-wide scope and focus return; it does not reset the vault policy.
 actions are disabled while saving or when vault preferences are unavailable. Failed writes
 leave the saved value in place and show an inline error. A vault change remounts the policy
 control so pending/error UI from the previous vault does not carry over.
+
+`views/VaultFoldersSettings.tsx` adopts shared rows, buttons, selects, switches, badges, and
+notices for vault selection, folder/note defaults, attachment visibility, and folder colors.
+Changes are serialized within the screen, with disabled controls and inline save errors.
+Picker/prompt/confirmation callbacks check the active vault before changing preferences;
+changing vaults remounts the local UI. Missing paths keep their explicit Create folder action.
+The folder reset touches its nine existing keys, preserving HTML policy, calendar/link settings,
+template assignments, and files. Agent-folder changes and reset refresh generated agent mirrors.
+Existing picker, text-prompt, and confirmation overlays are retained for their later migration.
 
 **Contrast decision for this pilot:** retain the approved palettes and existing user-selected
 accents. The migrated controls use normal/muted text, quiet or outlined buttons, and neutral
@@ -265,3 +274,9 @@ keyboard preference. Both test projects save Light/Dark and narrow-pane review s
 individual/section reset and cancellation, preservation of the vault HTML policy and unrelated
 app preferences, themes, reduced motion, scope isolation, and narrow layouts at 130% scale.
 Component tests additionally cover pending/failed vault saves and unavailable preferences.
+
+`pnpm --dir ui e2e vault-folders.spec.ts` checks folder/note picking and focus return, defaults,
+attachment visibility, colors, explicit folder creation, cancelled/confirmed reset, preservation
+of unrelated data, themes, and narrow layouts including expanded colors. Component checks
+cover serialized writes, stale callbacks after vault switches, associated save errors, explicit
+creation, reset scope, and refused preference repair.

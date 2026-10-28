@@ -4,21 +4,20 @@ import { ArrowRight, Download, FolderOpen, Info, Keyboard, Palette, PenLine, Ref
 import { Button, IconButton, TextField } from "../design-system/components";
 import { useUi, type SettingsSection } from "../state/ui";
 import { useSettings } from "../state/settings";
-import { useVault } from "../state/vault";
 import { useWorkspace } from "../state/workspace";
 import { leaveAllDrafts } from "../state/drafts";
-import { api, onUpdateDone, onUpdateLog, revealInFinder } from "../ipc/api";
+import { api, onUpdateDone, onUpdateLog } from "../ipc/api";
 import { errorMessage, type UpdateCheck, type UpdateStatus } from "../ipc/types";
 import { commands, formatKeys, keysFor, rebind, type Keys } from "../commands";
-import { createVault, openVaultFolder } from "../actions";
 import { renderInlineMarkdown } from "../markdown";
 import { openExternal } from "../ipc/api";
 import { TemplatesSettings } from "./TemplatesSettings";
 import { AppearanceSettings } from "./AppearanceSettings";
 import { EditorFilesSettings } from "./EditorFilesSettings";
+import { VaultFoldersSettings } from "./VaultFoldersSettings";
 import { DesignSystemScope } from "./DesignSystemScope";
 import "./settingsNavigation.css";
-import { CalendarLinks, VaultFolders, WorkspacePreferences } from "./Personalization";
+import { CalendarLinks, WorkspacePreferences } from "./Personalization";
 
 const SECTIONS: { id: SettingsSection; label: string; icon: typeof Palette }[] = [
   { id: "appearance", label: "Appearance", icon: Palette },
@@ -95,12 +94,7 @@ export function Settings() {
           <div className="settings-scroll">
             {section === "appearance" && <AppearanceSettings />}
             {section === "editor" && <EditorFilesSettings />}
-            {section === "vault" && (
-              <>
-                <VaultSection />
-                <VaultFolders />
-              </>
-            )}
+            {section === "vault" && <VaultFoldersSettings />}
             {section === "templates" && <TemplatesSettings />}
             {section === "calendar" && <CalendarLinks />}
             {section === "workspace" && <WorkspacePreferences />}
@@ -145,36 +139,6 @@ function Row({ label, hint, children }: { label: string; hint?: ReactNode; child
       </div>
       <div className="setting-control">{children}</div>
     </div>
-  );
-}
-
-function VaultSection() {
-  const vault = useVault((s) => s.vault);
-  if (!vault) return null;
-  return (
-    <>
-      <Row label={vault.name} hint={<code className="path">{vault.root}</code>}>
-        <button className="secondary" onClick={() => void revealInFinder("")}>
-          Reveal in Finder
-        </button>
-      </Row>
-      <Row
-        label="Another vault"
-        hint="Any folder works, including an existing Obsidian vault. Recent vaults are in the menu under the vault name."
-      >
-        <div className="button-row">
-          <button className="secondary" onClick={() => void openVaultFolder()}>
-            Open folder…
-          </button>
-          <button className="secondary" onClick={() => void createVault()}>
-            Create new…
-          </button>
-        </div>
-      </Row>
-      <p className="settings-note">
-        Mosaic keeps its search index and your bookmarks outside the vault; the vault only ever holds your own files.
-      </p>
-    </>
   );
 }
 

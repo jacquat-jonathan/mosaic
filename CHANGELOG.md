@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Shortcut settings:** labelled binding controls, clearer recording and conflict notices, and visible custom bindings. Escape cancels capture, Tab leaves it, and resetting shortcuts returns keyboard focus to the list.
+
 - **Workspace settings:** consistent startup choices, sidebar switches, width sliders, and reset actions. The startup-note picker restores focus and keeps pending choices tied to their vault.
 
 - **Calendar & links settings:** consistent date, week-start, and link controls, with clearer save errors. Resetting app preferences preserves the vault's file-name format and link syntax.

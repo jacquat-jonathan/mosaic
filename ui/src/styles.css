@@ -2509,18 +2509,6 @@ button.secondary {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.shortcut-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-.shortcut-table td {
-  padding: 6px 0;
-  border-bottom: 1px solid var(--border);
-}
-.shortcut-table td:last-child {
-  text-align: right;
-}
-.shortcut-table kbd,
 .picker-kbd {
   font: 12px var(--font-ui);
   background: var(--bg-side);
@@ -3258,28 +3246,6 @@ svg path.flow-on {
 }
 .search-bookmark.on {
   color: var(--warning, #e2b400);
-}
-/* Settings › Shortcuts: click to record a new shortcut. */
-.shortcut-key {
-  padding: 2px 6px;
-  border-radius: 6px;
-  border: 1px solid transparent;
-  min-width: 64px;
-  text-align: right;
-}
-.shortcut-key:hover {
-  border-color: var(--border);
-}
-.shortcut-key.recording {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-.shortcut-key.changed kbd {
-  border-color: var(--accent);
-}
-.shortcut-key .muted {
-  color: var(--muted);
-  font-size: 12px;
 }
 /* Properties form (PropertiesEditor.tsx). */
 .props-form .cm-prop {

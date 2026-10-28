@@ -3,7 +3,7 @@ import { create } from "zustand";
 import { ArrowRight, Download, FolderOpen, Info, Keyboard, Palette, PenLine, RefreshCw, X } from "lucide-react";
 import { Button, IconButton, TextField } from "../design-system/components";
 import { useUi, type SettingsSection } from "../state/ui";
-import { DEFAULT_PREFS, useSettings, type Prefs } from "../state/settings";
+import { useSettings } from "../state/settings";
 import { useVault } from "../state/vault";
 import { useWorkspace } from "../state/workspace";
 import { leaveAllDrafts } from "../state/drafts";
@@ -15,16 +15,10 @@ import { renderInlineMarkdown } from "../markdown";
 import { openExternal } from "../ipc/api";
 import { TemplatesSettings } from "./TemplatesSettings";
 import { AppearanceSettings } from "./AppearanceSettings";
+import { EditorFilesSettings } from "./EditorFilesSettings";
 import { DesignSystemScope } from "./DesignSystemScope";
 import "./settingsNavigation.css";
-import {
-  AppPreference,
-  CalendarLinks,
-  SectionReset,
-  VaultToggle,
-  VaultFolders,
-  WorkspacePreferences,
-} from "./Personalization";
+import { CalendarLinks, VaultFolders, WorkspacePreferences } from "./Personalization";
 
 const SECTIONS: { id: SettingsSection; label: string; icon: typeof Palette }[] = [
   { id: "appearance", label: "Appearance", icon: Palette },
@@ -100,7 +94,7 @@ export function Settings() {
           </DesignSystemScope>
           <div className="settings-scroll">
             {section === "appearance" && <AppearanceSettings />}
-            {section === "editor" && <EditorFiles />}
+            {section === "editor" && <EditorFilesSettings />}
             {section === "vault" && (
               <>
                 <VaultSection />
@@ -143,82 +137,14 @@ const SETTING_WORDS: Partial<Record<SettingsSection, string>> = {
 };
 
 function Row({ label, hint, children }: { label: string; hint?: ReactNode; children: ReactNode }) {
-  const key = (
-    {
-      Spellcheck: "spellcheck",
-      "Ask before moving to the Trash": "confirmTrash",
-    } as Record<string, keyof Prefs>
-  )[label];
   return (
     <div className="setting-row">
       <div className="setting-text">
         <div className="setting-label">{label}</div>
         {hint && <div className="setting-hint">{hint}</div>}
       </div>
-      <div className="setting-control">
-        {children}
-        {key && (
-          <button
-            aria-label={`Reset ${label}`}
-            title="Reset to default"
-            onClick={() => useSettings.getState().set(key, DEFAULT_PREFS[key])}
-          >
-            ↺
-          </button>
-        )}
-      </div>
+      <div className="setting-control">{children}</div>
     </div>
-  );
-}
-
-function Toggle({ checked, onChange, label }: { checked: boolean; onChange(v: boolean): void; label: string }) {
-  return (
-    <button
-      role="switch"
-      aria-checked={checked}
-      aria-label={label}
-      className={`toggle ${checked ? "on" : ""}`}
-      onClick={() => onChange(!checked)}
-    >
-      <span />
-    </button>
-  );
-}
-
-function EditorFiles() {
-  const s = useSettings();
-  return (
-    <>
-      <Row label="Spellcheck" hint="Underline misspelled words in notes.">
-        <Toggle label="Spellcheck" checked={s.spellcheck} onChange={(v) => s.set("spellcheck", v)} />
-      </Row>
-      <AppPreference
-        name="sourceLineNumbers"
-        label="Source line numbers"
-        hint="Applies to source/code editors, not Markdown live preview."
-      />
-      <Row
-        label="Ask before moving to the Trash"
-        hint="Files always go to the macOS Trash, so they can be restored either way."
-      >
-        <Toggle
-          label="Ask before moving to the Trash"
-          checked={s.confirmTrash}
-          onChange={(v) => s.set("confirmTrash", v)}
-        />
-      </Row>
-      <p className="settings-note">HTML preview policy is stored for the open vault.</p>
-      <VaultToggle
-        name="allow_html_scripts"
-        label="Allow scripts in HTML previews"
-        hint="Allows scripts by default for HTML files in this vault. Each preview can override this for the current session. Internet access is requested separately and remains blocked by default."
-      />
-      <p className="settings-note">
-        Daily notes, new note destinations and attachments are configured per vault in Vault folders. Connections and
-        agent safety are in the AI workspace.
-      </p>
-      <SectionReset keys={["spellcheck", "sourceLineNumbers", "confirmTrash"]} label="Editor" />
-    </>
   );
 }
 

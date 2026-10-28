@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Editor & files settings:** consistent labelled switches and reset controls for spellcheck, source line numbers, Trash confirmation, and HTML previews. The vault's HTML policy shows save errors and remains separate from the app-wide Editor reset.
+
 - **Settings navigation:** labelled search, consistent section controls and headings, and clearer keyboard focus. Narrow panes keep the sections in a scrollable navigation area above their settings.
 
 - **Appearance settings:** larger interface text, consistent fields and reset controls, and keyboard-friendly theme and note-width choices. Your saved appearance preferences and section reset behavior are preserved.

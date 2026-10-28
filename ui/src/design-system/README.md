@@ -3,8 +3,9 @@
 A standalone inventory of Mosaic's existing interface and a candidate component API (v0.3).
 The visual design and gallery were approved on 2026-10-28 after review of typography,
 icons, focus behavior, overlays, workflows, runs, chat, and Activity & review.
-**Settings → Appearance** was visually accepted on 2026-10-28. The next surface is the
-Settings navigation and header, which awaits review before migrating another section.
+**Settings → Appearance** was visually accepted on 2026-10-28. Navigation and header are
+committed, and continuation to **Editor & files** was authorized. That section is the current
+migration; remaining Settings sections keep their existing controls.
 
 ## Open the gallery
 
@@ -73,7 +74,7 @@ so it is applied once. Comfortable rows use the approved 14px spacing; Compact u
 existing 10px spacing token within this screen. Other sections retain their existing styles.
 
 The adapter supports semantic `nav` and `header` elements. Settings navigation, header, and
-Appearance use separate sibling scopes, so remaining section content keeps its existing
+the active migrated section use separate scopes, so remaining section content keeps its existing
 typography and controls. `views/settingsNavigation.css` owns the migrated layout and replaces
 the old global navigation/header rules. Search uses a visibly labelled field and shared buttons;
 the current section is announced with `aria-current="page"`. Selecting a search result clears
@@ -86,6 +87,14 @@ choices, and input styles. Native range inputs add a scoped `mds-range` treatmen
 rows can associate their visible label with a control and expose a hint ID; segmented groups
 can reference that hint. The note preview keeps its note font, size, width, line spacing,
 heading scale, and code font preferences independently of interface typography.
+
+`views/EditorFilesSettings.tsx` adopts shared rows, switches, reset buttons, and notices for
+spellcheck, source line numbers, Trash confirmation, and the vault's HTML script policy.
+Switches associate their hint/error descriptions with the control. The Editor section reset
+retains its app-wide scope and focus return; it does not reset the vault policy. HTML policy
+actions are disabled while saving or when vault preferences are unavailable. Failed writes
+leave the saved value in place and show an inline error. A vault change remounts the policy
+control so pending/error UI from the previous vault does not carry over.
 
 **Contrast decision for this pilot:** retain the approved palettes and existing user-selected
 accents. The migrated controls use normal/muted text, quiet or outlined buttons, and neutral
@@ -239,8 +248,8 @@ pnpm --dir ui design-system:build
 pnpm --dir ui e2e design-system.spec.ts --project=chrome --project=webkit
 ```
 
-The browser checks exercise actual keyboard behavior, modal focus, validation, menu dismissal,
-theme selection, and responsive overflow. Existing app flows are not changed by this work.
+The gallery checks exercise keyboard behavior, modal focus, validation, menu dismissal,
+theme selection, and responsive overflow using sample data. App checks use the mock vault.
 
 The Appearance pilot additionally runs in both projects via `pnpm --dir ui e2e appearance.spec.ts`.
 It checks theme/keyboard behavior, preference persistence, individual and confirmed section resets,
@@ -251,3 +260,8 @@ screenshots are written to the corresponding Playwright test output folder.
 empty results, section headings, tab closing, theme changes, scale/density, and isolation from
 remaining section content. WebKit uses Option-Tab to include buttons under Safari's native
 keyboard preference. Both test projects save Light/Dark and narrow-pane review screenshots.
+
+`pnpm --dir ui e2e editor-files.spec.ts` checks keyboard switches, saved app preferences,
+individual/section reset and cancellation, preservation of the vault HTML policy and unrelated
+app preferences, themes, reduced motion, scope isolation, and narrow layouts at 130% scale.
+Component tests additionally cover pending/failed vault saves and unavailable preferences.

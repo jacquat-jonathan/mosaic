@@ -26,9 +26,12 @@ test("settings search and navigation work with the keyboard and close their tab"
     "aria-current",
     "page",
   );
-  await expect(page.getByRole("switch", { name: "Spellcheck", exact: true })).toHaveClass("toggle on");
+  await expect(page.getByRole("switch", { name: "Spellcheck", exact: true })).toHaveClass("mds-switch");
   await expect(page.locator(".settings-scroll")).toHaveCSS("font-size", "13px");
-  await expect(page.locator(".settings-scroll .mosaic-ds")).toHaveCount(0);
+  await expect(page.getByRole("group", { name: "Editor & files preferences", exact: true })).toHaveCSS(
+    "font-size",
+    "14px",
+  );
 
   await search.fill("definitely absent");
   await expect(navigation.getByRole("status")).toHaveText("No matching settings.");

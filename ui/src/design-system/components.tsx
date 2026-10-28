@@ -84,12 +84,14 @@ export function Switch({
   label,
   disabled,
   id,
+  "aria-describedby": describedBy,
 }: {
   checked: boolean;
   onCheckedChange(checked: boolean): void;
   label: string;
   disabled?: boolean;
   id?: string;
+  "aria-describedby"?: string;
 }) {
   return (
     <button
@@ -98,6 +100,7 @@ export function Switch({
       className="mds-switch"
       role="switch"
       aria-label={label}
+      aria-describedby={describedBy}
       aria-checked={checked}
       disabled={disabled}
       onClick={() => onCheckedChange(!checked)}

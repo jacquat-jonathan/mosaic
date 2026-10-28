@@ -1,10 +1,14 @@
 // The frontmatter of a note as a form: lists as chips, checkboxes, dates, numbers and text. Each change
 // rewrites only that property in the YAML (see properties.ts).
 
-import { useEffect, useState, type KeyboardEvent } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { Code, Plus, X } from "lucide-react";
 import { ADD_PROPERTY_EVENT, takeAddOnMount } from "./noteViews";
 import { emptyValue, readProps, removeProp, renameProp, setProp, type Prop, type PropKind } from "./properties";
+
+import { Badge, Button, IconButton, Notice, Switch } from "../design-system/components";
+import { DesignSystemScope } from "../views/DesignSystemScope";
+import "./propertiesEditor.css";
 
 const KINDS: { kind: PropKind; label: string }[] = [
   { kind: "text", label: "Text" },
@@ -18,11 +22,15 @@ export function PropertiesEditor({
   yaml,
   onChange,
   onEditSource,
+  inheritScope = false,
 }: {
   yaml: string;
+  inheritScope?: boolean;
   onChange(yaml: string): void;
   onEditSource(): void;
 }) {
+  const Container = inheritScope ? "div" : DesignSystemScope;
+  const addButton = useRef<HTMLButtonElement>(null);
   const [error, setError] = useState<string | null>(null);
   // "Add a property" (⌘;) opens the form, also on a panel it just created.
   const [adding, setAdding] = useState(takeAddOnMount);
@@ -39,61 +47,85 @@ export function PropertiesEditor({
     props = readProps(yaml);
   } catch (e) {
     return (
-      <div className="cm-properties props-invalid">
-        <span className="cm-render-error">The properties aren't valid YAML: {(e as Error).message}</span>
-        <button className="props-link" onClick={onEditSource}>
+      <Container className="cm-properties props-form props-invalid" role="group" aria-label="Note properties">
+        <Notice tone="error">The properties aren't valid YAML: {(e as Error).message}</Notice>
+        <Button className="props-link" onClick={onEditSource}>
           Edit as YAML
-        </button>
-      </div>
+        </Button>
+      </Container>
     );
   }
   const apply = (f: (y: string) => string) => {
     try {
       setError(null);
       onChange(f(yaml));
+      return true;
     } catch (e) {
       setError((e as Error).message);
+      return false;
     }
   };
   return (
-    <div className="cm-properties props-form">
+    <Container className="cm-properties props-form" role="group" aria-label="Note properties">
       {props.map((p) => (
         <div key={p.key} className="cm-prop">
           <KeyField name={p.key} onRename={(to) => apply((y) => renameProp(y, p.key, to))} />
           <div className="cm-prop-value">
             <ValueField prop={p} onSet={(v) => apply((y) => setProp(y, p.key, v))} onEditSource={onEditSource} />
           </div>
-          <button
+          <IconButton
             className="props-remove"
-            aria-label={`Remove ${p.key}`}
+            label={`Remove ${p.key}`}
             title="Remove this property"
-            onClick={() => apply((y) => removeProp(y, p.key))}
+            onClick={(event) => {
+              const region = focusRegion(event.currentTarget);
+              if (apply((y) => removeProp(y, p.key))) focusAfterChange(region, "Add property");
+            }}
           >
-            <X size={13} />
-          </button>
+            <X aria-hidden="true" />
+          </IconButton>
         </div>
       ))}
       {adding && (
         <AddProperty
           taken={props.map((p) => p.key)}
           onAdd={(key, kind) => {
-            setAdding(false);
-            apply((y) => setProp(y, key, emptyValue(kind)));
+            const region = focusRegion(addButton.current);
+            if (apply((y) => setProp(y, key, emptyValue(kind)))) {
+              setAdding(false);
+              focusAfterChange(region, key);
+            }
           }}
-          onCancel={() => setAdding(false)}
+          onCancel={() => {
+            setAdding(false);
+            requestAnimationFrame(() => addButton.current?.focus());
+          }}
         />
       )}
-      {error && <div className="cm-render-error">{error}</div>}
+      {error && <Notice tone="error">{error}</Notice>}
       <div className="props-actions">
-        <button className="props-link" onClick={() => setAdding(true)}>
-          <Plus size={13} /> Add property
-        </button>
-        <button className="props-link" onClick={onEditSource} title="Edit the frontmatter as YAML">
+        <Button ref={addButton} className="props-link" aria-label="Add property" onClick={() => setAdding(true)}>
+          <Plus aria-hidden="true" /> Add property
+        </Button>
+        <Button className="props-link" onClick={onEditSource} title="Edit the frontmatter as YAML">
           <Code size={13} /> Edit as YAML
-        </button>
+        </Button>
       </div>
-    </div>
+    </Container>
   );
+}
+
+function focusRegion(element: HTMLElement | null) {
+  return element?.closest(".right-panel, .cm-editor") ?? element?.parentElement;
+}
+function focusAfterChange(region: Element | null | undefined, label: string) {
+  requestAnimationFrame(() => {
+    const fields = [...(region?.querySelectorAll<HTMLElement>("[aria-label]") ?? [])];
+    (
+      fields.find((field) => field.getAttribute("aria-label") === label) ??
+      fields.find((field) => field.getAttribute("aria-label") === "Add property")
+    )?.focus();
+  });
 }
 
 function KeyField({ name, onRename }: { name: string; onRename(to: string): void }) {
@@ -101,7 +133,7 @@ function KeyField({ name, onRename }: { name: string; onRename(to: string): void
   const commit = () => (value.trim() && value !== name ? onRename(value.trim()) : setValue(name));
   return (
     <input
-      className="cm-prop-key props-input"
+      className="mds-input cm-prop-key props-input"
       aria-label="Property name"
       value={value}
       onChange={(e) => setValue(e.target.value)}
@@ -119,14 +151,12 @@ function enterBlurs(e: KeyboardEvent<HTMLInputElement>) {
 function ValueField({ prop, onSet, onEditSource }: { prop: Prop; onSet(v: unknown): void; onEditSource(): void }) {
   switch (prop.kind) {
     case "checkbox":
-      return (
-        <input type="checkbox" aria-label={prop.key} checked={!!prop.value} onChange={(e) => onSet(e.target.checked)} />
-      );
+      return <Switch label={prop.key} checked={!!prop.value} onCheckedChange={onSet} />;
     case "date":
       return (
         <input
           type="date"
-          className="props-input"
+          className="mds-input props-input"
           aria-label={prop.key}
           value={String(prop.value ?? "").slice(0, 10)}
           onChange={(e) => e.target.value && onSet(e.target.value)}
@@ -149,9 +179,9 @@ function ValueField({ prop, onSet, onEditSource }: { prop: Prop; onSet(v: unknow
       );
     default:
       return (
-        <button className="props-link" onClick={onEditSource} title="This value is nested; edit it as YAML">
+        <Button className="props-link" onClick={onEditSource} title="This value is nested; edit it as YAML">
           {JSON.stringify(prop.value)}
-        </button>
+        </Button>
       );
   }
 }
@@ -171,7 +201,7 @@ function TextField({
   return (
     <input
       type={type}
-      className="props-input"
+      className="mds-input props-input"
       aria-label={label}
       value={text}
       placeholder="Empty"
@@ -195,15 +225,22 @@ function ListField({ items, label, onSet }: { items: string[]; label: string; on
   return (
     <div className="props-chips">
       {items.map((item, i) => (
-        <span key={`${item}-${i}`} className="cm-prop-pill">
+        <Badge key={`${item}-${i}`} className="cm-prop-pill">
           {item}
-          <button aria-label={`Remove ${item} from ${label}`} onClick={() => onSet(items.filter((_, j) => j !== i))}>
-            <X size={11} />
-          </button>
-        </span>
+          <IconButton
+            label={`Remove ${item} from ${label}`}
+            onClick={(event) => {
+              const region = focusRegion(event.currentTarget);
+              onSet(items.filter((_, j) => j !== i));
+              focusAfterChange(region, `Add to ${label}`);
+            }}
+          >
+            <X aria-hidden="true" />
+          </IconButton>
+        </Badge>
       ))}
       <input
-        className="props-input props-chip-input"
+        className="mds-input props-input props-chip-input"
         aria-label={`Add to ${label}`}
         value={draft}
         placeholder="Add…"
@@ -232,11 +269,14 @@ function AddProperty({
   const [key, setKey] = useState("");
   const [kind, setKind] = useState<PropKind>("text");
   const clash = taken.includes(key.trim());
+  const errorId = useId();
   return (
     <div className="cm-prop props-add">
       <input
-        className="cm-prop-key props-input"
+        className="mds-input cm-prop-key props-input"
         aria-label="New property name"
+        aria-invalid={clash}
+        aria-describedby={clash ? errorId : undefined}
         autoFocus
         value={key}
         placeholder="name"
@@ -246,16 +286,26 @@ function AddProperty({
           if (e.key === "Escape") onCancel();
         }}
       />
-      <select aria-label="Type" value={kind} onChange={(e) => setKind(e.target.value as PropKind)}>
+      <select
+        className="mds-input"
+        aria-label="Type"
+        value={kind}
+        onChange={(e) => setKind(e.target.value as PropKind)}
+      >
         {KINDS.map((k) => (
           <option key={k.kind} value={k.kind}>
             {k.label}
           </option>
         ))}
       </select>
-      <button className="props-link" disabled={!key.trim() || clash} onClick={() => onAdd(key.trim(), kind)}>
+      <Button className="props-link" disabled={!key.trim() || clash} onClick={() => onAdd(key.trim(), kind)}>
         {clash ? "Name taken" : "Add"}
-      </button>
+      </Button>
+      {clash && (
+        <span id={errorId} className="mds-field-error props-add-error" role="status">
+          A property with this name already exists.
+        </span>
+      )}
     </div>
   );
 }

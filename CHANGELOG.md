@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Note properties:** shared fields, switches, chips, actions, and validation make the properties form consistent. Fields stack in narrow panels, duplicate names are explained, and cancelled additions restore focus.
+
 - **Note formatting:** shared typography, focus rings, theme-aware selection controls, and a consistent read-only notice. Keyboard navigation and cancelled link prompts return to the note; late link choices leave closed notes and other vaults alone.
 
 - **Workspace tabs:** shared controls and typography clarify active tabs and unsaved changes. Split dividers now support keyboard resizing and balancing while retaining tab dragging and saved layouts.

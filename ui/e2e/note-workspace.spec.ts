@@ -10,6 +10,99 @@ async function readIdeas(page: Page) {
   );
 }
 
+async function readWelcome(page: Page) {
+  return page.evaluate(() =>
+    (
+      window as unknown as { __mosaic: { mockInvoke(command: string, args: object): Promise<{ content: string }> } }
+    ).__mosaic
+      .mockInvoke("read_file", { path: "Welcome.md" })
+      .then((result) => result.content),
+  );
+}
+
+test("note properties retain YAML edits, duplicate validation and focus after additions and removals", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open folder…", exact: true }).click();
+  await page.getByRole("treeitem", { name: /^Welcome/ }).click();
+  const context = page.getByRole("complementary", { name: "Workspace context", exact: true });
+  const form = context.getByRole("group", { name: "Note properties", exact: true });
+  await form.getByRole("textbox", { name: "status", exact: true }).fill("ready");
+  await form.getByRole("textbox", { name: "status", exact: true }).press("Tab");
+  await expect.poll(() => readWelcome(page)).toContain("status: ready");
+  const add = form.getByRole("button", { name: "Add property", exact: true });
+  await add.click();
+  await form.getByRole("textbox", { name: "New property name", exact: true }).fill("status");
+  await expect(form.getByRole("button", { name: "Name taken", exact: true })).toBeDisabled();
+  await expect(form.getByRole("textbox", { name: "New property name", exact: true })).toHaveAttribute(
+    "aria-invalid",
+    "true",
+  );
+  await form.getByRole("textbox", { name: "New property name", exact: true }).press("Escape");
+  await expect(add).toBeFocused();
+  await add.click();
+  await form.getByRole("textbox", { name: "New property name", exact: true }).fill("published");
+  await form.getByLabel("Type", { exact: true }).selectOption("checkbox");
+  await form.getByRole("button", { name: "Add", exact: true }).click();
+  const published = form.getByRole("switch", { name: "published", exact: true });
+  await expect(published).toBeFocused();
+  await published.click();
+  await expect.poll(() => readWelcome(page)).toContain("published: true");
+  await form.getByRole("button", { name: "Remove intro from tags", exact: true }).click();
+  await expect(form.getByRole("textbox", { name: "Add to tags", exact: true })).toBeFocused();
+  await form.getByRole("textbox", { name: "Add to tags", exact: true }).fill("design");
+  await form.getByRole("textbox", { name: "Add to tags", exact: true }).press("Enter");
+  await expect.poll(() => readWelcome(page)).toContain("design");
+  await form.getByRole("button", { name: "Remove published", exact: true }).click();
+  await expect(add).toBeFocused();
+  await expect.poll(() => readWelcome(page)).not.toContain("published:");
+  await form.getByRole("button", { name: "Edit as YAML", exact: true }).click();
+  await expect(page.locator(".cm-content")).toBeFocused();
+  await expect(page.locator(".cm-content")).toContainText("status: ready");
+});
+
+test("note properties share themes and stack while keeping note typography separate", async ({ page }, testInfo) => {
+  await page.addInitScript(() =>
+    localStorage.setItem("mosaic:settings", JSON.stringify({ noteFont: "Georgia", noteSize: 20 })),
+  );
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open folder…", exact: true }).click();
+  await page.getByRole("treeitem", { name: /^Welcome/ }).click();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.getByLabel("Interface density", { exact: true }).selectOption("compact");
+  await page.getByRole("slider", { name: "Interface scale", exact: true }).press("End");
+  const properties = page
+    .getByRole("complementary", { name: "Workspace context", exact: true })
+    .getByRole("group", { name: "Note properties", exact: true });
+  for (const theme of ["Light", "Dark", "System"] as const) {
+    await page
+      .getByRole("radiogroup", { name: "Theme", exact: true })
+      .getByRole("radio", { name: theme, exact: true })
+      .check();
+    await page.getByRole("tab", { name: "Welcome Close tab", exact: true }).click();
+    await expect(properties).toBeVisible();
+    for (const form of await page.getByRole("group", { name: "Note properties", exact: true }).all()) {
+      await expect(form).toHaveCSS("font-size", "14px");
+      await expect(form).toHaveCSS("background-color", theme === "Light" ? "rgb(246, 246, 248)" : "rgb(24, 25, 29)");
+    }
+    await expect(page.locator(".cm-content")).toHaveCSS("font-size", "20px");
+    if (theme !== "System")
+      await page.screenshot({ path: testInfo.outputPath(`note-properties-${theme.toLowerCase()}.png`) });
+    if (theme !== "System") await page.getByRole("tab", { name: "Settings Close tab", exact: true }).click();
+  }
+  await page.setViewportSize({ width: 320, height: 900 });
+  await page.getByRole("button", { name: "Show right panel", exact: true }).click();
+  await expect(properties.getByRole("button", { name: "Add property", exact: true })).toBeInViewport();
+  await expect
+    .poll(() => properties.evaluate((element) => element.scrollWidth - element.clientWidth))
+    .toBeLessThanOrEqual(1);
+  await page.screenshot({ path: testInfo.outputPath("note-properties-narrow.png") });
+});
+
 test("note formatting preserves selection, undo, toolbar keys and cancelled-link focus", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Open folder…", exact: true }).click();

@@ -1,0 +1,111 @@
+:is(.mosaic-ds.props-form, .mosaic-ds .props-form) {
+  background: var(--mds-surface-subtle);
+  border: 1px solid var(--mds-border);
+  border-radius: var(--mds-radius-menu);
+  padding: var(--mds-space-6);
+  margin: var(--mds-space-2) 0 var(--mds-space-6);
+  font: var(--mds-weight-regular) var(--mds-text-body) / var(--mds-leading) var(--mds-font-ui);
+  color: var(--mds-text);
+  min-width: 0;
+  width: 100%;
+  container-type: inline-size;
+  container-name: properties;
+}
+:is(.mosaic-ds.props-form, .mosaic-ds .props-form) .cm-prop {
+  display: grid;
+  grid-template-columns: minmax(90px, 0.8fr) minmax(0, 1.2fr) 24px;
+  align-items: center;
+  gap: var(--mds-space-3);
+  padding: var(--mds-space-2) 0;
+  min-width: 0;
+}
+:is(.mosaic-ds.props-form, .mosaic-ds .props-form) .cm-prop-key {
+  width: 100%;
+  min-width: 0;
+  color: var(--mds-text-muted);
+}
+:is(.mosaic-ds.props-form, .mosaic-ds .props-form) .cm-prop-value {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--mds-space-2);
+  min-width: 0;
+}
+:is(.mosaic-ds.props-form, .mosaic-ds .props-form) .props-input {
+  padding: var(--mds-space-3);
+}
+:is(.mosaic-ds.props-form, .mosaic-ds .props-form) .props-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--mds-space-2);
+  width: 100%;
+  min-width: 0;
+}
+:is(.mosaic-ds.props-form, .mosaic-ds .props-form) .cm-prop-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--mds-space-2);
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  color: var(--mds-text);
+  background: var(--mds-surface);
+  border-radius: var(--mds-radius-control);
+  padding: 2px var(--mds-space-2) 2px var(--mds-space-3);
+}
+:is(.mosaic-ds.props-form, .mosaic-ds .props-form) .cm-prop-pill .mds-icon-button {
+  padding: 0;
+  flex: none;
+  color: var(--mds-text-muted);
+}
+:is(.mosaic-ds.props-form, .mosaic-ds .props-form) .cm-prop-pill svg {
+  width: 14px;
+  height: 14px;
+}
+:is(.mosaic-ds.props-form, .mosaic-ds .props-form) .props-chip-input {
+  flex: 1;
+  width: 90px;
+  min-width: 60px;
+}
+:is(.mosaic-ds.props-form, .mosaic-ds .props-form) .props-remove {
+  padding: var(--mds-space-1);
+  color: var(--mds-text-muted);
+}
+:is(.mosaic-ds.props-form, .mosaic-ds .props-form) .props-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--mds-space-2);
+  margin-top: var(--mds-space-3);
+}
+:is(.mosaic-ds.props-form, .mosaic-ds .props-form) .props-link {
+  min-width: 0;
+  padding: var(--mds-space-2);
+  color: var(--mds-text-muted);
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+:is(.mosaic-ds.props-form, .mosaic-ds .props-form) .props-add-error {
+  grid-column: 1 / -1;
+  font-size: var(--mds-text-small);
+  overflow-wrap: anywhere;
+}
+@container properties (max-width: 360px) {
+  :is(.mosaic-ds.props-form, .mosaic-ds .props-form) .cm-prop {
+    grid-template-columns: minmax(0, 1fr) 24px;
+  }
+  :is(.mosaic-ds.props-form, .mosaic-ds .props-form) .cm-prop-key {
+    grid-column: 1;
+  }
+  :is(.mosaic-ds.props-form, .mosaic-ds .props-form) .cm-prop-value {
+    grid-column: 1;
+  }
+  :is(.mosaic-ds.props-form, .mosaic-ds .props-form) .props-remove {
+    grid-column: 2;
+    grid-row: 1 / 3;
+  }
+  :is(.mosaic-ds.props-form, .mosaic-ds .props-form) .props-add {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

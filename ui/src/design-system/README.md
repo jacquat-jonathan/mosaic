@@ -480,3 +480,10 @@ button classes and tokens. Its small preference adapter updates theme/density an
 when the tooltip closes. Arrow/Home/End navigation and Escape retain the selection; cancelled
 link prompts return to the editor and late choices check both the vault and connected editor.
 The large-note read-only notice owns a separate scope, preserving document typography.
+
+`editor/PropertiesEditor.tsx` shares field styles, switches, chips, icon actions, and notices
+in the note details panel. A local scope keeps form typography at
+14px while the note retains its preferences; context panels may explicitly inherit their
+parent scope. Existing YAML transformations and commit behavior remain. Duplicate names
+associate their error with the field; cancelled additions and removed values restore focus.
+The form stacks its fields using a named container query and removes its final legacy rules.

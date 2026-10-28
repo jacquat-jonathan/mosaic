@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Agent, AgentRun, Proposal, TesseraStatus } from "../ipc/types";
@@ -273,6 +273,94 @@ describe("workflow helpers and detail views", () => {
 });
 
 describe("workflow list actions", () => {
+  it("serializes mutations and ignores a run result after the vault changes", async () => {
+    let finish!: (id: number) => void;
+    vi.mocked(api.tesseraRun).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    render(<Workflows />);
+    const card = screen.getByRole("article", { name: "Agent ready" });
+    fireEvent.click(within(card).getByRole("button", { name: "Run now" }));
+    expect(screen.getByRole("button", { name: "Pause automations" })).toHaveProperty("disabled", true);
+    act(() => useVault.setState({ vault: { root: "/other", name: "Other" } }));
+    await act(async () => finish(99));
+    expect(useUi.getState().openView).not.toHaveBeenCalledWith("run", "99");
+  });
+
+  it("ignores stale test-trigger selections and deletion confirmations", async () => {
+    render(<Workflows />);
+    const card = screen.getByRole("article", { name: "Agent paused" });
+    fireEvent.click(within(card).getByRole("button", { name: "Test trigger…" }));
+    const picker = useUi.getState().picker!;
+    act(() => useVault.setState({ vault: { root: "/other", name: "Other" } }));
+    await act(async () => picker.onPick(picker.items[0]));
+    expect(api.tesseraTestEvent).not.toHaveBeenCalled();
+    act(() => {
+      useUi.setState({ picker: null });
+      useVault.setState({ vault: { root: "/vault", name: "Vault" } });
+    });
+    let confirm!: (accepted: boolean) => void;
+    vi.mocked(useUi.getState().ask).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          confirm = resolve;
+        }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "More actions for Agent ready" }));
+    const menu = useUi.getState().menu!;
+    act(() => {
+      void menu.items.find((item) => item.label === "Delete workflow…")?.action?.();
+    });
+    act(() => useVault.setState({ vault: { root: "/other", name: "Other" } }));
+    await act(async () => confirm(true));
+    expect(useVault.getState().remove).not.toHaveBeenCalled();
+  });
+
+  it("selects the newest result even when history arrives out of order", () => {
+    useAttention.setState({
+      status: {
+        ...status,
+        runs: [
+          run(1, "ready", "successful", { started: 10, answer: "Old result" }),
+          run(2, "ready", "failed", { started: 20, error: "Newest result" }),
+        ],
+      },
+    });
+    render(<Workflows agentsOnly />);
+    const card = screen.getByRole("article", { name: "Agent ready" });
+    expect(within(card).getByText("Newest result")).toBeTruthy();
+    expect(within(card).queryByText("Old result")).toBeNull();
+    fireEvent.click(within(card).getByRole("button", { name: "Open run log" }));
+    expect(useUi.getState().openView).toHaveBeenCalledWith("run", "2");
+  });
+
+  it("rechecks running state before deleting after confirmation", async () => {
+    let confirm!: (accepted: boolean) => void;
+    vi.mocked(useUi.getState().ask).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          confirm = resolve;
+        }),
+    );
+    render(<Workflows />);
+    fireEvent.click(screen.getByRole("button", { name: "More actions for Agent ready" }));
+    act(() => {
+      void useUi
+        .getState()
+        .menu!.items.find((item) => item.label === "Delete workflow…")
+        ?.action?.();
+    });
+    act(() => useAttention.setState({ status: { ...status, runs: [...runs, run(10, "ready", "running")] } }));
+    await act(async () => confirm(true));
+    expect(useVault.getState().remove).not.toHaveBeenCalled();
+    expect(
+      screen.getAllByRole("alert").some((alert) => alert.textContent?.includes("Wait for the current run to finish")),
+    ).toBe(true);
+  });
+
   it("streams run answers and tool outcomes, retaining readable older results", async () => {
     const events: NonNullable<AgentRun["transcript"]>["events"] = [
       { kind: "text", text: "Reading **the note**." },
@@ -318,14 +406,15 @@ describe("workflow list actions", () => {
 
   it("renders every state and runs, pauses, tests and opens menu actions", async () => {
     render(<Workflows />);
-    expect(screen.getByText("Queued · 2")).toBeTruthy();
+    expect(screen.getByText("Queued")).toBeTruthy();
+    expect(screen.getByText("Queued runs")).toBeTruthy();
     expect(screen.getAllByText("Needs review").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Scheduler error").length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole("button", { name: "Pause automations" }));
     await waitFor(() => expect(api.tesseraPauseAll).toHaveBeenCalledWith(true));
     const readyCard = screen.getByText("Agent ready").closest("article")!;
-    fireEvent.click(readyCard.querySelector<HTMLButtonElement>("button.primary")!);
+    fireEvent.click(within(readyCard).getByRole("button", { name: "Run now" }));
     await waitFor(() => expect(api.tesseraRun).toHaveBeenCalledWith("ready"));
 
     const pausedCard = screen.getByText("Agent paused").closest("article")!;

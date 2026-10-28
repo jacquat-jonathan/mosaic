@@ -51,6 +51,8 @@ export function WorkflowCard({
   metadata,
   lastRun,
   actions,
+  onOpen,
+  notice,
 }: {
   title: string;
   description: string;
@@ -60,14 +62,24 @@ export function WorkflowCard({
   output: string;
   reviewPolicy: string;
   metadata: readonly { label: string; value: ReactNode }[];
-  lastRun?: { state: RunState; when: string; summary: string; action?: ReactNode };
+  lastRun?: { state?: RunState; when: string; summary: string; action?: ReactNode };
   actions: ReactNode;
+  onOpen?: () => void;
+  notice?: ReactNode;
 }) {
   const TriggerIcon = trigger.kind === "schedule" ? CalendarClock : trigger.kind === "event" ? Zap : Circle;
   return (
     <article className="mds-workflow-card" aria-label={title}>
       <header>
-        <h3>{title}</h3>
+        <h3>
+          {onOpen ? (
+            <Button className="mds-workflow-title" onClick={onOpen}>
+              {title}
+            </Button>
+          ) : (
+            title
+          )}
+        </h3>
         <StatusLabel state={state} />
       </header>
       <p>{description}</p>
@@ -89,13 +101,14 @@ export function WorkflowCard({
         <ShieldCheck size={15} aria-hidden="true" />
         <span>{reviewPolicy}</span>
       </p>
+      {notice}
       {lastRun && (
         <div className="mds-workflow-last-run">
           <div>
             <span>Latest run</span>
             <span>{lastRun.when}</span>
           </div>
-          <StatusLabel state={lastRun.state} />
+          {lastRun.state && <StatusLabel state={lastRun.state} />}
           <p>{lastRun.summary}</p>
           {lastRun.action}
         </div>

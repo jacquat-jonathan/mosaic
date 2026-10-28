@@ -64,6 +64,12 @@
   color: var(--mds-text-muted);
   margin: var(--mds-space-6) 0 var(--mds-space-8);
 }
+.mosaic-ds .mds-workflow-title {
+  padding: 0;
+  font: inherit;
+  text-align: left;
+  white-space: normal;
+}
 .mosaic-ds .mds-metadata {
   margin: 0;
 }

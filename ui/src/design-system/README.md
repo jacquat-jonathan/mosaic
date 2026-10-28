@@ -4,7 +4,7 @@ A standalone inventory of Mosaic's existing interface and a candidate component 
 The visual design and gallery were approved on 2026-10-28 after review of typography,
 icons, focus behavior, overlays, workflows, runs, chat, and Activity & review.
 **Settings → Appearance** was visually accepted on 2026-10-28. Settings navigation, header,
-and sections are migrated. **Connections & safety** is the current migration; remaining AI
+and sections and Connections & safety are migrated. **Workflow lists** are the current migration; remaining AI
 and workspace surfaces keep their existing controls.
 
 ## Open the gallery
@@ -144,6 +144,18 @@ rules and chain depth keep saved values until write acknowledgement, serialize r
 and require a reload when a successful write cannot be reread. Failed writes retain saved choices.
 Folder-picker callbacks check the vault; cancelled/completed selections and CLI installation
 restore focus. Copy failures are announced. The existing picker remains for its later migration.
+
+`views/WorkflowList.tsx` adopts `WorkflowCard` for Workflows and the Agent library. Cards show
+the real trigger, effective review policy, newest recorded result, and expandable source metadata.
+Agent definitions have no dedicated input/output schema: the read scope references folder rules,
+and output is explicitly defined by the instructions. The complete result remains in its run log.
+The card supports an optional title action and notice; an empty result has no fabricated run state.
+Status labels use normal text with colored, distinct icons to preserve readability across accents;
+filled button variants and faint text remain outside adoption. Actions serialize, guard the vault,
+and restore menu/picker/confirmation focus. Deletion rechecks whether a run started while its
+confirmation was open. Selected workflow detail/forms and the sibling recent-runs ledger retain
+their existing styling for the next migrations. `workflowPresentation.ts` and `RunsLedger.tsx`
+extract their existing helpers/ledger without changing behavior.
 
 **Contrast decision for this pilot:** retain the approved palettes and existing user-selected
 accents. The migrated controls use normal/muted text, quiet or outlined buttons, and neutral

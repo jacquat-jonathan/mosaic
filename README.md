@@ -250,11 +250,18 @@ custom source fields; saving configures the workflow without running or unpausin
 ```sh
 pnpm install
 pnpm dev               # run the app with hot reload
-scripts/check.sh       # rustfmt, clippy, Rust tests, TypeScript, Biome, Vitest (CI runs it on every push to main and PR)
+scripts/check.sh       # formatting, lint, Rust/Vitest tests, and Chrome + WebKit user workflows
+pnpm coverage          # all-source Rust/UI reports; CI enforces the current coverage floors
 scripts/bench.sh       # search/index performance budgets (5,000 notes)
 pnpm --dir ui format   # format the UI with Biome
 pnpm --dir ui dev      # UI only, in a browser, against an in-memory mock vault
 ```
+
+The browser workflows use the in-memory mock vault; they cover user-visible UI behavior but not the
+packaged Tauri process or real disk. Rust integration tests cover the core, CLI/MCP and filesystem
+watchers. Install the optional local test browser once with `pnpm --dir ui exec playwright install webkit`.
+Install coverage support with `cargo install cargo-llvm-cov --locked --version 0.9.1`; reports are
+written to `coverage/rust.lcov` and `ui/coverage/`.
 
 Layout:
 

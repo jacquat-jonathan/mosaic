@@ -1,4 +1,4 @@
-import { useId, type ReactNode } from "react";
+import { useId, type ReactNode, type ComponentPropsWithRef } from "react";
 import {
   CheckCircle2,
   CalendarClock,
@@ -216,15 +216,17 @@ export function ToolActivity({
   summary,
   state = "completed",
   children,
+  writes = false,
 }: {
   summary: string;
-  state?: "completed" | "needs-review" | "failed";
+  state?: RunState;
+  writes?: boolean;
   children: ReactNode;
 }) {
   return (
     <details className={`mds-tool mds-tool--${state}`}>
       <summary>
-        <Eye size={14} aria-hidden="true" />
+        {writes ? <FilePenLine size={14} aria-hidden="true" /> : <Eye size={14} aria-hidden="true" />}
         <span>{summary}</span>
         <StatusLabel state={state} />
       </summary>
@@ -239,22 +241,33 @@ export function RunPanel({
   metadata,
   children,
   outcome,
+  titleAs: Heading = "h3",
+  details,
+  logTitle = "Run log",
+  transcriptProps,
 }: {
   title: string;
   state: RunState;
-  metadata: string;
+  metadata: ReactNode;
   children: ReactNode;
   outcome: ReactNode;
+  titleAs?: "h1" | "h2" | "h3";
+  details?: ReactNode;
+  logTitle?: string;
+  transcriptProps?: ComponentPropsWithRef<"div">;
 }) {
   return (
     <article className="mds-run-panel" aria-label={`Run detail: ${title}`}>
       <header>
-        <h3>{title}</h3>
+        <Heading>{title}</Heading>
         <StatusLabel state={state} />
       </header>
       <p className="mds-run-meta">{metadata}</p>
-      <h4>Run log</h4>
-      <div className="mds-transcript">{children}</div>
+      {details}
+      <h4>{logTitle}</h4>
+      <div {...transcriptProps} className={["mds-transcript", transcriptProps?.className].filter(Boolean).join(" ")}>
+        {children}
+      </div>
       <footer>{outcome}</footer>
     </article>
   );

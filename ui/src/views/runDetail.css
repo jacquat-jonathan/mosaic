@@ -1,0 +1,103 @@
+.mosaic-ds.run-detail {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.mosaic-ds.run-detail .mds-run-panel h1,
+.mosaic-ds.run-detail .mds-run-panel h2 {
+  margin: 0;
+  font-size: var(--mds-text-heading);
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--mds-text);
+}
+.mosaic-ds.run-detail .mds-run-panel > header > :first-child {
+  min-width: 0;
+}
+.mosaic-ds.run-detail .mds-run-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--mds-space-4) var(--mds-space-8);
+}
+.mosaic-ds.run-detail .mds-run-meta > * {
+  min-width: 0;
+  max-width: 100%;
+}
+.mosaic-ds.run-detail .run-details {
+  padding-block: var(--mds-space-6);
+  margin-bottom: var(--mds-space-8);
+  border-top: 1px solid var(--mds-border);
+  font-size: var(--mds-text-small);
+}
+.mosaic-ds.run-detail summary {
+  cursor: pointer;
+  color: var(--mds-text-muted);
+}
+.mosaic-ds.run-detail .run-details summary:focus-visible,
+.mosaic-ds.run-detail .run-transcript:focus-visible {
+  outline: var(--mds-focus-width) solid var(--mds-accent);
+  outline-offset: var(--mds-focus-offset);
+}
+.mosaic-ds.run-detail .run-details .mds-metadata {
+  margin-top: var(--mds-space-7);
+}
+.mosaic-ds.run-detail .run-details .mds-metadata dt {
+  margin: 0;
+  font-size: inherit;
+}
+.mosaic-ds.run-detail .run-transcript {
+  max-height: 60vh;
+  overflow: auto;
+  min-width: 0;
+  padding: var(--mds-space-7);
+  border: 1px solid var(--mds-border);
+  border-radius: var(--mds-radius-menu);
+}
+.mosaic-ds.run-detail .run-files {
+  flex-basis: 100%;
+  margin: 0;
+}
+.mosaic-ds.run-detail .run-files > div {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--mds-space-4);
+  margin-top: var(--mds-space-6);
+}
+.mosaic-ds.run-detail .mds-button {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.mosaic-ds.run-detail .run-warning {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--mds-space-3);
+}
+.mosaic-ds.run-detail .run-warning svg {
+  flex: none;
+  color: var(--mds-review);
+}
+.mosaic-ds.run-detail .mds-notice {
+  overflow-wrap: anywhere;
+}
+.mosaic-ds.run-detail[data-density="compact"] .mds-run-panel {
+  padding: var(--mds-space-7);
+}
+/* Transcript content shares controls while chat's remaining legacy consumer stays independent. */
+.mosaic-ds.workflow-status-scope .mds-tool--failed > summary {
+  color: var(--mds-text);
+}
+.mosaic-ds.workflow-status-scope .mds-tool-detail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--mds-space-4);
+}
+.mosaic-ds.workflow-status-scope .mds-tool-detail .mds-notice {
+  flex-basis: 100%;
+}
+.mosaic-ds.workflow-status-scope .mds-transcript .md-render {
+  min-width: 0;
+}
+.mosaic-ds.workflow-status-scope .mds-transcript .md-render pre {
+  max-width: 100%;
+  overflow: auto;
+}

@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Run details:** consistent status, metadata, logs, and review outcomes. Expand a tool call to inspect its file, error, or review action; live output follows the log while you stay near the bottom.
+
 - **Run history:** All runs and Recent runs now share the larger table, clear status icons, review counts, tool warnings, and errors. Narrow panes keep dates and durations readable beneath each row.
 
 - **Workflow details:** the selected workflow and its context panel now share readable cards, metadata, statuses, and source actions. Editing receives focus, cancelled drafts stay intact, and returning to details restores the Edit button.

@@ -100,6 +100,8 @@ test("run history follows themes and adapts to pane width at maximum scale", asy
   );
   await page.screenshot({ path: testInfo.outputPath("runs-ledger-narrow.png") });
   await ledger.getByRole("button").first().click();
-  await expect(page.locator(".run-detail")).toHaveCSS("font-size", "13px");
-  await expect(page.locator(".run-detail.mosaic-ds")).toHaveCount(0);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.getByRole("button", { name: "Show sidebar", exact: true }).click();
+  await expect(page.locator(".sidebar")).toHaveCSS("font-size", "13px");
+  await expect(page.locator(".sidebar.mosaic-ds")).toHaveCount(0);
 });

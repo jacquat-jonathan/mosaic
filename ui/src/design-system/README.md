@@ -179,6 +179,15 @@ selection is controlled. A named container query adapts to pane width, with a na
 fallback for older WebKit. Status text stays neutral and notes wrap instead of clipping errors.
 Legacy ledger styles are removed after their final consumer migrated.
 
+`views/RunDetail.tsx` adopts `RunPanel`, status labels, notices, and shared actions. The panel
+accepts a heading level, structured metadata, expandable details, a log title, and transcript
+DOM props so the app retains its focusable scroll region and follow-at-bottom behavior.
+`TranscriptItem` has a scoped design-system mode for sanitized Markdown, tool details, source
+links, errors, and proposed-change actions; chat keeps its existing mode until its own step.
+Tool activity supports all run states and distinguishes reads from writes. Older saved results,
+shortened logs, chain/attempt metadata, changed files, and review outcomes remain available.
+Changed-file and transcript-link failures show an inline notice. Legacy run-only styles are removed.
+
 **Contrast decision for this pilot:** retain the approved palettes and existing user-selected
 accents. The migrated controls use normal/muted text, quiet or outlined buttons, and neutral
 selected segments. They introduce no white-on-accent or white-on-danger text. Decisions about

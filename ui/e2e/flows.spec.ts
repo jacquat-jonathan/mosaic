@@ -348,7 +348,7 @@ test("manage workflows and inspect every AI workspace", async ({ page }) => {
   const workspacePane = page.getByRole("region", { name: "Workspace pane" });
   await expect(workspacePane.getByRole("heading", { name: "Run log" })).toBeVisible();
   await expect(workspacePane.locator(".run-transcript strong")).toHaveText("Mock run completed.");
-  await expect(workspacePane.getByRole("button", { name: "Read Ideas" })).toBeVisible();
+  await expect(workspacePane.locator(".mds-tool summary").filter({ hasText: "Read Ideas" })).toBeVisible();
   await workspacePane.getByRole("button", { name: "Open activity and reviews" }).click();
   await expect(page.getByRole("heading", { name: "Activity & review" })).toBeVisible();
 
@@ -626,8 +626,8 @@ test("Focused separates chat history from automation navigation and compacts run
   await expect(sidebar.getByRole("button", { name: "+ New chat" })).toHaveCount(0);
   await sidebar.getByRole("button", { name: "Workflows", exact: true }).click();
   await page.locator(".mds-workflow-card").first().getByRole("button", { name: "Run now" }).click();
-  await expect(page.locator(".run-heading .run-status")).toHaveText("Completed");
-  await expect(page.locator(".run-meta")).toContainText("Default model");
+  await expect(page.locator(".mds-run-panel > header .mds-status")).toHaveText("Completed");
+  await expect(page.locator(".mds-run-meta")).toContainText("Default model");
   const details = page.locator(".run-details").first();
   await expect(details.locator("dl")).not.toBeVisible();
   await details.locator("summary").click();

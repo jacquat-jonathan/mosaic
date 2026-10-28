@@ -2496,20 +2496,6 @@ button.secondary {
   font-size: 12px;
   margin-right: 4px;
 }
-.run-transcript {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  max-height: 60vh;
-  overflow: auto;
-  min-width: 0;
-  padding: 12px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-}
-.run-transcript .chat-tool {
-  flex-wrap: wrap;
-}
 .commit-details {
   margin: 8px 0;
 }
@@ -5735,91 +5721,6 @@ pre.template-preview {
   padding: 7px 6px;
   cursor: pointer;
 }
-.run-detail .run-heading {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 12px;
-}
-.run-heading h2 {
-  margin: 0;
-}
-.run-status {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--muted);
-  font-size: 12px;
-}
-.run-status.done,
-.run-status.successful {
-  color: light-dark(#23754e, #8bd5ad);
-}
-.run-status.failed,
-.run-status.skipped {
-  color: var(--danger);
-}
-.run-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 18px;
-  color: var(--muted);
-  font-size: 12px;
-  margin-bottom: 18px;
-}
-.run-details {
-  padding: 12px 0;
-  border-top: 1px solid var(--border);
-  margin-bottom: 16px;
-}
-.run-details summary {
-  color: var(--muted);
-  font-size: 12px;
-  cursor: pointer;
-}
-.run-details dl {
-  display: grid;
-  grid-template-columns: minmax(65px, 100px) minmax(0, 1fr);
-  gap: 8px 12px;
-  margin: 14px 0 0;
-  font-size: 12px;
-}
-.run-details dt {
-  color: var(--muted);
-}
-.run-details dd {
-  margin: 0;
-  overflow-wrap: anywhere;
-}
-.run-files {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  margin-top: 10px;
-}
-.run-outcome {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px 18px;
-  color: var(--muted);
-  font-size: 12px;
-  border-top: 1px solid var(--border);
-  margin-top: 18px;
-  padding: 14px 0;
-}
-.run-warning {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: light-dark(#956114, #edbd70);
-}
-.run-review-link {
-  font-size: 12px;
-  color: var(--muted);
-}
-
 /* Tables stay visual while typing. Handles own structure; cells own text. */
 .cm-table-inner {
   display: inline-block;
@@ -5911,14 +5812,4 @@ pre.template-preview {
   margin-bottom: 8px;
   font-size: 12px;
   color: var(--accent);
-}
-
-.run-meta > * {
-  min-width: 0;
-  overflow-wrap: anywhere;
-  max-width: 100%;
-}
-.run-heading h2 {
-  min-width: 0;
-  overflow-wrap: anywhere;
 }

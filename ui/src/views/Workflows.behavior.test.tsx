@@ -411,7 +411,8 @@ describe("workflow list actions", () => {
     });
     const { rerender } = render(<RunDetail id="77" />);
     expect(screen.getByText("the note").tagName).toBe("STRONG");
-    fireEvent.click(screen.getByRole("button", { name: "Read Other" }));
+    fireEvent.click(screen.getByText("Read Other"));
+    fireEvent.click(screen.getByRole("button", { name: "Open Other.md" }));
     expect(useWorkspace.getState().open).toHaveBeenCalledWith("Other.md", { newTab: true });
     act(() =>
       useAttention.setState({
@@ -434,7 +435,8 @@ describe("workflow list actions", () => {
         },
       }),
     );
-    expect(screen.getByTitle("Permission denied")).toBeTruthy();
+    expect(screen.getByText("Permission denied")).toBeTruthy();
+    fireEvent.click(screen.getByText("Proposed Other"));
     expect(screen.getByText("Workflow stopped")).toBeTruthy();
     expect(screen.getByText(/log was shortened/)).toBeTruthy();
     expect(screen.queryByText("Working…")).toBeNull();
@@ -442,6 +444,51 @@ describe("workflow list actions", () => {
     act(() => useAttention.setState({ status }));
     rerender(<RunDetail id="3" />);
     expect(screen.getByText("Finished", { selector: "p" })).toBeTruthy();
+  });
+
+  it("follows new run output only while the reader remains near the bottom", () => {
+    const current = run(77, "ready", "running", {
+      transcript: { events: [{ kind: "text", text: "First" }], truncated: false },
+    });
+    useAttention.setState({ status: { ...status, runs: [current] } });
+    render(<RunDetail id="77" />);
+    const log = screen.getByRole("region", { name: "Run log" });
+    let height = 300;
+    Object.defineProperties(log, { scrollHeight: { get: () => height }, clientHeight: { value: 100 } });
+    log.scrollTop = 200;
+    fireEvent.scroll(log);
+    const append = (text: string) =>
+      act(() =>
+        useAttention.setState({
+          status: {
+            ...status,
+            runs: [{ ...current, transcript: { events: [{ kind: "text", text }], truncated: false } }],
+          },
+        }),
+      );
+    height = 500;
+    append("Second");
+    expect(log.scrollTop).toBe(500);
+    log.scrollTop = 0;
+    fireEvent.scroll(log);
+    height = 700;
+    append("Third");
+    expect(log.scrollTop).toBe(0);
+    log.scrollTop = 600;
+    fireEvent.scroll(log);
+    height = 900;
+    append("Fourth");
+    expect(log.scrollTop).toBe(900);
+  });
+
+  it("keeps changed-file failures visible and preserves review navigation", async () => {
+    vi.mocked(useWorkspace.getState().open).mockRejectedValueOnce(new Error("File unavailable"));
+    render(<RunDetail id="1" compact />);
+    fireEvent.click(screen.getByText("Changed files"));
+    fireEvent.click(screen.getByRole("button", { name: "Notes/Changed.md" }));
+    expect((await screen.findByRole("alert")).textContent).toBe("File unavailable");
+    fireEvent.click(screen.getByRole("button", { name: "Open activity and reviews" }));
+    expect(useUi.getState().openView).toHaveBeenCalledWith("activity");
   });
 
   it("renders every state and runs, pauses, tests and opens menu actions", async () => {

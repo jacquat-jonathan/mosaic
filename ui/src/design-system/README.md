@@ -4,7 +4,7 @@ A standalone inventory of Mosaic's existing interface and a candidate component 
 The visual design and gallery were approved on 2026-10-28 after review of typography,
 icons, focus behavior, overlays, workflows, runs, chat, and Activity & review.
 **Settings → Appearance** was visually accepted on 2026-10-28. Navigation and header are
-committed along with **Editor & files**, **Vault folders**, **Templates**, **Calendar & links**, and **Workspace**. **Shortcuts** is the current migration;
+committed along with **Editor & files**, **Vault folders**, **Templates**, **Calendar & links**, **Workspace**, and **Shortcuts**. **About & updates** is the current migration;
 remaining Settings sections keep their existing controls.
 
 ## Open the gallery
@@ -130,6 +130,13 @@ badges, and live recording/conflict notices. Capture keeps Escape cancellation, 
 and conflict reassignment; Tab or leaving the button cancels capture. Unsupported Control chords
 are refused. Reset returns focus to the first command when its own button disappears. Legacy
 shortcut styles are removed while the picker's keyboard labels retain their existing styling.
+
+`views/AboutSettings.tsx` adopts shared version rows, badges, notices, and outlined update actions.
+Release notes retain sanitized inline Markdown and external-link handling; long references and
+logs wrap inside narrow panes. `state/updates.ts` retains the shared update state/listeners so
+progress survives Settings navigation. Status/check failures are retryable, cancellation restores
+focus, and restart actions serialize draft decisions and note saves before installation. Existing
+draft confirmation overlays remain for their later migration; native update behavior is unchanged.
 
 **Contrast decision for this pilot:** retain the approved palettes and existing user-selected
 accents. The migrated controls use normal/muted text, quiet or outlined buttons, and neutral

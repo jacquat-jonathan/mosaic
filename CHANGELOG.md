@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **About & updates:** consistent version details, notices, release notes, progress logs, and update controls. Status failures can be retried, cancellation restores focus, and restart controls disable while drafts and notes are checked.
+
 - **Shortcut settings:** labelled binding controls, clearer recording and conflict notices, and visible custom bindings. Escape cancels capture, Tab leaves it, and resetting shortcuts returns keyboard focus to the list.
 
 - **Workspace settings:** consistent startup choices, sidebar switches, width sliders, and reset actions. The startup-note picker restores focus and keeps pending choices tied to their vault.

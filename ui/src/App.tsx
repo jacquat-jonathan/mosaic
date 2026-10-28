@@ -33,7 +33,7 @@ import { RIGHT_DEFAULT, SIDEBAR_DEFAULT, useUi, type MenuItem, type Destination 
 import { RightPanel } from "./views/RightPanel";
 import { QuickSwitcher } from "./views/QuickSwitcher";
 import { startBookmarkSync, startVaultSync } from "./sync";
-import { startUpdateListeners } from "./views/Settings";
+import { startUpdateListeners } from "./state/updates";
 import "./state/settings";
 import { Picker } from "./views/Picker";
 import { NewNoteDialog } from "./views/NewNoteDialog";

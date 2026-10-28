@@ -114,7 +114,8 @@ test("Editor follows the approved themes and stays scoped at maximum scale", asy
     element.scrollTop = 0;
   });
   await page.screenshot({ path: testInfo.outputPath("editor-files-narrow.png") });
-  await navigation.getByRole("button", { name: "About & updates", exact: true }).click();
-  await expect(page.locator(".settings-scroll .mosaic-ds")).toHaveCount(0);
-  await expect(page.locator(".settings-scroll")).toHaveCSS("font-size", "13px");
+  await navigation.getByRole("button", { name: "Connections & safety", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Connections", exact: true })).toBeVisible();
+  await expect(page.locator(".connect-ai .mosaic-ds")).toHaveCount(0);
+  await expect(page.locator(".connect-ai")).toHaveCSS("font-size", "13px");
 });

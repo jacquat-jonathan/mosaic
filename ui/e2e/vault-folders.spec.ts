@@ -181,6 +181,7 @@ test("vault settings match both themes and fit narrow panes at maximum scale", a
     element.scrollTop = 0;
   });
   await page.screenshot({ path: testInfo.outputPath("vault-folders-narrow.png") });
-  await navigation.getByRole("button", { name: "About & updates", exact: true }).click();
-  await expect(page.locator(".settings-scroll .mosaic-ds")).toHaveCount(0);
+  await navigation.getByRole("button", { name: "Connections & safety", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Connections", exact: true })).toBeVisible();
+  await expect(page.locator(".connect-ai .mosaic-ds")).toHaveCount(0);
 });

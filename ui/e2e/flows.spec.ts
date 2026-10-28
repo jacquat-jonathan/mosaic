@@ -551,7 +551,7 @@ test("release notes wrap inside a narrow settings pane", async ({ page }) => {
     .getByRole("button", { name: "About & updates" })
     .click();
   await page.getByRole("button", { name: "Check for updates" }).click();
-  const note = page.locator(".release li").first();
+  const note = page.locator(".about-release li").first();
   await expect(note).toContainText("release notes");
   await expect(note).toHaveCSS("white-space", "normal");
   const bounds = await note.evaluate((el) => ({
@@ -565,7 +565,7 @@ test("release notes wrap inside a narrow settings pane", async ({ page }) => {
   expect(bounds.scroll).toBeLessThanOrEqual(bounds.width + 1);
   expect(bounds.height).toBeGreaterThan(bounds.line * 1.5);
   expect(bounds.right).toBeLessThanOrEqual(bounds.pane);
-  for (const note of await page.locator(".release li").all()) {
+  for (const note of await page.locator(".about-release li").all()) {
     const overflow = await note.evaluate((el) => el.scrollWidth - el.clientWidth);
     expect(overflow).toBeLessThanOrEqual(1);
   }

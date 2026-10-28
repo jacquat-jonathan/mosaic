@@ -115,7 +115,8 @@ test("appearance stays scoped and fits narrow windows", async ({ page }, testInf
   }
   await page.screenshot({ path: testInfo.outputPath("appearance-narrow.png") });
   await appearance.getByRole("button", { name: "Reset Interface scale", exact: true }).click();
-  await navigation.getByRole("button", { name: "About & updates", exact: true }).click();
-  await expect(page.locator(".settings-scroll .mosaic-ds")).toHaveCount(0);
-  await expect(page.locator(".settings-scroll")).toHaveCSS("font-size", "13px");
+  await navigation.getByRole("button", { name: "Connections & safety", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Connections", exact: true })).toBeVisible();
+  await expect(page.locator(".connect-ai .mosaic-ds")).toHaveCount(0);
+  await expect(page.locator(".connect-ai")).toHaveCSS("font-size", "13px");
 });

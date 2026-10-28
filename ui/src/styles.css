@@ -2517,26 +2517,6 @@ button.secondary {
   padding: 1px 6px;
   color: var(--fg);
 }
-.update-box {
-  margin-top: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-.update-box .settings-note {
-  margin: 0;
-}
-.update-result {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 4px 14px;
-  min-width: 0;
-  white-space: normal;
-  overflow-wrap: anywhere;
-}
-.update-result p {
-  line-height: 1.5;
-}
 .commit-list {
   margin: 0 0 12px;
   padding-left: 18px;
@@ -2546,18 +2526,6 @@ button.secondary {
   color: var(--muted);
   font-size: 12px;
   margin-right: 4px;
-}
-.release ul {
-  margin: 0 0 12px;
-  padding-left: 18px;
-  line-height: 1.6;
-}
-.release li {
-  white-space: normal;
-  overflow-wrap: anywhere;
-}
-.update-box {
-  min-width: 0;
 }
 .run-transcript {
   display: flex;
@@ -2573,14 +2541,6 @@ button.secondary {
 .run-transcript .chat-tool {
   flex-wrap: wrap;
 }
-.release-head {
-  font-weight: 600;
-  margin-bottom: 2px;
-}
-.release-head .settings-note {
-  font-weight: 400;
-  margin-left: 6px;
-}
 .commit-details {
   margin: 8px 0;
 }
@@ -2590,22 +2550,6 @@ button.secondary {
 }
 .commit-details .commit-list {
   margin-top: 6px;
-}
-.update-log summary {
-  cursor: default;
-  color: var(--muted);
-  font-size: 12.5px;
-}
-.update-log pre {
-  margin: 6px 0 0;
-  max-height: 220px;
-  overflow: auto;
-  background: var(--bg-side);
-  border-radius: 8px;
-  padding: 10px 12px;
-  font: 11.5px / 1.5 var(--font-mono);
-  white-space: pre-wrap;
-  word-break: break-all;
 }
 .warn-text {
   color: #b7791f;

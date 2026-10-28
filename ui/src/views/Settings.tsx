@@ -1,14 +1,8 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import { create } from "zustand";
-import { ArrowRight, Download, FolderOpen, Info, Keyboard, Palette, PenLine, RefreshCw, X } from "lucide-react";
+import { useRef, useState } from "react";
+import { ArrowRight, FolderOpen, Info, Keyboard, Palette, PenLine, X } from "lucide-react";
 import { Button, IconButton, TextField } from "../design-system/components";
 import { useUi, type SettingsSection } from "../state/ui";
 import { useWorkspace } from "../state/workspace";
-import { leaveAllDrafts } from "../state/drafts";
-import { api, onUpdateDone, onUpdateLog } from "../ipc/api";
-import { errorMessage, type UpdateCheck, type UpdateStatus } from "../ipc/types";
-import { renderInlineMarkdown } from "../markdown";
-import { openExternal } from "../ipc/api";
 import { TemplatesSettings } from "./TemplatesSettings";
 import { AppearanceSettings } from "./AppearanceSettings";
 import { EditorFilesSettings } from "./EditorFilesSettings";
@@ -18,6 +12,7 @@ import "./settingsNavigation.css";
 import { WorkspaceSettings } from "./WorkspaceSettings";
 import { CalendarLinksSettings } from "./CalendarLinksSettings";
 import { ShortcutsSettings } from "./ShortcutsSettings";
+import { AboutSettings } from "./AboutSettings";
 
 const SECTIONS: { id: SettingsSection; label: string; icon: typeof Palette }[] = [
   { id: "appearance", label: "Appearance", icon: Palette },
@@ -108,7 +103,7 @@ export function Settings() {
               </>
             )}
             {section === "shortcuts" && <ShortcutsSettings />}
-            {section === "about" && <About />}
+            {section === "about" && <AboutSettings />}
           </div>
         </section>
       </div>
@@ -129,254 +124,3 @@ const SETTING_WORDS: Partial<Record<SettingsSection, string>> = {
   about: "version updates download installation CLI release source",
   ai: "connections permissions review safety Claude MCP",
 };
-
-function Row({ label, hint, children }: { label: string; hint?: ReactNode; children: ReactNode }) {
-  return (
-    <div className="setting-row">
-      <div className="setting-text">
-        <div className="setting-label">{label}</div>
-        {hint && <div className="setting-hint">{hint}</div>}
-      </div>
-      <div className="setting-control">{children}</div>
-    </div>
-  );
-}
-
-// ---------- About & updates ----------
-
-interface UpdateFlow {
-  log: string[];
-  phase: "idle" | "running" | "built" | "failed" | "cancelled";
-  error: string | null;
-}
-
-/** Update progress outlives the Settings panel, so closing it doesn't lose the build log. */
-export const useUpdateFlow = create<UpdateFlow>(() => ({ log: [], phase: "idle", error: null }));
-const LOG_LIMIT = 2000;
-
-/** Subscribes to the backend's update events once, at startup. */
-export async function startUpdateListeners(): Promise<() => void> {
-  const offLog = await onUpdateLog((line) =>
-    useUpdateFlow.setState((s) => ({
-      log: s.log.length >= LOG_LIMIT ? [...s.log.slice(-LOG_LIMIT + 1), line] : [...s.log, line],
-    })),
-  );
-  const offDone = await onUpdateDone((d) =>
-    useUpdateFlow.setState(
-      d.ok
-        ? { phase: "built", error: null }
-        : d.cancelled
-          ? { phase: "cancelled", error: null }
-          : { phase: "failed", error: d.error },
-    ),
-  );
-  return () => {
-    offLog();
-    offDone();
-  };
-}
-
-/** Saves every note with unsaved edits; resolves false if any save failed. */
-async function saveAll(): Promise<boolean> {
-  const ws = useWorkspace.getState();
-  const dirty = Object.values(ws.buffers).filter((b) => b.dirty && !b.conflict && !b.deleted);
-  await Promise.all(dirty.map((b) => ws.save(b.path)));
-  return Object.values(useWorkspace.getState().buffers).every((b) => !b.dirty);
-}
-
-function About() {
-  const [status, setStatus] = useState<UpdateStatus | null>(null);
-  const [check, setCheck] = useState<UpdateCheck | null>(null);
-  const [checking, setChecking] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const flow = useUpdateFlow();
-  const logRef = useRef<HTMLPreElement>(null);
-
-  useEffect(() => {
-    api.updateStatus().then(
-      (st) => {
-        setStatus(st);
-        // A build that finished while Settings was closed (or before a reload) is still waiting.
-        if (st.ready_to_install && useUpdateFlow.getState().phase === "idle")
-          useUpdateFlow.setState({ phase: "built" });
-        if (st.running) useUpdateFlow.setState({ phase: "running" });
-      },
-      (e) => setError(errorMessage(e)),
-    );
-  }, []);
-
-  useEffect(() => {
-    const el = logRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [flow.log.length]);
-
-  const runCheck = async () => {
-    setChecking(true);
-    setError(null);
-    try {
-      setCheck(await api.checkUpdates());
-    } catch (e) {
-      setCheck(null);
-      setError(errorMessage(e));
-    } finally {
-      setChecking(false);
-    }
-  };
-
-  const update = async () => {
-    setError(null);
-    useUpdateFlow.setState({ log: [], phase: "running", error: null });
-    try {
-      await api.startUpdate();
-    } catch (e) {
-      useUpdateFlow.setState({ phase: "failed", error: errorMessage(e) });
-    }
-  };
-
-  const cancel = async () => {
-    try {
-      await api.cancelUpdate();
-    } catch (e) {
-      setError(errorMessage(e));
-    }
-  };
-
-  const restart = async () => {
-    if (!(await leaveAllDrafts())) return;
-    if (!(await saveAll())) {
-      setError("Some notes couldn't be saved. Resolve them first, then restart.");
-      return;
-    }
-    try {
-      await api.finishUpdate();
-    } catch (e) {
-      setError(errorMessage(e));
-    }
-  };
-
-  if (!status) return error ? <p className="error-text">{error}</p> : <p className="settings-note">Loading…</p>;
-  const dev = status.app_path === null;
-  const canUpdate = !dev && flow.phase !== "running";
-  const hasNews = !!check?.update_available;
-
-  return (
-    <>
-      <Row
-        label={status.commit ? `Mosaic ${status.version} (${status.commit})` : `Mosaic ${status.version}`}
-        hint={status.commit ? undefined : "Build commit unknown"}
-      >
-        {dev ? <span className="badge">Development build</span> : <span className="badge">{status.app_path}</span>}
-      </Row>
-      {status.last_install_error && (
-        <p className="warn-text">The last update was downloaded but not installed: {status.last_install_error}</p>
-      )}
-      <div className="update-box">
-        <p className="settings-note">
-          Mosaic downloads signed universal packages from GitHub Releases. Checks and downloads use HTTPS only when you
-          click; there is no telemetry.
-        </p>
-        {dev && (
-          <p className="warn-text">
-            This is a development build (pnpm dev); it can't replace itself. Use scripts/install.sh.
-          </p>
-        )}
-        <div className="button-row">
-          <button className="secondary" disabled={checking || flow.phase === "running"} onClick={() => void runCheck()}>
-            <RefreshCw size={14} className={checking ? "spin" : ""} /> {checking ? "Checking…" : "Check for updates"}
-          </button>
-          {flow.phase === "running" && (
-            <button
-              className="secondary"
-              title="Stop the download; the installed app stays as it is"
-              onClick={() => void cancel()}
-            >
-              <X size={14} /> Cancel
-            </button>
-          )}
-          {flow.phase !== "built" && flow.phase !== "running" && (
-            <button
-              className={hasNews ? "primary" : "secondary"}
-              disabled={!canUpdate || !hasNews}
-              onClick={() => void update()}
-            >
-              <Download size={14} /> Download update
-            </button>
-          )}
-          {flow.phase === "built" && (
-            <button className="primary" onClick={() => void restart()}>
-              Restart to finish
-            </button>
-          )}
-        </div>
-
-        {error && <p className="error-text">{error}</p>}
-
-        {check && (
-          <div className="update-result">
-            {check.releases.length > 0 && (
-              <>
-                <p>
-                  Mosaic {check.releases[0].version} is available (you have {status.version}).
-                </p>
-                {check.releases.map((r) => (
-                  <div key={r.version} className="release">
-                    <p className="release-head">
-                      {r.version} {r.date && <span className="settings-note">{r.date}</span>}
-                    </p>
-                    <ul>
-                      {r.notes.map((n, i) => (
-                        <li
-                          key={i}
-                          // biome-ignore lint/security/noDangerouslySetInnerHtml: renderInlineMarkdown output, sanitized by DOMPurify
-                          dangerouslySetInnerHTML={{ __html: renderInlineMarkdown(n) }}
-                          onClick={(e) => {
-                            const link = (e.target as HTMLElement).closest("a");
-                            if (link) {
-                              e.preventDefault();
-                              void openExternal(link.href);
-                            }
-                          }}
-                        />
-                      ))}
-                    </ul>
-                  </div>
-                ))}
-              </>
-            )}
-            <p>
-              {hasNews
-                ? "The package is verified before installation. Your vault and settings are preserved."
-                : check.latest_version
-                  ? "You're up to date with downloadable releases."
-                  : "No complete signed downloadable release is available yet."}
-            </p>
-          </div>
-        )}
-
-        {flow.phase === "running" && (
-          <p className="settings-note">Downloading and verifying… You can keep working meanwhile.</p>
-        )}
-        {flow.phase === "built" && (
-          <p className="ok-text">
-            The new version is ready. Restart to switch to it; unsaved notes are saved first. The previous app is
-            retained for recovery.
-          </p>
-        )}
-        <p className="settings-note">
-          Mosaic is ad-hoc signed, not Apple-notarized. macOS may ask you to approve it in Privacy & Security. Mosaic
-          never disables Gatekeeper or removes quarantine. Restart connected MCP clients after updating.
-        </p>
-        {flow.phase === "failed" && flow.error && <p className="error-text">{flow.error}</p>}
-        {flow.phase === "cancelled" && (
-          <p className="settings-note">Update cancelled. The installed app wasn't changed.</p>
-        )}
-        {flow.log.length > 0 && (
-          <details className="update-log" open={flow.phase !== "built"}>
-            <summary>Update log</summary>
-            <pre ref={logRef}>{flow.log.join("\n")}</pre>
-          </details>
-        )}
-      </div>
-    </>
-  );
-}

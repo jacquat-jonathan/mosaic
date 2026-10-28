@@ -6403,6 +6403,7 @@ pre.template-preview {
   background: var(--bg-side);
   border: 1px solid var(--border);
   z-index: 3;
+  opacity: 0;
 }
 .table-axis {
   width: 20px;
@@ -6420,7 +6421,6 @@ pre.template-preview {
   width: 14px;
   height: 14px;
   font-size: 12px;
-  opacity: 0;
 }
 .insert-row {
   left: 17px;
@@ -6428,8 +6428,12 @@ pre.template-preview {
 .insert-column {
   top: 18px;
 }
-.cm-table-wrap:hover .table-insert,
-.cm-table-wrap:focus-within .table-insert {
+.table-axis:hover,
+.table-axis:focus-visible,
+.table-axis:active,
+.table-insert:hover,
+.table-insert:focus-visible,
+.table-insert:active {
   opacity: 1;
 }
 .table-insert:focus-visible,
@@ -6437,6 +6441,12 @@ pre.template-preview {
   opacity: 1;
   background: var(--accent);
   color: #fff;
+}
+@media (hover: none) {
+  .table-axis,
+  .table-insert {
+    opacity: 1;
+  }
 }
 .cm-table-wrap .table-selected {
   background: color-mix(in srgb, var(--accent) 14%, var(--bg));

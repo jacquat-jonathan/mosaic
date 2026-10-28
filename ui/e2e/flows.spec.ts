@@ -640,6 +640,47 @@ test("tables keep rich cells, save while typing, reorder with handles, and offer
   await expect(table.locator("td strong,td b")).toContainText("Apple");
 });
 
+test("columns move onto adjacent handles and resize beyond the pane with local scrolling", async ({ page }) => {
+  await openVault(page);
+  await page.evaluate(async () => {
+    const m = (window as unknown as { __mosaic: { mockInvoke(c: string, a: object): Promise<unknown> } }).__mosaic;
+    await m.mockInvoke("create_file", {
+      path: "Wide table.md",
+      content: "# Wide table\n\n| Name | Qty | Owner |\n| --- | --- | --- |\n| Apple | 3 | Sam |\n\nAfter.\n",
+      root: null,
+    });
+  });
+  await openMockPath(page, "Wide table.md");
+  const table = page.locator(".cm-table-wrap");
+  await table
+    .getByRole("button", { name: "Column 1 options", exact: true })
+    .dragTo(table.getByRole("button", { name: "Column 2 options", exact: true }));
+  await expect(table.locator("th")).toHaveText(["Qty", "Name", "Owner"]);
+  await expect(table.locator("td")).toHaveText(["3", "Apple", "Sam"]);
+  const resize = table.getByRole("separator", { name: "Resize column 2", exact: true });
+  const before = Number(await resize.getAttribute("aria-valuenow"));
+  // Keyboard growth must remain possible after the table fills its pane.
+  await resize.focus();
+  for (let i = 0; i < 30; i++) await resize.press("Shift+ArrowRight");
+  expect(Number(await resize.getAttribute("aria-valuenow"))).toBeGreaterThan(before + 1000);
+  const scroll = table.locator(".cm-table-scroll");
+  await expect.poll(() => scroll.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeGreaterThan(400);
+  await scroll.evaluate((el) => {
+    el.scrollLeft = el.scrollWidth;
+  });
+  await expect(table.getByRole("button", { name: "Column 3 options", exact: true })).toBeInViewport();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await expect.poll(() => readMockFile(page, "Wide table.md")).toMatch(/\| Qty\s*\| Name\s*\| Owner\s*\|/);
+  // A cell's context menu stays short; structural commands live one level down.
+  await table.locator("td").last().click({ button: "right" });
+  const menu = page.getByRole("menu");
+  await expect(menu.getByRole("menuitem")).toHaveCount(5);
+  expect((await menu.boundingBox())!.height).toBeLessThan(230);
+  await menu.getByRole("menuitem", { name: /^Column/ }).hover();
+  await page.getByRole("menuitem", { name: "Move column left", exact: true }).click();
+  await expect(table.locator("th")).toHaveText(["Qty", "Owner", "Name"]);
+});
+
 test("table drag handles move rows and columns, rectangle selection clears cells, and paste stays plain", async ({
   page,
 }) => {

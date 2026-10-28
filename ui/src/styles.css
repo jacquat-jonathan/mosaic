@@ -6235,6 +6235,10 @@ pre.template-preview {
 .cm-table-wrap {
   padding-top: 8px;
 }
+.cm-table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+}
 .table-axis,
 .table-insert {
   position: absolute;

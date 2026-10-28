@@ -5,7 +5,7 @@ import { undo, redo, isolateHistory } from "@codemirror/commands";
 import { useVault } from "../state/vault";
 import { useUi, type MenuItem } from "../state/ui";
 import { editorContext } from "./context";
-import { fitTableWidths, resizeTableColumn, loadTableWidths, saveTableWidths, tableWidthKey } from "./tableWidths";
+import { MIN_COLUMN_WIDTH, resizeTableColumn, loadTableWidths, saveTableWidths, tableWidthKey } from "./tableWidths";
 import {
   deleteColumn,
   deleteRow,
@@ -187,7 +187,10 @@ export class TableWidget extends WidgetType {
     const inner = document.createElement("div");
     inner.className = "cm-table-inner";
     inner.append(table);
-    wrap.append(toolbar, inner);
+    const scroll = document.createElement("div");
+    scroll.className = "cm-table-scroll";
+    scroll.append(inner);
+    wrap.append(toolbar, scroll);
 
     const from = () => view.posAtDOM(wrap);
     let widths: number[] | null = null;
@@ -198,7 +201,6 @@ export class TableWidget extends WidgetType {
     const handles: HTMLButtonElement[] = [];
     const axes: { el: HTMLButtonElement; kind: "row" | "column" | "insert-row" | "insert-column"; index: number }[] =
       [];
-    const availableWidth = () => Math.max(1, wrap.clientWidth - 52);
     const positionHandles = () => {
       const bounds = inner.getBoundingClientRect();
       cellEls[0].forEach((cell, i) => {
@@ -226,7 +228,7 @@ export class TableWidget extends WidgetType {
     };
     const applyWidths = () => {
       if (!widths) return;
-      const current = fitTableWidths(widths, availableWidth());
+      const current = widths;
       table.classList.add("resized");
       table.style.width = `${current.reduce((a, b) => a + b, 0)}px`;
       [...colgroup.children].forEach((col, i) => {
@@ -234,27 +236,17 @@ export class TableWidget extends WidgetType {
       });
       handles.forEach((handle, i) => {
         handle.setAttribute("aria-valuenow", String(Math.round(current[i])));
-        handle.setAttribute(
-          "aria-valuemin",
-          String(Math.round(resizeTableColumn(current, i, -Number.MAX_VALUE, availableWidth())[i])),
-        );
-        handle.setAttribute(
-          "aria-valuemax",
-          String(Math.round(resizeTableColumn(current, i, Number.MAX_VALUE, availableWidth())[i])),
-        );
+        handle.setAttribute("aria-valuetext", `${Math.round(current[i])} pixels`);
       });
       positionHandles();
     };
     const naturalWidths = () => {
       table.classList.remove("resized");
-      table.style.width = "";
+      table.style.width = "max-content";
       [...colgroup.children].forEach((col) => {
         (col as HTMLElement).style.width = "";
       });
-      return fitTableWidths(
-        cellEls[0].map((cell) => cell.getBoundingClientRect().width),
-        availableWidth(),
-      );
+      return cellEls[0].map((cell) => Math.max(MIN_COLUMN_WIDTH, cell.getBoundingClientRect().width));
     };
     const resetWidths = () => {
       widths = naturalWidths();
@@ -271,7 +263,7 @@ export class TableWidget extends WidgetType {
         handle.setAttribute("role", "separator");
         handle.setAttribute("aria-orientation", "vertical");
         handle.setAttribute("aria-valuemin", "64");
-        handle.setAttribute("aria-valuemax", "1200");
+        handle.setAttribute("aria-valuemax", String(Number.MAX_SAFE_INTEGER));
         let startX = 0,
           startWidths: number[] = [],
           dragging = false;
@@ -280,13 +272,13 @@ export class TableWidget extends WidgetType {
           e.preventDefault();
           e.stopPropagation();
           startX = e.clientX;
-          startWidths = fitTableWidths(currentWidths(), availableWidth());
+          startWidths = [...currentWidths()];
           dragging = true;
           handle.setPointerCapture(e.pointerId);
         });
         handle.addEventListener("pointermove", (e) => {
           if (!dragging) return;
-          widths = resizeTableColumn(startWidths, col, e.clientX - startX, availableWidth());
+          widths = resizeTableColumn(startWidths, col, e.clientX - startX);
           applyWidths();
         });
         const finish = () => {
@@ -307,12 +299,7 @@ export class TableWidget extends WidgetType {
             resetWidths();
             return;
           }
-          widths = resizeTableColumn(
-            currentWidths(),
-            col,
-            (e.key === "ArrowRight" ? 1 : -1) * (e.shiftKey ? 40 : 10),
-            availableWidth(),
-          );
+          widths = resizeTableColumn(currentWidths(), col, (e.key === "ArrowRight" ? 1 : -1) * (e.shiftKey ? 40 : 10));
           saveTableWidths(widthKey, widths);
           applyWidths();
         });
@@ -504,10 +491,10 @@ export class TableWidget extends WidgetType {
       }
       if (!next || !wrap.contains(next)) commit(typed());
     });
-    const menuFor = (row: number, col: number): MenuItem[] => {
+    const menuFor = (row: number, col: number, axis?: "row" | "column"): MenuItem[] => {
       const t = () => typed();
       const at = (focus: { row: number; col: number }) => focus;
-      return [
+      const rows: MenuItem[] = [
         { label: "Insert row above", disabled: row < 0, action: () => commit(insertRow(t(), row), at({ row, col })) },
         { label: "Insert row below", action: () => commit(insertRow(t(), row + 1), at({ row: row + 1, col })) },
         {
@@ -522,7 +509,8 @@ export class TableWidget extends WidgetType {
           disabled: row < 0 || row >= model.rows.length - 1,
           action: () => reorder("row", row, row + 2),
         },
-        { label: "", separator: true },
+      ];
+      const columns: MenuItem[] = [
         {
           label: "Insert column left",
           action: () => {
@@ -553,15 +541,23 @@ export class TableWidget extends WidgetType {
           disabled: col >= model.header.length - 1,
           action: () => reorder("column", col, col + 2),
         },
-        {
-          label: "Align column",
-          children: (["left", "center", "right"] as const).map((a) => ({
-            label: a[0].toUpperCase() + a.slice(1),
-            checked: (model.align[col] ?? "left") === a,
-            action: () => commit(setAlign(t(), col, a === "left" ? null : a)),
-          })),
-        },
-        { label: "Reset column widths", action: resetWidths },
+      ];
+      const alignment: MenuItem = {
+        label: "Alignment",
+        children: (["left", "center", "right"] as const).map((a) => ({
+          label: a[0].toUpperCase() + a.slice(1),
+          checked: (model.align[col] ?? "left") === a,
+          action: () => commit(setAlign(t(), col, a === "left" ? null : a)),
+        })),
+      };
+      if (axis === "row") return rows;
+      if (axis === "column") return [...columns, alignment, { label: "Reset column widths", action: resetWidths }];
+      return [
+        { label: "Row", children: rows },
+        { label: "Column", children: columns },
+        alignment,
+        { label: "Reset widths", action: resetWidths },
+        { label: "", separator: true },
         {
           label: "Edit as Markdown",
           action: () => {
@@ -615,15 +611,7 @@ export class TableWidget extends WidgetType {
           kind === "row" ? row : model.rows.length - 1,
           kind === "row" ? model.header.length - 1 : col,
         );
-        useUi.getState().showMenu(
-          rect.left,
-          rect.bottom,
-          menuFor(row, col).filter(
-            (item) =>
-              !item.separator &&
-              (kind === "row" ? item.label.toLowerCase().includes("row") : item.label.toLowerCase().includes("column")),
-          ),
-        );
+        useUi.getState().showMenu(rect.left, rect.bottom, menuFor(row, col, kind));
       });
       button.addEventListener("keydown", (event) => {
         const previous = kind === "row" ? "ArrowUp" : "ArrowLeft",
@@ -674,9 +662,20 @@ export class TableWidget extends WidgetType {
       for (let i = 0; i <= model.rows.length; i++) insertButton("row", i);
       for (let i = 0; i <= model.header.length; i++) insertButton("column", i);
       const dropTarget = (event: DragEvent) => {
-        const cell = (event.target as HTMLElement).closest<HTMLElement>("td,th");
+        if (!dragging) return null;
         const axis = axes.find((a) => a.el === (event.target as HTMLElement).closest(".table-axis"));
-        if (!dragging || (!cell && !axis) || (axis && axis.kind !== dragging.kind)) return null;
+        if (axis && axis.kind !== dragging.kind) return null;
+        // Resolve the table's edge/resize/insertion overlays by coordinates too. They must not
+        // create dead drop zones along the very boundaries used to move columns.
+        const cell =
+          (event.target as HTMLElement).closest<HTMLElement>("td,th") ??
+          (dragging.kind === "column" ? cellEls[0] : cellEls.slice(1).map((cells) => cells[0])).find((el) => {
+            const rect = el.getBoundingClientRect();
+            return dragging!.kind === "column"
+              ? event.clientX >= rect.left && event.clientX <= rect.right
+              : event.clientY >= rect.top && event.clientY <= rect.bottom;
+          });
+        if (!cell && !axis) return null;
         const pos = cell
           ? posOf(cell)
           : {
@@ -686,8 +685,11 @@ export class TableWidget extends WidgetType {
         if (dragging.kind === "row" && pos.row < 0) return null;
         const target = cell ?? cellAt(pos.row, pos.col)!;
         const rect = target.getBoundingClientRect();
-        const after =
-          dragging.kind === "row"
+        // A handle represents the whole row/column: dropping onto the next handle moves past it,
+        // rather than unpredictably treating the handle's midpoint as an insertion boundary.
+        const after = axis
+          ? axis.index > dragging.index
+          : dragging.kind === "row"
             ? event.clientY > rect.top + rect.height / 2
             : event.clientX > rect.left + rect.width / 2;
         return {
@@ -787,6 +789,7 @@ export class TableWidget extends WidgetType {
         return;
       }
       const { row, col } = posOf(cell);
+      updateToolbar(row, col);
       const next = pasteCells(typed(), row, col, text);
       while (widths && widths.length < next.header.length) resizeColumns(widths.length, true);
       commit(next, { row, col });
@@ -797,6 +800,7 @@ export class TableWidget extends WidgetType {
       if (!cell) return;
       e.preventDefault();
       const { row, col } = posOf(cell);
+      updateToolbar(row, col);
       useUi.getState().showMenu(e.clientX, e.clientY, menuFor(row, col));
     });
     // Table chrome never switches the note to source editing.

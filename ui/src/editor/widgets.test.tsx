@@ -182,7 +182,11 @@ test("table widget edits cells, opens its menu and exposes add controls", async 
   cell.textContent = "changed";
   cell.dispatchEvent(new InputEvent("input", { bubbles: true }));
   cell.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 5, clientY: 6 }));
-  expect(useUi.getState().menu?.items.some((item) => item.label === "Insert row below")).toBe(true);
+  const menu = useUi.getState().menu!.items;
+  expect(menu.filter((item) => !item.separator)).toHaveLength(5);
+  expect(menu.find((item) => item.label === "Row")?.children?.some((item) => item.label === "Insert row below")).toBe(
+    true,
+  );
   cell.dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget: document.body }));
   expect(view.dispatch).toHaveBeenCalled();
   widget.destroy(table);

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { api } from "../ipc/api";
@@ -38,11 +38,10 @@ afterEach(() => {
 test("bookmark helpers and panel cover files, folders, searches, queries and missing targets", async () => {
   expect(reorder(["a", "b", "c"], 0, 2)).toEqual(["b", "a", "c"]);
   expect(reorder(["a", "b", "c"], 2, 0)).toEqual(["c", "a", "b"]);
-  const setBookmarks = vi.fn(async () => {});
+  const setBookmarks = vi.spyOn(api, "setBookmarks").mockResolvedValue(null);
   const toggleBookmark = vi.fn(async () => {});
   useVault.setState({
     bookmarks: ["Folder", "Folder/Plan.md", "Missing.md", "search:release", "query:task:open"],
-    setBookmarks,
     toggleBookmark,
   });
   const open = vi.spyOn(useWorkspace.getState(), "open").mockResolvedValue();
@@ -50,8 +49,10 @@ test("bookmark helpers and panel cover files, folders, searches, queries and mis
 
   fireEvent.click(screen.getByTitle("Folder/Plan.md"));
   expect(open).toHaveBeenCalledWith("Folder/Plan.md");
+  await waitFor(() => expect(screen.getByRole("group", { name: "Bookmarks" }).getAttribute("aria-busy")).toBe("false"));
   fireEvent.click(screen.getByTitle("Folder/Plan.md"), { altKey: true });
   expect(open).toHaveBeenCalledWith("Folder/Plan.md", { newTab: true });
+  await waitFor(() => expect(screen.getByRole("group", { name: "Bookmarks" }).getAttribute("aria-busy")).toBe("false"));
   fireEvent.contextMenu(screen.getByTitle("Folder/Plan.md"), { clientX: 4, clientY: 8 });
   expect(useUi.getState().menu?.items.some((item) => item.label === "Open to the right")).toBe(true);
   fireEvent.contextMenu(screen.getByTitle(/Missing.md/));
@@ -60,6 +61,7 @@ test("bookmark helpers and panel cover files, folders, searches, queries and mis
   expect(useUi.getState().searchQuery).toBe("release");
   fireEvent.click(screen.getByTitle("Query: task:open"));
   expect(open).toHaveBeenCalledWith("mosaic:query/task%3Aopen");
+  await waitFor(() => expect(screen.getByRole("group", { name: "Bookmarks" }).getAttribute("aria-busy")).toBe("false"));
 
   const transfer = {
     data: new Map<string, string>(),
@@ -82,11 +84,53 @@ test("bookmark helpers and panel cover files, folders, searches, queries and mis
 test("bookmark panel saves a validated structured query", async () => {
   vi.spyOn(useUi.getState(), "askText").mockResolvedValue("  task:open  ");
   vi.spyOn(api, "query").mockResolvedValue({ columns: [], rows: [], total: 0 });
-  const setBookmarks = vi.fn(async () => {});
-  useVault.setState({ bookmarks: [], setBookmarks });
+  const setBookmarks = vi.spyOn(api, "setBookmarks").mockResolvedValue(null);
+  useVault.setState({ bookmarks: [] });
   render(<BookmarksPanel />);
   await userEvent.click(screen.getByRole("button", { name: /Save query/ }));
   await waitFor(() => expect(setBookmarks).toHaveBeenCalledWith(["query:task:open"]));
+});
+
+test("bookmark writes serialize, retain saved order on failure and ignore foreign drops", async () => {
+  let reject!: (reason: Error) => void;
+  const write = vi.spyOn(api, "setBookmarks").mockImplementation(
+    () =>
+      new Promise((_resolve, fail) => {
+        reject = fail;
+      }),
+  );
+  useVault.setState({ bookmarks: ["Ideas.md", "Folder/Plan.md"] });
+  render(<BookmarksPanel />);
+  const ideas = screen.getByTitle("Ideas.md");
+  fireEvent.keyDown(ideas, { key: "ArrowDown", altKey: true });
+  expect(write).toHaveBeenCalledWith(["Folder/Plan.md", "Ideas.md"]);
+  fireEvent.keyDown(ideas, { key: "ArrowDown", altKey: true });
+  expect(write).toHaveBeenCalledTimes(1);
+  expect(useVault.getState().bookmarks).toEqual(["Ideas.md", "Folder/Plan.md"]);
+  await act(async () => reject(new Error("Bookmark write failed")));
+  expect(screen.getByRole("alert").textContent).toContain("Bookmark write failed");
+  fireEvent.drop(ideas, { dataTransfer: { types: ["text/plain"], getData: () => "0" } });
+  expect(write).toHaveBeenCalledTimes(1);
+});
+
+test("a delayed saved-query choice cannot change a different vault", async () => {
+  let resolve!: (value: string | null) => void;
+  vi.spyOn(useUi.getState(), "askText").mockImplementation(
+    () =>
+      new Promise((done) => {
+        resolve = done;
+      }),
+  );
+  const query = vi.spyOn(api, "query").mockResolvedValue({ columns: [], rows: [], total: 0 });
+  const write = vi.spyOn(api, "setBookmarks").mockResolvedValue(null);
+  useVault.setState({ vault: { root: "/first", name: "First" }, bookmarks: [] });
+  const { unmount } = render(<BookmarksPanel />);
+  fireEvent.click(screen.getByRole("button", { name: /Save query/ }));
+  unmount();
+  useVault.setState({ vault: { root: "/second", name: "Second" } });
+  await act(async () => resolve("task:open"));
+  expect(query).not.toHaveBeenCalled();
+  expect(write).not.toHaveBeenCalled();
 });
 
 test("picker filters, keyboard-selects, reports no matches and closes", async () => {

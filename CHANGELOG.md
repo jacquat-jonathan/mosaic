@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Bookmarks:** shared rows and actions add keyboard opening/reordering, visible missing-file states, focus return, and inline save errors while preserving saved searches, queries, and drag/drop.
+
 - **Files:** shared toolbar controls, clearer file tree selection and typography, and a consistent inline rename field preserve file actions, folder colors, and drag/drop.
 
 - **Sidebar navigation:** shared vault, area, and chat-section controls with clearer selected states and focus return. Side panels resize with the keyboard, account for interface scale while dragging, and stay within narrow windows.

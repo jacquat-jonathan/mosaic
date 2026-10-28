@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { Bot, CalendarClock, Inbox, ListChecks, MessagesSquare, Plug, Workflow } from "lucide-react";
+import { useVault } from "../state/vault";
 import { useUi, type Destination } from "../state/ui";
 import { ChatList } from "./ChatHistory";
 import { useWorkspace } from "../state/workspace";
@@ -17,6 +18,7 @@ export { ChatList } from "./ChatHistory";
 
 export function AreaSidebar({ destination }: { destination: Destination }) {
   const tab = useUi((s) => s.sidebarTab);
+  const root = useVault((s) => s.vault?.root);
   const open = useUi.getState().openView;
   const active = useWorkspace((state) => state.panes.find((pane) => pane.id === state.focused)?.active);
   if (destination === "find")
@@ -43,7 +45,7 @@ export function AreaSidebar({ destination }: { destination: Destination }) {
             Open search in workspace
           </Button>
         </DesignSystemScope>
-        {tab === "tags" ? <TagsPanel /> : tab === "bookmarks" ? <BookmarksPanel /> : <SearchPanel />}
+        {tab === "tags" ? <TagsPanel /> : tab === "bookmarks" ? <BookmarksPanel key={root} /> : <SearchPanel />}
       </>
     );
   if (destination === "plan")

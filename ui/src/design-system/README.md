@@ -449,3 +449,9 @@ its custom multi-select tree, file-kind icons, selection, drops, and inline rena
 Rows use 14px text and 30px height (28px Compact); folder colors and note typography remain
 independent. Tree keyboard selection, menus, imports, drag scrolling, and file actions retain
 their behavior. The tree and toolbar own sibling theme scopes; Find panels remain separate.
+
+`views/BookmarksPanel.tsx` uses shared list actions, notices, and neutral current-page states.
+Each bookmark has a native open button and an accessible action menu; missing targets retain
+their removal action. Alt+Arrow Up/Down and menu commands complement drag reordering. Writes
+serialize and update the list after acknowledgement; cancelled query prompts restore focus,
+failed writes retain saved order, and stale query choices cannot change a different vault.

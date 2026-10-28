@@ -195,28 +195,6 @@ button.secondary {
   margin-left: auto;
   color: var(--faint);
 }
-.tree-row.missing {
-  color: var(--faint);
-  text-decoration: line-through;
-}
-.tree-row.drop-before,
-.bookmark-end.drop-before {
-  box-shadow: inset 0 2px 0 var(--accent);
-}
-.bookmark-dir {
-  margin-left: auto;
-  padding-left: 8px;
-  font-size: 11.5px;
-  color: var(--faint);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  flex: 0 1 auto;
-  min-width: 0;
-}
-.bookmark-end {
-  height: 24px;
-}
 .tree-icon {
   width: 16px;
   display: inline-flex;

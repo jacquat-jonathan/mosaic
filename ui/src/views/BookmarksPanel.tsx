@@ -1,14 +1,17 @@
-import { useState, type DragEvent } from "react";
-import { Folder, ListFilter, Plus, Search } from "lucide-react";
+import { useEffect, useRef, useState, type DragEvent } from "react";
+import { Folder, ListFilter, MoreHorizontal, Plus, Search } from "lucide-react";
 import { baseName, parentOf, useVault } from "../state/vault";
 import { useWorkspace } from "../state/workspace";
-import { useUi } from "../state/ui";
+import { useUi, type MenuItem } from "../state/ui";
 import { kindOf } from "../ipc/kinds";
 import { displayName, kindIcon } from "./FileTree";
 import { openToTheRight, revealInTree } from "../actions";
 import { viewPath } from "./specialTabs";
 import { api } from "../ipc/api";
 import { errorMessage } from "../ipc/types";
+import { Button, IconButton, Notice } from "../design-system/components";
+import { DesignSystemScope } from "./DesignSystemScope";
+import "./bookmarksPanel.css";
 
 const BOOKMARK_DRAG = "application/x-mosaic-bookmark";
 
@@ -23,222 +26,230 @@ export function reorder<T>(list: T[], from: number, to: number): T[] {
 export function BookmarksPanel() {
   const bookmarks = useVault((s) => s.bookmarks);
   const entries = useVault((s) => s.entries);
-  const byPath = new Map(entries.map((e) => [e.path, e]));
+  const root = useVault((s) => s.vault?.root);
+  const active = useWorkspace((s) => s.activePath());
   const [dropAt, setDropAt] = useState<number | null>(null);
-
-  const saveQuery = async () => {
-    const query = await useUi
-      .getState()
-      .askText({ title: "Save a query", value: "", placeholder: "tag:project status=active OR priority>2" });
-    if (!query?.trim()) return;
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const lock = useRef(false);
+  const mounted = useRef(true);
+  const saveButton = useRef<HTMLButtonElement>(null);
+  const opener = useRef<HTMLButtonElement | null>(null);
+  const menu = useUi((s) => s.menu),
+    prompt = useUi((s) => s.prompt);
+  const current = () => mounted.current && useVault.getState().vault?.root === root;
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  useEffect(() => {
+    if (!busy && !menu && !prompt && opener.current) {
+      (opener.current.isConnected ? opener.current : saveButton.current)?.focus({ preventScroll: true });
+      opener.current = null;
+    }
+  }, [busy, menu, prompt]);
+  const act = async (work: () => Promise<unknown>) => {
+    if (lock.current || !current()) return;
+    lock.current = true;
+    setBusy(true);
+    setProblem(null);
     try {
-      const value = query.trim();
-      await api.query(value);
-      const vault = useVault.getState();
-      const key = `query:${value}`;
-      if (!vault.bookmarks.includes(key)) await vault.setBookmarks([...vault.bookmarks, key]);
-    } catch (e) {
-      useVault.getState().setError(errorMessage(e));
+      await work();
+    } catch (cause) {
+      if (current()) setProblem(errorMessage(cause));
+    } finally {
+      lock.current = false;
+      if (current()) setBusy(false);
     }
   };
-
-  const onDrop = (ev: DragEvent, index: number) => {
-    const from = Number(ev.dataTransfer.getData(BOOKMARK_DRAG));
-    setDropAt(null);
-    if (Number.isNaN(from)) return;
-    ev.preventDefault();
-    void useVault.getState().setBookmarks(reorder(bookmarks, from, index));
+  const persist = async (paths: string[]) => {
+    if (!current()) return;
+    await api.setBookmarks(paths);
+    if (current()) useVault.setState({ bookmarks: paths });
   };
-
+  const saveQuery = () =>
+    act(async () => {
+      const query = await useUi
+        .getState()
+        .askText({ title: "Save a query", value: "", placeholder: "tag:project status=active OR priority>2" });
+      if (!query?.trim() || !current()) return;
+      const value = query.trim();
+      await api.query(value);
+      if (!current()) return;
+      const vault = useVault.getState(),
+        key = `query:${value}`;
+      if (!vault.bookmarks.includes(key)) await persist([...vault.bookmarks, key]);
+    });
+  const move = (from: number, to: number) =>
+    act(async () => {
+      const list = useVault.getState().bookmarks;
+      if (!Number.isInteger(from) || from < 0 || from >= list.length || to < 0 || to > list.length) return;
+      await persist(reorder(list, from, to));
+    });
+  const onDrop = (event: DragEvent, index: number) => {
+    setDropAt(null);
+    if (!event.dataTransfer.types.includes(BOOKMARK_DRAG)) return;
+    event.preventDefault();
+    const value = event.dataTransfer.getData(BOOKMARK_DRAG);
+    if (value !== "") void move(Number(value), index);
+  };
+  const dragOver = (event: DragEvent, index: number) => {
+    if (busy || !event.dataTransfer.types.includes(BOOKMARK_DRAG)) return;
+    event.preventDefault();
+    setDropAt(index);
+  };
   return (
-    <div className="tree bookmarks" role="list">
-      <button className="tree-row" onClick={() => void saveQuery()}>
-        <span className="tree-icon">
-          <Plus size={15} />
-        </span>
-        <span className="tree-name">Save query…</span>
-      </button>
+    <DesignSystemScope className="bookmarks-panel" role="group" aria-label="Bookmarks" aria-busy={busy}>
+      <Button
+        variant="secondary"
+        ref={saveButton}
+        disabled={busy}
+        onClick={(event) => {
+          opener.current = event.currentTarget;
+          void saveQuery();
+        }}
+      >
+        <Plus aria-hidden="true" /> Save query…
+      </Button>
+      {problem && (
+        <Notice tone="error">
+          {problem}
+          <Button onClick={() => setProblem(null)}>Dismiss</Button>
+        </Notice>
+      )}
       {bookmarks.length === 0 && (
-        <p className="tree-empty">
+        <p className="mds-hint">
           No bookmarks yet. Right-click a file or folder, star a search, or save a structured query.
         </p>
       )}
-      {bookmarks.map((path, i) => {
-        if (path.startsWith("search:"))
-          return (
-            <SearchBookmark key={path} entry={path} index={i} dropAt={dropAt} setDropAt={setDropAt} onDrop={onDrop} />
-          );
-        if (path.startsWith("query:"))
-          return (
-            <QueryBookmark key={path} entry={path} index={i} dropAt={dropAt} setDropAt={setDropAt} onDrop={onDrop} />
-          );
-        const entry = byPath.get(path);
-        const missing = !entry;
-        const isDir = entry?.is_dir ?? false;
-        const kind = isDir ? null : kindOf(path);
-        const open = () => {
-          if (missing) return;
-          if (isDir) revealInTree(path);
-          else void useWorkspace.getState().open(path);
-        };
-        return (
-          <div
-            key={path}
-            role="listitem"
-            className={`tree-row ${missing ? "missing" : ""} ${dropAt === i ? "drop-before" : ""}`}
-            title={missing ? `${path} (missing: moved outside Mosaic or deleted)` : path}
-            draggable
-            onDragStart={(ev) => {
-              ev.dataTransfer.setData(BOOKMARK_DRAG, String(i));
-              ev.dataTransfer.effectAllowed = "move";
-            }}
-            onDragOver={(ev) => {
-              if (!ev.dataTransfer.types.includes(BOOKMARK_DRAG)) return;
-              ev.preventDefault();
-              setDropAt(i);
-            }}
-            onDragLeave={() => setDropAt((d) => (d === i ? null : d))}
-            onDrop={(ev) => onDrop(ev, i)}
-            onClick={(ev) =>
-              ev.altKey && !isDir && !missing ? void useWorkspace.getState().open(path, { newTab: true }) : open()
-            }
-            onContextMenu={(ev) => {
-              ev.preventDefault();
-              useUi.getState().showMenu(ev.clientX, ev.clientY, [
-                ...(missing
+      <div role="list" aria-label="Saved bookmarks" className="bookmarks-list">
+        {bookmarks.map((path, index) => {
+          const search = path.startsWith("search:"),
+            query = path.startsWith("query:");
+          const entry = entries.find((item) => item.path === path);
+          const missing = !search && !query && !entry,
+            isDir = entry?.is_dir ?? false;
+          const kind = isDir ? null : kindOf(path);
+          const label = search
+            ? path.slice(7)
+            : query
+              ? path.slice(6)
+              : isDir
+                ? baseName(path)
+                : displayName({ name: baseName(path), kind });
+          const title = search
+            ? `Search: ${label}`
+            : query
+              ? `Query: ${label}`
+              : missing
+                ? `${path} (missing: moved outside Mosaic or deleted)`
+                : path;
+          const open = (newTab = false) => {
+            if (missing) return;
+            if (search) useUi.getState().showSearch(label);
+            else if (query) void act(() => useWorkspace.getState().open(viewPath("query", label)));
+            else if (isDir) revealInTree(path);
+            else
+              void act(() =>
+                newTab ? useWorkspace.getState().open(path, { newTab: true }) : useWorkspace.getState().open(path),
+              );
+          };
+          const items = (): MenuItem[] => [
+            ...(search
+              ? [{ label: "Run search", action: () => open() }]
+              : query
+                ? [{ label: "Run query", action: () => open() }]
+                : missing
                   ? []
                   : isDir
                     ? [{ label: "Reveal in file tree", action: () => revealInTree(path) }]
                     : [
-                        {
-                          label: "Open in new tab",
-                          action: () => void useWorkspace.getState().open(path, { newTab: true }),
-                        },
-                        { label: "Open to the right", action: () => void openToTheRight(path) },
+                        { label: "Open in new tab", action: () => open(true) },
+                        { label: "Open to the right", action: () => void act(() => openToTheRight(path)) },
                         { label: "Reveal in file tree", action: () => revealInTree(path) },
                       ]),
-                { label: "", separator: true },
-                { label: "Remove bookmark", action: () => void useVault.getState().toggleBookmark(path) },
-              ]);
-            }}
-          >
-            <span className="tree-icon">{isDir ? <Folder size={15} strokeWidth={1.75} /> : kindIcon(kind)}</span>
-            <span className="tree-name">{isDir ? baseName(path) : displayName({ name: baseName(path), kind })}</span>
-            {parentOf(path) && <span className="bookmark-dir">{parentOf(path)}</span>}
-          </div>
-        );
-      })}
-      <div
-        className={`bookmark-end ${dropAt === bookmarks.length ? "drop-before" : ""}`}
-        onDragOver={(ev) => {
-          if (!ev.dataTransfer.types.includes(BOOKMARK_DRAG)) return;
-          ev.preventDefault();
-          setDropAt(bookmarks.length);
-        }}
-        onDragLeave={() => setDropAt(null)}
-        onDrop={(ev) => onDrop(ev, bookmarks.length)}
-      />
-    </div>
-  );
-}
-
-/** A structured query (`query:<query>`): opens as a workspace result view. */
-function QueryBookmark({
-  entry,
-  index,
-  dropAt,
-  setDropAt,
-  onDrop,
-}: {
-  entry: string;
-  index: number;
-  dropAt: number | null;
-  setDropAt(f: (d: number | null) => number | null): void;
-  onDrop(ev: DragEvent, index: number): void;
-}) {
-  const query = entry.slice("query:".length);
-  const open = () => void useWorkspace.getState().open(viewPath("query", query));
-  return (
-    <div
-      role="listitem"
-      className={`tree-row ${dropAt === index ? "drop-before" : ""}`}
-      title={`Query: ${query}`}
-      draggable
-      onDragStart={(ev) => {
-        ev.dataTransfer.setData(BOOKMARK_DRAG, String(index));
-        ev.dataTransfer.effectAllowed = "move";
-      }}
-      onDragOver={(ev) => {
-        if (!ev.dataTransfer.types.includes(BOOKMARK_DRAG)) return;
-        ev.preventDefault();
-        setDropAt(() => index);
-      }}
-      onDragLeave={() => setDropAt((d) => (d === index ? null : d))}
-      onDrop={(ev) => onDrop(ev, index)}
-      onClick={open}
-      onContextMenu={(ev) => {
-        ev.preventDefault();
-        useUi.getState().showMenu(ev.clientX, ev.clientY, [
-          { label: "Run query", action: open },
-          { label: "", separator: true },
-          { label: "Remove bookmark", action: () => void useVault.getState().toggleBookmark(entry) },
-        ]);
-      }}
-    >
-      <span className="tree-icon">
-        <ListFilter size={15} strokeWidth={1.75} />
-      </span>
-      <span className="tree-name">{query}</span>
-    </div>
-  );
-}
-
-/** A saved search (`search:<query>`): runs it in the Search panel. */
-function SearchBookmark({
-  entry,
-  index,
-  dropAt,
-  setDropAt,
-  onDrop,
-}: {
-  entry: string;
-  index: number;
-  dropAt: number | null;
-  setDropAt(f: (d: number | null) => number | null): void;
-  onDrop(ev: DragEvent, index: number): void;
-}) {
-  const query = entry.slice("search:".length);
-  return (
-    <div
-      role="listitem"
-      className={`tree-row ${dropAt === index ? "drop-before" : ""}`}
-      title={`Search: ${query}`}
-      draggable
-      onDragStart={(ev) => {
-        ev.dataTransfer.setData(BOOKMARK_DRAG, String(index));
-        ev.dataTransfer.effectAllowed = "move";
-      }}
-      onDragOver={(ev) => {
-        if (!ev.dataTransfer.types.includes(BOOKMARK_DRAG)) return;
-        ev.preventDefault();
-        setDropAt(() => index);
-      }}
-      onDragLeave={() => setDropAt((d) => (d === index ? null : d))}
-      onDrop={(ev) => onDrop(ev, index)}
-      onClick={() => useUi.getState().showSearch(query)}
-      onContextMenu={(ev) => {
-        ev.preventDefault();
-        useUi.getState().showMenu(ev.clientX, ev.clientY, [
-          { label: "Run search", action: () => useUi.getState().showSearch(query) },
-          { label: "", separator: true },
-          { label: "Remove bookmark", action: () => void useVault.getState().toggleBookmark(entry) },
-        ]);
-      }}
-    >
-      <span className="tree-icon">
-        <Search size={15} strokeWidth={1.75} />
-      </span>
-      <span className="tree-name">{query}</span>
-    </div>
+            { label: "", separator: true },
+            { label: "Move up", disabled: index === 0, action: () => void move(index, index - 1) },
+            { label: "Move down", disabled: index === bookmarks.length - 1, action: () => void move(index, index + 2) },
+            {
+              label: "Remove bookmark",
+              action: () => void act(() => persist(useVault.getState().bookmarks.filter((item) => item !== path))),
+            },
+          ];
+          return (
+            <div
+              key={path}
+              role="listitem"
+              className={`bookmark-item ${dropAt === index ? "drop-before" : ""}`}
+              draggable={!busy}
+              onDragStart={(event) => {
+                event.dataTransfer.setData(BOOKMARK_DRAG, String(index));
+                event.dataTransfer.effectAllowed = "move";
+              }}
+              onDragOver={(event) => dragOver(event, index)}
+              onDragLeave={() => setDropAt((value) => (value === index ? null : value))}
+              onDrop={(event) => onDrop(event, index)}
+              onDragEnd={() => setDropAt(null)}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                if (!busy) {
+                  opener.current = event.currentTarget.querySelector<HTMLButtonElement>(".bookmark-actions");
+                  useUi.getState().showMenu(event.clientX, event.clientY, items());
+                }
+              }}
+            >
+              <Button
+                className={`bookmark-open ${missing ? "missing" : ""}`}
+                title={title}
+                disabled={busy || missing}
+                aria-current={active === (query ? viewPath("query", label) : path) ? "page" : undefined}
+                onClick={(event) => open(event.altKey && !isDir)}
+                onKeyDown={(event) => {
+                  if (event.altKey && ["ArrowUp", "ArrowDown"].includes(event.key)) {
+                    event.preventDefault();
+                    opener.current = event.currentTarget;
+                    if (
+                      (event.key === "ArrowUp" && index > 0) ||
+                      (event.key === "ArrowDown" && index < bookmarks.length - 1)
+                    )
+                      void move(index, event.key === "ArrowUp" ? index - 1 : index + 2);
+                  }
+                }}
+              >
+                <span className="bookmark-icon" aria-hidden="true">
+                  {search ? <Search /> : query ? <ListFilter /> : isDir ? <Folder /> : kindIcon(kind, 16)}
+                </span>
+                <span className="bookmark-label">
+                  {label}
+                  {missing && <span className="bookmark-detail">Missing file</span>}
+                  {!search && !query && parentOf(path) && <span className="bookmark-detail">{parentOf(path)}</span>}
+                </span>
+              </Button>
+              <IconButton
+                className="bookmark-actions"
+                label={`Actions for bookmark ${label}`}
+                disabled={busy}
+                aria-haspopup="menu"
+                onClick={(event) => {
+                  opener.current = event.currentTarget;
+                  const bounds = event.currentTarget.getBoundingClientRect();
+                  useUi.getState().showMenu(bounds.left, bounds.bottom + 4, items());
+                }}
+              >
+                <MoreHorizontal aria-hidden="true" />
+              </IconButton>
+            </div>
+          );
+        })}
+        <div
+          className={`bookmark-end ${dropAt === bookmarks.length ? "drop-before" : ""}`}
+          onDragOver={(event) => dragOver(event, bookmarks.length)}
+          onDragLeave={() => setDropAt(null)}
+          onDrop={(event) => onDrop(event, bookmarks.length)}
+        />
+      </div>
+    </DesignSystemScope>
   );
 }

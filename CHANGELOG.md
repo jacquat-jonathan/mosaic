@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Templates settings:** consistent folder fields, default rules, notices, and starter previews. Failed saves keep your draft, starter installation preserves existing templates, and preview actions restore keyboard focus.
+
 - **Vault folders settings:** consistent folder choices, attachment switches, color controls, and reset actions. Saving disables related controls, missing folders are created only when requested, and pending choices remain tied to the vault where they started.
 
 - **Editor & files settings:** consistent labelled switches and reset controls for spellcheck, source line numbers, Trash confirmation, and HTML previews. The vault's HTML policy shows save errors and remains separate from the app-wide Editor reset.

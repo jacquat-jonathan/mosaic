@@ -4,7 +4,7 @@ A standalone inventory of Mosaic's existing interface and a candidate component 
 The visual design and gallery were approved on 2026-10-28 after review of typography,
 icons, focus behavior, overlays, workflows, runs, chat, and Activity & review.
 **Settings → Appearance** was visually accepted on 2026-10-28. Navigation and header are
-committed along with **Editor & files**. **Vault folders** is the current migration;
+committed along with **Editor & files** and **Vault folders**. **Templates** is the current migration;
 remaining Settings sections keep their existing controls.
 
 ## Open the gallery
@@ -104,6 +104,14 @@ changing vaults remounts the local UI. Missing paths keep their explicit Create 
 The folder reset touches its nine existing keys, preserving HTML policy, calendar/link settings,
 template assignments, and files. Agent-folder changes and reset refresh generated agent mirrors.
 Existing picker, text-prompt, and confirmation overlays are retained for their later migration.
+
+`views/TemplatesSettings.tsx` adopts shared fields, selects, buttons, badges, and notices.
+Folder assignments remain a draft until Save, including after a failed write or a template-list
+retry. Native fieldsets group each inheritance rule; Blank still stops inheritance and removing
+a rule restores it. Starter previews keep their raw Markdown and placeholders, require an explicit
+Add action, preserve existing filenames, and return focus when cancelled or completed. Controls
+are disabled during writes; installation checks the active vault and pins new files to its root.
+The scoped `views/templatesSettings.css` wraps rule controls and preview content in narrow panes.
 
 **Contrast decision for this pilot:** retain the approved palettes and existing user-selected
 accents. The migrated controls use normal/muted text, quiet or outlined buttons, and neutral

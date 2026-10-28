@@ -4085,8 +4085,7 @@ svg path.flow-on {
   background: var(--bg);
 }
 .workflow-card header,
-.workflow-card footer,
-.workflow-form footer {
+.workflow-card footer {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -4245,43 +4244,6 @@ svg path.flow-on {
     padding-left: 8px;
     padding-right: 8px;
   }
-}
-.workflow-form {
-  max-width: 650px;
-  margin-top: 24px;
-}
-.workflow-form label {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-bottom: 16px;
-}
-.workflow-form input:not([type="checkbox"]),
-.workflow-form select,
-.workflow-form textarea {
-  width: 100%;
-  font: inherit;
-  padding: 10px;
-  color: var(--fg);
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-}
-.workflow-form fieldset {
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  max-height: 230px;
-  overflow: auto;
-}
-.workflow-form .folder-choice {
-  flex-direction: row;
-  align-items: center;
-}
-.workflow-form footer {
-  margin-top: 24px;
-}
-.workflow-form .spacer {
-  flex: 1;
 }
 button:disabled {
   opacity: 0.5;
@@ -5857,110 +5819,7 @@ pre.template-preview {
 .setting-reset {
   color: var(--muted);
 }
-.workflow-editor {
-  max-width: 920px;
-  margin-inline: auto;
-}
-.workflow-editor > header {
-  margin-bottom: 28px;
-}
-.workflow-section {
-  padding: 24px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--bg-side);
-  margin-block: 16px;
-}
-.workflow-section h2 {
-  font-size: 16px;
-  margin: 0 0 16px;
-}
-.workflow-section > p {
-  color: var(--muted);
-  line-height: 1.6;
-}
-.workflow-form label {
-  display: grid;
-  gap: 8px;
-  margin-block: 14px;
-}
-.workflow-form label.folder-choice {
-  display: flex;
-  align-items: center;
-}
-.workflow-form input:not([type="checkbox"]),
-.workflow-form textarea,
-.workflow-form select {
-  width: 100%;
-  min-width: 0;
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--bg);
-  color: var(--fg);
-  font: inherit;
-}
-.workflow-form textarea {
-  resize: vertical;
-  line-height: 1.6;
-}
-.folder-picker {
-  border: 0;
-  padding: 12px 0;
-  min-width: 0;
-}
-.folder-chips {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-bottom: 8px;
-}
-.folder-chips button {
-  background: var(--bg-active);
-  border: 1px solid var(--border);
-  overflow-wrap: anywhere;
-}
-.folder-results {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  max-height: 150px;
-  overflow: auto;
-  padding-top: 8px;
-}
-.workflow-save {
-  position: sticky;
-  bottom: 0;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  align-items: center;
-  padding: 18px;
-  border: 1px solid var(--border);
-  background: var(--bg);
-  border-radius: 10px;
-  margin-top: 20px;
-}
-.workflow-save > div {
-  flex: 1 1 220px;
-}
-.workflow-save p {
-  margin: 4px 0 0;
-  font-size: 12px;
-  color: var(--muted);
-}
-.workflow-form {
-  padding-bottom: 24px;
-  max-width: none;
-}
-.workflow-form .folder-picker {
-  border: 0;
-  max-height: none;
-}
 @media (max-width: 650px) {
-  .workflow-section {
-    padding: 16px;
-  }
   .settings {
     flex-direction: column;
   }

@@ -357,11 +357,11 @@ test("manage workflows and inspect every AI workspace", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Create workflow" })).toBeVisible();
   await page.getByLabel("Name").fill("Coverage sweep");
   await page.getByLabel("Instructions").fill("Review the vault and summarize anything that needs attention.");
-  await page.getByLabel("Run on a schedule").check();
+  await page.getByRole("switch", { name: "Run on a schedule", exact: true }).click();
   await page.getByRole("combobox", { name: /^Schedule/ }).selectOption("every");
   await page.getByRole("spinbutton", { name: "Hours" }).fill("6");
   await page.getByRole("combobox", { name: /^Model/ }).selectOption("sonnet");
-  await page.getByLabel("Can use the web").check();
+  await page.getByRole("switch", { name: "Can use the web (search and fetch pages)", exact: true }).click();
   await page.getByRole("button", { name: "Create workflow" }).click();
   await expect(workspacePane.getByRole("heading", { name: "Coverage sweep" })).toBeVisible();
 

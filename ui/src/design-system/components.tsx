@@ -58,6 +58,37 @@ export function TextField({
   );
 }
 
+export function TextArea({
+  label,
+  hint,
+  error,
+  id,
+  className,
+  "aria-describedby": describedBy,
+  ...props
+}: ComponentPropsWithRef<"textarea"> & { label: string; hint?: string; error?: string }) {
+  const generated = useId();
+  const fieldId = id ?? generated,
+    descriptionId = `${fieldId}-description`;
+  return (
+    <div className="mds-field">
+      <label htmlFor={fieldId}>{label}</label>
+      <textarea
+        {...props}
+        id={fieldId}
+        className={classes("mds-input", className)}
+        aria-invalid={error ? true : props["aria-invalid"]}
+        aria-describedby={classes(describedBy, (error || hint) && descriptionId) || undefined}
+      />
+      {(error || hint) && (
+        <span id={descriptionId} className={error ? "mds-field-error" : "mds-hint"}>
+          {error || hint}
+        </span>
+      )}
+    </div>
+  );
+}
+
 export function Select({
   label,
   id,

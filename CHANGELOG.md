@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Workflow editor:** consistent fields, switches, folder choices, validation, and save actions. Failed saves keep drafts, saving disables edits, and manual-only workflows can be created without a YAML initialization error.
+
 - **Workflow and Agent library cards:** clearer triggers, review policies, latest results, and expandable settings. Actions keep their existing behavior, with disabled saving states and guards against stale selections after switching vaults.
 
 - **Connections & safety:** consistent setup commands, copy feedback, folder rules, and workflow-chain controls. Saves disable related controls, failures keep saved choices, and pending folder selections stay tied to their vault.

@@ -4,7 +4,7 @@ A standalone inventory of Mosaic's existing interface and a candidate component 
 The visual design and gallery were approved on 2026-10-28 after review of typography,
 icons, focus behavior, overlays, workflows, runs, chat, and Activity & review.
 **Settings → Appearance** was visually accepted on 2026-10-28. Settings navigation, header,
-and sections and Connections & safety are migrated. **Workflow lists** are the current migration; remaining AI
+and sections, Connections & safety, and workflow lists are migrated. **Workflow editor/detail** is the current migration; remaining AI
 and workspace surfaces keep their existing controls.
 
 ## Open the gallery
@@ -156,6 +156,15 @@ and restore menu/picker/confirmation focus. Deletion rechecks whether a run star
 confirmation was open. Selected workflow detail/forms and the sibling recent-runs ledger retain
 their existing styling for the next migrations. `workflowPresentation.ts` and `RunsLedger.tsx`
 extract their existing helpers/ledger without changing behavior.
+
+`views/WorkflowForm.tsx` extracts and migrates the shared create/edit form. Fields, text areas,
+switches, notices, folder chips/search, and actions use shared controls. `TextArea` retains the
+same label/error/hint associations as `TextField`. Invalid fields receive focus; draft guards
+include switch edits, refuse navigation during a pending save, and preserve failed drafts.
+Writes retain source hashes and vault roots; subsequent refresh/mirror/navigation phases check
+the original vault. Manual-only creation initializes an empty YAML mapping before deleting optional
+keys. The save footer flows after the form in narrow panes so it does not cover the fields.
+The selected workflow detail and context remain the next feature within Step 13.
 
 **Contrast decision for this pilot:** retain the approved palettes and existing user-selected
 accents. The migrated controls use normal/muted text, quiet or outlined buttons, and neutral

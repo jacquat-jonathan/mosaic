@@ -24,6 +24,7 @@ import {
   WorkflowForm,
   Workflows,
   runState,
+  runDuration,
   workflowContent,
   workflowTrigger,
 } from "./Workflows";
@@ -216,6 +217,11 @@ describe("workflow helpers and detail views", () => {
     expect(runState(run(1, "a", "skipped"))).toBe("Skipped");
     expect(runState(run(1, "a", "successful"), true)).toBe("Needs review");
     expect(runState(run(1, "a", "successful"))).toBe("Completed");
+    expect(runDuration(run(1, "a", "running"))).toBe("In progress");
+    expect(runDuration(run(1, "a", "skipped", { finished: null }))).toBe("—");
+    expect(runDuration(run(1, "a", "successful", { started: 10, finished: 52 }))).toBe("42s");
+    expect(runDuration(run(1, "a", "successful", { started: 10, finished: 82 }))).toBe("1m 12s");
+    expect(runDuration(run(1, "a", "successful", { started: 10, finished: 3730 }))).toBe("1h 2m");
     expect(workflowTrigger(agent("manual"))).toBe("Manual");
     expect(workflowTrigger(agent("event", { on: ["created in /", "tagged #ready"] }))).toContain("tagged #ready");
 
@@ -341,6 +347,20 @@ describe("workflow list actions", () => {
     await menu.items.find((item) => item.label === "Edit agent source")?.action?.();
     await menu.items.find((item) => item.label === "Delete workflow…")?.action?.();
     await waitFor(() => expect(useVault.getState().remove).toHaveBeenCalledWith("Agents/ready.md"));
+  });
+
+  it("orders the Ledger by newest run and updates review status after a decision", () => {
+    render(<Workflows runsOnly />);
+    const rows = screen.getByRole("table", { name: "Workflow runs" }).querySelectorAll("tbody tr");
+    expect(rows[0].textContent).toContain("Run 5");
+    const reviewRow = screen.getByRole("button", { name: "Run 2" }).closest("tr")!;
+    expect(reviewRow.textContent).toContain("Needs review");
+    expect(reviewRow.textContent).toContain("1 pending change");
+    fireEvent.click(screen.getByRole("button", { name: "Run 2" }));
+    expect(useUi.getState().openView).toHaveBeenCalledWith("run", "2");
+    act(() => useReview.setState({ pending: [] }));
+    expect(reviewRow.textContent).toContain("Completed");
+    expect(reviewRow.textContent).not.toContain("pending change");
   });
 
   it("covers named, runs-only, agents-only, paused and empty layouts", () => {

@@ -3125,39 +3125,50 @@ svg path.flow-on {
   max-height: none;
 }
 .activity {
-  padding: 4px 8px 12px;
-  overflow: auto;
+  padding: 0;
 }
 .activity-empty {
-  padding: 12px;
+  padding: 12px 0;
   line-height: 1.5;
 }
-.activity-day {
-  font-size: 12px;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  margin: 12px 4px 4px;
+.activity-ledger > section > h2 {
+  font-size: 15px;
+  font-weight: 500;
+  margin: 0 0 8px;
 }
 .activity-item {
-  padding: 6px 8px;
-  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--border);
 }
-.activity-item:hover {
-  background: var(--bg-hover, rgba(127, 127, 127, 0.08));
+.activity-icon {
+  color: var(--muted);
+  flex: none;
 }
-.activity-line {
+.activity-main {
+  flex: 1;
+  min-width: min(160px, 100%);
+  overflow-wrap: anywhere;
+}
+.activity-name,
+.activity-path {
   font-size: 13px;
 }
 .activity-path {
   display: block;
   max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--link, var(--accent));
+  background: none;
+  border: 0;
+  border-radius: 0;
+  color: var(--fg);
   padding: 0;
   text-align: left;
+}
+.activity-path:hover:not(:disabled) {
+  color: var(--accent);
 }
 .activity-path:disabled {
   color: var(--muted);
@@ -3165,25 +3176,48 @@ svg path.flow-on {
 }
 .activity-meta {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 4px;
+  gap: 2px 7px;
   font-size: 12px;
   color: var(--muted);
-  margin-top: 2px;
+  margin-top: 4px;
 }
-.activity-meta button {
+.activity-meta > * + *::before {
+  content: "·";
+  margin-right: 7px;
+}
+.activity-folder {
+  color: var(--muted);
+  font-size: 11px;
+  margin-top: 3px;
+}
+.activity-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.activity-actions button {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
-  padding: 2px 6px;
+  gap: 5px;
+  padding: 5px 8px;
   font-size: 12px;
   color: var(--muted);
 }
-.activity-meta button:hover:not(:disabled) {
+.activity-actions button:hover:not(:disabled) {
   color: var(--fg);
 }
+.activity-actions .activity-undo {
+  border: 1px solid var(--border);
+}
+.activity-item > .error-text {
+  flex-basis: 100%;
+  margin: 0;
+}
 .modal-actions button:disabled,
-.activity-meta button:disabled {
+.activity-actions button:disabled {
   opacity: 0.5;
   pointer-events: none;
 }
@@ -3536,17 +3570,20 @@ svg path.flow-on {
   text-align: center;
 }
 .review-inbox {
-  padding-bottom: 6px;
-  border-bottom: 1px solid var(--border);
-  margin-bottom: 6px;
+  padding-top: 14px;
+  border-top: 2px solid light-dark(#956114, #edbd70);
+  margin-bottom: 30px;
 }
-.review-item .activity-path {
-  cursor: default;
+.activity-ledger .review-inbox h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
 }
-.review-item .activity-meta button.primary,
-.review-item .activity-meta button.primary:hover {
-  padding: 2px 8px;
-  color: #fff;
+.review-item .activity-actions button.primary {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg));
+  border-color: transparent;
 }
 .review-stale {
   color: var(--danger);
@@ -4243,22 +4280,137 @@ svg path.flow-on {
   border-radius: 20px;
   padding: 4px 8px;
 }
-.run-row {
+.runs-ledger {
+  container-type: inline-size;
+}
+.run-ledger-table {
   width: 100%;
-  padding: 14px 0;
-  border-bottom: 1px solid var(--border);
-  border-radius: 0;
-  display: flex;
-  gap: 16px;
-  flex-wrap: wrap;
+  border-collapse: collapse;
+  table-layout: fixed;
   text-align: left;
-}
-.run-row strong {
-  flex: 1;
-}
-.run-row time {
-  color: var(--muted);
   font-size: 12px;
+}
+.run-ledger-table th {
+  font-weight: 400;
+  color: var(--muted);
+  padding: 0 12px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.run-ledger-table td {
+  padding: 16px 12px;
+  vertical-align: middle;
+  border-bottom: 1px solid var(--border);
+  overflow-wrap: anywhere;
+}
+.run-ledger-table th:first-child,
+.run-ledger-table td:first-child {
+  padding-left: 0;
+}
+.run-ledger-table th:last-child,
+.run-ledger-table td:last-child {
+  padding-right: 0;
+}
+.run-ledger-table th:first-child {
+  width: 38%;
+}
+.run-ledger-table th:nth-child(2) {
+  width: 28%;
+}
+.run-ledger-table th:nth-child(3) {
+  width: 23%;
+}
+.run-ledger-table th:last-child {
+  width: 11%;
+}
+.run-ledger-title {
+  display: block;
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+  color: var(--fg);
+  font-size: 13px;
+  border-radius: 0;
+}
+.run-ledger-title:hover {
+  color: var(--accent);
+}
+.run-ledger-table small {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 5px;
+}
+.run-ledger-error {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ledger-status {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 12px;
+}
+.ledger-status svg {
+  flex: none;
+}
+.ledger-status.done,
+.ledger-status.successful {
+  color: light-dark(#23754e, #8bd5ad);
+}
+.ledger-status.review {
+  color: light-dark(#956114, #edbd70);
+}
+.ledger-status.failed {
+  color: var(--danger);
+}
+.run-ledger-started,
+.run-ledger-duration {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.run-ledger-table .run-mobile-started,
+.run-ledger-table .run-mobile-duration {
+  display: none;
+}
+@container (max-width: 620px) {
+  .run-ledger-duration {
+    display: none;
+  }
+  .run-ledger-table .run-mobile-duration {
+    display: block;
+  }
+  .run-ledger-table th:first-child {
+    width: 43%;
+  }
+  .run-ledger-table th:nth-child(2) {
+    width: 32%;
+  }
+  .run-ledger-table th:nth-child(3) {
+    width: 25%;
+  }
+}
+@container (max-width: 420px) {
+  .run-ledger-started {
+    display: none;
+  }
+  .run-ledger-table .run-mobile-started {
+    display: block;
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 5px;
+  }
+  .run-ledger-table th:first-child {
+    width: 55%;
+  }
+  .run-ledger-table th:nth-child(2) {
+    width: 45%;
+  }
+  .run-ledger-table td {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
 }
 .workflow-form {
   max-width: 650px;

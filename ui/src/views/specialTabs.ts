@@ -28,7 +28,7 @@ const names: Record<string, string> = {
   "new-workflow": "Create workflow",
   run: "Run",
   runs: "Runs",
-  activity: "AI activity",
+  activity: "Activity & review",
   connections: "Connections",
   settings: "Settings",
   planning: "Planning view",

@@ -53,7 +53,12 @@ export function SpecialView({ path }: { path: string }) {
     case "activity":
       return (
         <div className="workspace-page">
-          <h1>AI activity</h1>
+          <header className="workspace-heading">
+            <div>
+              <h1>Activity & review</h1>
+              <p>Decide on proposed changes, then browse file history.</p>
+            </div>
+          </header>
           <ActivityPanel />
         </div>
       );

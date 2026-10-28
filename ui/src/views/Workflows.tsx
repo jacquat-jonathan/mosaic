@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { CheckCircle2, CircleAlert, LoaderCircle, TriangleAlert } from "lucide-react";
+import { CheckCircle2, CircleAlert, Clock3, LoaderCircle, TriangleAlert } from "lucide-react";
 import { parseDocument } from "yaml";
 import { api } from "../ipc/api";
 import { errorMessage, type Agent, type AgentRun, type Proposal } from "../ipc/types";
@@ -16,6 +16,7 @@ import { FolderChoices } from "./FolderChoices";
 import { TranscriptItem, openTranscriptLink } from "./Transcript";
 import { appendTranscriptEvent } from "../state/transcript";
 import type { ChatItem } from "../state/chat";
+import { dayLabel } from "../time";
 
 export function pendingForRun(run: AgentRun | undefined, pending: Proposal[]) {
   if (!run) return [];
@@ -31,6 +32,112 @@ export function runState(run: AgentRun, needsReview = false) {
         : needsReview
           ? "Needs review"
           : "Completed";
+}
+export function runDuration(run: AgentRun) {
+  if (run.status === "running") return "In progress";
+  if (run.finished === null) return "—";
+  const seconds = Math.max(0, Math.round(run.finished - run.started));
+  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+  return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
+}
+
+function RunsLedger({ runs, pending }: { runs: AgentRun[]; pending: Proposal[] }) {
+  return (
+    <div className="runs-ledger">
+      <table className="run-ledger-table" aria-label="Workflow runs">
+        <thead>
+          <tr>
+            <th scope="col">Workflow</th>
+            <th scope="col">Status</th>
+            <th scope="col" className="run-ledger-started">
+              Started
+            </th>
+            <th scope="col" className="run-ledger-duration">
+              Duration
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {[...runs]
+            .sort((a, b) => b.started - a.started || b.id - a.id)
+            .map((r) => {
+              const reviews = pendingForRun(r, pending).length;
+              const warnings = (r.transcript?.events ?? [])
+                .reduce<ChatItem[]>(appendTranscriptEvent, [])
+                .filter((item) => item.kind === "tool" && item.error).length;
+              const state = runState(r, reviews > 0);
+              const tone =
+                r.status === "running"
+                  ? "running"
+                  : r.status === "failed"
+                    ? "failed"
+                    : r.status === "skipped" || reviews
+                      ? "review"
+                      : r.status;
+              const Icon =
+                r.status === "running"
+                  ? LoaderCircle
+                  : r.status === "failed" || r.status === "skipped"
+                    ? CircleAlert
+                    : reviews
+                      ? Clock3
+                      : CheckCircle2;
+              const started = new Date(r.started * 1000);
+              const day = dayLabel(started.getTime());
+              const date =
+                day === "Today" || day === "Yesterday"
+                  ? day
+                  : started.toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" });
+              const stamp = `${date}, ${started.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+              return (
+                <tr key={r.id}>
+                  <td>
+                    <button className="run-ledger-title" onClick={() => useUi.getState().openView("run", String(r.id))}>
+                      {r.title}
+                    </button>
+                    <small>
+                      {r.trigger || "Manual"} · {r.model || "Default model"}
+                    </small>
+                    <time className="run-mobile-started" dateTime={started.toISOString()}>
+                      {stamp}
+                    </time>
+                  </td>
+                  <td>
+                    <span className={`ledger-status ${tone}`}>
+                      <Icon size={14} aria-hidden="true" className={r.status === "running" ? "spin" : undefined} />
+                      {state}
+                    </span>
+                    <div className="run-ledger-notes">
+                      {!!reviews && (
+                        <small>
+                          {reviews} pending {reviews === 1 ? "change" : "changes"}
+                        </small>
+                      )}
+                      {!!warnings && (
+                        <small>
+                          {warnings} tool {warnings === 1 ? "warning" : "warnings"}
+                        </small>
+                      )}
+                      {r.error && (
+                        <small className="run-ledger-error" title={r.error}>
+                          {r.error}
+                        </small>
+                      )}
+                    </div>
+                    <small className="run-mobile-duration">{runDuration(r)}</small>
+                  </td>
+                  <td className="run-ledger-started">
+                    <time dateTime={started.toISOString()}>{stamp}</time>
+                  </td>
+                  <td className="run-ledger-duration">{runDuration(r)}</td>
+                </tr>
+              );
+            })}
+        </tbody>
+      </table>
+    </div>
+  );
 }
 export const eventFolder = (event: string) =>
   /^created in\s+(.+)$/i.exec(event.trim())?.[1].replace(/^\/+|\/+$/g, "") ?? null;
@@ -320,7 +427,11 @@ export function Workflows({
       <header className="workspace-heading">
         <div>
           <h1>{selected?.title ?? (runsOnly ? "Runs" : agentsOnly ? "Agents" : "Workflows")}</h1>
-          <p>Repeatable work on your vault files. Schedules and events run while Mosaic is open.</p>
+          <p>
+            {runsOnly
+              ? "Workflow history, newest first."
+              : "Repeatable work on your vault files. Schedules and events run while Mosaic is open."}
+          </p>
         </div>
         {!runsOnly && (
           <button
@@ -330,7 +441,7 @@ export function Workflows({
             {selected ? "Edit workflow" : "Create workflow"}
           </button>
         )}
-        {!name && !agentsOnly && (
+        {!name && !agentsOnly && !runsOnly && (
           <button
             disabled={!!busy || !status}
             onClick={() => void act("all", () => api.tesseraPauseAll(!status?.paused))}
@@ -464,16 +575,13 @@ export function Workflows({
         </p>
       )}
       {!agentsOnly && (
-        <section>
-          <h2>Recent runs</h2>
-          {!runs.length && <p>No runs yet.</p>}
-          {runs.map((r) => (
-            <button className="run-row" key={r.id} onClick={() => useUi.getState().openView("run", String(r.id))}>
-              <strong>{r.title}</strong>
-              <time>{new Date(r.started * 1000).toLocaleString()}</time>
-              <span>{runState(r, pendingForRun(r, pending).length > 0)}</span>
-            </button>
-          ))}
+        <section aria-label={runsOnly ? "Run history" : "Recent runs"}>
+          {!runsOnly && <h2>Recent runs</h2>}
+          {!runs.length ? (
+            <p className="panel-meta">{status ? "No runs yet." : "Loading runs…"}</p>
+          ) : (
+            <RunsLedger runs={runs} pending={pending} />
+          )}
         </section>
       )}
     </div>

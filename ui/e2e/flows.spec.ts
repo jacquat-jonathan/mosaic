@@ -350,7 +350,7 @@ test("manage workflows and inspect every AI workspace", async ({ page }) => {
   await expect(workspacePane.locator(".run-transcript strong")).toHaveText("Mock run completed.");
   await expect(workspacePane.getByRole("button", { name: "Read Ideas" })).toBeVisible();
   await workspacePane.getByRole("button", { name: "Open activity and reviews" }).click();
-  await expect(page.getByRole("heading", { name: "AI activity" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Activity & review" })).toBeVisible();
 
   await page.getByRole("button", { name: "Workflows", exact: true }).click();
   await page.getByRole("button", { name: "Create workflow" }).click();
@@ -367,8 +367,53 @@ test("manage workflows and inspect every AI workspace", async ({ page }) => {
 
   await page.getByRole("button", { name: "All runs", exact: true }).click();
   await expect(workspacePane.getByRole("heading", { name: "Runs", exact: true })).toBeVisible();
+  const ledger = workspacePane.getByRole("table", { name: "Workflow runs" });
+  await expect(ledger.getByRole("columnheader")).toHaveText(["Workflow", "Status", "Started", "Duration"]);
+  await expect(ledger.locator("tbody tr").first()).toContainText("Completed");
+  const runTitle = await ledger.locator("tbody tr").first().getByRole("button").innerText();
+  await page.setViewportSize({ width: 480, height: 900 });
+  await expect(ledger.locator(".run-mobile-started").first()).toBeVisible();
+  expect(await ledger.evaluate((el) => el.scrollWidth <= el.parentElement!.clientWidth + 1)).toBe(true);
+  await ledger.getByRole("button", { name: runTitle, exact: true }).first().click();
+  await expect(workspacePane.getByRole("heading", { name: "Run log" })).toBeVisible();
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.getByRole("button", { name: "Show sidebar", exact: true }).click();
+  if (!(await page.locator(".ai-manage").evaluate((el) => (el as HTMLDetailsElement).open))) {
+    await page.locator(".ai-manage summary").click();
+  }
   await page.getByRole("button", { name: "Connections", exact: true }).click();
   await expect(workspacePane.getByRole("heading", { name: "Connections", exact: true })).toBeVisible();
+});
+
+test("Ledger activity keeps reviews first and exposes history and undo beside each file", async ({ page }) => {
+  await openVault(page);
+  await page.evaluate(() =>
+    (globalThis as unknown as { mosaicMock: { propose(p: string, c: string): number } }).mosaicMock.propose(
+      "Welcome.md",
+      "# Welcome\n\nProposed edit.\n",
+    ),
+  );
+  await page.getByRole("tab", { name: "AI", exact: true }).click();
+  await page.getByRole("button", { name: "Automations", exact: true }).click();
+  await page.getByRole("button", { name: /Activity & review · 1/ }).click();
+  const review = page.getByRole("region", { name: "Waiting for your review" });
+  const applied = page.getByRole("region", { name: "Applied changes" });
+  await expect(review).toContainText("Welcome");
+  expect((await review.boundingBox())!.y).toBeLessThan((await applied.boundingBox())!.y);
+  const change = applied
+    .getByRole("listitem")
+    .filter({ has: page.getByRole("button", { name: "Agent notes", exact: true }) });
+  await expect(change).toContainText("claude-code");
+  await expect(change).toContainText("Created");
+  await change.getByRole("button", { name: "File history" }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.getByRole("dialog").getByRole("button", { name: "Close" }).first().click();
+  await page.setViewportSize({ width: 700, height: 900 });
+  expect(await applied.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+  await change.getByRole("button", { name: "Undo", exact: true }).click();
+  await expect(applied.getByRole("button", { name: "Undone", exact: true })).toBeDisabled();
+  await review.getByRole("button", { name: "Review", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: /Review the change to Welcome/ })).toBeVisible();
 });
 
 test("chat with the assistant and manage the saved conversation", async ({ page }) => {

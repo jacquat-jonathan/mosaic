@@ -51,7 +51,7 @@ test("routes every workspace kind to its surface", () => {
     ["mosaic:new-workflow", "workflow-form"],
     ["mosaic:runs", "workflows::true:undefined"],
     ["mosaic:run/42", "run:42"],
-    ["mosaic:activity", "AI activity"],
+    ["mosaic:activity", "Activity & review"],
     ["mosaic:connections", "Connections"],
     ["mosaic:settings", "settings"],
     ["mosaic:search", "search"],

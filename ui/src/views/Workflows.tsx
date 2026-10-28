@@ -17,7 +17,7 @@ export {
   workflowTrigger,
   workflowDeleteTarget,
 } from "./workflowPresentation";
-import { RunsLedger } from "./RunsLedger";
+import { RunsHistory } from "./RunsHistory";
 import { WorkflowList } from "./WorkflowList";
 import { WorkflowDetail } from "./WorkflowDetail";
 
@@ -172,41 +172,9 @@ export function RunDetail({ id, compact = false }: { id: string; compact?: boole
     </div>
   );
 }
-function LegacyRuns({ name }: { name?: string }) {
-  const { status, agents, error } = useAttention();
-  const pending = useReview((state) => state.pending);
-  const selected = agents.find((agent) => agent.name === name);
-  const runs = (status?.runs ?? []).filter((run) => !name || run.agent === name);
-  return (
-    <div className="workspace-page">
-      <header className="workspace-heading">
-        <div>
-          <h1>{selected?.title ?? "Runs"}</h1>
-          <p>Workflow history, newest first.</p>
-        </div>
-      </header>
-      {error && (
-        <p className="error-text" role="alert">
-          {error}
-        </p>
-      )}
-      {status?.paused && (
-        <p className="notice warn">All automatic workflows are paused. Manual runs and test triggers are available.</p>
-      )}
-      <section aria-label="Run history">
-        {runs.length ? (
-          <RunsLedger runs={runs} pending={pending} />
-        ) : (
-          <p className="panel-meta">{status ? "No runs yet." : "Loading runs…"}</p>
-        )}
-      </section>
-    </div>
-  );
-}
-
 export function Workflows(props: { name?: string; runsOnly?: boolean; agentsOnly?: boolean }) {
   return props.runsOnly ? (
-    <LegacyRuns name={props.name} />
+    <RunsHistory name={props.name} />
   ) : props.name ? (
     <WorkflowDetail name={props.name} />
   ) : (

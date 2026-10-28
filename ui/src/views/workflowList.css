@@ -43,9 +43,6 @@
 .mosaic-ds.workflow-list .mds-workflow-card footer {
   flex-wrap: wrap;
 }
-.workflow-list-page .workflow-list-recent {
-  margin-top: 24px;
-}
 .mosaic-ds.workflow-list[data-density="compact"] .mds-workflow-card {
   padding: var(--mds-space-7);
 }

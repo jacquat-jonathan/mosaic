@@ -145,14 +145,16 @@ export function RunsTable({
   runs,
   onOpenRun,
   selectedId,
+  label = "Workflow runs preview",
 }: {
   runs: readonly RunSummary[];
   onOpenRun(id: string): void;
   selectedId?: string;
+  label?: string;
 }) {
   return (
     <div className="mds-runs-ledger">
-      <table className="mds-runs-table" aria-label="Workflow runs preview">
+      <table className="mds-runs-table" aria-label={label}>
         <thead>
           <tr>
             <th scope="col">Workflow</th>
@@ -172,7 +174,7 @@ export function RunsTable({
                 <Button
                   className="mds-text-action"
                   onClick={() => onOpenRun(run.id)}
-                  aria-expanded={run.id === selectedId}
+                  aria-expanded={selectedId === undefined ? undefined : run.id === selectedId}
                 >
                   {run.title}
                 </Button>

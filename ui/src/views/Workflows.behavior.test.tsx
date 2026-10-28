@@ -478,6 +478,63 @@ describe("workflow list actions", () => {
     await waitFor(() => expect(useVault.getState().remove).toHaveBeenCalledWith("Agents/ready.md"));
   });
 
+  it("preserves all eight ledger states, tool warnings, errors, and named filtering", () => {
+    const states = ["ready", "queued", "running", "paused", "successful", "needs-review", "failed", "skipped"];
+    useAttention.setState({
+      status: {
+        ...status,
+        runs: states.map((state, index) =>
+          run(index + 1, index === 6 ? "broken" : "ready", state, {
+            started: 100,
+            transcript:
+              index === 6
+                ? {
+                    truncated: false,
+                    events: [
+                      { kind: "tool", id: "read", summary: "Read", path: "Other.md", writes: false },
+                      { kind: "tool_done", id: "read", error: "Denied", review: null },
+                    ],
+                  }
+                : undefined,
+          }),
+        ),
+      },
+    });
+    const { rerender } = render(<Workflows runsOnly />);
+    const rows = screen.getByRole("table", { name: "Workflow runs" }).querySelectorAll("tbody tr");
+    expect(Array.from(rows).map((row) => row.querySelector(".mds-status")?.textContent)).toEqual([
+      "Skipped",
+      "Failed",
+      "Needs review",
+      "Completed",
+      "Paused",
+      "Running",
+      "Queued",
+      "Ready",
+    ]);
+    const failed = screen.getByRole("button", { name: "Run 7" }).closest("tr")!;
+    expect(failed.textContent).toContain("1 tool warning · Something failed");
+    expect(screen.getByRole("button", { name: "Run 7" }).hasAttribute("aria-expanded")).toBe(false);
+    rerender(<Workflows runsOnly name="broken" />);
+    expect(screen.getAllByRole("row")).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "Run 7" })).toBeTruthy();
+  });
+
+  it("distinguishes loading, failed, empty and retained run history", () => {
+    useAttention.setState({ status: null, error: null });
+    render(<Workflows runsOnly />);
+    expect(screen.getByRole("region", { name: "Run history" }).getAttribute("aria-busy")).toBe("true");
+    expect(screen.getByText("Loading runs…")).toBeTruthy();
+    act(() => useAttention.setState({ error: "History unavailable" }));
+    expect(screen.getByRole("alert").textContent).toBe("History unavailable");
+    expect(screen.getByText("Run history could not be loaded.")).toBeTruthy();
+    act(() => useAttention.setState({ status: { ...status, runs: [] }, error: null }));
+    expect(screen.getByText("No runs yet. Run a workflow to see its history here.")).toBeTruthy();
+    act(() => useAttention.setState({ status, error: "Refresh failed" }));
+    expect(screen.getByRole("alert").textContent).toBe("Refresh failed");
+    expect(screen.getByRole("button", { name: "Run 5" })).toBeTruthy();
+  });
+
   it("orders the Ledger by newest run and updates review status after a decision", () => {
     render(<Workflows runsOnly />);
     const rows = screen.getByRole("table", { name: "Workflow runs" }).querySelectorAll("tbody tr");

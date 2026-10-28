@@ -38,6 +38,8 @@ export const workflowDeleteTarget = (agent: Agent) => (agent.skill_folder ? pare
 
 export function workflowRunState(run: AgentRun, needsReview = false): RunState {
   if (
+    run.status === "ready" ||
+    run.status === "needs-review" ||
     run.status === "running" ||
     run.status === "queued" ||
     run.status === "paused" ||

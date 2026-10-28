@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Run history:** All runs and Recent runs now share the larger table, clear status icons, review counts, tool warnings, and errors. Narrow panes keep dates and durations readable beneath each row.
+
 - **Workflow details:** the selected workflow and its context panel now share readable cards, metadata, statuses, and source actions. Editing receives focus, cancelled drafts stay intact, and returning to details restores the Edit button.
 
 - **Workflow editor:** consistent fields, switches, folder choices, validation, and save actions. Failed saves keep drafts, saving disables edits, and manual-only workflows can be created without a YAML initialization error.

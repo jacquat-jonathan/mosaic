@@ -372,7 +372,7 @@ test("manage workflows and inspect every AI workspace", async ({ page }) => {
   await expect(ledger.locator("tbody tr").first()).toContainText("Completed");
   const runTitle = await ledger.locator("tbody tr").first().getByRole("button").innerText();
   await page.setViewportSize({ width: 480, height: 900 });
-  await expect(ledger.locator(".run-mobile-started").first()).toBeVisible();
+  await expect(ledger.locator("time.mds-run-mobile").first()).toBeVisible();
   expect(await ledger.evaluate((el) => el.scrollWidth <= el.parentElement!.clientWidth + 1)).toBe(true);
   await ledger.getByRole("button", { name: runTitle, exact: true }).first().click();
   await expect(workspacePane.getByRole("heading", { name: "Run log" })).toBeVisible();

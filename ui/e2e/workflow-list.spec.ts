@@ -93,6 +93,6 @@ test("workflow cards match themes and wrap at maximum scale", async ({ page }, t
     () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
   );
   await page.screenshot({ path: testInfo.outputPath("workflow-list-narrow.png") });
-  await expect(page.getByRole("region", { name: "Recent runs", exact: true }).locator(".mosaic-ds")).toHaveCount(0);
-  await expect(page.getByRole("region", { name: "Recent runs", exact: true })).toHaveCSS("font-size", "13px");
+  await expect(page.getByRole("region", { name: "Recent runs", exact: true })).toHaveClass(/mosaic-ds/);
+  await expect(page.getByRole("region", { name: "Recent runs", exact: true })).toHaveCSS("font-size", "14px");
 });

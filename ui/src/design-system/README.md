@@ -153,9 +153,8 @@ The card supports an optional title action and notice; an empty result has no fa
 Status labels use normal text with colored, distinct icons to preserve readability across accents;
 filled button variants and faint text remain outside adoption. Actions serialize, guard the vault,
 and restore menu/picker/confirmation focus. Deletion rechecks whether a run started while its
-confirmation was open. The sibling recent-runs ledger retains its existing styling for its next
-migration. `workflowPresentation.ts` and `RunsLedger.tsx`
-extract their existing helpers/ledger without changing behavior.
+confirmation was open. The sibling recent-runs ledger shares the approved runs table in its own theme scope.
+`workflowPresentation.ts` retains the shared status, trigger, and duration helpers.
 
 `views/WorkflowForm.tsx` extracts and migrates the shared create/edit form. Fields, text areas,
 switches, notices, folder chips/search, and actions use shared controls. `TextArea` retains the
@@ -170,8 +169,15 @@ the shared editor, and restores Edit focus after cancellation or saving. The con
 17px titles, 13px metadata, status icons, and a guarded source action with inline errors. Missing
 workflows offer a route back to the list. Local styles override legacy context label/title rules;
 the surrounding workspace/context frame remains for its later migration. Obsolete workflow-card
-styles are removed after their final consumer migrated. The run-history page remains scoped
-separately for Step 14.
+styles are removed after their final consumer migrated. The run-history page owns its separate theme scope.
+
+`views/RunsHistory.tsx` and `views/RunsLedger.tsx` adopt `RunsTable` for All runs and recent
+history. Sorting, workflow filtering, run navigation, review counts, tool warnings, errors, and
+empty/loading/error states remain explicit. All eight status values map to the same text/icon
+treatments. The table takes an accessible label and only exposes expansion when an inline
+selection is controlled. A named container query adapts to pane width, with a narrow-window
+fallback for older WebKit. Status text stays neutral and notes wrap instead of clipping errors.
+Legacy ledger styles are removed after their final consumer migrated.
 
 **Contrast decision for this pilot:** retain the approved palettes and existing user-selected
 accents. The migrated controls use normal/muted text, quiet or outlined buttons, and neutral

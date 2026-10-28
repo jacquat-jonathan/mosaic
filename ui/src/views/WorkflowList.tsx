@@ -23,6 +23,7 @@ import { viewPath } from "./specialTabs";
 import "../design-system/patterns.css";
 import "./workflowList.css";
 import "./workflowStatus.css";
+import "./runsHistory.css";
 
 function summary(run: AgentRun, reviews: number) {
   if (reviews) return `${reviews} proposed ${reviews === 1 ? "change is" : "changes are"} waiting for review.`;
@@ -388,14 +389,18 @@ function WorkflowCatalog({
         )}
       </DesignSystemScope>
       {!agentsOnly && (
-        <section className="workflow-list-recent" aria-label="Recent runs">
+        <DesignSystemScope
+          className="workflow-list-recent workflow-status-scope"
+          role="region"
+          aria-label="Recent runs"
+        >
           <h2>Recent runs</h2>
           {runs.length ? (
             <RunsLedger runs={runs} pending={pending} />
           ) : (
-            <p className="panel-meta">{status ? "No runs yet." : "Loading runs…"}</p>
+            <Notice>{status ? "No runs yet." : error ? "Run history could not be loaded." : "Loading runs…"}</Notice>
           )}
-        </section>
+        </DesignSystemScope>
       )}
     </div>
   );

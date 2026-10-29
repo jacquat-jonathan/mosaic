@@ -482,7 +482,7 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
   return (
     <div
       ref={calendarContainer}
-      className={`planner-calendar-page ${editor || overlayDetails || selectedSession ? "with-editor" : ""} ${editor ? "with-design-editor" : ""}`}
+      className={`planner-calendar-page ${editor || overlayDetails || selectedSession ? "with-editor" : ""} ${editor || selectedSession ? "with-design-editor" : ""}`}
     >
       <DesignSystemScope
         as="main"
@@ -718,11 +718,14 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
           key={`${selectedSession.session.id}:${selectedSession.session.revision}`}
           session={selectedSession.session}
           taskTitle={selectedSession.task_title}
-          onClose={() => setSelectedSessionId(null)}
+          onClose={() => {
+            setSelectedSessionId(null);
+            returnEditorFocus();
+          }}
           onReload={() => void load()}
           onDone={() => {
             setSelectedSessionId(null);
-            void load();
+            void load().then(returnEditorFocus);
           }}
         />
       )}

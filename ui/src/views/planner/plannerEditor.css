@@ -174,3 +174,21 @@
     border-left: 0;
   }
 }
+
+.mosaic-ds.planner-editor-design .planner-editor-fields > label:not(.event-check),
+.mosaic-ds.planner-editor-design .event-date-fields label,
+.mosaic-ds.planner-editor-design .planner-editor-fields .planner-editor-row label {
+  font-weight: var(--mds-weight-strong);
+}
+.mosaic-ds.planner-editor-design .planner-editor-fields .mds-input {
+  font-weight: var(--mds-weight-regular);
+}
+
+.mosaic-ds.planner-editor-design > header h2 {
+  min-width: 0;
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+.mosaic-ds.planner-editor-design > header .mds-icon-button {
+  flex: none;
+}

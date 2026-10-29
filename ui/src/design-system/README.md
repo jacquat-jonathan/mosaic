@@ -530,3 +530,9 @@ their semantics, inputs disable during serialized writes, failures keep drafts, 
 acknowledgements check the active vault. Calendar captures the opener for focus return;
 narrow container layouts give the editor the pane width. Task-editor checks cover the
 shared stylesheet after extraction.
+
+`views/planner/WorkSessionEditor.tsx` shares date/time fields and notices while preserving
+minute precision, timezone conversion, all-day intervals, and revision conflicts. Invalid
+times reference their message, pending writes disable duplicates, and unchanged background
+revisions retain edited minutes. Closing/saving returns to the source or the selected calendar
+mode if the source moved. The shared native event-field labels use the approved label weight.

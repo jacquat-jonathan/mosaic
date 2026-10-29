@@ -169,3 +169,7 @@
   line-height: var(--mds-leading);
   border-radius: var(--mds-radius-item);
 }
+
+.mosaic-ds.calendar-design .planner-session-chip {
+  font-size: var(--mds-text-small);
+}

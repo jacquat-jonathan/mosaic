@@ -365,3 +365,58 @@ test("PDF metadata and notices share themes and fit scaled narrow panes", async 
     .toBeLessThanOrEqual(1);
   await page.screenshot({ path: info.outputPath("pdf-narrow.png") });
 });
+
+async function brokenImage(page: Page) {
+  await page.evaluate(async () => {
+    const m = (window as unknown as { __mosaic: { mockInvoke(command: string, args: object): Promise<unknown> } })
+      .__mosaic;
+    await m.mockInvoke("write_file", {
+      path: "Docs/broken.svg",
+      content: "data:image/svg+xml,not-an-image",
+      expectedHash: null,
+    });
+  });
+  await openFile(page, "Docs/broken.svg");
+}
+test("image previews preserve content and retry failed decoding", async ({ page }) => {
+  await setup(page);
+  await brokenImage(page);
+  await expect(page.getByRole("alert")).toContainText("Couldn't open this image");
+  await page.evaluate(async () => {
+    const m = (window as unknown as { __mosaic: { mockInvoke(command: string, args: object): Promise<unknown> } })
+      .__mosaic;
+    const content = await m.mockInvoke("read_raw", { path: "Attachments/diagram.svg" });
+    await m.mockInvoke("write_file", { path: "Docs/broken.svg", content, expectedHash: null });
+  });
+  await page.getByRole("button", { name: "Retry image", exact: true }).click();
+  const image = page.getByRole("img", { name: "Docs/broken.svg", exact: true });
+  await expect(image).toBeVisible();
+  expect(await image.evaluate((el: HTMLImageElement) => el.naturalWidth)).toBeGreaterThan(0);
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  const preview = page.getByRole("region", { name: "Image preview: Docs/broken.svg", exact: true });
+  await preview.focus();
+  await expect(preview).toBeFocused();
+});
+test("image notices share themes and fit scaled narrow panes", async ({ page }, info) => {
+  await setup(page);
+  await brokenImage(page);
+  await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  for (const theme of ["Light", "Dark", "System"]) {
+    await page.getByRole("radio", { name: theme, exact: true }).check();
+    await openFile(page, "Docs/broken.svg");
+    const alert = page.getByRole("alert");
+    await expect(alert).toHaveCSS("font-size", "14px");
+    await expect(alert).toHaveCSS("background-color", theme === "Light" ? "rgb(253, 228, 226)" : "rgb(67, 35, 31)");
+    if (theme !== "System") await page.screenshot({ path: info.outputPath(`image-${theme.toLowerCase()}.png`) });
+    await page.getByRole("tab", { name: "Settings Close tab", exact: true }).click();
+  }
+  await page.getByLabel("Interface density", { exact: true }).selectOption("compact");
+  await page.getByRole("slider", { name: "Interface scale", exact: true }).press("End");
+  await openFile(page, "Docs/broken.svg");
+  await page.setViewportSize({ width: 320, height: 900 });
+  await expect(page.getByRole("button", { name: "Retry image", exact: true })).toBeInViewport();
+  const state = page.getByRole("alert").locator("..");
+  await expect.poll(() => state.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
+  await page.screenshot({ path: info.outputPath("image-narrow.png") });
+});

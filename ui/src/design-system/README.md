@@ -636,3 +636,9 @@ while toolbar actions wrap in narrow panes.
 Page canvases retain PDF.js rendering, resize to their pane, expose labelled busy states,
 and keep lazy loading. File reads guard their vault/lifetime; failed files and pages can be
 retried. Compact embedded previews retain their existing page limits and scrolling.
+
+
+`viewers/ImageViewer.tsx` adopts shared loading/error/retry states around the existing
+image renderer. Decode failures remain explicit, retries refresh local URLs, and late reads
+guard the active vault/lifetime. The labelled preview supports keyboard focus while image
+fit, source bytes, and document rendering remain intact.

@@ -24,3 +24,13 @@
   max-width: 100%;
   height: auto !important;
 }
+.image-preview {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.image-preview .image-viewer {
+  min-height: 0;
+}

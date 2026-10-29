@@ -54,3 +54,54 @@ test("prompt shares themes and fits scaled narrow windows", async ({ page }, inf
   await expect.poll(() => dialog.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
   await page.screenshot({ path: info.outputPath("prompt-narrow.png") });
 });
+
+async function confirm(page: Page) {
+  await page.evaluate(async () => {
+    const path = "/src/state/ui.ts";
+    const { useUi } = await import(path);
+    void useUi.getState().ask({
+      title: "Delete file?",
+      body: "Move this file to trash. You can restore it from history.",
+      confirmLabel: "Delete",
+      danger: true,
+    });
+  });
+}
+test("confirmation traps focus and cancels with focus return", async ({ page }) => {
+  await setup(page);
+  const opener = page.getByRole("button", { name: "New note", exact: true });
+  await opener.focus();
+  await confirm(page);
+  const dialog = page.getByRole("dialog", { name: "Delete file?", exact: true });
+  await expect(dialog.getByRole("button", { name: "Delete", exact: true })).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(dialog.getByRole("button", { name: "Close dialog" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect(opener).toBeFocused();
+  await confirm(page);
+  await dialog.getByRole("button", { name: "Delete", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+});
+test("confirmation shares themes and fits scaled narrow windows", async ({ page }, info) => {
+  await setup(page);
+  await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  for (const theme of ["Light", "Dark", "System"]) {
+    await page.getByRole("radio", { name: theme, exact: true }).check();
+    await confirm(page);
+    const dialog = page.getByRole("dialog", { name: "Delete file?", exact: true });
+    await expect(dialog).toHaveCSS("font-size", "14px");
+    await expect(dialog).toHaveCSS("background-color", theme === "Light" ? "rgb(255, 255, 255)" : "rgb(30, 31, 36)");
+    if (theme !== "System") await page.screenshot({ path: info.outputPath(`confirmation-${theme.toLowerCase()}.png`) });
+    await page.keyboard.press("Escape");
+  }
+  await page.getByLabel("Interface density", { exact: true }).selectOption("compact");
+  await page.getByRole("slider", { name: "Interface scale", exact: true }).press("End");
+  await page.setViewportSize({ width: 320, height: 900 });
+  await confirm(page);
+  const dialog = page.getByRole("dialog", { name: "Delete file?", exact: true });
+  await expect(dialog.getByRole("button", { name: "Delete", exact: true })).toBeInViewport();
+  await expect.poll(() => dialog.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
+  await page.screenshot({ path: info.outputPath("confirmation-narrow.png") });
+});

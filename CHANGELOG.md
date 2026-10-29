@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Confirmations:** shared dialogs provide labelled descriptions, consistent destructive actions, keyboard containment, cancellation, and focus return.
+
 - **Prompts:** shared dialogs and labelled fields provide consistent keyboard dismissal, focus containment, and focus return while retaining Enter submission.
 
 - **Markdown task import:** shared preview controls, readable groups/statuses, notices, and duplicate choices preserve task hierarchy and source notes. Pending imports disable duplicate actions, failures retain selections, and cancellation returns focus.

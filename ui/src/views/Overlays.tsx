@@ -120,27 +120,25 @@ export function ConfirmDialog() {
   const c = useUi((s) => s.confirm);
   const answer = useUi((s) => s.answer);
   const okRef = useRef<HTMLButtonElement>(null);
-  useEffect(() => okRef.current?.focus(), [c]);
   if (!c) return null;
   return (
-    <div className="modal-backdrop" onMouseDown={() => answer(false)}>
-      <div
-        className="modal"
-        role="dialog"
-        aria-modal="true"
-        onMouseDown={(e) => e.stopPropagation()}
-        onKeyDown={(e) => e.key === "Escape" && answer(false)}
-      >
-        <h2>{c.title}</h2>
-        <p>{c.body}</p>
-        <div className="modal-actions">
-          <button onClick={() => answer(false)}>Cancel</button>
-          <button ref={okRef} className={c.danger ? "danger primary" : "primary"} onClick={() => answer(true)}>
-            {c.confirmLabel}
-          </button>
-        </div>
-      </div>
-    </div>
+    <DesignSystemScope>
+      <Dialog
+        open
+        title={c.title}
+        description={c.body}
+        initialFocusRef={okRef}
+        onClose={() => answer(false)}
+        actions={
+          <>
+            <Button onClick={() => answer(false)}>Cancel</Button>
+            <Button ref={okRef} variant={c.danger ? "danger" : "secondary"} onClick={() => answer(true)}>
+              {c.confirmLabel}
+            </Button>
+          </>
+        }
+      />
+    </DesignSystemScope>
   );
 }
 

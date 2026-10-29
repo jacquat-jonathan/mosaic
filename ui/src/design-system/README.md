@@ -571,3 +571,7 @@ cancellation returns to its board entry and completion focuses the loaded board 
 `views/Overlays.tsx` adopts the shared prompt dialog and labelled input. Enter submission,
 Escape/close cancellation, selected initial text, modal keyboard containment, and focus return
 remain explicit; the native-dialog compatibility fallback also applies to global prompts.
+
+Global confirmations use the shared dialog description and quiet/outlined destructive
+controls, retaining confirmation labels, Enter/Space activation, Escape cancellation,
+modal focus containment, and focus return.

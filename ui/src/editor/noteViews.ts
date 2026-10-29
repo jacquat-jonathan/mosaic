@@ -18,6 +18,11 @@ export function setNoteView(path: string, view: EditorView | null) {
   else views.delete(path);
 }
 
+/** The current source position, including the new heading position after a section move. */
+export function noteCursorPosition(path: string): number | null {
+  return views.get(path)?.state.selection.main.head ?? null;
+}
+
 /** The person's current non-empty selection in an open note. */
 export function noteSelection(path: string): NoteSelection | null {
   const view = views.get(path);

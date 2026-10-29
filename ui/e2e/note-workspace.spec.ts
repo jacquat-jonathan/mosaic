@@ -20,6 +20,128 @@ async function readWelcome(page: Page) {
   );
 }
 
+test("note details retain backlinks, mention linking, attachments and keyboard section moves", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open folder…", exact: true }).click();
+  await page.evaluate(async () => {
+    const mock = (
+      window as unknown as {
+        __mosaic: {
+          mockInvoke(command: string, args: object): Promise<unknown>;
+          useVault: { getState(): { refresh(): Promise<void> } };
+          useWorkspace: { getState(): { open(path: string, options: object): Promise<void> } };
+        };
+      }
+    ).__mosaic;
+    await mock.mockInvoke("create_file", {
+      path: "Details demo.md",
+      content: "# First\n\nAlpha\n\n# Second\n\nBeta\n\n![[config.json]]\n",
+      root: null,
+    });
+    await mock.mockInvoke("create_file", {
+      path: "References.md",
+      content: "[[Details demo]]\n",
+      root: null,
+    });
+    await mock.mockInvoke("create_file", {
+      path: "Mentions.md",
+      content: "Details demo is mentioned here.\n",
+      root: null,
+    });
+    await mock.useVault.getState().refresh();
+    await mock.useWorkspace.getState().open("Details demo.md", { newTab: true });
+  });
+  const details = page.getByRole("group", { name: "Note details", exact: true });
+  await expect(
+    details
+      .getByRole("region", { name: "Backlinks", exact: true })
+      .getByRole("button", { name: "References", exact: true }),
+  ).toBeVisible();
+  await details.getByRole("button", { name: /Unlinked mentions/ }).click();
+  await details.getByRole("button", { name: "Link", exact: true }).click();
+  await expect(details.getByText("No other notes mention this one without a link.")).toBeVisible();
+  await expect(details.getByRole("button", { name: /Unlinked mentions/ })).toBeFocused();
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        (
+          window as unknown as { __mosaic: { mockInvoke(command: string, args: object): Promise<{ content: string }> } }
+        ).__mosaic
+          .mockInvoke("read_file", { path: "Mentions.md" })
+          .then((result) => (result.content.match(/\[\[Details demo\]\]/g) ?? []).length),
+      ),
+    )
+    .toBe(1);
+  const second = details.getByRole("button", { name: /^Second\. Drag to reorder/ });
+  await second.press("Alt+ArrowUp");
+  await expect(second).toBeFocused();
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        (
+          window as unknown as { __mosaic: { mockInvoke(command: string, args: object): Promise<{ content: string }> } }
+        ).__mosaic
+          .mockInvoke("read_file", { path: "Details demo.md" })
+          .then((result) => result.content.indexOf("# Second") < result.content.indexOf("# First")),
+      ),
+    )
+    .toBe(true);
+  await second.press("Alt+ArrowDown");
+  await expect(second).toBeFocused();
+  await details.getByRole("button", { name: "Add a section after First", exact: true }).click();
+  await expect(page.locator(".cm-content")).toBeFocused();
+  await expect(page.locator(".cm-content")).toContainText("New section");
+  await details.getByRole("button", { name: "config.json", exact: true }).click({ modifiers: ["Meta"] });
+  await expect(page.getByRole("tab", { name: "config.json Close tab", exact: true })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await page.getByRole("button", { name: "Close context panel", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Show right panel", exact: true })).toBeFocused();
+});
+
+test("note details follow themes and fit the scaled context drawer", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open folder…", exact: true }).click();
+  await page.getByRole("treeitem", { name: /^Welcome/ }).click();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const details = page.getByRole("group", { name: "Note details", exact: true });
+  const context = page.getByRole("complementary", { name: "Workspace context", exact: true });
+  for (const theme of ["Light", "Dark", "System"] as const) {
+    await page
+      .getByRole("radiogroup", { name: "Theme", exact: true })
+      .getByRole("radio", { name: theme, exact: true })
+      .check();
+    await page.getByRole("tab", { name: "Welcome Close tab", exact: true }).click();
+    await expect(details).toHaveCSS("font-size", "14px");
+    await expect(context.locator(".note-details-header")).toHaveCSS("font-size", "14px");
+    await expect(details).toHaveCSS("background-color", theme === "Light" ? "rgb(246, 246, 248)" : "rgb(24, 25, 29)");
+    await expect(details.locator(".mosaic-ds")).toHaveCount(0);
+    if (theme !== "System")
+      await page.screenshot({ path: testInfo.outputPath(`note-details-${theme.toLowerCase()}.png`) });
+    if (theme !== "System") await page.getByRole("tab", { name: "Settings Close tab", exact: true }).click();
+  }
+  await page.getByRole("tab", { name: "Settings Close tab", exact: true }).click();
+  await page.getByLabel("Interface density", { exact: true }).selectOption("compact");
+  await page.getByRole("slider", { name: "Interface scale", exact: true }).press("End");
+  await page.getByRole("tab", { name: "Welcome Close tab", exact: true }).click();
+  await page.setViewportSize({ width: 320, height: 900 });
+  await page.getByRole("button", { name: "Show right panel", exact: true }).click();
+  await expect(context.getByRole("button", { name: "Close context panel", exact: true })).toBeInViewport();
+  await expect
+    .poll(() => context.evaluate((element) => element.getBoundingClientRect().right))
+    .toBeLessThanOrEqual(321);
+  await expect
+    .poll(() => details.evaluate((element) => element.scrollWidth - element.clientWidth))
+    .toBeLessThanOrEqual(1);
+  await page.screenshot({ path: testInfo.outputPath("note-details-narrow.png") });
+  await context.getByRole("button", { name: "Close context panel", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Show right panel", exact: true })).toBeFocused();
+});
+
 test("note properties retain YAML edits, duplicate validation and focus after additions and removals", async ({
   page,
 }) => {

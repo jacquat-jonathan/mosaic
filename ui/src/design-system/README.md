@@ -5,7 +5,7 @@ The visual design and gallery were approved on 2026-10-28 after review of typogr
 icons, focus behavior, overlays, workflows, runs, chat, and Activity & review.
 **Settings → Appearance** was visually accepted on 2026-10-28. Settings navigation, header,
 and sections, Connections & safety, workflows, runs, chats, Activity & review, file history,
-Welcome, app navigation, and Files and Find are migrated. **Note workspace** is next;
+Welcome, app navigation, Files and Find, and Note workspace are migrated. **Task lists** are next;
 remaining workspace and planning surfaces keep their existing controls.
 
 ## Open the gallery
@@ -487,3 +487,10 @@ in the note details panel. A local scope keeps form typography at
 parent scope. Existing YAML transformations and commit behavior remain. Duplicate names
 associate their error with the field; cancelled additions and removed values restore focus.
 The form stacks its fields using a named container query and removes its final legacy rules.
+
+`views/NoteDetails.tsx` owns the note context scope and lets PropertiesEditor inherit it.
+Shared headings, count badges, links, outline controls, and notices retain attachments,
+backlinks, mentions, section movement, and source navigation. Failed backlinks/mentions stay
+distinct from empty results and expose retries; mention writes serialize and guard the vault.
+The context header has its own sibling scope for all detail types. Its close action restores
+workspace focus, while Calendar context content remains for its own migration.

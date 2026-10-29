@@ -1184,12 +1184,6 @@ mark {
   flex-direction: column;
   min-height: 0;
 }
-.links-panel {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-}
-
 .right-panel section {
   padding: 4px 12px 16px;
 }
@@ -1205,104 +1199,6 @@ mark {
 .right-panel .count {
   color: var(--faint);
 }
-.backlink {
-  margin-bottom: 10px;
-}
-.backlink-source {
-  font-weight: 600;
-  color: var(--accent);
-  padding: 2px 4px;
-  margin-left: -4px;
-}
-.backlink-context {
-  font-size: 12.5px;
-  color: var(--muted);
-  padding: 3px 8px;
-  margin-top: 2px;
-  border-left: 2px solid var(--border);
-  line-height: 1.45;
-  word-break: break-word;
-}
-.outline-hint {
-  margin: -3px 0 6px;
-  color: var(--faint);
-  font-size: 11px;
-  line-height: 1.35;
-}
-.outline-row {
-  display: flex;
-  align-items: center;
-  min-width: 0;
-  border-radius: 5px;
-}
-.outline-row.drop {
-  box-shadow: inset 0 2px var(--accent);
-}
-.outline-row.dragging {
-  opacity: 0.45;
-}
-.outline-item {
-  display: flex !important;
-  align-items: center;
-  gap: 3px;
-  flex: 1;
-  min-width: 0;
-  font-size: 13px;
-  padding: 3px 0;
-  color: var(--fg);
-  cursor: grab;
-}
-.outline-item:active {
-  cursor: grabbing;
-}
-.outline-item span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.outline-item svg {
-  flex: none;
-  color: var(--faint);
-  opacity: 0;
-}
-.outline-row:hover .outline-item svg,
-.outline-item:focus-visible svg {
-  opacity: 1;
-}
-.outline-add {
-  flex: none;
-  display: inline-flex;
-  padding: 3px;
-  color: var(--faint);
-  opacity: 0;
-}
-.outline-row:hover .outline-add,
-.outline-add:focus-visible {
-  opacity: 1;
-}
-.outline-add:hover {
-  color: var(--accent);
-}
-.attachment-link {
-  display: block;
-  width: 100%;
-  margin: 2px 0;
-  padding: 4px 0;
-  overflow: hidden;
-  color: var(--fg);
-  text-align: left;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.attachment-link:hover {
-  color: var(--accent);
-}
-.panel-secondary {
-  margin-top: 7px;
-  color: var(--muted);
-  font-size: 12px;
-}
-
 /* Quick switcher */
 .modal-backdrop.top {
   place-items: start center;
@@ -2518,31 +2414,6 @@ svg path.flow-on {
   pointer-events: none;
 }
 /* Settings › AI › folders agents can't change. */
-/* Unlinked mentions under Backlinks (RightPanel.tsx). */
-.section-toggle {
-  padding: 0;
-  font: inherit;
-  color: inherit;
-  text-transform: inherit;
-  letter-spacing: inherit;
-}
-.mention {
-  position: relative;
-}
-.mention-link {
-  font-size: 12px;
-  padding: 1px 8px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  color: var(--muted);
-  margin-top: 4px;
-}
-.mention-link:hover {
-  color: var(--fg);
-  border-color: var(--accent);
-}
-/* Bookmark the current search (SearchPanel.tsx). */
-
 /* Print preview of a note (export/note.ts › printNote). On screen it sits over the app; printed, only
    the page shows. */
 .print-root {
@@ -3094,7 +2965,7 @@ textarea:focus-visible {
     top: 0;
     bottom: 0;
     z-index: 31;
-    max-width: calc(100vw - 100px);
+    max-width: calc(100% - 44px);
     box-shadow: var(--shadow);
   }
 }

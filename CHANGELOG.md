@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Week calendar:** shared controls and larger event/task metadata preserve the five-day grid, keyboard view changes, and independent scrolling in narrow panes.
+
 - **Today/day calendar:** shared navigation, view choices, notices, and readable event/task metadata preserve scheduling and layer filters. Keyboard users can create an event from an empty time slot.
 
 - **Epics:** shared edit/history dialogs add consistent fields, notices, keyboard dismissal, and focus return. Saving disables duplicate actions and dismissal, and failures preserve the draft.

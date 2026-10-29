@@ -56,7 +56,10 @@ test("day calendar retains period navigation, layer filters and keyboard event c
   await expect(page.getByRole("complementary", { name: "New event", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Close event editor", exact: true }).click();
 });
-for (const [route, label] of [["today", "Today"]]) {
+for (const [route, label] of [
+  ["today", "Today"],
+  ["week", "My week"],
+]) {
   test(`${label} calendar shares themes and fits scaled narrow panes`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
@@ -86,3 +89,20 @@ for (const [route, label] of [["today", "Today"]]) {
     await page.screenshot({ path: testInfo.outputPath(`${route}-narrow.png`) });
   });
 }
+
+test("week calendar retains five-day layout, keyboard view choices and the month boundary", async ({ page }) => {
+  await openCalendar(page, "week");
+  let calendar = page.getByRole("main", { name: "Calendar", exact: true });
+  await expect(calendar.locator(".planner-time-day")).toHaveCount(5);
+  const week = calendar.getByRole("radio", { name: "Week", exact: true });
+  await week.focus();
+  await week.press("ArrowRight");
+  await expect(calendar.getByRole("radio", { name: "Day", exact: true })).toBeChecked();
+  await expect(calendar.getByRole("radio", { name: "Day", exact: true })).toBeFocused();
+  await calendar.getByRole("radio", { name: "Day", exact: true }).press("ArrowLeft");
+  await expect(week).toBeFocused();
+  await calendar.getByRole("radio", { name: "Month", exact: true }).click();
+  calendar = page.getByRole("main", { name: "Calendar", exact: true });
+  await expect(calendar).toHaveCSS("font-size", "13px");
+  await expect(calendar.getByRole("tab", { name: "Month", exact: true })).toBeFocused();
+});

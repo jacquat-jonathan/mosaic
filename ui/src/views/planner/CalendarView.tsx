@@ -91,7 +91,7 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
   const calendarContainer = useRef<HTMLDivElement>(null),
     modeFocus = useRef(false),
     retryFocus = useRef(false);
-  const adopted = mode === "day";
+  const adopted = mode !== "month";
   useEffect(() => {
     if (modeFocus.current || (!loading && retryFocus.current)) {
       const controls = calendarContainer.current?.querySelector<HTMLElement>(

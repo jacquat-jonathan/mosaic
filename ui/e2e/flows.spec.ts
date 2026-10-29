@@ -229,7 +229,7 @@ test("calendar event cards only wrap titles when they have room for another line
   await openVault(page);
   await page.getByRole("tab", { name: "Plan" }).click();
   await page.getByRole("button", { name: "Calendar", exact: true }).click();
-  await page.getByRole("tab", { name: "Week", exact: true }).click();
+  await page.getByRole("radio", { name: "Week", exact: true }).click();
 
   const card = page.locator(".planner-timed-item.overlay"),
     title = card.locator(".planner-card-title");
@@ -254,7 +254,7 @@ test("calendar event cards only wrap titles when they have room for another line
   expect(bounds!.titleLeft).toBeGreaterThanOrEqual(bounds!.cardLeft);
   expect(bounds!.titleRight).toBeLessThanOrEqual(bounds!.cardRight);
 
-  await page.setViewportSize({ width: 1280, height: 1200 });
+  await page.setViewportSize({ width: 1280, height: 1440 });
   await expect(card).toHaveClass(/multiline-title/);
   await expect(title).toHaveCSS("white-space", "normal");
 });
@@ -527,7 +527,7 @@ test("create calendar events, subscriptions and work sessions", async ({ page })
   await eventEditor.getByLabel("Participants").fill("qa@example.com, dev@example.com");
   await eventEditor.getByRole("button", { name: "Save" }).click();
 
-  await page.getByRole("tab", { name: "Month", exact: true }).click();
+  await page.getByRole("radio", { name: "Month", exact: true }).click();
   await expect(page.getByRole("grid")).toBeVisible();
   await page.getByRole("tab", { name: "Day", exact: true }).click();
   await expect(page.locator(".planner-calendar-content.mode-day")).toBeVisible();

@@ -91,3 +91,55 @@ test("canvas controls and palette share themes and fit scaled narrow panes", asy
   await expect.poll(() => palette.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
   await page.screenshot({ path: info.outputPath("canvas-narrow.png") });
 });
+
+async function replaceSource(page: Page, content: string) {
+  const editor = page.locator(".cm-content");
+  await editor.click();
+  await editor.press("Meta+A");
+  await page.keyboard.insertText(content);
+}
+test("diagram controls preserve source editing, render errors and recovery", async ({ page }) => {
+  await setup(page);
+  await openFile(page, "Graph.dot");
+  const controls = page.getByRole("group", { name: "Graph controls", exact: true });
+  const preview = page.getByRole("region", { name: "Graph preview", exact: true });
+  await expect(preview.locator("svg")).toBeVisible();
+  await controls.getByRole("radio", { name: "Source", exact: true }).click();
+  await replaceSource(page, "this is not a graph");
+  await controls.getByRole("radio", { name: "Graph", exact: true }).click();
+  await expect(controls.getByRole("alert")).toBeVisible();
+  await controls.getByRole("radio", { name: "Source", exact: true }).click();
+  await replaceSource(page, "digraph { Migrated -> Ready }");
+  await controls.getByRole("radio", { name: "Graph", exact: true }).click();
+  await expect(preview.locator("svg")).toContainText("Migrated");
+  await expect(controls.getByRole("alert")).toHaveCount(0);
+  await expect.poll(() => readFile(page, "Graph.dot")).toContain("Migrated -> Ready");
+  await preview.focus();
+  await expect(preview).toBeFocused();
+});
+test("diagram controls share themes and fit scaled narrow panes", async ({ page }, info) => {
+  await setup(page);
+  await openFile(page, "Graph.dot");
+  await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  for (const theme of ["Light", "Dark", "System"]) {
+    await page.getByRole("radio", { name: theme, exact: true }).check();
+    await openFile(page, "Graph.dot");
+    const controls = page.getByRole("group", { name: "Graph controls", exact: true });
+    await expect(controls).toHaveCSS("font-size", "14px");
+    await expect(controls).toHaveCSS("background-color", theme === "Light" ? "rgb(246, 246, 248)" : "rgb(24, 25, 29)");
+    await expect(page.getByRole("region", { name: "Graph preview", exact: true }).locator("svg")).toBeVisible();
+    if (theme !== "System") await page.screenshot({ path: info.outputPath(`diagram-${theme.toLowerCase()}.png`) });
+    await page.getByRole("tab", { name: "Settings Close tab", exact: true }).click();
+  }
+  await page.getByLabel("Interface density", { exact: true }).selectOption("compact");
+  await page.getByRole("slider", { name: "Interface scale", exact: true }).press("End");
+  await openFile(page, "Graph.dot");
+  await page.setViewportSize({ width: 320, height: 900 });
+  const controls = page.getByRole("group", { name: "Graph controls", exact: true });
+  await expect(controls.getByRole("radio", { name: "Source", exact: true })).toBeInViewport();
+  await expect.poll(() => controls.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
+  await expect(page.getByRole("region", { name: "Graph preview", exact: true }).locator("svg")).toBeVisible();
+  await expect(controls.getByRole("status")).toHaveCount(0);
+  await page.screenshot({ path: info.outputPath("diagram-narrow.png") });
+});

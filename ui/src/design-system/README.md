@@ -607,3 +607,8 @@ and scoped React Flow navigation controls. The nonmodal shape palette stays drag
 uses shared controls and readable groups, fits the scaled viewport, and restores its opener
 on dismissal. Newly created shapes retain editor focus. Reduced motion disables fit
 animations; canvas nodes, note previews, geometry, and source rendering stay outside scopes.
+
+
+Graphviz diagrams opt into shared `DocumentToolbar` controls, labelled Graph/Source choices,
+error notices, and a keyboard-scrollable preview. DOT source editing, rendering, and theme
+redraws remain intact. Charts retain their previous controls until their separate migration.

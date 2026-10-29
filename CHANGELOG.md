@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Diagrams:** shared Graph/Source choices, readable render errors, and a keyboard-scrollable preview preserve DOT editing and theme redraws.
+
 - **Canvas:** shared toolbar/view choices, navigation controls, and a readable shape palette preserve card editing and palette dragging. Palette dismissal restores focus, scaled windows keep controls visible, and fit animations respect reduced motion.
 
 - **Error toast:** shared notices and an accessible dismiss action wrap long messages. Automatic dismissal pauses during reading or keyboard focus, and manual dismissal returns focus.

@@ -397,4 +397,12 @@ describe("planner calendar container", () => {
     fireEvent.click(screen.getByRole("button", { name: "Refresh calendar" }));
     expect(await screen.findByText("refresh failed")).toBeTruthy();
   });
+  it("day failures remain explicit and can be retried", async () => {
+    vi.mocked(api.plannerCalendarRange).mockRejectedValue(new Error("calendar offline"));
+    render(<CalendarView initialMode="day" />);
+    expect(await screen.findByText("calendar offline")).toBeTruthy();
+    vi.mocked(api.plannerCalendarRange).mockResolvedValue(calendarRange);
+    fireEvent.click(screen.getByRole("button", { name: "Retry calendar" }));
+    await waitFor(() => expect(screen.queryByText("calendar offline")).toBeNull());
+  });
 });

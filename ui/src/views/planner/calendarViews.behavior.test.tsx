@@ -373,4 +373,10 @@ describe("week calendar", () => {
     fireEvent.mouseDown(document.body);
     window.dispatchEvent(new Event("mouseup"));
   });
+  it("creates an event from a keyboard-activated empty time slot", () => {
+    const p = props();
+    render(<WeekView {...p} />);
+    fireEvent.click(screen.getAllByRole("button", { name: /^Create event/ })[0], { detail: 0 });
+    expect(p.onEmptyRange).toHaveBeenCalledTimes(1);
+  });
 });

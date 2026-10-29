@@ -16,11 +16,11 @@ export function SpecialView({ path }: { path: string }) {
   const root = useVault((s) => s.vault?.root);
   switch (kind) {
     case "calendar":
-      return <CalendarView />;
+      return <CalendarView key={`${root}/${kind}`} />;
     case "week":
-      return <CalendarView initialMode="week" />;
+      return <CalendarView key={`${root}/${kind}`} initialMode="week" />;
     case "today":
-      return <CalendarView initialMode="day" />;
+      return <CalendarView key={`${root}/${kind}`} initialMode="day" />;
     case "chat":
       return <ChatPanel id={id} />;
     case "chats":

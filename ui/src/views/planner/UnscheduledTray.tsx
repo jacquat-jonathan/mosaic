@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent } from "react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import type { PlannerEpic, PlannerTask } from "../../ipc/types";
 import { isCompactCalendarWidth } from "./calendarModel";
 
@@ -7,10 +8,12 @@ export function UnscheduledTray({
   tasks,
   epics,
   onSchedule,
+  designSystem = false,
 }: {
   tasks: PlannerTask[];
   epics: PlannerEpic[];
   onSchedule(task: PlannerTask): void;
+  designSystem?: boolean;
 }) {
   const trayRef = useRef<HTMLElement>(null);
   const [manuallyCollapsed, setManuallyCollapsed] = useState(false),
@@ -78,11 +81,12 @@ export function UnscheduledTray({
     <aside ref={trayRef} className={`unscheduled-tray ${compact ? "compact" : ""} ${collapsed ? "collapsed" : ""}`}>
       <header>
         <button
+          className="mds-button mds-icon-button"
           aria-label={collapsed ? "Show open tasks" : "Hide open tasks"}
           aria-expanded={!collapsed}
           onClick={toggle}
         >
-          {collapsed ? "▸" : "▾"}
+          {designSystem ? collapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} /> : collapsed ? "▸" : "▾"}
         </button>
         <h3>Open tasks</h3>
         <span className="panel-meta">{shown.length}</span>
@@ -91,6 +95,7 @@ export function UnscheduledTray({
         <>
           <div className="unscheduled-filters">
             <input
+              className="mds-input"
               type="search"
               aria-label="Search open tasks"
               placeholder="Search tasks…"
@@ -98,6 +103,7 @@ export function UnscheduledTray({
               onChange={(event) => setSearch(event.target.value)}
             />
             <select
+              className="mds-input"
               aria-label="Filter open tasks by epic"
               value={epic}
               onChange={(event) => setEpic(event.target.value)}
@@ -127,7 +133,7 @@ export function UnscheduledTray({
                       onDragStart={(event) => drag(event, task)}
                       style={{ "--task-color": group.color } as CSSProperties}
                     >
-                      <button onClick={() => onSchedule(task)}>
+                      <button className="mds-button" onClick={() => onSchedule(task)}>
                         <strong>{task.title}</strong>
                         <span>
                           {task.estimate_minutes ? `${task.estimate_minutes} min` : "1 hour"}

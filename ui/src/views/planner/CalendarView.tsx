@@ -1,5 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type HTMLAttributes } from "react";
 import { ChevronLeft, ChevronRight, Download, RefreshCw, Upload } from "lucide-react";
+import { Button, Notice, SegmentedControl } from "../../design-system/components";
+import { DesignSystemScope } from "../DesignSystemScope";
+import "./calendarDesign.css";
 import { api, inTauri, onPlannerChanged } from "../../ipc/api";
 import {
   errorMessage,
@@ -62,6 +65,10 @@ const localInstant = (day: string, hour: number) => {
 };
 const plusIsoDays = (day: string, count: number) => isoDay(addDays(new Date(`${day}T12:00:00`), count));
 
+function CalendarSurface({ adopted, ...props }: HTMLAttributes<HTMLElement> & { adopted: boolean }) {
+  return adopted ? <DesignSystemScope as="main" {...props} /> : <main {...props} />;
+}
+
 export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
   const root = useVault((state) => state.vault?.root) ?? "",
     sunday = useSettings((state) => state.weekStart === "sunday");
@@ -81,13 +88,41 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
     [error, setError] = useState<string | null>(null),
     [loading, setLoading] = useState(true),
     [show, setShow] = useState({ events: true, sessions: true, due: true });
+  const calendarContainer = useRef<HTMLDivElement>(null),
+    modeFocus = useRef(false),
+    retryFocus = useRef(false);
+  const adopted = mode === "day";
+  useEffect(() => {
+    if (modeFocus.current || (!loading && retryFocus.current)) {
+      const controls = calendarContainer.current?.querySelector<HTMLElement>(
+        error && retryFocus.current
+          ? "[data-calendar-retry]"
+          : 'input[role="radio"]:checked, input[type="radio"]:checked, [role="tab"][aria-selected="true"]',
+      );
+      controls?.focus();
+      modeFocus.current = false;
+      retryFocus.current = false;
+    }
+  }, [mode, loading, error]);
+  const live = useRef(true),
+    loadVersion = useRef(0);
+  const current = useCallback(() => live.current && root === useVault.getState().vault?.root, [root]);
+  useEffect(() => {
+    live.current = true;
+    return () => {
+      live.current = false;
+      loadVersion.current++;
+    };
+  }, []);
   const importInput = useRef<HTMLInputElement>(null);
   const days = useMemo(() => visibleDays(anchor, mode, sunday), [anchor, mode, sunday]),
     from = isoDay(days[0]),
     to = isoDay(days.at(-1)!);
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
   const load = useCallback(async () => {
-    if (!root) return;
+    if (!root || !current()) return;
+    const version = ++loadVersion.current;
+    const valid = () => current() && version === loadVersion.current;
     setLoading(true);
     try {
       const [range, nextOverlay, nextEpics, nextEvents] = await Promise.all([
@@ -96,31 +131,38 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
         api.plannerEpics(false, false),
         api.plannerEvents(false, false),
       ]);
-      if (useVault.getState().vault?.root !== root) return;
+      if (!valid()) return;
       setData(range);
       setOverlay(nextOverlay);
       setEpics(nextEpics);
       setEvents(nextEvents);
       setError(null);
     } catch (reason) {
-      setError(errorMessage(reason));
-      setData(emptyRange(from, to));
-      setOverlay(emptyOverlay);
+      if (valid()) {
+        setError(errorMessage(reason));
+        setData(emptyRange(from, to));
+        setOverlay(emptyOverlay);
+      }
     } finally {
-      setLoading(false);
+      if (valid()) setLoading(false);
     }
-  }, [root, from, to, timezone]);
+  }, [root, from, to, timezone, current]);
   useEffect(() => {
     void load();
   }, [load]);
   useEffect(() => {
     let off: (() => void) | undefined;
+    let active = true;
     void onPlannerChanged((change) => {
       if (change.root === root) void load();
     }).then((value) => {
-      off = value;
+      if (active) off = value;
+      else value();
     });
-    return () => off?.();
+    return () => {
+      active = false;
+      off?.();
+    };
   }, [root, load]);
   const refreshSubscriptions = useCallback(
     async (force = false) => {
@@ -145,6 +187,8 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
     };
   }, [root, refreshSubscriptions]);
   const setMode = (next: CalendarMode) => {
+    if (next === mode) return;
+    modeFocus.current = true;
     setSelectedRange(null);
     setModeState(next);
     try {
@@ -432,16 +476,23 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
       : null,
     today = isoDay(new Date());
   return (
-    <div className={`planner-calendar-page ${editor || overlayDetails || selectedSession ? "with-editor" : ""}`}>
-      <main className="planner-calendar">
+    <div
+      ref={calendarContainer}
+      className={`planner-calendar-page ${editor || overlayDetails || selectedSession ? "with-editor" : ""}`}
+    >
+      <CalendarSurface
+        adopted={adopted}
+        className={`planner-calendar ${adopted ? "calendar-design" : ""}`}
+        aria-label="Calendar"
+      >
         <Toolbar>
-          <button className="icon" aria-label="Previous period" onClick={() => step(-1)}>
+          <Button className="icon" aria-label="Previous period" onClick={() => step(-1)}>
             <ChevronLeft size={16} />
-          </button>
-          <button className="icon" aria-label="Next period" onClick={() => step(1)}>
+          </Button>
+          <Button className="icon" aria-label="Next period" onClick={() => step(1)}>
             <ChevronRight size={16} />
-          </button>
-          <button onClick={() => setAnchor(atNoon(new Date()))}>Today</button>
+          </Button>
+          <Button onClick={() => setAnchor(atNoon(new Date()))}>Today</Button>
           <h2 className="calendar-title">{title}</h2>
           <span className="spacer" />
           <details className="calendar-chooser">
@@ -481,8 +532,8 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
                   <i style={{ background: item.color }} /> {item.name} 🔒
                 </label>
               ))}
-              <button onClick={() => setArchivesOpen(true)}>Archived local events…</button>
-              <button onClick={() => setSourcesOpen(true)}>Manage subscriptions…</button>
+              <Button onClick={() => setArchivesOpen(true)}>Archived local events…</Button>
+              <Button onClick={() => setSourcesOpen(true)}>Manage subscriptions…</Button>
             </div>
           </details>
           <input
@@ -495,40 +546,73 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
               if (file) void chooseIcal(file);
             }}
           />
-          <button aria-label="Import iCalendar file" onClick={() => importInput.current?.click()}>
+          <Button aria-label="Import iCalendar file" onClick={() => importInput.current?.click()}>
             <Upload size={14} /> Import
-          </button>
-          <button aria-label="Export iCalendar file" onClick={() => void exportIcal()}>
+          </Button>
+          <Button aria-label="Export iCalendar file" onClick={() => void exportIcal()}>
             <Download size={14} /> Export
-          </button>
-          <button
+          </Button>
+          <Button
             onClick={() => {
               setSelectedRange(null);
               newEvent();
             }}
           >
             New event
-          </button>
-          <button
+          </Button>
+          <Button
             className="icon"
             aria-label="Refresh calendar"
             disabled={loading}
             onClick={() => void refreshSubscriptions(true)}
           >
             <RefreshCw size={15} />
-          </button>
-          <Segmented<CalendarMode>
-            value={mode}
-            options={[
-              { value: "month", label: "Month" },
-              { value: "week", label: "Week" },
-              { value: "day", label: "Day" },
-            ]}
-            onChange={setMode}
-          />
+          </Button>
+          {adopted ? (
+            <SegmentedControl<CalendarMode>
+              label="Calendar view"
+              value={mode}
+              options={[
+                { value: "month", label: "Month" },
+                { value: "week", label: "Week" },
+                { value: "day", label: "Day" },
+              ]}
+              onChange={setMode}
+            />
+          ) : (
+            <Segmented<CalendarMode>
+              value={mode}
+              options={[
+                { value: "month", label: "Month" },
+                { value: "week", label: "Week" },
+                { value: "day", label: "Day" },
+              ]}
+              onChange={setMode}
+            />
+          )}
         </Toolbar>
-        {error && <p className="error-text calendar-error">{error}</p>}
-        {loading && !data && <p className="panel-meta calendar-loading">Loading planner calendar…</p>}
+        {error &&
+          (adopted ? (
+            <Notice tone="error">
+              {error}
+              <Button
+                data-calendar-retry
+                onClick={() => {
+                  retryFocus.current = true;
+                  void load();
+                }}
+              >
+                Retry calendar
+              </Button>
+            </Notice>
+          ) : (
+            <p className="error-text calendar-error">{error}</p>
+          ))}
+        {loading && !data && (
+          <p className={adopted ? "mds-hint calendar-loading" : "panel-meta calendar-loading"} role="status">
+            Loading planner calendar…
+          </p>
+        )}
         <div className={`planner-calendar-content mode-${mode}`}>
           {mode === "month" ? (
             <MonthView
@@ -564,6 +648,7 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
           ) : (
             <>
               <WeekView
+                designSystem={adopted}
                 days={days}
                 data={selectedData}
                 overlays={overlay.occurrences}
@@ -603,6 +688,7 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
                 }
               />
               <UnscheduledTray
+                designSystem={adopted}
                 tasks={selectedData.unscheduled_tasks}
                 epics={epics}
                 onSchedule={(task) => void scheduleTask(task, isoDay(anchor), 9)}
@@ -610,7 +696,7 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
             </>
           )}
         </div>
-      </main>
+      </CalendarSurface>
       {editor && (
         <EventEditor
           key={editor.series?.id ?? `new:${editor.initialStart ?? ""}:${editor.initialEnd ?? ""}`}

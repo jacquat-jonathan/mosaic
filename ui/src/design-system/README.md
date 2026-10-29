@@ -517,3 +517,9 @@ Narrow pane containers show the editor at full width, with a media fallback for 
 references (including Safari pointer focus), title focus, Enter submission, serialized
 writes, pending dismissal guards, and draft-preserving errors. Activity inherits the dialog
 scope; task/epic editor legacy styles are removed only where no consumer remains.
+
+`views/planner/CalendarView.tsx` begins Calendar adoption with Today/day. Its main surface
+uses shared actions, a labelled radio view selector, notices, and scoped tokens around the
+specialized time grid and task tray. Other modes and editors keep separate migration passes.
+Larger event text wraps only when two lines fit. Empty slots support keyboard creation,
+and range loads guard the latest request and active vault.

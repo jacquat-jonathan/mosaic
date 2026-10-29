@@ -531,7 +531,7 @@ test("create calendar events, subscriptions and work sessions", async ({ page })
   await expect(page.getByRole("grid")).toBeVisible();
   await page.getByRole("tab", { name: "Day", exact: true }).click();
   await expect(page.locator(".planner-calendar-content.mode-day")).toBeVisible();
-  await page.getByRole("tab", { name: "Week", exact: true }).click();
+  await page.getByRole("radio", { name: "Week", exact: true }).click();
 
   const showTasks = page.getByRole("button", { name: "Show open tasks" });
   if (await showTasks.isVisible()) await showTasks.click();

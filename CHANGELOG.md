@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Project tasks:** shared result rows and completion controls preserve the project-tag query and note links, including empty and failed loads.
+
 - **Overdue:** shared task rows and notices retain the due-date filter, completion, and note links. Narrow layouts keep task metadata readable.
 
 - **Tasks:** shared result rows, readable metadata, loading/error notices, and retry actions. Completion waits for saving and returns focus to the remaining results.

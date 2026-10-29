@@ -495,7 +495,7 @@ distinct from empty results and expose retries; mention writes serialize and gua
 The context header has its own sibling scope for all detail types. Its close action restores
 workspace focus, while Calendar context content remains for its own migration.
 
-`views/TaskQueryView.tsx` adopts Tasks and Overdue. Shared actions and notices
+`views/TaskQueryView.tsx` adopts Tasks, Overdue, and Project tasks. Shared actions and notices
 wrap native completion checkboxes and readable result metadata. Requests guard the active
 vault, writes serialize until acknowledged, and removed rows return focus to the results.
-Project tasks and saved views retain their existing rendering until their individual passes.
+Saved views retain their existing rendering until their individual passes.

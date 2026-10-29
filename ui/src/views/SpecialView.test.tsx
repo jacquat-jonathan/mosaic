@@ -95,15 +95,16 @@ test("queries task views, toggles tasks and opens their notes", async () => {
 
 test("covers saved, overdue, project, generic and empty task queries", async () => {
   vi.spyOn(api, "query").mockResolvedValue({ columns: [], rows: [], total: 0 });
-  for (const [path, heading] of [
-    ["mosaic:planning/mine", "My planning"],
-    ["mosaic:overdue", "Overdue"],
-    ["mosaic:projects", "Project tasks"],
-    ["mosaic:tasks", "Tasks"],
+  for (const [path, heading, expectedQuery] of [
+    ["mosaic:planning/mine", "My planning", "task:open tag:mine"],
+    ["mosaic:overdue", "Overdue", "task:open due<today sort:due limit:1000"],
+    ["mosaic:projects", "Project tasks", "task:open tag:project sort:due limit:1000"],
+    ["mosaic:tasks", "Tasks", "task:open sort:due limit:1000"],
   ]) {
     const view = render(<SpecialView path={path} />);
     expect(await screen.findByRole("heading", { name: heading })).toBeTruthy();
     expect(await screen.findByText(/No tasks match this view/)).toBeTruthy();
+    expect(api.query).toHaveBeenCalledWith(expectedQuery);
     view.unmount();
   }
 

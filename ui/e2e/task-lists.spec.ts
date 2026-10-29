@@ -54,15 +54,30 @@ test("Tasks follow themes and fit narrow scaled panes", async ({ page }, testInf
   await page.screenshot({ path: testInfo.outputPath("tasks-narrow.png") });
 });
 
-for (const [kind, title] of [["overdue", "Overdue"]]) {
+for (const [kind, title] of [
+  ["overdue", "Overdue"],
+  ["projects", "Project tasks"],
+]) {
   test(`${title} retains filtered results and themed narrow layouts`, async ({ page }, testInfo) => {
     await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
     await page.goto("/");
     await page.getByRole("button", { name: "Open folder…", exact: true }).click();
+    if (kind === "projects")
+      await page.evaluate(async () => {
+        const mock = (
+          window as unknown as { __mosaic: { mockInvoke(command: string, args: object): Promise<unknown> } }
+        ).__mosaic;
+        await mock.mockInvoke("create_file", {
+          path: "Project milestone.md",
+          content: "---\ntags: [project]\n---\n- [ ] Project milestone\n",
+          root: null,
+        });
+      });
+    const taskName = kind === "projects" ? /^Project milestone/ : /^Overdue review/;
     await openView(page, kind);
     const view = page.getByRole("main", { name: title, exact: true });
     await expect(view).toHaveCSS("font-size", "14px");
-    await expect(view.getByRole("checkbox", { name: /^Overdue review/ })).toBeVisible();
+    await expect(view.getByRole("checkbox", { name: taskName })).toBeVisible();
     await expect(view.getByRole("checkbox", { name: /^Ship the calendar/ })).toHaveCount(0);
     await page.screenshot({ path: testInfo.outputPath(`${kind}-dark.png`) });
     await page.getByRole("button", { name: "Settings", exact: true }).click();
@@ -74,7 +89,7 @@ for (const [kind, title] of [["overdue", "Overdue"]]) {
     await page.setViewportSize({ width: 320, height: 900 });
     await expect.poll(() => view.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
     await page.screenshot({ path: testInfo.outputPath(`${kind}-narrow.png`) });
-    await view.getByRole("checkbox", { name: /^Overdue review/ }).press("Space");
+    await view.getByRole("checkbox", { name: taskName }).press("Space");
     await expect(view.getByText("No tasks match this view.")).toBeVisible();
     await expect(view.getByRole("heading", { name: title, exact: true })).toBeFocused();
   });

@@ -5,8 +5,7 @@ The visual design and gallery were approved on 2026-10-28 after review of typogr
 icons, focus behavior, overlays, workflows, runs, chat, and Activity & review.
 **Settings → Appearance** was visually accepted on 2026-10-28. Settings navigation, header,
 and sections, Connections & safety, workflows, runs, chats, Activity & review, file history,
-Welcome, app navigation, Files and Find, and Note workspace are migrated. Task lists, the task board, and Calendar and shared overlays are also migrated;
-remaining document controls keep their existing styles.
+Welcome, app navigation, Files and Find, and Note workspace are migrated. Task lists, the task board, and Calendar, shared overlays, and document-view controls are also migrated. The final audit covers remaining states and legacy-style cleanup.
 
 ## Open the gallery
 
@@ -649,3 +648,10 @@ readable consent/loading/error notices. Internet decisions remain tied to the ex
 content and vault; scripts stay independently controlled. Failed previews can be retried,
 and late prepared documents cannot publish after closing or vault changes. The iframe and
 its document typography remain outside the design-system scope.
+
+
+`viewers/CodeEditor.tsx` adopts shared loading/read-only notices and scoped CodeMirror
+search/replace controls. CodeMirror owns its panel markup and keyboard/search model; the
+adapter uses foundation tokens for fields, actions, checkboxes, focus and responsive wrapping.
+The source scroller retains the configured code font at 13px, line-number preferences,
+syntax loading/fallbacks, and editing/save behavior.

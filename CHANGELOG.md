@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Source editors:** shared loading/read-only notices and scoped search/replace controls improve keyboard focus and narrow layouts while preserving code typography, syntax, line numbers, and saved edits.
+
 - **HTML previews:** shared view/zoom controls, script choices and permission notices preserve per-page consent and source editing. Failed previews can be retried; pending or stale previews stay tied to their vault.
 
 - **Images:** shared loading/error notices and retry actions handle unreadable or invalid images. Previews keep their original rendering, keyboard focus and fit behavior, with late reads guarded by vault and lifetime.

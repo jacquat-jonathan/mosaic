@@ -502,3 +502,67 @@ test("HTML controls share themes and fit scaled narrow panes", async ({ page }, 
   await expect(permission.getByRole("button", { name: "Keep blocked", exact: true })).toBeInViewport();
   await page.screenshot({ path: info.outputPath("html-permission-narrow.png") });
 });
+
+test("source controls preserve search, replacement, saved text and focus", async ({ page }) => {
+  await setup(page);
+  await openFile(page, "Projects/notes.txt");
+  const editor = page.locator(".cm-content");
+  await expect(editor).toHaveCSS("font-size", "13px");
+  await editor.click();
+  await editor.press("Meta+f");
+  const panel = page.locator(".source-editor-controls .cm-search");
+  const find = panel.getByRole("textbox", { name: "Find", exact: true });
+  await expect(find).toBeFocused();
+  await find.fill("Plain");
+  await find.press("Enter");
+  await expect(page.locator(".cm-searchMatch").first()).toBeVisible();
+  await panel.getByRole("textbox", { name: "Replace", exact: true }).fill("Migrated");
+  await panel.getByRole("button", { name: "replace all", exact: true }).click();
+  await expect(editor).toContainText("Migrated text file");
+  await expect.poll(() => readFile(page, "Projects/notes.txt")).toContain("Migrated text file");
+  await find.focus();
+  await find.press("Escape");
+  await expect(editor).toBeFocused();
+  await expect(panel).toHaveCount(0);
+});
+test("source controls share themes and fit scaled narrow panes without changing code type", async ({ page }, info) => {
+  await setup(page);
+  await openFile(page, "config.json");
+  await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  for (const theme of ["Light", "Dark", "System"]) {
+    await page.getByRole("radio", { name: theme, exact: true }).check();
+    await openFile(page, "config.json");
+    const editor = page.locator(".cm-content");
+    await editor.click();
+    await editor.press("Meta+f");
+    const panel = page.locator(".source-editor-controls .cm-search");
+    await expect(panel).toHaveCSS("font-size", "14px");
+    await expect(editor).toHaveCSS("font-size", "13px");
+    await expect(panel.locator("..")).toHaveCSS(
+      "background-color",
+      theme === "Light" ? "rgb(246, 246, 248)" : "rgb(24, 25, 29)",
+    );
+    if (theme !== "System") await page.screenshot({ path: info.outputPath(`source-${theme.toLowerCase()}.png`) });
+    await panel.getByRole("textbox", { name: "Find", exact: true }).press("Escape");
+    await page.getByRole("tab", { name: "Settings Close tab", exact: true }).click();
+  }
+  await page.getByLabel("Interface density", { exact: true }).selectOption("compact");
+  await page.getByRole("slider", { name: "Interface scale", exact: true }).press("End");
+  await openFile(page, "config.json");
+  await page.setViewportSize({ width: 320, height: 900 });
+  const editor = page.locator(".cm-content");
+  await editor.click();
+  await editor.press("Meta+f");
+  const panel = page.locator(".source-editor-controls .cm-search");
+  await expect(panel.getByRole("textbox", { name: "Find", exact: true })).toBeInViewport();
+  await expect.poll(() => panel.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
+  await expect(editor).toHaveCSS("font-size", "13px");
+  await page.screenshot({ path: info.outputPath("source-narrow.png") });
+  const close = panel.getByRole("button", { name: "close", exact: true });
+  await close.focus();
+  await expect(close).toBeInViewport();
+  await page.screenshot({ path: info.outputPath("source-narrow-actions.png") });
+  await close.press("Enter");
+  await expect(editor).toBeFocused();
+});

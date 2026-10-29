@@ -590,3 +590,8 @@ promise continuations restore explicit openers, preserving Safari focus return.
 readable paths, and empty-vault guidance. Recent/fuzzy ordering and Enter/Meta/Shift actions
 remain intact. Search dialogs constrain long lists inside the modal at maximum interface
 scale, preserving visible dismissal controls and focus return.
+
+`views/ContextMenu.tsx` retains nested menus, hover opening, and edge flipping while using
+shared tokens and readable details/shortcuts. Arrow/Home/End/type-ahead keys navigate enabled
+items, Right/Left enters/leaves submenus, and Escape/Tab restores the opener. Positioning
+accounts for interface zoom; narrow submenus stay within the viewport.

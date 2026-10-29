@@ -249,3 +249,80 @@ test("quick switcher shares themes and fits scaled narrow windows", async ({ pag
   await expect.poll(() => dialog.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
   await page.screenshot({ path: info.outputPath("quick-switcher-narrow.png") });
 });
+
+async function contextMenu(page: Page) {
+  await page.evaluate(async () => {
+    const path = "/src/state/ui.ts";
+    const { useUi } = await import(path);
+    useUi.getState().showMenu(window.innerWidth - 20, window.innerHeight - 20, [
+      { label: "Open note", detail: "Folder/Readable note.md", shortcut: "⌘O", action() {} },
+      { label: "Unavailable", disabled: true },
+      {
+        label: "More actions",
+        children: [
+          { label: "Copy link", action() {} },
+          { label: "Delete note", danger: true, action() {} },
+        ],
+      },
+      { label: "Show details", checked: true, action() {} },
+    ]);
+  });
+  await expect
+    .poll(() => page.getByRole("menu").evaluate((el) => el.getBoundingClientRect().right))
+    .toBeLessThanOrEqual(page.viewportSize()!.width + 1);
+}
+test("context menu preserves nested keyboard navigation, edge flipping and focus return", async ({ page }) => {
+  await setup(page);
+  const opener = page.getByRole("button", { name: "New note", exact: true });
+  await opener.focus();
+  await contextMenu(page);
+  const first = page.getByRole("menuitem", { name: /Open note/ });
+  await expect(first).toBeFocused();
+  await first.press("ArrowDown");
+  const more = page.getByRole("menuitem", { name: "More actions", exact: true });
+  await expect(more).toBeFocused();
+  await more.press("ArrowRight");
+  const copy = page.getByRole("menuitem", { name: "Copy link", exact: true });
+  await expect(copy).toBeFocused();
+  await copy.press("ArrowLeft");
+  await expect(more).toBeFocused();
+  await more.press("ArrowRight");
+  await expect(copy).toBeFocused();
+  for (const menu of await page.getByRole("menu").all()) {
+    const box = await menu.boundingBox();
+    expect(box!.x).toBeGreaterThanOrEqual(0);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(1280);
+  }
+  await copy.press("Enter");
+  await expect(page.getByRole("menu")).toHaveCount(0);
+  await expect(opener).toBeFocused();
+  await contextMenu(page);
+  await page.keyboard.press("Escape");
+  await expect(opener).toBeFocused();
+});
+test("context menu shares themes and fits scaled narrow windows", async ({ page }, info) => {
+  await setup(page);
+  await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  for (const theme of ["Light", "Dark", "System"]) {
+    await page.getByRole("radio", { name: theme, exact: true }).check();
+    await contextMenu(page);
+    const menu = page.getByRole("menu");
+    await expect(menu).toHaveCSS("font-size", "14px");
+    await expect(menu).toHaveCSS("background-color", theme === "Light" ? "rgb(255, 255, 255)" : "rgb(30, 31, 36)");
+    if (theme !== "System") await page.screenshot({ path: info.outputPath(`context-menu-${theme.toLowerCase()}.png`) });
+    await page.keyboard.press("Escape");
+  }
+  await page.getByLabel("Interface density", { exact: true }).selectOption("compact");
+  await page.getByRole("slider", { name: "Interface scale", exact: true }).press("End");
+  await page.setViewportSize({ width: 320, height: 900 });
+  await contextMenu(page);
+  await page.getByRole("menuitem", { name: "More actions", exact: true }).press("ArrowRight");
+  for (const menu of await page.getByRole("menu").all()) {
+    await expect.poll(() => menu.evaluate((el) => el.getBoundingClientRect().right)).toBeLessThanOrEqual(321);
+    await expect.poll(() => menu.evaluate((el) => el.getBoundingClientRect().bottom)).toBeLessThanOrEqual(901);
+    expect((await menu.boundingBox())!.x).toBeGreaterThanOrEqual(0);
+    await expect.poll(() => menu.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
+  }
+  await page.screenshot({ path: info.outputPath("context-menu-narrow.png") });
+});

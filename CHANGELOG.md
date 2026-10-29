@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Context menus:** shared colors, spacing, readable details and icons preserve nested menus and edge flipping. Arrow/Home/End/type-ahead navigation, submenu focus, Escape and focus return now work from the keyboard, including scaled windows.
+
 - **Quick switcher:** shared search controls and readable note paths preserve recent/fuzzy ranking, keyboard opening, new-tab shortcuts, and note creation. Empty vaults explain how to create a note.
 
 - **Pickers:** shared search dialogs, readable results and accessible keyboard selection preserve fuzzy ranking, commands, and folder choices, including empty results and focus return.

@@ -1,7 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
+import { openMockVault } from "./mock-vault";
 async function conflict(page: Page) {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open folder…", exact: true }).click();
+  await openMockVault(page);
   await page.getByRole("treeitem", { name: "Ideas", exact: true }).click();
   const editor = page.locator(".cm-content");
   await editor.locator(".cm-line").last().click();
@@ -107,7 +108,7 @@ test("workspace reconnect preserves the unsaved note and its open tab", async ({
 });
 test("workspace notices share themes and fit scaled narrow windows", async ({ page }, info) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open folder…", exact: true }).click();
+  await openMockVault(page);
   await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   for (const theme of ["Light", "Dark", "System"]) {
@@ -148,7 +149,7 @@ async function unsupported(page: Page) {
 }
 test("unsupported file controls share themes and fit scaled narrow panes", async ({ page }, info) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open folder…", exact: true }).click();
+  await openMockVault(page);
   await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   for (const theme of ["Light", "Dark", "System"]) {
@@ -174,7 +175,7 @@ test("unsupported file controls share themes and fit scaled narrow panes", async
 
 async function queryNote(page: Page) {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open folder…", exact: true }).click();
+  await openMockVault(page);
   await page.evaluate(async () => {
     const m = (
       window as unknown as {
@@ -273,7 +274,7 @@ test("embedded queries follow app themes and keep narrow results local", async (
 
 async function editorNote(page: Page) {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open folder…", exact: true }).click();
+  await openMockVault(page);
   await page.evaluate(async () => {
     const m = (
       window as unknown as {

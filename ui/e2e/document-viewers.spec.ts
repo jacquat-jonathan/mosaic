@@ -1,7 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
+import { openMockVault } from "./mock-vault";
 async function setup(page: Page) {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open folder…", exact: true }).click();
+  await openMockVault(page);
   await page.waitForFunction(() => "__mosaic" in window);
 }
 async function openFile(page: Page, path: string) {

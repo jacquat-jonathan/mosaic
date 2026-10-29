@@ -1,7 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
+import { openMockVault } from "./mock-vault";
 async function board(page: Page) {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open folder…", exact: true }).click();
+  await openMockVault(page);
   await page.evaluate(async () => {
     const mock = (
       window as unknown as {

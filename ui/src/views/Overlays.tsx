@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { useUi, type MenuItem } from "../state/ui";
 import { useVault } from "../state/vault";
 import { Button, Dialog, TextField } from "../design-system/components";
@@ -118,7 +119,8 @@ function MenuList({
 
 export function ConfirmDialog() {
   const c = useUi((s) => s.confirm);
-  const answer = useUi((s) => s.answer);
+  // Close the modal before promise continuations restore their explicit opener (Safari).
+  const answer = (value: boolean) => flushSync(() => useUi.getState().answer(value));
   const okRef = useRef<HTMLButtonElement>(null);
   if (!c) return null;
   return (
@@ -160,7 +162,7 @@ export function ErrorToast() {
 
 export function PromptDialog() {
   const p = useUi((s) => s.prompt);
-  const answer = useUi((s) => s.answerText);
+  const answer = (value: string | null) => flushSync(() => useUi.getState().answerText(value));
   const input = useRef<HTMLInputElement>(null);
   useEffect(() => {
     input.current?.focus();

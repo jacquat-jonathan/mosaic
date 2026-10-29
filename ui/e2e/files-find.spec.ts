@@ -97,11 +97,11 @@ test("bookmarks support keyboard opening, saved queries, reordering and menu foc
   const panel = page.getByRole("group", { name: "Bookmarks", exact: true });
   const save = panel.getByRole("button", { name: "Save query…", exact: true });
   await save.click();
-  await page.locator(".modal").getByRole("button", { name: "Cancel", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(save).toBeFocused();
   await save.click();
-  await page.locator(".modal").getByRole("textbox").fill("task:open");
-  await page.locator(".modal").getByRole("button", { name: "OK", exact: true }).click();
+  await page.getByRole("dialog").getByRole("textbox").fill("task:open");
+  await page.getByRole("dialog").getByRole("button", { name: "OK", exact: true }).click();
   const query = panel.getByTitle("Query: task:open", { exact: true });
   await expect(query).toBeVisible();
   await query.press("Alt+ArrowUp");

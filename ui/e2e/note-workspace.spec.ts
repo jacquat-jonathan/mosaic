@@ -245,7 +245,7 @@ test("note formatting preserves selection, undo, toolbar keys and cancelled-link
   await page.keyboard.press("Escape");
   await expect(editor).toBeFocused();
   await toolbar.getByRole("button", { name: "Add web link (⌘K)", exact: true }).click();
-  await page.locator(".modal").getByRole("button", { name: "Cancel", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(editor).toBeFocused();
   await editor.press("Meta+z");
   await expect.poll(() => readIdeas(page)).toBe("Format this text");

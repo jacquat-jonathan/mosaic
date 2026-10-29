@@ -12,8 +12,8 @@ async function namedChat(page: Page, title: string) {
     .getByRole("button", { name: "New chat", exact: true })
     .click();
   await page.getByRole("button", { name: "Rename", exact: true }).click();
-  await page.locator(".modal input").fill(title);
-  await page.locator(".modal").getByRole("button", { name: "OK", exact: true }).click();
+  await page.getByRole("dialog").getByRole("textbox").fill(title);
+  await page.getByRole("dialog").getByRole("button", { name: "OK", exact: true }).click();
   await page.getByRole("button", { name: "All chats", exact: true }).click();
 }
 
@@ -28,7 +28,7 @@ test("chats list preserves new chat, selection, cancelled actions and deletion f
   await expect(actions).toBeFocused();
   await actions.click();
   await page.getByRole("menuitem", { name: "Rename", exact: true }).click();
-  await page.locator(".modal").getByRole("button", { name: "Cancel", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(actions).toBeFocused();
   await actions.click();
   await page.getByRole("menuitem", { name: "Delete chat", exact: true }).click();

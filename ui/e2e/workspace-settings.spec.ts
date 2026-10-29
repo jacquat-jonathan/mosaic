@@ -21,7 +21,7 @@ test("workspace defaults, startup note and app reset retain their scopes", async
   await workspace.getByLabel("Startup destination", { exact: true }).selectOption("note");
   const note = workspace.getByRole("button", { name: "Startup note", exact: true });
   await note.click();
-  await page.getByRole("dialog", { name: "Choose startup note", exact: true }).getByRole("textbox").press("Escape");
+  await page.getByRole("dialog", { name: "Choose startup note", exact: true }).getByRole("combobox").press("Escape");
   await expect(note).toBeFocused();
   await note.click();
   await page

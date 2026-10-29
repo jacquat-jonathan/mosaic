@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Pickers:** shared search dialogs, readable results and accessible keyboard selection preserve fuzzy ranking, commands, and folder choices, including empty results and focus return.
+
 - **New note:** shared modal controls, template fields, previews, and notices retain exact-template creation. Pending creation blocks duplicate actions and dismissal; failures preserve the draft.
 
 - **Confirmations:** shared dialogs provide labelled descriptions, consistent destructive actions, keyboard containment, cancellation, and focus return.

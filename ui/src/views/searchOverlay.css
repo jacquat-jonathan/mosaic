@@ -1,0 +1,59 @@
+.mosaic-ds.search-overlay-scope .mds-dialog {
+  width: 600px;
+  margin: 10vh auto auto;
+}
+.mosaic-ds.search-overlay-scope .search-overlay-results {
+  min-width: 0;
+  max-height: 45vh;
+  overflow: auto;
+  border: 1px solid var(--mds-border);
+  border-radius: var(--mds-radius-control);
+}
+.mosaic-ds.search-overlay-scope .search-overlay-results > button {
+  display: flex;
+  align-items: center;
+  gap: var(--mds-space-5);
+  padding: var(--mds-space-6);
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--mds-text);
+  text-align: left;
+  font: inherit;
+}
+.mosaic-ds.search-overlay-scope .search-overlay-results > button.selected {
+  background: var(--mds-surface-selected);
+}
+.mosaic-ds.search-overlay-scope .search-overlay-results > button:focus-visible {
+  outline: var(--mds-focus-width) solid var(--mds-accent);
+  outline-offset: -2px;
+}
+.mosaic-ds.search-overlay-scope .search-overlay-name {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.mosaic-ds.search-overlay-scope .search-overlay-detail {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: var(--mds-text-small);
+  color: var(--mds-text-muted);
+}
+.mosaic-ds.search-overlay-scope .search-overlay-kbd {
+  flex: none;
+  font: var(--mds-text-caption) var(--font-mono);
+  color: var(--mds-text-muted);
+}
+.mosaic-ds.search-overlay-scope .search-overlay-empty {
+  padding: var(--mds-space-7);
+}
+
+.mosaic-ds.search-overlay-scope .search-overlay-main {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: var(--mds-space-3);
+}

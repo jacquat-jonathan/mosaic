@@ -26,7 +26,7 @@ async function choose(page: Page, label: string, path: string) {
     .getByRole("button", { name: label, exact: true });
   await button.click();
   const picker = page.getByRole("dialog", { name: `Choose ${label.toLowerCase()}`, exact: true });
-  await picker.getByRole("textbox").fill(path);
+  await picker.getByRole("combobox").fill(path);
   await picker.getByRole("option", { name: path, exact: true }).click();
   await expect(button).toBeEnabled();
   await expect(button).toBeFocused();
@@ -37,7 +37,7 @@ test("vault folder choices, note defaults, attachment visibility and colors pers
   const vault = page.getByRole("group", { name: "Vault folder preferences", exact: true });
   const daily = vault.getByRole("button", { name: "Daily notes folder", exact: true });
   await daily.click();
-  await page.getByRole("dialog", { name: "Choose daily notes folder" }).getByRole("textbox").press("Escape");
+  await page.getByRole("dialog", { name: "Choose daily notes folder" }).getByRole("combobox").press("Escape");
   await expect(daily).toBeFocused();
   await choose(page, "Agents folder", "Projects");
   await expect.poll(async () => (await preferences(page)).agents_folder).toBe("Projects");

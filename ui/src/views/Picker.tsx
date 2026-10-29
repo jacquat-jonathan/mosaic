@@ -1,5 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useUi, type Picker as PickerSpec, type PickerItem } from "../state/ui";
+import { Button, Dialog, TextField } from "../design-system/components";
+import { DesignSystemScope } from "./DesignSystemScope";
+import "./searchOverlay.css";
 import { fuzzyScore } from "./QuickSwitcher";
 
 /** Fuzzy-filtered list in a modal: command palette, "Move to…" folder picker. */
@@ -24,13 +27,13 @@ function PickerDialog({ spec }: { spec: PickerSpec }) {
   const [sel, setSel] = useState(0);
   const input = useRef<HTMLInputElement>(null);
   const list = useRef<HTMLDivElement>(null);
-  useEffect(() => input.current?.focus(), []);
+  const listId = useId();
 
   const results = useMemo(() => filterItems(spec.items, q), [spec.items, q]);
 
   useEffect(() => {
     list.current?.children[sel]?.scrollIntoView({ block: "nearest" });
-  }, [sel]);
+  }, [sel, results]);
 
   const choose = (i: number) => {
     const item = results[i];
@@ -40,9 +43,21 @@ function PickerDialog({ spec }: { spec: PickerSpec }) {
   };
 
   return (
-    <div className="modal-backdrop top picker" onMouseDown={close}>
-      <div className="switcher" role="dialog" aria-label={spec.placeholder} onMouseDown={(e) => e.stopPropagation()}>
-        <input
+    <DesignSystemScope className="search-overlay-scope">
+      <Dialog
+        open
+        title={spec.placeholder}
+        initialFocusRef={input}
+        onClose={close}
+        actions={<Button onClick={close}>Cancel</Button>}
+      >
+        <TextField
+          label={spec.placeholder}
+          role="combobox"
+          aria-autocomplete="list"
+          aria-expanded="true"
+          aria-controls={listId}
+          aria-activedescendant={results[sel] ? `${listId}-${sel}` : undefined}
           ref={input}
           value={q}
           placeholder={spec.placeholder}
@@ -54,7 +69,7 @@ function PickerDialog({ spec }: { spec: PickerSpec }) {
             if (e.key === "Escape") close();
             else if (e.key === "ArrowDown") {
               e.preventDefault();
-              setSel((s) => Math.min(s + 1, results.length - 1));
+              setSel((s) => Math.max(0, Math.min(s + 1, results.length - 1)));
             } else if (e.key === "ArrowUp") {
               e.preventDefault();
               setSel((s) => Math.max(s - 1, 0));
@@ -64,25 +79,31 @@ function PickerDialog({ spec }: { spec: PickerSpec }) {
             }
           }}
         />
-        <div className="switcher-results" ref={list} role="listbox">
+        <div id={listId} className="search-overlay-results" ref={list} role="listbox" aria-label="Matches">
           {results.map((it, i) => (
             <button
               key={it.id}
+              type="button"
+              id={`${listId}-${i}`}
+              tabIndex={-1}
+              onMouseDown={(e) => e.preventDefault()}
               role="option"
               aria-selected={i === sel}
               className={i === sel ? "selected" : ""}
               onMouseEnter={() => setSel(i)}
               onClick={() => choose(i)}
             >
-              <span className="switcher-name">{it.label}</span>
-              {it.detail && <span className="picker-detail">{it.detail}</span>}
-              {it.shortcut && <kbd className="picker-kbd">{it.shortcut}</kbd>}
+              <span className="search-overlay-main">
+                <span className="search-overlay-name">{it.label}</span>
+                {it.detail && <span className="search-overlay-detail">{it.detail}</span>}
+              </span>
+              {it.shortcut && <kbd className="search-overlay-kbd">{it.shortcut}</kbd>}
             </button>
           ))}
-          {results.length === 0 && <p className="picker-empty">No matches</p>}
+          {results.length === 0 && <p className="search-overlay-empty">No matches</p>}
         </div>
-        {spec.hint && <div className="switcher-hint">{spec.hint}</div>}
-      </div>
-    </div>
+        {spec.hint && <div className="mds-hint">{spec.hint}</div>}
+      </Dialog>
+    </DesignSystemScope>
   );
 }

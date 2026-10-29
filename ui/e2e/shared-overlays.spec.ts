@@ -136,3 +136,61 @@ async function openNewNote(page: Page) {
     await newNote("", "Draft", true);
   });
 }
+
+async function picker(page: Page) {
+  await page.evaluate(async () => {
+    const path = "/src/state/ui.ts";
+    const { useUi } = await import(path);
+    useUi.getState().openPicker({
+      placeholder: "Choose a note",
+      hint: "Arrow keys to select · Enter to choose",
+      items: [
+        { id: "alpha", label: "Alpha", detail: "A long folder/with a readable path/Alpha.md", shortcut: "⌘1" },
+        { id: "beta", label: "Beta", detail: "Beta.md" },
+      ],
+      onPick() {},
+    });
+  });
+}
+test("picker retains fuzzy filtering, keyboard choices, empty state and focus return", async ({ page }) => {
+  await setup(page);
+  const opener = page.getByRole("button", { name: "New note", exact: true });
+  await opener.focus();
+  await picker(page);
+  const dialog = page.getByRole("dialog", { name: "Choose a note", exact: true });
+  const search = dialog.getByRole("combobox", { name: "Choose a note", exact: true });
+  await expect(search).toBeFocused();
+  await search.fill("zzzz");
+  await expect(dialog.getByText("No matches", { exact: true })).toBeVisible();
+  await search.press("ArrowDown");
+  await search.press("Enter");
+  await expect(dialog).toBeVisible();
+  await search.fill("a");
+  await search.press("ArrowDown");
+  await expect(dialog.getByRole("option", { name: /Beta/ })).toHaveAttribute("aria-selected", "true");
+  await search.press("Enter");
+  await expect(dialog).toHaveCount(0);
+  await expect(opener).toBeFocused();
+});
+test("picker shares themes and fits scaled narrow windows", async ({ page }, info) => {
+  await setup(page);
+  await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  for (const theme of ["Light", "Dark", "System"]) {
+    await page.getByRole("radio", { name: theme, exact: true }).check();
+    await picker(page);
+    const dialog = page.getByRole("dialog", { name: "Choose a note", exact: true });
+    await expect(dialog).toHaveCSS("font-size", "14px");
+    await expect(dialog).toHaveCSS("background-color", theme === "Light" ? "rgb(255, 255, 255)" : "rgb(30, 31, 36)");
+    if (theme !== "System") await page.screenshot({ path: info.outputPath(`picker-${theme.toLowerCase()}.png`) });
+    await page.keyboard.press("Escape");
+  }
+  await page.getByLabel("Interface density", { exact: true }).selectOption("compact");
+  await page.getByRole("slider", { name: "Interface scale", exact: true }).press("End");
+  await page.setViewportSize({ width: 320, height: 900 });
+  await picker(page);
+  const dialog = page.getByRole("dialog", { name: "Choose a note", exact: true });
+  await expect(dialog.getByRole("button", { name: "Cancel", exact: true })).toBeInViewport();
+  await expect.poll(() => dialog.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
+  await page.screenshot({ path: info.outputPath("picker-narrow.png") });
+});

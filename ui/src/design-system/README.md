@@ -580,3 +580,8 @@ modal focus containment, and focus return.
 preview typography, and notices. Preview hashes/default selection and creation timestamps
 remain pinned. A synchronous write lock blocks repeat creation; dismissal is disabled while
 saving, failed writes retain drafts, and late acknowledgements guard the active vault.
+
+`views/Picker.tsx` adopts shared modal/search fields with an accessible combobox/listbox,
+readable result paths and shortcuts, and explicit empty results. Fuzzy ranking and keyboard
+selection remain unchanged. Global prompt/confirmation resolution closes the modal before
+promise continuations restore explicit openers, preserving Safari focus return.

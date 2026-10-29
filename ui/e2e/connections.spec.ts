@@ -40,7 +40,7 @@ test("connection setup and safety choices persist with explicit folder selection
   await add.click();
   await page
     .getByRole("dialog", { name: "Which folder should agents treat differently?", exact: true })
-    .getByRole("textbox")
+    .getByRole("combobox")
     .press("Escape");
   await expect(add).toBeFocused();
   expect(await mock<AgentRule[]>(page, "get_agent_rules")).toEqual([]);

@@ -213,7 +213,7 @@ test("create a planner task and move it through the workflow", async ({ page }) 
   const startEmpty = page.getByRole("button", { name: "Start empty" });
   if (await startEmpty.isVisible()) await startEmpty.click();
   await page.getByRole("button", { name: "New task", exact: true }).click();
-  const prompt = page.getByRole("heading", { name: "New task" }).locator("..");
+  const prompt = page.getByRole("dialog", { name: "New task", exact: true });
   await prompt.getByPlaceholder("What needs doing?").fill("Verify the release journey");
   await prompt.getByRole("button", { name: "OK" }).click();
 
@@ -438,7 +438,7 @@ test("chat with the assistant and manage the saved conversation", async ({ page 
   await page.getByRole("tab", { name: "AI", exact: true }).click();
   await page.getByRole("button", { name: "+ New chat", exact: true }).click();
   await page.getByRole("button", { name: "Rename" }).click();
-  await page.locator(".modal input").fill("Coverage conversation");
+  await page.getByRole("dialog").getByRole("textbox").fill("Coverage conversation");
   await page.getByRole("button", { name: "OK" }).click();
   await expect(page.getByRole("heading", { name: "Coverage conversation" })).toBeVisible();
   await page.getByRole("button", { name: "All chats", exact: true }).click();

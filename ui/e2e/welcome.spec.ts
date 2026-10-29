@@ -6,12 +6,12 @@ test("welcome preserves create cancellation and opens the named vault", async ({
   const create = welcome.getByRole("button", { name: "Create new vault…", exact: true });
   await create.click();
   await expect(welcome.getByRole("button", { name: "Open folder…", exact: true })).toBeDisabled();
-  await expect(page.locator(".modal input")).toBeFocused();
-  await page.locator(".modal").getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(page.getByRole("dialog").getByRole("textbox")).toBeFocused();
+  await page.getByRole("dialog").getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(create).toBeFocused();
   await create.press("Enter");
-  await page.locator(".modal input").fill("Migration welcome vault");
-  await page.locator(".modal").getByRole("button", { name: "OK", exact: true }).click();
+  await page.getByRole("dialog").getByRole("textbox").fill("Migration welcome vault");
+  await page.getByRole("dialog").getByRole("button", { name: "OK", exact: true }).click();
   await expect(welcome).toHaveCount(0);
   await expect(page.getByRole("treeitem", { name: /^Welcome/ })).toBeVisible();
 });

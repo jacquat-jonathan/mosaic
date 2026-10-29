@@ -135,7 +135,6 @@ function Dialog({
       useVault.getState().setSelection([out.path]);
       close();
       await useWorkspace.getState().open(out.path, { newTab });
-      requestAnimationFrame(() => document.querySelector<HTMLElement>(".pane.active .cm-content")?.focus());
     } catch (e) {
       if (current()) {
         setError(errorMessage(e));

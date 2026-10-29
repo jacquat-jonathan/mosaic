@@ -360,3 +360,26 @@ test("note completion remains keyboard operated and fits scaled narrow windows",
   await page.keyboard.press("Enter");
   await expect(page.locator(".cm-table-wrap")).toHaveCount(2);
 });
+test("long file tabs keep their close action visible in scaled narrow panes", async ({ page }) => {
+  await editorNote(page);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.getByRole("slider", { name: "Interface scale", exact: true }).press("End");
+  await page.evaluate(async () => {
+    const m = (
+      window as unknown as {
+        __mosaic: {
+          mockInvoke(command: string, args: object): Promise<unknown>;
+          useWorkspace: { getState(): { open(path: string, options: { newTab: boolean }): Promise<void> } };
+        };
+      }
+    ).__mosaic;
+    const path = "A very long file name that must keep its close button visible.md";
+    await m.mockInvoke("write_file", { path, content: "# Long file", expectedHash: null });
+    await m.useWorkspace.getState().open(path, { newTab: true });
+  });
+  await page.setViewportSize({ width: 320, height: 900 });
+  const close = page.locator(".tab.active .tab-close");
+  await expect(close).toBeInViewport();
+  await close.click();
+  await expect(page.getByRole("tab", { name: /A very long file name/ })).toHaveCount(0);
+});

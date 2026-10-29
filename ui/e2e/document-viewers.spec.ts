@@ -566,3 +566,26 @@ test("source controls share themes and fit scaled narrow panes without changing 
   await close.press("Enter");
   await expect(editor).toBeFocused();
 });
+
+test("canvas source edits refresh visual content and recover from invalid JSON", async ({ page }) => {
+  await setup(page);
+  await openFile(page, "Board.canvas");
+  const controls = page.getByRole("group", { name: "Canvas controls", exact: true });
+  await controls.getByRole("radio", { name: "Source", exact: true }).click();
+  await replaceSource(page, "invalid canvas");
+  await controls.getByRole("radio", { name: "Canvas", exact: true }).click();
+  await expect(controls).toContainText("Can't display this canvas");
+  await expect(controls.getByRole("radio", { name: "Source", exact: true })).toBeChecked();
+  await replaceSource(
+    page,
+    JSON.stringify({
+      nodes: [
+        { id: "source-card", type: "text", text: "Repaired canvas content", x: 0, y: 0, width: 250, height: 100 },
+      ],
+      edges: [],
+    }),
+  );
+  await controls.getByRole("radio", { name: "Canvas", exact: true }).click();
+  await expect(page.locator(".canvas-host")).toContainText("Repaired canvas content");
+  await expect(controls).not.toContainText("Can't display this canvas");
+});

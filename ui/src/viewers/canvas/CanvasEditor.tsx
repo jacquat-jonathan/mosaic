@@ -193,15 +193,18 @@ function toFlow(doc: CanvasDoc, canvasPath: string, onText: CardData["onText"]):
 export function CanvasEditor({ buffer }: { buffer: Buffer }) {
   const [mode, setMode] = useState<"canvas" | "source">("canvas");
   const [toolsHost, setToolsHost] = useState<HTMLElement | null>(null);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: re-parse only on external reloads; our own edits already live in the flow state
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-parse on external reloads and view switches; canvas edits already live in flow state
   const parsed = useMemo(() => {
     try {
       return { doc: parseCanvas(buffer.content ?? ""), error: null };
     } catch (e) {
       return { doc: null, error: e instanceof CanvasParseError ? e.message : String(e) };
     }
-  }, [buffer.version, buffer.path]);
+  }, [buffer.version, buffer.path, mode]);
 
+  useEffect(() => {
+    if (parsed.error && mode === "canvas") setMode("source");
+  }, [parsed.error, mode]);
   const showSource = mode === "source" || !parsed.doc;
   return (
     <div className="viewer">

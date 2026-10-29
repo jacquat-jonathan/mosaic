@@ -597,7 +597,7 @@ function TimedItem({
         }}
         onClick={() => onEvent(event.series_id, event.occurrence_key)}
         onKeyDown={(key) => {
-          if (key.key === "Enter" || key.key === " ") {
+          if (key.target === key.currentTarget && (key.key === "Enter" || key.key === " ")) {
             key.preventDefault();
             onEvent(event.series_id, event.occurrence_key);
           }
@@ -642,7 +642,7 @@ function TimedItem({
       }}
       onClick={() => onSession(session.session)}
       onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
+        if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) {
           event.preventDefault();
           onSession(session.session);
         }

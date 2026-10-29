@@ -174,14 +174,15 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
   }, [root, load]);
   const refreshSubscriptions = useCallback(
     async (force = false) => {
+      if (!current()) return;
       try {
         await api.refreshCalendarSubscriptions(force);
-        await load();
+        if (current()) await load();
       } catch (reason) {
-        setError(errorMessage(reason));
+        if (current()) setError(errorMessage(reason));
       }
     },
-    [load],
+    [load, current],
   );
   useEffect(() => {
     if (!root) return;
@@ -235,11 +236,12 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
     });
   };
   const sessionAction = async (action: () => Promise<unknown>) => {
+    if (!current()) return;
     try {
       await action();
-      await load();
+      if (current()) await load();
     } catch (reason) {
-      setError(errorMessage(reason));
+      if (current()) setError(errorMessage(reason));
     }
   };
   const scheduleTask = (task: PlannerTask, day: string, hour: number | null) => {
@@ -323,6 +325,7 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
     if (series && !occurrence.all_day) setEditor({ occurrence: resizedEvent(occurrence, delta), series });
   };
   const resizeEvent = async (occurrence: EventOccurrence, delta: number) => {
+    if (!current()) return;
     const series = events.find((item) => item.id === occurrence.series_id);
     if (!series || occurrence.all_day || !delta) return;
     const next = resizedEvent(occurrence, delta),
@@ -344,16 +347,19 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
       if (next.recurring)
         await api.replacePlannerEventOccurrence(series.id, series.revision, next.occurrence_key, input);
       else await api.updatePlannerEvent(series.id, { ...input, expected_revision: series.revision });
-      const nextEvents = await api.plannerEvents(false, false),
-        nextSeries = nextEvents.find((item) => item.id === series.id) ?? series;
+      if (!current()) return;
+      const nextEvents = await api.plannerEvents(false, false);
+      if (!current()) return;
+      const nextSeries = nextEvents.find((item) => item.id === series.id) ?? series;
       setEvents(nextEvents);
       setEditor({ occurrence: next, series: nextSeries });
       await load();
     } catch (reason) {
-      setError(errorMessage(reason));
+      if (current()) setError(errorMessage(reason));
     }
   };
   const moveEvent = async (occurrence: EventOccurrence, day: string, hour?: number | null) => {
+    if (!current()) return;
     const series = events.find((item) => item.id === occurrence.series_id);
     if (!series) return;
     let start: string, end: string;
@@ -391,10 +397,11 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
       if (occurrence.recurring)
         await api.replacePlannerEventOccurrence(series.id, series.revision, occurrence.occurrence_key, input);
       else await api.updatePlannerEvent(series.id, { ...input, expected_revision: series.revision });
+      if (!current()) return;
       setEditor(null);
       await load();
     } catch (reason) {
-      setError(errorMessage(reason));
+      if (current()) setError(errorMessage(reason));
     }
   };
   const deleteEvent = (occurrence: EventOccurrence) => {
@@ -407,7 +414,7 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
         return;
       }
       const archived = await api.archivePlannerEvent(series.id, series.revision);
-      await api.trashPlannerEvent(archived.id, archived.revision);
+      if (current()) await api.trashPlannerEvent(archived.id, archived.revision);
     });
   };
   const chooseIcal = async (file: File) => {
@@ -433,27 +440,30 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
     }
   };
   const exportIcal = async () => {
+    if (!current()) return;
     try {
       if (inTauri) {
         const { save } = await import("@tauri-apps/plugin-dialog");
+        if (!current()) return;
         const path = await save({
           title: "Export Mosaic calendar",
           defaultPath: "mosaic-calendar.ics",
           filters: [{ name: "iCalendar", extensions: ["ics"] }],
         });
-        if (path) await api.exportPlannerIcalFile(path);
+        if (path && current()) await api.exportPlannerIcalFile(path);
       } else {
-        const content = await api.exportPlannerIcal(),
-          url = URL.createObjectURL(new Blob([content], { type: "text/calendar" })),
+        const content = await api.exportPlannerIcal();
+        if (!current()) return;
+        const url = URL.createObjectURL(new Blob([content], { type: "text/calendar" })),
           link = document.createElement("a");
         link.href = url;
         link.download = "mosaic-calendar.ics";
         link.click();
         URL.revokeObjectURL(url);
       }
-      setError(null);
+      if (current()) setError(null);
     } catch (reason) {
-      setError(errorMessage(reason));
+      if (current()) setError(errorMessage(reason));
     }
   };
   const toggleSubscription = async (id: string, visible: boolean) => {

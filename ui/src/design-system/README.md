@@ -546,3 +546,8 @@ and retries restore focus; the final legacy task-list renderer/styles are remove
 and modal controls. Drafts survive errors; adding, visibility changes, refresh, and removal
 serialize against the active vault. Pending writes guard dismissal. Explicit opener and
 post-action focus intents support Safari pointer focus as well as keyboard use.
+
+`views/planner/EventArchiveDialog.tsx` adopts shared Archive/Deleted choices, event rows,
+notices, and modal controls. Loading, failed reads, and empty archives stay distinct.
+Restore/delete actions serialize and guard the vault; removed rows return focus to the
+selected view, and closing restores the calendar chooser action.

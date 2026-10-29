@@ -756,7 +756,9 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
           }}
         />
       )}
-      {archivesOpen && <EventArchiveDialog onClose={() => setArchivesOpen(false)} onChange={load} />}
+      {archivesOpen && (
+        <EventArchiveDialog returnFocusRef={editorReturn} onClose={() => setArchivesOpen(false)} onChange={load} />
+      )}
     </div>
   );
 }

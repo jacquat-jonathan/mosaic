@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Event archive:** shared Archive/Deleted choices, event rows, notices, and modal controls retain restore and delete actions. Failed reads can be retried; pending actions disable duplicates and restore focus when rows move.
+
 - **Calendar subscriptions:** shared source rows and fields, readable cache/errors, and consistent modal controls retain adding, visibility, refresh, and removal. Pending changes disable duplicates; failed saves keep drafts and completed actions restore focus.
 
 - **Calendar details:** shared daily-note actions, readable task rows, and loading/error notices retain overdue completion. Failed loads can be retried, saving disables duplicate updates, and completion restores focus.

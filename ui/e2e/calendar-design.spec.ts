@@ -336,3 +336,67 @@ test("calendar subscriptions share themes and fit scaled narrow windows", async 
   await expect.poll(() => dialog.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
   await page.screenshot({ path: testInfo.outputPath("subscriptions-narrow.png") });
 });
+
+async function archiveDemo(page: Page) {
+  await page.evaluate(async () => {
+    const mock = (window as unknown as { __mosaic: { mockInvoke(command: string, args: object): Promise<unknown> } })
+      .__mosaic;
+    const events = (await mock.mockInvoke("planner_events", { includeArchived: false, includeTrashed: false })) as {
+      id: string;
+      title: string;
+      revision: number;
+    }[];
+    const item = events.find((item) => item.title === "Calendar demo")!;
+    await mock.mockInvoke("planner_archive_event", { id: item.id, expectedRevision: item.revision });
+  });
+}
+async function openArchive(page: Page) {
+  if (!(await page.locator(".calendar-chooser").evaluate((el) => el.hasAttribute("open"))))
+    await page.locator(".calendar-chooser summary").click();
+  await page.getByRole("button", { name: "Archived local events…", exact: true }).click();
+}
+test("event archive retains delete, restore, keyboard selection and focus", async ({ page }) => {
+  await openCalendar(page);
+  await archiveDemo(page);
+  await openArchive(page);
+  const dialog = page.getByRole("dialog", { name: "Local event archive", exact: true });
+  await expect(dialog.getByText("Calendar demo", { exact: true })).toBeVisible();
+  await dialog.getByRole("button", { name: "Delete", exact: true }).click();
+  await expect(dialog.getByText("No events here.")).toBeVisible();
+  await expect(dialog.getByRole("radio", { name: "Archive", exact: true })).toBeFocused();
+  await dialog.getByRole("radio", { name: "Archive", exact: true }).press("ArrowRight");
+  await expect(dialog.getByText("Calendar demo", { exact: true })).toBeVisible();
+  await dialog.getByRole("button", { name: "Restore", exact: true }).click();
+  await expect(dialog.getByText("No events here.")).toBeVisible();
+  await expect(dialog.getByRole("radio", { name: "Deleted", exact: true })).toBeFocused();
+  await dialog.press("Escape");
+  await expect(page.getByRole("button", { name: "Archived local events…", exact: true })).toBeFocused();
+});
+test("event archive shares themes and fits scaled narrow windows", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+  await openCalendar(page);
+  await archiveDemo(page);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  for (const theme of ["Light", "Dark", "System"] as const) {
+    await page.getByRole("radio", { name: theme, exact: true }).check();
+    await page.getByRole("tab", { name: "Today Close tab", exact: true }).click();
+    await openArchive(page);
+    const dialog = page.getByRole("dialog", { name: "Local event archive", exact: true });
+    await expect(dialog).toHaveCSS("font-size", "14px");
+    await expect(dialog).toHaveCSS("background-color", theme === "Light" ? "rgb(255, 255, 255)" : "rgb(30, 31, 36)");
+    if (theme !== "System")
+      await page.screenshot({ path: testInfo.outputPath(`event-archive-${theme.toLowerCase()}.png`) });
+    await dialog.press("Escape");
+    await page.getByRole("tab", { name: "Settings Close tab", exact: true }).click();
+  }
+  await page.getByLabel("Interface density", { exact: true }).selectOption("compact");
+  await page.getByRole("slider", { name: "Interface scale", exact: true }).press("End");
+  await page.getByRole("tab", { name: "Today Close tab", exact: true }).click();
+  await page.setViewportSize({ width: 320, height: 900 });
+  await openArchive(page);
+  const dialog = page.getByRole("dialog", { name: "Local event archive", exact: true });
+  await expect(dialog.getByRole("button", { name: "Close dialog", exact: true })).toBeInViewport();
+  await expect.poll(() => dialog.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
+  await page.screenshot({ path: testInfo.outputPath("event-archive-narrow.png") });
+});

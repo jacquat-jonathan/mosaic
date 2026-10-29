@@ -284,3 +284,55 @@ test("calendar details follow themes and fit the scaled context drawer", async (
   await expect.poll(() => details.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
   await page.screenshot({ path: testInfo.outputPath("calendar-details-narrow.png") });
 });
+
+test("calendar subscriptions retain visibility, removal and modal focus", async ({ page }) => {
+  await openCalendar(page);
+  await page.locator(".calendar-chooser summary").click();
+  const manage = page.getByRole("button", { name: "Manage subscriptions…", exact: true });
+  await manage.click();
+  const dialog = page.getByRole("dialog", { name: "Calendar subscriptions", exact: true });
+  await expect(dialog.getByLabel("Name", { exact: true })).toBeFocused();
+  await dialog.getByLabel("Name", { exact: true }).fill("Migration calendar");
+  await dialog.getByLabel("Subscription URL", { exact: true }).fill("https://example.com/team.ics");
+  await dialog.getByRole("button", { name: "Add calendar", exact: true }).click();
+  await expect(dialog.getByLabel("Name", { exact: true })).toHaveValue("");
+  await expect(dialog.getByLabel("Name", { exact: true })).toBeFocused();
+  await dialog.getByRole("checkbox", { name: "Migration calendar", exact: true }).uncheck();
+  await expect(dialog.getByRole("checkbox", { name: "Migration calendar", exact: true })).not.toBeChecked();
+  await dialog.getByRole("button", { name: "Remove Migration calendar", exact: true }).click();
+  await expect(dialog.getByRole("checkbox", { name: "Migration calendar", exact: true })).toHaveCount(0);
+  await expect(dialog.getByLabel("Name", { exact: true })).toBeFocused();
+  await dialog.press("Escape");
+  await expect(manage).toBeFocused();
+});
+test("calendar subscriptions share themes and fit scaled narrow windows", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+  await openCalendar(page);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  for (const theme of ["Light", "Dark", "System"] as const) {
+    await page.getByRole("radio", { name: theme, exact: true }).check();
+    await page.getByRole("tab", { name: "Today Close tab", exact: true }).click();
+    const summary = page.locator(".calendar-chooser summary");
+    if (!(await page.locator(".calendar-chooser").evaluate((el) => el.hasAttribute("open")))) await summary.click();
+    await page.getByRole("button", { name: "Manage subscriptions…", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Calendar subscriptions", exact: true });
+    await expect(dialog).toHaveCSS("font-size", "14px");
+    await expect(dialog).toHaveCSS("background-color", theme === "Light" ? "rgb(255, 255, 255)" : "rgb(30, 31, 36)");
+    if (theme !== "System")
+      await page.screenshot({ path: testInfo.outputPath(`subscriptions-${theme.toLowerCase()}.png`) });
+    await dialog.press("Escape");
+    await page.getByRole("tab", { name: "Settings Close tab", exact: true }).click();
+  }
+  await page.getByLabel("Interface density", { exact: true }).selectOption("compact");
+  await page.getByRole("slider", { name: "Interface scale", exact: true }).press("End");
+  await page.getByRole("tab", { name: "Today Close tab", exact: true }).click();
+  await page.setViewportSize({ width: 320, height: 900 });
+  if (!(await page.locator(".calendar-chooser").evaluate((el) => el.hasAttribute("open"))))
+    await page.locator(".calendar-chooser summary").click();
+  await page.getByRole("button", { name: "Manage subscriptions…", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Calendar subscriptions", exact: true });
+  await expect(dialog.getByRole("button", { name: "Close dialog", exact: true })).toBeInViewport();
+  await expect.poll(() => dialog.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
+  await page.screenshot({ path: testInfo.outputPath("subscriptions-narrow.png") });
+});

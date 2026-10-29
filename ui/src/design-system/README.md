@@ -541,3 +541,8 @@ mode if the source moved. The shared native event-field labels use the approved 
 count, overdue rows, hierarchy/progress, and source links. Failed reads offer retry, task
 writes serialize until acknowledged, and late reads guard their day/vault scope. Completion
 and retries restore focus; the final legacy task-list renderer/styles are removed.
+
+`views/planner/CalendarSourcesDialog.tsx` adopts shared subscription rows, fields, notices,
+and modal controls. Drafts survive errors; adding, visibility changes, refresh, and removal
+serialize against the active vault. Pending writes guard dismissal. Explicit opener and
+post-action focus intents support Safari pointer focus as well as keyboard use.

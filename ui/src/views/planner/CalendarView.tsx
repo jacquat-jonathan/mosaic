@@ -748,6 +748,7 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
       )}
       {sourcesOpen && (
         <CalendarSourcesDialog
+          returnFocusRef={editorReturn}
           subscriptions={overlay.subscriptions}
           onClose={() => setSourcesOpen(false)}
           onChange={async () => {

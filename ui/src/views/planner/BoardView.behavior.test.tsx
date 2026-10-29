@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { MarkdownImportPreview, PlannerEpic, PlannerSummary, PlannerTask } from "../../ipc/types";
+import type { PlannerEpic, PlannerSummary, PlannerTask } from "../../ipc/types";
 import { api } from "../../ipc/api";
 import { useUi } from "../../state/ui";
 import { useVault } from "../../state/vault";
@@ -38,14 +38,6 @@ vi.mock("./EpicEditor", () => ({
       {epic ? `Editing ${epic.title}` : "New epic editor"}
       <button onClick={onClose}>Close epic editor</button>
       <button onClick={onDone}>Save epic editor</button>
-    </aside>
-  ),
-}));
-vi.mock("./MigrationWizard", () => ({
-  MigrationWizard: ({ onCancel, onDone }: { onCancel(): void; onDone(): void }) => (
-    <aside data-testid="migration-wizard">
-      <button onClick={onCancel}>Cancel import</button>
-      <button onClick={onDone}>Finish import</button>
     </aside>
   ),
 }));
@@ -105,14 +97,6 @@ const summary: PlannerSummary = {
   events: 0,
   is_empty: false,
 };
-const preview: MarkdownImportPreview = {
-  planner_revision: 1,
-  groups: [],
-  candidates: 3,
-  selected_by_default: 2,
-  duplicates: 0,
-};
-
 const stubLoads = () => {
   vi.spyOn(api, "plannerSummary").mockResolvedValue(summary);
   vi.spyOn(api, "plannerEpics").mockImplementation(async (historical, trashed) => {
@@ -127,7 +111,6 @@ const stubLoads = () => {
       ? [task("deleted-task", "new", { epic_id: "deleted", archived_at: "2026-10-02", trashed_at: "2026-10-03" })]
       : [task("archived-task", "new", { epic_id: "archived", archived_at: "2026-10-02" })];
   });
-  vi.spyOn(api, "plannerMigrationPreview").mockResolvedValue(preview);
 };
 
 beforeEach(() => {
@@ -212,20 +195,6 @@ describe("planner board", () => {
     fireEvent.click(screen.getByRole("button", { name: "Close epic history" }));
   });
 
-  it("opens, cancels and completes Markdown imports", async () => {
-    const user = userEvent.setup();
-    render(<BoardView />);
-    await screen.findByText("Task t1");
-
-    await user.click(screen.getByRole("button", { name: "Import Markdown tasks…" }));
-    await waitFor(() => expect(api.plannerMigrationPreview).toHaveBeenCalled());
-    fireEvent.click(await screen.findByRole("button", { name: "Cancel import" }));
-
-    await user.click(screen.getByRole("button", { name: "Import Markdown tasks…" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Finish import" }));
-    await screen.findByText("Task t1");
-  });
-
   it("moves and completes tasks through drag, subtask toggles and future-session decisions", async () => {
     const move = vi.spyOn(api, "movePlannerTask").mockImplementation(async (_id, input) => {
       const current = activeTasks.find((item) => item.id === _id)!;
@@ -293,6 +262,29 @@ describe("planner board", () => {
     await waitFor(() => expect(move.mock.calls.length).toBeGreaterThan(1));
   });
 
+  it("persists card ordering within the same status column", async () => {
+    const moved = task("t6", "new", { position: 4096 });
+    vi.spyOn(api, "plannerTasks").mockResolvedValue([...activeTasks, moved]);
+    const move = vi.spyOn(api, "movePlannerTask").mockResolvedValue({ ...moved, position: 0, revision: 2 });
+    render(<BoardView />);
+    await screen.findByRole("article", { name: "Task t6" });
+    fireEvent.drop(screen.getByRole("article", { name: "Task t1" }), {
+      dataTransfer: {
+        types: ["application/x-mosaic-planner-task"],
+        getData: () => "t6",
+      },
+    });
+    await waitFor(() =>
+      expect(move).toHaveBeenCalledWith("t6", {
+        expected_revision: 1,
+        epic_id: "e1",
+        parent_id: null,
+        status: "new",
+        position: 0,
+      }),
+    );
+  });
+
   it("reorders, archives, restores and deletes epics across lifecycle views", async () => {
     const update = vi.spyOn(api, "updatePlannerEpic").mockImplementation(async (id, input) => ({
       ...activeEpics.find((item) => item.id === id)!,
@@ -324,12 +316,14 @@ describe("planner board", () => {
     fireEvent.click(screen.getByRole("button", { name: "Restore" }));
   });
 
-  it("exports both formats and renders the empty planner onboarding choices", async () => {
+  it("exports both formats and opens an empty board directly", async () => {
     vi.spyOn(api, "exportPlanner").mockImplementation(async (format) => (format === "json" ? "{}" : "a,b"));
     render(<BoardView />);
     await screen.findByText("Task t1");
-    fireEvent.click(screen.getByRole("button", { name: "JSON export" }));
-    fireEvent.click(screen.getByRole("button", { name: "CSV table" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Export$/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "JSON export" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Export$/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "CSV table" }));
     await waitFor(() => expect(URL.createObjectURL).toHaveBeenCalledTimes(2));
     cleanup();
 
@@ -338,12 +332,10 @@ describe("planner board", () => {
     vi.spyOn(api, "plannerTasks").mockResolvedValue([]);
     localStorage.clear();
     render(<BoardView />);
-    await screen.findByText("Plan your work in Mosaic");
-    fireEvent.click(screen.getByRole("button", { name: "Preview import" }));
-    expect(screen.getByTestId("migration-wizard")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Cancel import" }));
-    fireEvent.click(screen.getByRole("button", { name: "Later" }));
-    expect(await screen.findByRole("button", { name: "New task" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Board" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "New task" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /import|preview/i })).toBeNull();
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
   it("ignores older lifecycle loads and offers retry after failure", async () => {
     let finish!: (value: PlannerTask[]) => void;

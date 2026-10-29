@@ -19,6 +19,9 @@ Open http://localhost:1421/design-system.html. The existing dev server also serv
 `/design-system.html`, but the dedicated command avoids starting the app or its backend.
 Use the Light / Dark / System controls; `?theme=dark` and `?theme=system` also work.
 Theme and demo choices stay in memory, without reading or writing application settings.
+The dedicated server also redirects `/` and `/index.html` to the gallery, preserving theme
+query parameters. If the page refuses the connection, restart the command above and keep
+its terminal running; the gallery is a local server rather than a permanently hosted page.
 
 ```sh
 pnpm --dir ui design-system:build
@@ -55,6 +58,8 @@ review page. They are not new application typography or layout requirements.
 | `index.ts` | Gallery barrel exports and stylesheet imports |
 | `patterns.tsx`, `patterns.css` | Candidate workflow cards, run ledgers/logs, transcript messages, composer, changes, and diffs |
 | `ProductExamples.tsx` | Interactive product patterns using local sample data, without app stores or a backend |
+| `planning.tsx`, `planning.css` | Reusable Board and Calendar presentation components using shared foundation tokens |
+| `PlanningExamples.tsx` | Interactive Board and Calendar gallery compositions using only local sample data |
 | `IconCatalog.tsx` | Searchable catalog of every canonical icon in the installed Lucide package |
 | `gallery.tsx`, `gallery.css` | Isolated review page with local demonstration state |
 | `../../design-system.html` | Separate HTML entry |
@@ -561,12 +566,6 @@ notices, and modal actions. Selected events remain after errors, pending imports
 all choices/dismissal, and closing restores the file-import action. File preview generations
 and vault guards prevent late reads from replacing a newer selection or another vault.
 
-`views/planner/MigrationWizard.tsx` adopts shared preview controls, group/status typography,
-notices, and intentional duplicate choices while preserving hierarchy and untouched source
-notes. Writes serialize, pending imports disable all choices/dismissal, failures retain
-selections, and stale acknowledgements guard the vault. The preview receives heading focus;
-cancellation returns to its board entry and completion focuses the loaded board heading.
-
 `views/Overlays.tsx` adopts the shared prompt dialog and labelled input. Enter submission,
 Escape/close cancellation, selected initial text, modal keyboard containment, and focus return
 remain explicit; the native-dialog compatibility fallback also applies to global prompts.
@@ -673,6 +672,43 @@ buffers with disk; it no longer restores a fresh layout over unsaved text.
 wrapping and pending states. External launches serialize and late refusals stay tied to the
 selected file/vault. Backend restrictions for programs/installers remain in force.
 
+
+## Board and Calendar component inventory
+
+The gallery's **Board** and **Calendar** sections provide shared presentation patterns.
+The application Board now consumes `BoardGrid`, `BoardColumn`, `BoardCard`, `BoardDropIndicator`,
+`EpicLane`, `EpicHeader` and `PlannerExportMenu` directly. Task cards have no status control or
+status text; their column communicates status. Epic creation, task creation within an epic,
+subtasks, due dates, estimates, history, lifecycle actions and export retain their existing
+app behavior. Task and epic dragging use separate payloads; native moves persist through the
+existing planner API, including completion/reopen rules and revision checks. Alt+Left/Right
+offers keyboard task moves. The app retains its saved New / Blocked / In progress / In QA / Done
+statuses and one workspace scroller. Calendar patterns remain available for future adoption.
+
+- `BoardGrid`, `BoardColumn`, `BoardCard`, `BoardDropIndicator`: scrollable status columns,
+  selected cards, empty states and drop feedback. Consumers own drag/drop events and persistence.
+  Gallery cards change status through drag/drop, with Alt+Left/Right on a focused card title
+  as the keyboard equivalent. Cards have no status dropdown. Card drags use a separate payload
+  and stop propagation so they cannot reorder the containing epic; dropping into another epic
+  also updates the sample task's epic assignment.
+- `EpicLane`, `EpicHeader`: the full epic is a drag surface, with controls excluded from drag
+  initiation. Headers provide controlled collapse, epic color, task count, an explicit `+ Task`
+  action, keyboard reorder actions and an action slot. The gallery supports native drag
+  reordering and creates sample tasks in the chosen epic using the shared dialog.
+- `PlannerExportMenu`: JSON/CSV actions using the shared keyboard menu.
+- `CalendarChooser`: controlled layer checkboxes, read-only source labels and an action slot.
+  The disclosure uses normal Tab order, outside dismissal and Escape focus return.
+- `CalendarGrid`, `CalendarDay`, `CalendarChip`: scrollable month/week/day compositions and
+  event, session and due-date treatments, with selected, read-only and disabled states.
+- `CalendarSessionMenu`: edit/unschedule actions using the shared keyboard menu.
+- `TaskTray`, `TaskTrayGroup`, `TaskTrayItem`: controlled collapse, filter slots, epic groups
+  and keyboard scheduling actions.
+
+The primitives have no vault, IPC or store dependencies. Typography, radii, spacing, colors,
+focus and compact padding use foundation tokens. Day/date calculations and demonstration data
+live only in `PlanningExamples.tsx`; these components do not implement a scheduling engine.
+Use `data-density="compact"` on the design-system scope or a descendant wrapper to preview
+compact planning controls. Gallery interactions never export files or change application data.
 
 ## Migration completion and retained boundaries
 

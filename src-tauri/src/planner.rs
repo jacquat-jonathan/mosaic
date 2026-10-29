@@ -3,9 +3,9 @@ use mosaic_core::Error;
 use mosaic_core::Workspace;
 use mosaic_core::planner::{
     ActivityEntry, CalendarRange, CreateEpic, CreateEvent, CreateTask, CreateWorkSession, Epic,
-    FutureSessionPolicy, IcalImportPreview, IcalImportResult, MarkdownImportPreview,
-    MarkdownImportResult, MoveTask, PlannerEvent, PlannerStore, PlannerSummary, PlannerTask,
-    UpdateEpic, UpdateEvent, UpdateTask, UpdateWorkSession, WorkSession,
+    FutureSessionPolicy, IcalImportPreview, IcalImportResult, MoveTask, PlannerEvent, PlannerStore,
+    PlannerSummary, PlannerTask, UpdateEpic, UpdateEvent, UpdateTask, UpdateWorkSession,
+    WorkSession,
 };
 use serde::Serialize;
 use std::sync::Arc;
@@ -389,37 +389,6 @@ pub(crate) fn planner_replace_event_occurrence(
     )?;
     changed(&app, &workspace, vec![series_id, event.id.clone()])?;
     Ok(event)
-}
-
-#[tauri::command(async)]
-#[specta::specta]
-pub(crate) fn planner_migration_preview(
-    state: State<AppState>,
-) -> CmdResult<MarkdownImportPreview> {
-    state.get()?.preview_markdown_planner_import()
-}
-
-#[tauri::command(async)]
-#[specta::specta]
-pub(crate) fn planner_import_markdown(
-    app: AppHandle,
-    state: State<AppState>,
-    preview: MarkdownImportPreview,
-    selected_fingerprints: Vec<String>,
-    allow_duplicates: bool,
-    timezone: String,
-) -> CmdResult<MarkdownImportResult> {
-    let workspace = state.get()?;
-    let result = workspace.planner.import_markdown_tasks(
-        &preview,
-        &selected_fingerprints,
-        allow_duplicates,
-        &timezone,
-    )?;
-    let mut affected = result.imported_epic_ids.clone();
-    affected.extend(result.imported_task_ids.clone());
-    changed(&app, &workspace, affected)?;
-    Ok(result)
 }
 
 #[tauri::command(async)]

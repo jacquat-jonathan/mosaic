@@ -5,7 +5,6 @@ mod calendar;
 mod epics;
 mod export;
 mod ical;
-mod migration;
 mod recurrence;
 mod schema;
 mod service;
@@ -23,10 +22,6 @@ use std::path::{Path, PathBuf};
 pub use ical::{
     IcalImportCandidate, IcalImportPreview, IcalImportResult, OverlayOccurrence,
     overlay_occurrences, validate_ical,
-};
-pub use migration::{
-    MarkdownImportCandidate, MarkdownImportGroup, MarkdownImportKind, MarkdownImportPreview,
-    MarkdownImportResult,
 };
 pub use service::PlannerService;
 

@@ -2,7 +2,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
   IcalImportPreview,
-  MarkdownImportPreview,
   PlannerEpic,
   PlannerEvent,
   PlannerTask,
@@ -769,46 +768,6 @@ describe("browser mock planner behavior", () => {
       "/tmp/out.json",
     );
     expect(await invoke<string>("planner_restore_backup", { path: "/tmp/backup" })).toContain("planner.sqlite3");
-  });
-
-  it("imports markdown hierarchy and validates migration selections", async () => {
-    await invoke("create_file", {
-      path: "Coverage migration.md",
-      content: "- [ ] Epic ^epic\n  - [ ] Task 📅 2026-11-03 ^task\n    - [x] Subtask\n- [>] Archived\n",
-      root: "/mock/coverage",
-    });
-    const preview = await invoke<MarkdownImportPreview>("planner_migration_preview");
-    await rejects(
-      "planner_import_markdown",
-      { preview, selectedFingerprints: ["unknown"], allowDuplicates: false, timezone: "UTC" },
-      "invalid",
-    );
-    const selected = preview.groups
-      .find((group) => group.source_path === "Coverage migration.md")!
-      .tasks.map((task) => task.fingerprint);
-    const first = await invoke<{ imported_epic_ids: string[]; imported_task_ids: string[] }>(
-      "planner_import_markdown",
-      {
-        preview,
-        selectedFingerprints: selected,
-        allowDuplicates: false,
-        timezone: "UTC",
-      },
-    );
-    expect(first.imported_epic_ids).not.toHaveLength(0);
-    expect(first.imported_task_ids).not.toHaveLength(0);
-    await invoke("planner_import_markdown", {
-      preview,
-      selectedFingerprints: selected,
-      allowDuplicates: false,
-      timezone: "UTC",
-    });
-    await invoke("planner_import_markdown", {
-      preview,
-      selectedFingerprints: selected,
-      allowDuplicates: true,
-      timezone: "UTC",
-    });
   });
 });
 

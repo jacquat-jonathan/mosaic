@@ -1,12 +1,20 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type DragEvent } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type DragEvent } from "react";
 import { Button, Notice, Select, TextField } from "../../design-system/components";
-import { ChevronDown, ChevronRight, ArrowUp, ArrowDown } from "lucide-react";
+import {
+  BoardCard,
+  BoardColumn,
+  BoardDropIndicator,
+  BoardGrid,
+  EpicHeader,
+  EpicLane,
+  PlannerExportMenu,
+} from "../../design-system/planning";
+import "../../design-system/planning.css";
 import { DesignSystemScope } from "../DesignSystemScope";
 import "./boardView.css";
 import { api, inTauri, onPlannerChanged } from "../../ipc/api";
 import {
   errorMessage,
-  type MarkdownImportPreview,
   type PlannerEpic,
   type PlannerSummary,
   type PlannerTask,
@@ -14,7 +22,6 @@ import {
 } from "../../ipc/types";
 import { useUi } from "../../state/ui";
 import { useVault } from "../../state/vault";
-import { MigrationWizard } from "./MigrationWizard";
 import { TaskEditor } from "./TaskEditor";
 import { EpicEditor, EpicHistoryDialog } from "./EpicEditor";
 import { treeAutoScrollStep } from "../treeAutoScroll";
@@ -30,33 +37,12 @@ import {
 const DRAG_TYPE = "application/x-mosaic-planner-task";
 const EPIC_DRAG_TYPE = "application/x-mosaic-planner-epic";
 const DEFAULT_EPIC_COLOR = "#6477d4";
-const startedKey = (root: string) => `mosaic:planner-started:${root}`;
-const wasStarted = (root: string) => {
-  try {
-    return localStorage.getItem(startedKey(root)) === "1";
-  } catch {
-    return false;
-  }
-};
-const markStarted = (root: string) => {
-  try {
-    localStorage.setItem(startedKey(root), "1");
-  } catch {
-    /* Private browsing may refuse storage. */
-  }
-};
-
 export function BoardView() {
   const boardId = useId();
-  const returnImportFocus = () =>
-    requestAnimationFrame(() => {
-      document.getElementById(boardId)?.querySelector<HTMLElement>("[data-import-trigger]")?.focus();
-    });
   const root = useVault((state) => state.vault?.root) ?? "";
   const [summary, setSummary] = useState<PlannerSummary | null>(null),
     [epics, setEpics] = useState<PlannerEpic[]>([]),
-    [tasks, setTasks] = useState<PlannerTask[]>([]),
-    [preview, setPreview] = useState<MarkdownImportPreview | null>(null);
+    [tasks, setTasks] = useState<PlannerTask[]>([]);
   const [loading, setLoading] = useState(true),
     [error, setError] = useState<string | null>(null),
     [search, setSearch] = useState(""),
@@ -72,9 +58,7 @@ export function BoardView() {
     [epicsBusy, setEpicsBusy] = useState(false),
     [dropTarget, setDropTarget] = useState<string | null>(null),
     [collapsed, setCollapsed] = useState(new Set<string>()),
-    [busy, setBusy] = useState(new Set<string>()),
-    [dismissed, setDismissed] = useState(false),
-    [wizard, setWizard] = useState(false);
+    [busy, setBusy] = useState(new Set<string>());
   const mounted = useRef(true),
     loadVersion = useRef(0);
   const isCurrent = useCallback(() => mounted.current && root === useVault.getState().vault?.root, [root]);
@@ -159,10 +143,6 @@ export function BoardView() {
       setTasks(nextTasks);
       setSelectedId((current) => (nextTasks.some((item) => item.id === current) ? current : null));
       setError(null);
-      if (nextSummary.is_empty) {
-        const nextPreview = await api.plannerMigrationPreview();
-        if (valid()) setPreview(nextPreview);
-      } else setPreview(null);
     } catch (e) {
       if (valid()) setError(errorMessage(e));
     } finally {
@@ -171,8 +151,6 @@ export function BoardView() {
   }, [root, lifecycle, isCurrent]);
   useEffect(() => {
     setSelectedId(null);
-    setDismissed(false);
-    setWizard(false);
     void load();
   }, [load]);
   useEffect(() => {
@@ -298,7 +276,11 @@ export function BoardView() {
       if (current.status === "done" && status !== "done")
         current = await api.reopenPlannerTask(current.id, current.revision);
       if (!mounted.current || root !== useVault.getState().vault?.root) return;
-      if (current.epic_id !== epicId || (status !== "done" && current.status !== status))
+      if (
+        current.epic_id !== epicId ||
+        (status !== "done" && current.status !== status) ||
+        requestedPosition !== undefined
+      )
         current = await api.movePlannerTask(current.id, {
           expected_revision: current.revision,
           epic_id: epicId,
@@ -334,7 +316,12 @@ export function BoardView() {
     }
   };
   const createTask = async (epicId: string | null) => {
-    const title = await useUi.getState().askText({ title: "New task", value: "", placeholder: "What needs doing?" });
+    const epicTitle = epics.find((item) => item.id === epicId)?.title;
+    const title = await useUi.getState().askText({
+      title: epicTitle ? `New task in ${epicTitle}` : "New task",
+      value: "",
+      placeholder: "What needs doing?",
+    });
     if (!title?.trim() || !isCurrent()) return;
     try {
       const task = await api.createPlannerTask({
@@ -347,7 +334,14 @@ export function BoardView() {
         estimate_minutes: null,
       });
       if (!isCurrent()) return;
-      markStarted(root);
+      setCollapsed((current) => {
+        const next = new Set(current);
+        next.delete(epicId ?? "__unassigned");
+        return next;
+      });
+      setSearch("");
+      setStatusFilter("");
+      setEpicFilter("");
       setSelectedId(task.id);
       await load();
     } catch (e) {
@@ -388,17 +382,6 @@ export function BoardView() {
       setError(errorMessage(e));
     }
   };
-  const openMigration = async () => {
-    setError(null);
-    try {
-      const next = await api.plannerMigrationPreview();
-      if (!isCurrent()) return;
-      setPreview(next);
-      setWizard(true);
-    } catch (reason) {
-      setError(errorMessage(reason));
-    }
-  };
   const exportPlan = async (format: "json" | "csv") => {
     try {
       if (inTauri) {
@@ -423,49 +406,6 @@ export function BoardView() {
       setError(errorMessage(reason));
     }
   };
-  const onboarding = summary?.is_empty && !!preview?.candidates && !wasStarted(root) && !dismissed;
-  if (onboarding && !wizard)
-    return (
-      <DesignSystemScope id={boardId} as="main" className="planner-onboarding board-design" aria-label="Planner setup">
-        <h1>Plan your work in Mosaic</h1>
-        <p>
-          Board and Calendar use independent planner tasks. Your existing Markdown checkboxes stay exactly where they
-          are.
-        </p>
-        <div className="planner-onboarding-actions">
-          <Button
-            onClick={() => {
-              markStarted(root);
-              setDismissed(true);
-            }}
-          >
-            Start empty
-          </Button>
-          <Button data-import-trigger variant="secondary" onClick={() => setWizard(true)}>
-            Preview import
-          </Button>
-          <Button onClick={() => setDismissed(true)}>Later</Button>
-        </div>
-        <p className="panel-meta">
-          {preview.candidates} Markdown tasks are available to preview. Nothing is imported without confirmation.
-        </p>
-      </DesignSystemScope>
-    );
-  if (wizard && preview)
-    return (
-      <MigrationWizard
-        preview={preview}
-        onCancel={() => {
-          setWizard(false);
-          returnImportFocus();
-        }}
-        onDone={() => {
-          markStarted(root);
-          setWizard(false);
-          void load().then(() => requestAnimationFrame(() => boardHeading.current?.focus()));
-        }}
-      />
-    );
   return (
     <div className={`workspace-page planner-board-page ${selected ? "with-editor" : ""}`}>
       <DesignSystemScope
@@ -475,74 +415,71 @@ export function BoardView() {
         aria-label="Task board"
         aria-busy={loading}
       >
-        <header className="board-toolbar">
-          <h1 ref={boardHeading} tabIndex={-1}>
-            Board
-          </h1>
-          {lifecycle === "active" && (
-            <>
-              <Button variant="secondary" onClick={() => void createTask(null)}>
-                New task
-              </Button>
-              <Button
-                onClick={(event) => {
-                  epicReturn.current = event.currentTarget;
-                  setEpicEditor("new");
-                }}
-              >
-                New epic
-              </Button>
-              <Button data-import-trigger onClick={() => void openMigration()}>
-                Import Markdown tasks…
-              </Button>
-            </>
-          )}
-          <TextField
-            label="Search planner tasks"
-            type="search"
-            aria-label="Search planner tasks"
-            placeholder="Search tasks…"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-          />
-          <Select label="Filter by epic" value={epicFilter} onChange={(event) => setEpicFilter(event.target.value)}>
-            <option value="">All epics</option>
-            {epics.map((epic) => (
-              <option value={epic.id} key={epic.id}>
-                {epic.title}
-              </option>
-            ))}
-            <option value="__unassigned">Unassigned</option>
-          </Select>
-          <Select
-            label="Filter by status"
-            value={statusFilter}
-            onChange={(event) => setStatusFilter(event.target.value as PlannerTaskStatus | "")}
-          >
-            <option value="">All statuses</option>
-            {PLANNER_STATUSES.map((item) => (
-              <option value={item.id} key={item.id}>
-                {item.title}
-              </option>
-            ))}
-          </Select>
-          <Select
-            label="Planner lifecycle view"
-            title="Deleted items remain recoverable and can be restored."
-            value={lifecycle}
-            onChange={(event) => setLifecycle(event.target.value as typeof lifecycle)}
-          >
-            <option value="active">Active</option>
-            <option value="archived">Archive</option>
-            <option value="trash">Deleted</option>
-          </Select>
-          <details className="planner-export">
-            <summary>Export</summary>
-            <div>
-              <Button onClick={() => void exportPlan("json")}>JSON export</Button>
-              <Button onClick={() => void exportPlan("csv")}>CSV table</Button>
+        <header className="board-header">
+          <div className="board-toolbar">
+            <h1 ref={boardHeading} tabIndex={-1}>
+              Board
+            </h1>
+            <div className="board-actions" role="group" aria-label="Board actions">
+              {lifecycle === "active" && (
+                <>
+                  <Button variant="secondary" onClick={() => void createTask(null)}>
+                    New task
+                  </Button>
+                  <Button
+                    onClick={(event) => {
+                      epicReturn.current = event.currentTarget;
+                      setEpicEditor("new");
+                    }}
+                  >
+                    New epic
+                  </Button>
+                </>
+              )}
+              <PlannerExportMenu label="Export" onExport={(format) => void exportPlan(format)} />
             </div>
-          </details>
+          </div>
+          <div className="board-filters" role="group" aria-label="Board filters">
+            <TextField
+              label="Search planner tasks"
+              type="search"
+              aria-label="Search planner tasks"
+              placeholder="Search tasks…"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
+            <Select label="Filter by epic" value={epicFilter} onChange={(event) => setEpicFilter(event.target.value)}>
+              <option value="">All epics</option>
+              {epics.map((epic) => (
+                <option value={epic.id} key={epic.id}>
+                  {epic.title}
+                </option>
+              ))}
+              <option value="__unassigned">Unassigned</option>
+            </Select>
+            <Select
+              label="Filter by status"
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value as PlannerTaskStatus | "")}
+            >
+              <option value="">All statuses</option>
+              {PLANNER_STATUSES.map((item) => (
+                <option value={item.id} key={item.id}>
+                  {item.title}
+                </option>
+              ))}
+            </Select>
+            <Select
+              label="Planner lifecycle view"
+              title="Deleted items remain recoverable and can be restored."
+              value={lifecycle}
+              onChange={(event) => setLifecycle(event.target.value as typeof lifecycle)}
+            >
+              <option value="active">Active</option>
+              <option value="archived">Archive</option>
+              <option value="trash">Deleted</option>
+            </Select>
+          </div>
         </header>
         {error && (
           <Notice tone="error">
@@ -581,16 +518,6 @@ export function BoardView() {
           onDragEnd={stopEpicAutoScroll}
         >
           <div className="board-grid planner-grid">
-            <div className="board-headings">
-              {PLANNER_STATUSES.map((status) => (
-                <h2 key={status.id}>
-                  {status.title}
-                  <span className="panel-meta">
-                    {tasks.filter((task) => task.status === status.id && !task.parent_id).length}
-                  </span>
-                </h2>
-              ))}
-            </div>
             {lanes.map((lane, laneIndex) => {
               const key = lane.id ?? "__unassigned",
                 closed = collapsed.has(key),
@@ -605,10 +532,31 @@ export function BoardView() {
                       ? !!lane.epic.archived_at && !lane.epic.trashed_at
                       : !!lane.epic.trashed_at);
               return (
-                <section
-                  className={`planner-lane ${lane.epic?.archived_at ? "archived" : ""} ${draggedEpicId ? "epic-drag-active" : ""} ${epicDropTarget === lane.id ? "epic-drop-before" : ""}`}
+                <EpicLane
                   key={key}
-                  style={{ "--epic-color": lane.color ?? "var(--border)" } as CSSProperties}
+                  title={lane.title}
+                  draggable={lifecycle === "active" && !!lane.epic && !epicFilter && !epicsBusy}
+                  dragging={!!draggedEpicId && draggedEpicId === lane.id}
+                  dropPosition={
+                    epicDropTarget === lane.id
+                      ? "before"
+                      : epicDropTarget === nextLaneId && draggedEpicId !== lane.id
+                        ? "after"
+                        : undefined
+                  }
+                  onDragStart={(event) => {
+                    if (!lane.epic) {
+                      event.preventDefault();
+                      return;
+                    }
+                    event.dataTransfer.setData(EPIC_DRAG_TYPE, lane.epic.id);
+                    event.dataTransfer.effectAllowed = "move";
+                    setDraggedEpicId(lane.epic.id);
+                  }}
+                  onDragEnd={() => {
+                    setDraggedEpicId(null);
+                    setEpicDropTarget(undefined);
+                  }}
                   onDragOver={(event) => {
                     if (draggedEpicId && event.dataTransfer.types.includes(EPIC_DRAG_TYPE)) {
                       event.preventDefault();
@@ -626,102 +574,54 @@ export function BoardView() {
                     void moveEpic(movedId, beforeId);
                   }}
                 >
-                  <header
-                    className="planner-lane-title"
-                    draggable={lifecycle === "active" && !!lane.epic && !epicFilter && !epicsBusy}
-                    onDragStart={(event) => {
-                      if (!lane.epic || (event.target as HTMLElement).closest("button, a, input, select, textarea")) {
-                        event.preventDefault();
-                        return;
-                      }
-                      event.dataTransfer.setData(EPIC_DRAG_TYPE, lane.epic.id);
-                      event.dataTransfer.effectAllowed = "move";
-                      setDraggedEpicId(lane.epic.id);
-                    }}
-                    onDragEnd={() => {
-                      setDraggedEpicId(null);
-                      setEpicDropTarget(undefined);
-                    }}
-                  >
-                    <Button
-                      aria-label={`${closed ? "Expand" : "Collapse"} ${lane.title}`}
-                      aria-expanded={!closed}
-                      onClick={() =>
-                        setCollapsed((current) => {
-                          const next = new Set(current);
-                          if (next.has(key)) next.delete(key);
-                          else next.add(key);
-                          return next;
-                        })
-                      }
-                    >
-                      {closed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
-                    </Button>
-                    <strong>{lane.title}</strong>
-                    <span className="panel-meta">{lane.tasks.length} tasks</span>
-                    {lifecycle === "active" && lane.epic && (
-                      <>
-                        <span
-                          className="planner-lane-drag"
-                          aria-hidden="true"
-                          title={
-                            epicFilter ? "Clear the epic filter to reorder epics" : "Drag the epic card to reorder"
-                          }
-                        >
-                          ⠿
-                        </span>
-                        <Button
-                          aria-label={`Move ${lane.title} up`}
-                          title="Move epic up"
-                          disabled={!!epicFilter || epicsBusy || epicIndex <= 0}
-                          onClick={() => void moveEpic(lane.epic!.id, orderedEpics[epicIndex - 1]?.id ?? null)}
-                        >
-                          <ArrowUp size={16} />
-                        </Button>
-                        <Button
-                          aria-label={`Move ${lane.title} down`}
-                          title="Move epic down"
-                          disabled={!!epicFilter || epicsBusy || epicIndex < 0 || epicIndex >= orderedEpics.length - 1}
-                          onClick={() => void moveEpic(lane.epic!.id, orderedEpics[epicIndex + 2]?.id ?? null)}
-                        >
-                          <ArrowDown size={16} />
-                        </Button>
-                      </>
-                    )}
-                    {lifecycle === "active" && <Button onClick={() => void createTask(lane.id)}>+ Task</Button>}
-                    {epicInView && (
-                      <>
-                        <Button
-                          onClick={(event) => {
-                            historyReturn.current = event.currentTarget;
-                            setHistoryEpic(lane.epic!);
-                          }}
-                        >
-                          History
-                        </Button>
-                        {lifecycle === "active" && (
+                  <EpicHeader
+                    title={lane.title}
+                    count={lane.tasks.length}
+                    color={lane.color ?? "var(--mds-border)"}
+                    headingLevel={2}
+                    expanded={!closed}
+                    onExpandedChange={(expanded) =>
+                      setCollapsed((current) => {
+                        const next = new Set(current);
+                        if (expanded) next.delete(key);
+                        else next.add(key);
+                        return next;
+                      })
+                    }
+                    onCreateTask={lifecycle === "active" ? () => void createTask(lane.id) : undefined}
+                    reorderDisabled={!!epicFilter || epicsBusy}
+                    onMoveUp={
+                      lifecycle === "active" && lane.epic && epicIndex > 0
+                        ? () => void moveEpic(lane.epic!.id, orderedEpics[epicIndex - 1]?.id ?? null)
+                        : undefined
+                    }
+                    onMoveDown={
+                      lifecycle === "active" && lane.epic && epicIndex < orderedEpics.length - 1
+                        ? () => void moveEpic(lane.epic!.id, orderedEpics[epicIndex + 2]?.id ?? null)
+                        : undefined
+                    }
+                    actions={
+                      epicInView ? (
+                        <>
                           <Button
                             onClick={(event) => {
-                              epicReturn.current = event.currentTarget;
-                              setEpicEditor(lane.epic!);
+                              historyReturn.current = event.currentTarget;
+                              setHistoryEpic(lane.epic!);
                             }}
                           >
-                            Edit
+                            History
                           </Button>
-                        )}
-                        {lane.epic!.trashed_at ? (
-                          <Button
-                            onClick={() =>
-                              void api.restorePlannerEpic(lane.epic!.id, lane.epic!.revision).then(
-                                () => load(),
-                                (e) => setError(errorMessage(e)),
-                              )
-                            }
-                          >
-                            Restore
-                          </Button>
-                        ) : lane.epic!.archived_at ? (
-                          <>
+                          {lifecycle === "active" && (
+                            <Button
+                              onClick={(event) => {
+                                epicReturn.current = event.currentTarget;
+                                setEpicEditor(lane.epic!);
+                              }}
+                            >
+                              Edit
+                            </Button>
+                          )}
+                          {lane.epic!.trashed_at ? (
                             <Button
                               onClick={() =>
                                 void api.restorePlannerEpic(lane.epic!.id, lane.epic!.revision).then(
@@ -732,26 +632,43 @@ export function BoardView() {
                             >
                               Restore
                             </Button>
-                            <Button onClick={() => void trashEpic(lane.epic!)}>Delete</Button>
-                          </>
-                        ) : (
-                          <Button onClick={() => void archiveEpic(lane.epic!)}>Archive</Button>
-                        )}
-                      </>
-                    )}
-                  </header>
+                          ) : lane.epic!.archived_at ? (
+                            <>
+                              <Button
+                                onClick={() =>
+                                  void api.restorePlannerEpic(lane.epic!.id, lane.epic!.revision).then(
+                                    () => load(),
+                                    (e) => setError(errorMessage(e)),
+                                  )
+                                }
+                              >
+                                Restore
+                              </Button>
+                              <Button onClick={() => void trashEpic(lane.epic!)}>Delete</Button>
+                            </>
+                          ) : (
+                            <Button onClick={() => void archiveEpic(lane.epic!)}>Archive</Button>
+                          )}
+                        </>
+                      ) : undefined
+                    }
+                  />
                   {!closed && (
-                    <div className="board-lane">
+                    <BoardGrid label={`${lane.title} tasks`}>
                       {PLANNER_STATUSES.map((status) => {
                         const target = `${key}:${status.id}`;
                         return (
-                          <div
-                            className={`board-column ${dropTarget === target ? "drop-target" : ""}`}
+                          <BoardColumn
                             key={status.id}
-                            aria-label={`${lane.title}: ${status.title}`}
+                            title={status.title}
+                            label={`${lane.title}: ${status.title}`}
+                            headingLevel={3}
+                            count={lane.tasks.filter((task) => task.status === status.id).length}
+                            dropTarget={dropTarget === target}
                             onDragOver={(event) => {
-                              if (draggedId && event.dataTransfer.types.includes(DRAG_TYPE)) {
+                              if (lifecycle === "active" && draggedId && event.dataTransfer.types.includes(DRAG_TYPE)) {
                                 event.preventDefault();
+                                event.stopPropagation();
                                 event.dataTransfer.dropEffect = "move";
                                 setDropTarget(target);
                               }
@@ -761,7 +678,9 @@ export function BoardView() {
                                 setDropTarget(null);
                             }}
                             onDrop={(event) => {
+                              if (lifecycle !== "active" || !event.dataTransfer.types.includes(DRAG_TYPE)) return;
                               event.preventDefault();
+                              event.stopPropagation();
                               const task = tasks.find((item) => item.id === event.dataTransfer.getData(DRAG_TYPE));
                               if (task) void act(task, lane.id, status.id);
                             }}
@@ -775,6 +694,13 @@ export function BoardView() {
                                   allTasks={tasks}
                                   hierarchy={hierarchy}
                                   busy={busy.has(task.id)}
+                                  readOnly={lifecycle !== "active"}
+                                  dragging={draggedId === task.id}
+                                  onDragEnd={() => {
+                                    setDraggedId(null);
+                                    setDropTarget(null);
+                                  }}
+                                  onMoveStatus={(nextStatus) => void act(task, task.epic_id, nextStatus)}
                                   selected={selectedId === task.id}
                                   onSelect={setSelectedId}
                                   onToggleDone={(child) =>
@@ -804,21 +730,24 @@ export function BoardView() {
                                   }}
                                 />
                               ))}
-                          </div>
+                            {!lane.tasks.some((task) => task.status === status.id) && (
+                              <BoardDropIndicator
+                                active={dropTarget === target}
+                                label={dropTarget === target ? "Drop task here" : "No tasks"}
+                              />
+                            )}
+                          </BoardColumn>
                         );
                       })}
-                    </div>
+                    </BoardGrid>
                   )}
-                </section>
+                </EpicLane>
               );
             })}
           </div>
         </div>
         {lifecycle === "active" && summary && !tasks.length && !loading && (
-          <p className="planner-empty">
-            No planner tasks yet. Create one or{" "}
-            <Button onClick={() => void openMigration()}>import Markdown tasks</Button>.
-          </p>
+          <p className="planner-empty">No planner tasks yet. Use New task or add one inside an epic.</p>
         )}
         {lifecycle !== "active" && !tasks.length && !epics.length && !loading && (
           <p className="planner-empty">No {lifecycle === "archived" ? "archived" : "deleted"} planner items.</p>
@@ -850,7 +779,6 @@ export function BoardView() {
           defaultColor={DEFAULT_EPIC_COLOR}
           onClose={() => setEpicEditor(null)}
           onDone={() => {
-            if (epicEditor === "new") markStarted(root);
             setEpicEditor(null);
             void load();
           }}
@@ -868,39 +796,53 @@ function TaskCard({
   allTasks,
   hierarchy,
   busy,
+  readOnly,
+  dragging,
   selected,
   onSelect,
   onToggleDone,
   onDropBefore,
   onDragStart,
+  onDragEnd,
+  onMoveStatus,
 }: {
   task: PlannerTask;
   allTasks: PlannerTask[];
   hierarchy: Map<string, PlannerTask[]>;
   busy: boolean;
+  readOnly: boolean;
+  dragging: boolean;
   selected: boolean;
   onSelect(id: string): void;
   onToggleDone(task: PlannerTask): void;
   onDropBefore(target: PlannerTask, dragged: PlannerTask): void;
   onDragStart(event: DragEvent): void;
+  onDragEnd(): void;
+  onMoveStatus(status: PlannerTaskStatus): void;
 }) {
   const nested = descendantsFrom(hierarchy, task.id),
     progress = { done: nested.filter((item) => item.status === "done").length, total: nested.length };
-  const historical = !!task.archived_at || !!task.trashed_at;
+  const historical = readOnly || !!task.archived_at || !!task.trashed_at;
   return (
-    <article
-      className={`board-card planner-card ${selected ? "selected" : ""} ${historical ? "archived" : ""}`}
+    <BoardCard
+      title={task.title}
+      description={task.description || undefined}
+      selected={selected}
+      disabled={busy}
       draggable={!busy && !historical}
+      dragging={dragging}
+      onOpen={() => onSelect(task.id)}
       onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
       onDragOver={(event) => {
-        if (event.dataTransfer.types.includes(DRAG_TYPE)) {
+        if (!historical && event.dataTransfer.types.includes(DRAG_TYPE)) {
           event.preventDefault();
           event.stopPropagation();
           event.dataTransfer.dropEffect = "move";
         }
       }}
       onDrop={(event) => {
-        if (!event.dataTransfer.types.includes(DRAG_TYPE)) return;
+        if (historical || !event.dataTransfer.types.includes(DRAG_TYPE)) return;
         event.preventDefault();
         event.stopPropagation();
         const dragged = allTasks.find((item) => item.id === event.dataTransfer.getData(DRAG_TYPE));
@@ -910,30 +852,41 @@ function TaskCard({
         if (!(event.target as HTMLElement).closest("button,input")) onSelect(task.id);
       }}
       data-task-id={task.id}
-      aria-label={task.title}
       tabIndex={0}
       onKeyDown={(event) => {
         if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) {
           event.preventDefault();
           onSelect(task.id);
         }
+        if (
+          !historical &&
+          !busy &&
+          event.altKey &&
+          ["ArrowLeft", "ArrowRight"].includes(event.key) &&
+          (event.target === event.currentTarget || (event.target as HTMLElement).closest(".mds-board-card-title"))
+        ) {
+          event.preventDefault();
+          event.stopPropagation();
+          const index = PLANNER_STATUSES.findIndex((status) => status.id === task.status);
+          const next = PLANNER_STATUSES[index + (event.key === "ArrowLeft" ? -1 : 1)];
+          if (next) onMoveStatus(next.id);
+        }
       }}
+      metadata={
+        task.due_date || task.estimate_minutes !== null || progress.total > 0 || historical ? (
+          <div className="board-task-metadata">
+            {task.due_date && <span>Due {task.due_date}</span>}
+            {task.estimate_minutes !== null && <span>{task.estimate_minutes} min</span>}
+            {progress.total > 0 && (
+              <span>
+                {progress.done}/{progress.total} subtasks
+              </span>
+            )}
+            {task.trashed_at ? <span>Deleted</span> : historical && <span>Archived</span>}
+          </div>
+        ) : undefined
+      }
     >
-      <div className="planner-card-title">
-        <strong>{task.title}</strong>
-        {task.parent_id && <span className="panel-meta">Subtask</span>}
-      </div>
-      {task.description && <p>{task.description}</p>}
-      <div className="planner-card-meta">
-        {task.due_date && <span>Due {task.due_date}</span>}
-        {task.estimate_minutes !== null && <span>{task.estimate_minutes} min</span>}
-        {progress.total > 0 && (
-          <span>
-            {progress.done}/{progress.total} subtasks
-          </span>
-        )}
-        {task.trashed_at ? <span>Deleted</span> : task.archived_at && <span>Archived</span>}
-      </div>
       {nested.length > 0 && (
         <ul className="planner-subtasks">
           {nested.map((child) => (
@@ -952,6 +905,6 @@ function TaskCard({
           ))}
         </ul>
       )}
-    </article>
+    </BoardCard>
   );
 }

@@ -42,8 +42,6 @@ export const commands = {
 	plannerTrashEvent: (id: string, expectedRevision: number) => __TAURI_INVOKE<PlannerEvent>("planner_trash_event", { id, expectedRevision }),
 	plannerCancelEventOccurrence: (seriesId: string, expectedRevision: number, occurrenceKey: string) => __TAURI_INVOKE<PlannerEvent>("planner_cancel_event_occurrence", { seriesId, expectedRevision, occurrenceKey }),
 	plannerReplaceEventOccurrence: (seriesId: string, expectedRevision: number, occurrenceKey: string, input: CreateEvent) => __TAURI_INVOKE<PlannerEvent>("planner_replace_event_occurrence", { seriesId, expectedRevision, occurrenceKey, input }),
-	plannerMigrationPreview: () => __TAURI_INVOKE<MarkdownImportPreview>("planner_migration_preview"),
-	plannerImportMarkdown: (preview: MarkdownImportPreview, selectedFingerprints: string[], allowDuplicates: boolean, timezone: string) => __TAURI_INVOKE<MarkdownImportResult>("planner_import_markdown", { preview, selectedFingerprints, allowDuplicates, timezone }),
 	plannerIcalPreview: (sourceKind: string, content: string, fallbackTimezone: string) => __TAURI_INVOKE<IcalImportPreview>("planner_ical_preview", { sourceKind, content, fallbackTimezone }),
 	plannerIcalImport: (preview: IcalImportPreview, selectedKeys: string[], allowDuplicates: boolean) => __TAURI_INVOKE<IcalImportResult>("planner_ical_import", { preview, selectedKeys, allowDuplicates }),
 	plannerIcalExport: () => __TAURI_INVOKE<string>("planner_ical_export"),
@@ -521,46 +519,6 @@ export type IcalImportResult = {
 };
 
 export type LinkStyle = "wiki" | "markdown";
-
-export type MarkdownImportCandidate = {
-	source_path: string,
-	source_line: number,
-	block_id: string | null,
-	fingerprint: string,
-	parent_fingerprint: string | null,
-	epic_fingerprint: string | null,
-	depth: number,
-	kind: MarkdownImportKind,
-	title: string,
-	status: TaskStatus,
-	due_date: string | null,
-	all_day_session_date: string | null,
-	archived: boolean,
-	default_selected: boolean,
-	duplicate: boolean,
-};
-
-export type MarkdownImportGroup = {
-	source_path: string,
-	tasks: MarkdownImportCandidate[],
-};
-
-export type MarkdownImportKind = "epic" | "task" | "subtask";
-
-export type MarkdownImportPreview = {
-	planner_revision: number,
-	groups: MarkdownImportGroup[],
-	candidates: number,
-	selected_by_default: number,
-	duplicates: number,
-};
-
-export type MarkdownImportResult = {
-	planner_revision: number,
-	imported_epic_ids: string[],
-	imported_task_ids: string[],
-	skipped_duplicates: string[],
-};
 
 /**  A note that mentions another note's title or alias without linking to it. */
 export type Mention = {

@@ -210,8 +210,6 @@ test("create a planner task and move it through the workflow", async ({ page }) 
   await openVault(page);
   await page.getByRole("tab", { name: "Plan" }).click();
   await page.getByRole("button", { name: "Board", exact: true }).click();
-  const startEmpty = page.getByRole("button", { name: "Start empty" });
-  if (await startEmpty.isVisible()) await startEmpty.click();
   await page.getByRole("button", { name: "New task", exact: true }).click();
   const prompt = page.getByRole("dialog", { name: "New task", exact: true });
   await prompt.getByPlaceholder("What needs doing?").fill("Verify the release journey");
@@ -445,24 +443,16 @@ test("chat with the assistant and manage the saved conversation", async ({ page 
   await expect(page.getByRole("heading", { name: "Chats", exact: true })).toBeVisible();
 });
 
-test("import planner tasks and manage an epic lifecycle", async ({ page }) => {
+test("manage an epic lifecycle", async ({ page }) => {
   await openVault(page);
   await page.getByRole("tab", { name: "Plan" }).click();
   await page.getByRole("button", { name: "Board", exact: true }).click();
-  await page.getByRole("button", { name: "Preview import" }).click();
-  const wizard = page.getByRole("region", { name: "Import Markdown tasks" });
-  await expect(wizard.getByRole("heading", { name: "Preview Markdown task import" })).toBeVisible();
-  const importButton = wizard.getByRole("button", { name: /^Import \d+ items$/ });
-  await expect(importButton).toBeEnabled();
-  await importButton.click();
-  await expect(page.getByRole("heading", { name: "Board", exact: true })).toBeVisible();
-
   await page.getByRole("button", { name: "New epic" }).click();
   const epicDialog = page.getByRole("dialog", { name: "New epic" });
   await epicDialog.getByLabel("Title").fill("Coverage epic");
   await epicDialog.getByLabel("Color").fill("#2255aa");
   await epicDialog.getByRole("button", { name: "Save epic" }).click();
-  const lane = page.locator(".planner-lane", { hasText: "Coverage epic" });
+  const lane = page.locator(".mds-epic-lane", { hasText: "Coverage epic" });
   await expect(lane).toBeVisible();
   await lane.getByRole("button", { name: "History" }).click();
   await expect(page.getByRole("dialog", { name: "Coverage epic history" })).toBeVisible();
@@ -472,15 +462,19 @@ test("import planner tasks and manage an epic lifecycle", async ({ page }) => {
   const editEpic = page.getByRole("dialog", { name: "Edit epic" });
   await editEpic.getByLabel("Title").fill("Coverage epic updated");
   await editEpic.getByRole("button", { name: "Save epic" }).click();
-  const updatedLane = page.locator(".planner-lane", { hasText: "Coverage epic updated" });
+  const updatedLane = page.locator(".mds-epic-lane", { hasText: "Coverage epic updated" });
   await updatedLane.getByRole("button", { name: "Archive" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Archive" }).click();
   await page.getByLabel("Planner lifecycle view").selectOption("archived");
-  const archivedLane = page.locator(".planner-lane", { hasText: "Coverage epic updated" });
-  await expect(archivedLane.locator("strong", { hasText: "Coverage epic updated" })).toBeVisible();
+  const archivedLane = page.locator(".mds-epic-lane", { hasText: "Coverage epic updated" });
+  await expect(archivedLane.getByRole("heading", { name: "Coverage epic updated", exact: true })).toBeVisible();
   await archivedLane.getByRole("button", { name: "Restore" }).click();
   await page.getByLabel("Planner lifecycle view").selectOption("active");
-  await expect(page.locator(".planner-lane", { hasText: "Coverage epic updated" }).locator("strong")).toBeVisible();
+  await expect(
+    page
+      .locator(".mds-epic-lane", { hasText: "Coverage epic updated" })
+      .getByRole("heading", { name: "Coverage epic updated", exact: true }),
+  ).toBeVisible();
 
   await page.getByLabel("Search planner tasks").fill("release");
   await page.getByLabel("Filter by status").selectOption("new");
@@ -491,8 +485,6 @@ test("create calendar events, subscriptions and work sessions", async ({ page })
   await openVault(page);
   await page.getByRole("tab", { name: "Plan" }).click();
   await page.getByRole("button", { name: "Board", exact: true }).click();
-  const startEmpty = page.getByRole("button", { name: "Start empty" });
-  if (await startEmpty.isVisible()) await startEmpty.click();
   await page.getByRole("button", { name: "New task", exact: true }).click();
   await page.getByPlaceholder("What needs doing?").fill("Calendar coverage task");
   await page.getByRole("button", { name: "OK" }).click();

@@ -1,0 +1,143 @@
+.mosaic-ds.board-design {
+  --bg: var(--mds-surface);
+  --bg-side: var(--mds-surface-subtle);
+  --fg: var(--mds-text);
+  --muted: var(--mds-text-muted);
+  --border: var(--mds-border);
+  background: var(--mds-surface);
+}
+.mosaic-ds.board-design h1 {
+  font-size: var(--mds-text-heading);
+  line-height: var(--mds-leading);
+  margin: 0;
+}
+.mosaic-ds.planner-onboarding {
+  padding: var(--mds-space-8);
+  min-width: 0;
+  overflow: auto;
+}
+.mosaic-ds.planner-onboarding > p {
+  font-size: var(--mds-text-body);
+}
+.mosaic-ds.board-design .panel-meta {
+  font-size: var(--mds-text-hint);
+  color: var(--mds-text-muted);
+}
+.mosaic-ds.board-design .board-toolbar {
+  gap: var(--mds-space-5);
+  margin-bottom: var(--mds-space-6);
+  align-items: end;
+}
+.mosaic-ds.board-design .board-toolbar h1 {
+  margin-right: auto;
+  align-self: center;
+}
+.mosaic-ds.board-design .board-toolbar > .mds-field {
+  flex: 1 1 150px;
+  min-width: 0;
+}
+.mosaic-ds.board-design .board-toolbar > .mds-field input,
+.mosaic-ds.board-design .board-toolbar > .mds-field select {
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+}
+.mosaic-ds.board-design .board-toolbar > .mds-button {
+  flex: 0 1 auto;
+  white-space: normal;
+}
+.mosaic-ds.board-design .mds-notice {
+  margin-bottom: var(--mds-space-5);
+}
+.mosaic-ds.board-design .board-headings h2 {
+  font-size: var(--mds-text-body);
+  line-height: var(--mds-leading);
+  margin: 0;
+  gap: var(--mds-space-3);
+}
+.mosaic-ds.board-design .board-card {
+  border-radius: var(--mds-radius-control);
+  padding: var(--mds-space-6);
+  gap: var(--mds-space-4);
+}
+.mosaic-ds.board-design .board-card:focus-visible {
+  outline: var(--mds-focus-width) solid var(--mds-accent);
+  outline-offset: var(--mds-focus-offset);
+}
+.mosaic-ds.board-design .planner-card-title {
+  min-width: 0;
+  font-size: var(--mds-text-body);
+}
+.mosaic-ds.board-design .planner-card-title strong {
+  overflow-wrap: anywhere;
+}
+.mosaic-ds.board-design .planner-card > p {
+  font-size: var(--mds-text-hint);
+  line-height: var(--mds-leading);
+}
+.mosaic-ds.board-design .planner-card-meta {
+  font-size: var(--mds-text-small);
+}
+.mosaic-ds.board-design .planner-lane-title {
+  padding: var(--mds-space-4) var(--mds-space-5);
+  gap: var(--mds-space-4);
+}
+.mosaic-ds.board-design .planner-lane-title > .mds-button {
+  flex: none;
+}
+.mosaic-ds.board-design .planner-lane-title > .mds-button:has(svg) {
+  width: 32px;
+  padding: var(--mds-space-3);
+}
+.mosaic-ds.board-design .planner-subtasks input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--mds-accent);
+}
+.mosaic-ds.board-design .planner-subtasks .mds-button {
+  padding: var(--mds-space-2);
+  font-size: var(--mds-text-body);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.mosaic-ds.board-design .planner-subtasks input:focus-visible,
+.mosaic-ds.board-design summary:focus-visible {
+  outline: var(--mds-focus-width) solid var(--mds-accent);
+  outline-offset: var(--mds-focus-offset);
+}
+.mosaic-ds.board-design .planner-empty {
+  color: var(--mds-text-muted);
+  font-size: var(--mds-text-body);
+}
+.mosaic-ds.board-design .planner-empty .mds-button {
+  color: var(--mds-text);
+}
+.mosaic-ds.board-design .planner-export summary {
+  cursor: pointer;
+  border: 1px solid var(--mds-border);
+  border-radius: var(--mds-radius-control);
+  padding: var(--mds-space-3) var(--mds-space-5);
+}
+.mosaic-ds.board-design .planner-export > div {
+  border: 1px solid var(--mds-border);
+  border-radius: var(--mds-radius-control);
+  background: var(--mds-surface);
+  box-shadow: var(--mds-shadow-floating);
+}
+.mosaic-ds.board-design .planner-export .mds-button {
+  white-space: nowrap;
+}
+.mosaic-ds[data-density="compact"].board-design .board-card {
+  padding: var(--mds-space-5);
+}
+@media (prefers-reduced-motion: reduce) {
+  .mosaic-ds.board-design .planner-lane,
+  .mosaic-ds.board-design .planner-lane::before {
+    transition: none;
+  }
+}
+
+.mosaic-ds.board-design .planner-lane.archived,
+.mosaic-ds.board-design .planner-card.archived {
+  opacity: 1;
+}

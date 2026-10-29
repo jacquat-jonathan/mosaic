@@ -499,3 +499,10 @@ workspace focus, while Calendar context content remains for its own migration.
 wrap native completion checkboxes and readable result metadata. Requests guard the active
 vault, writes serialize until acknowledged, and removed rows return focus to the results.
 Saved planning titles and queries retain their vault-local storage; unavailable saved views stay explicit.
+
+`views/planner/BoardView.tsx` scopes board controls/cards and onboarding independently
+from the task/epic editors. Shared labelled fields, actions, notices, and token-based
+metadata preserve lane/task dragging, keyboard epic ordering, lifecycle filters, and exports.
+Wide lanes stay in a keyboard-focusable scroller; reduced motion removes drag-target animation.
+Loads ignore older requests, subscriptions clean up even when registration finishes late,
+and task-name decisions check the active vault. Editors retain their own migration passes.

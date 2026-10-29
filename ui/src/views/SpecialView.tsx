@@ -46,7 +46,7 @@ export function SpecialView({ path }: { path: string }) {
     case "search":
       return <SearchPanel />;
     case "board":
-      return <TaskBoard />;
+      return <TaskBoard key={root} />;
     case "tasks":
     case "overdue":
     case "projects":

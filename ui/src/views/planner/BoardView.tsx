@@ -1,4 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent } from "react";
+import { Button, Notice, Select, TextField } from "../../design-system/components";
+import { ChevronDown, ChevronRight, ArrowUp, ArrowDown } from "lucide-react";
+import { DesignSystemScope } from "../DesignSystemScope";
+import "./boardView.css";
 import { api, inTauri, onPlannerChanged } from "../../ipc/api";
 import {
   errorMessage,
@@ -67,6 +71,25 @@ export function BoardView() {
     [busy, setBusy] = useState(new Set<string>()),
     [dismissed, setDismissed] = useState(false),
     [wizard, setWizard] = useState(false);
+  const mounted = useRef(true),
+    loadVersion = useRef(0);
+  const isCurrent = useCallback(() => mounted.current && root === useVault.getState().vault?.root, [root]);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      loadVersion.current++;
+    };
+  }, []);
+  const retryFocus = useRef(false),
+    boardHeading = useRef<HTMLHeadingElement>(null),
+    retryButton = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!loading && retryFocus.current) {
+      (error ? retryButton.current : boardHeading.current)?.focus();
+      retryFocus.current = false;
+    }
+  }, [loading, error]);
   const boardScrollRef = useRef<HTMLDivElement>(null),
     epicScrollFrame = useRef<number | null>(null),
     epicScrollStep = useRef(0);
@@ -102,7 +125,9 @@ export function BoardView() {
     [],
   );
   const load = useCallback(async () => {
-    if (!root) return;
+    if (!root || !isCurrent()) return;
+    const version = ++loadVersion.current;
+    const valid = () => isCurrent() && version === loadVersion.current;
     setLoading(true);
     try {
       const historical = lifecycle !== "active",
@@ -122,7 +147,7 @@ export function BoardView() {
                 ? !!item.archived_at && !item.trashed_at
                 : !!item.trashed_at) || nextTasks.some((task) => task.epic_id === item.id),
         );
-      if (root !== useVault.getState().vault?.root) return;
+      if (!valid()) return;
       setSummary(nextSummary);
       setEpics(nextEpics);
       setTasks(nextTasks);
@@ -130,14 +155,14 @@ export function BoardView() {
       setError(null);
       if (nextSummary.is_empty) {
         const nextPreview = await api.plannerMigrationPreview();
-        if (root === useVault.getState().vault?.root) setPreview(nextPreview);
+        if (valid()) setPreview(nextPreview);
       } else setPreview(null);
     } catch (e) {
-      setError(errorMessage(e));
+      if (valid()) setError(errorMessage(e));
     } finally {
-      setLoading(false);
+      if (valid()) setLoading(false);
     }
-  }, [root, lifecycle]);
+  }, [root, lifecycle, isCurrent]);
   useEffect(() => {
     setSelectedId(null);
     setDismissed(false);
@@ -146,12 +171,17 @@ export function BoardView() {
   }, [load]);
   useEffect(() => {
     let off: (() => void) | undefined;
+    let live = true;
     void onPlannerChanged((change) => {
       if (change.root === root) void load();
     }).then((unsubscribe) => {
-      off = unsubscribe;
+      if (live) off = unsubscribe;
+      else unsubscribe();
     });
-    return () => off?.();
+    return () => {
+      live = false;
+      off?.();
+    };
   }, [root, load]);
   const selected = tasks.find((task) => task.id === selectedId) ?? null;
   const allLanes = useMemo(() => swimlanes(epics, tasks), [epics, tasks]);
@@ -178,7 +208,7 @@ export function BoardView() {
       return next;
     });
   const moveEpic = async (movedId: string, beforeId: string | null) => {
-    if (lifecycle !== "active" || epicFilter || epicsBusy) return;
+    if (!isCurrent() || lifecycle !== "active" || epicFilter || epicsBusy) return;
     const next = reorderEpics(epics, movedId, beforeId),
       changed = next.filter((item) => epics.find((epic) => epic.id === item.id)?.position !== item.position);
     if (!changed.length) return;
@@ -186,6 +216,7 @@ export function BoardView() {
     setError(null);
     try {
       for (const epic of changed) {
+        if (!isCurrent()) return;
         const current = epics.find((item) => item.id === epic.id)!;
         await api.updatePlannerEpic(epic.id, { expected_revision: current.revision, position: epic.position });
       }
@@ -205,6 +236,7 @@ export function BoardView() {
       future = (await api.plannerWorkSessions(taskId, false)).filter((session) =>
         session.all_day ? session.start_value > today : session.start_value > now.toISOString(),
       );
+    if (!isCurrent()) return null;
     if (!future.length) return "cancel" as const;
     if (
       await useUi.getState().ask({
@@ -214,6 +246,7 @@ export function BoardView() {
       })
     )
       return "cancel" as const;
+    if (!isCurrent()) return null;
     if (
       await useUi.getState().ask({
         title: "Keep future work sessions?",
@@ -230,7 +263,7 @@ export function BoardView() {
     status: PlannerTaskStatus,
     requestedPosition?: number,
   ) => {
-    if (busy.has(task.id) || task.archived_at) return;
+    if (!isCurrent() || busy.has(task.id) || task.archived_at) return;
     setTaskBusy(task.id, true);
     setError(null);
     try {
@@ -251,6 +284,7 @@ export function BoardView() {
         ) + 1024;
       if (current.status === "done" && status !== "done")
         current = await api.reopenPlannerTask(current.id, current.revision);
+      if (!mounted.current || root !== useVault.getState().vault?.root) return;
       if (current.epic_id !== epicId || (status !== "done" && current.status !== status))
         current = await api.movePlannerTask(current.id, {
           expected_revision: current.revision,
@@ -259,6 +293,7 @@ export function BoardView() {
           status: status === "done" ? current.status : status,
           position,
         });
+      if (!mounted.current || root !== useVault.getState().vault?.root) return;
       if (status === "done" && current.status !== "done") {
         const open = tasks.some((item) => item.parent_id === current.id && item.status !== "done" && !item.archived_at);
         if (
@@ -270,8 +305,9 @@ export function BoardView() {
           }))
         )
           return;
+        if (!mounted.current || root !== useVault.getState().vault?.root) return;
         const policy = await futurePolicy(current.id);
-        if (!policy) return;
+        if (!policy || !mounted.current || root !== useVault.getState().vault?.root) return;
         current = await api.completePlannerTask(current.id, current.revision, open, policy);
       }
       setSelectedId(current.id);
@@ -286,7 +322,7 @@ export function BoardView() {
   };
   const createTask = async (epicId: string | null) => {
     const title = await useUi.getState().askText({ title: "New task", value: "", placeholder: "What needs doing?" });
-    if (!title?.trim()) return;
+    if (!title?.trim() || !isCurrent()) return;
     try {
       const task = await api.createPlannerTask({
         epic_id: epicId,
@@ -297,6 +333,7 @@ export function BoardView() {
         due_date: null,
         estimate_minutes: null,
       });
+      if (!isCurrent()) return;
       markStarted(root);
       setSelectedId(task.id);
       await load();
@@ -314,6 +351,7 @@ export function BoardView() {
     )
       return;
     try {
+      if (!isCurrent()) return;
       await api.archivePlannerEpic(epic.id, epic.revision);
       await load();
     } catch (e) {
@@ -330,6 +368,7 @@ export function BoardView() {
     )
       return;
     try {
+      if (!isCurrent()) return;
       await api.trashPlannerEpic(epic.id, epic.revision);
       await load();
     } catch (e) {
@@ -339,7 +378,9 @@ export function BoardView() {
   const openMigration = async () => {
     setError(null);
     try {
-      setPreview(await api.plannerMigrationPreview());
+      const next = await api.plannerMigrationPreview();
+      if (!isCurrent()) return;
+      setPreview(next);
       setWizard(true);
     } catch (reason) {
       setError(errorMessage(reason));
@@ -354,7 +395,7 @@ export function BoardView() {
             defaultPath: `mosaic-plan.${format}`,
             filters: [{ name: format.toUpperCase(), extensions: [format] }],
           });
-        if (path) await api.exportPlannerFile(format, path);
+        if (path && isCurrent()) await api.exportPlannerFile(format, path);
       } else {
         const content = await api.exportPlanner(format),
           url = URL.createObjectURL(new Blob([content], { type: format === "json" ? "application/json" : "text/csv" })),
@@ -372,30 +413,30 @@ export function BoardView() {
   const onboarding = summary?.is_empty && !!preview?.candidates && !wasStarted(root) && !dismissed;
   if (onboarding && !wizard)
     return (
-      <div className="workspace-page planner-onboarding">
+      <DesignSystemScope as="main" className="planner-onboarding board-design" aria-label="Planner setup">
         <h1>Plan your work in Mosaic</h1>
         <p>
           Board and Calendar use independent planner tasks. Your existing Markdown checkboxes stay exactly where they
           are.
         </p>
         <div className="planner-onboarding-actions">
-          <button
+          <Button
             onClick={() => {
               markStarted(root);
               setDismissed(true);
             }}
           >
             Start empty
-          </button>
-          <button className="primary" onClick={() => setWizard(true)}>
+          </Button>
+          <Button variant="secondary" onClick={() => setWizard(true)}>
             Preview import
-          </button>
-          <button onClick={() => setDismissed(true)}>Later</button>
+          </Button>
+          <Button onClick={() => setDismissed(true)}>Later</Button>
         </div>
         <p className="panel-meta">
           {preview.candidates} Markdown tasks are available to preview. Nothing is imported without confirmation.
         </p>
-      </div>
+      </DesignSystemScope>
     );
   if (wizard && preview)
     return (
@@ -413,30 +454,29 @@ export function BoardView() {
     );
   return (
     <div className={`workspace-page planner-board-page ${selected ? "with-editor" : ""}`}>
-      <main className="planner-board" aria-busy={loading}>
+      <DesignSystemScope as="main" className="planner-board board-design" aria-label="Task board" aria-busy={loading}>
         <header className="board-toolbar">
-          <h1>Board</h1>
+          <h1 ref={boardHeading} tabIndex={-1}>
+            Board
+          </h1>
           {lifecycle === "active" && (
             <>
-              <button className="primary" onClick={() => void createTask(null)}>
+              <Button variant="secondary" onClick={() => void createTask(null)}>
                 New task
-              </button>
-              <button onClick={() => setEpicEditor("new")}>New epic</button>
-              <button onClick={() => void openMigration()}>Import Markdown tasks…</button>
+              </Button>
+              <Button onClick={() => setEpicEditor("new")}>New epic</Button>
+              <Button onClick={() => void openMigration()}>Import Markdown tasks…</Button>
             </>
           )}
-          <input
+          <TextField
+            label="Search planner tasks"
             type="search"
             aria-label="Search planner tasks"
             placeholder="Search tasks…"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
           />
-          <select
-            aria-label="Filter by epic"
-            value={epicFilter}
-            onChange={(event) => setEpicFilter(event.target.value)}
-          >
+          <Select label="Filter by epic" value={epicFilter} onChange={(event) => setEpicFilter(event.target.value)}>
             <option value="">All epics</option>
             {epics.map((epic) => (
               <option value={epic.id} key={epic.id}>
@@ -444,9 +484,9 @@ export function BoardView() {
               </option>
             ))}
             <option value="__unassigned">Unassigned</option>
-          </select>
-          <select
-            aria-label="Filter by status"
+          </Select>
+          <Select
+            label="Filter by status"
             value={statusFilter}
             onChange={(event) => setStatusFilter(event.target.value as PlannerTaskStatus | "")}
           >
@@ -456,9 +496,9 @@ export function BoardView() {
                 {item.title}
               </option>
             ))}
-          </select>
-          <select
-            aria-label="Planner lifecycle view"
+          </Select>
+          <Select
+            label="Planner lifecycle view"
             title="Deleted items remain recoverable and can be restored."
             value={lifecycle}
             onChange={(event) => setLifecycle(event.target.value as typeof lifecycle)}
@@ -466,20 +506,41 @@ export function BoardView() {
             <option value="active">Active</option>
             <option value="archived">Archive</option>
             <option value="trash">Deleted</option>
-          </select>
+          </Select>
           <details className="planner-export">
             <summary>Export</summary>
             <div>
-              <button onClick={() => void exportPlan("json")}>JSON export</button>
-              <button onClick={() => void exportPlan("csv")}>CSV table</button>
+              <Button onClick={() => void exportPlan("json")}>JSON export</Button>
+              <Button onClick={() => void exportPlan("csv")}>CSV table</Button>
             </div>
           </details>
         </header>
-        {error && <p className="error-text">{error}</p>}
-        {loading && !summary && <p>Loading planner…</p>}
+        {error && (
+          <Notice tone="error">
+            {error}
+            <Button
+              ref={retryButton}
+              variant="secondary"
+              onClick={() => {
+                retryFocus.current = true;
+                void load();
+              }}
+            >
+              Retry
+            </Button>
+          </Notice>
+        )}
+        {loading && !summary && (
+          <p className="mds-hint" role="status">
+            Loading planner…
+          </p>
+        )}
         <div
           ref={boardScrollRef}
           className="board-scroll"
+          role="region"
+          aria-label="Board lanes"
+          tabIndex={0}
           onDragOverCapture={(event) => {
             if (draggedEpicId && event.dataTransfer.types.includes(EPIC_DRAG_TYPE)) updateEpicAutoScroll(event.clientY);
             else stopEpicAutoScroll();
@@ -553,7 +614,8 @@ export function BoardView() {
                       setEpicDropTarget(undefined);
                     }}
                   >
-                    <button
+                    <Button
+                      aria-label={`${closed ? "Expand" : "Collapse"} ${lane.title}`}
                       aria-expanded={!closed}
                       onClick={() =>
                         setCollapsed((current) => {
@@ -564,8 +626,8 @@ export function BoardView() {
                         })
                       }
                     >
-                      {closed ? "▸" : "▾"}
-                    </button>
+                      {closed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
+                    </Button>
                     <strong>{lane.title}</strong>
                     <span className="panel-meta">{lane.tasks.length} tasks</span>
                     {lifecycle === "active" && lane.epic && (
@@ -579,31 +641,31 @@ export function BoardView() {
                         >
                           ⠿
                         </span>
-                        <button
+                        <Button
                           aria-label={`Move ${lane.title} up`}
                           title="Move epic up"
                           disabled={!!epicFilter || epicsBusy || epicIndex <= 0}
                           onClick={() => void moveEpic(lane.epic!.id, orderedEpics[epicIndex - 1]?.id ?? null)}
                         >
-                          ↑
-                        </button>
-                        <button
+                          <ArrowUp size={16} />
+                        </Button>
+                        <Button
                           aria-label={`Move ${lane.title} down`}
                           title="Move epic down"
                           disabled={!!epicFilter || epicsBusy || epicIndex < 0 || epicIndex >= orderedEpics.length - 1}
                           onClick={() => void moveEpic(lane.epic!.id, orderedEpics[epicIndex + 2]?.id ?? null)}
                         >
-                          ↓
-                        </button>
+                          <ArrowDown size={16} />
+                        </Button>
                       </>
                     )}
-                    {lifecycle === "active" && <button onClick={() => void createTask(lane.id)}>+ Task</button>}
+                    {lifecycle === "active" && <Button onClick={() => void createTask(lane.id)}>+ Task</Button>}
                     {epicInView && (
                       <>
-                        <button onClick={() => setHistoryEpic(lane.epic!)}>History</button>
-                        {lifecycle === "active" && <button onClick={() => setEpicEditor(lane.epic!)}>Edit</button>}
+                        <Button onClick={() => setHistoryEpic(lane.epic!)}>History</Button>
+                        {lifecycle === "active" && <Button onClick={() => setEpicEditor(lane.epic!)}>Edit</Button>}
                         {lane.epic!.trashed_at ? (
-                          <button
+                          <Button
                             onClick={() =>
                               void api.restorePlannerEpic(lane.epic!.id, lane.epic!.revision).then(
                                 () => load(),
@@ -612,10 +674,10 @@ export function BoardView() {
                             }
                           >
                             Restore
-                          </button>
+                          </Button>
                         ) : lane.epic!.archived_at ? (
                           <>
-                            <button
+                            <Button
                               onClick={() =>
                                 void api.restorePlannerEpic(lane.epic!.id, lane.epic!.revision).then(
                                   () => load(),
@@ -624,11 +686,11 @@ export function BoardView() {
                               }
                             >
                               Restore
-                            </button>
-                            <button onClick={() => void trashEpic(lane.epic!)}>Delete</button>
+                            </Button>
+                            <Button onClick={() => void trashEpic(lane.epic!)}>Delete</Button>
                           </>
                         ) : (
-                          <button onClick={() => void archiveEpic(lane.epic!)}>Archive</button>
+                          <Button onClick={() => void archiveEpic(lane.epic!)}>Archive</Button>
                         )}
                       </>
                     )}
@@ -710,13 +772,13 @@ export function BoardView() {
         {lifecycle === "active" && summary && !tasks.length && !loading && (
           <p className="planner-empty">
             No planner tasks yet. Create one or{" "}
-            <button onClick={() => void openMigration()}>import Markdown tasks</button>.
+            <Button onClick={() => void openMigration()}>import Markdown tasks</Button>.
           </p>
         )}
         {lifecycle !== "active" && !tasks.length && !epics.length && !loading && (
           <p className="planner-empty">No {lifecycle === "archived" ? "archived" : "deleted"} planner items.</p>
         )}
-      </main>
+      </DesignSystemScope>
       {selected && (
         <TaskEditor
           task={selected}
@@ -811,9 +873,10 @@ function TaskCard({
       onClick={(event) => {
         if (!(event.target as HTMLElement).closest("button,input")) onSelect(task.id);
       }}
+      aria-label={task.title}
       tabIndex={0}
       onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
+        if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) {
           event.preventDefault();
           onSelect(task.id);
         }
@@ -845,7 +908,7 @@ function TaskCard({
                 aria-label={`Mark ${child.title} ${child.status === "done" ? "not done" : "done"}`}
                 onChange={() => onToggleDone(child)}
               />
-              <button onClick={() => onSelect(child.id)}>{child.title}</button>
+              <Button onClick={() => onSelect(child.id)}>{child.title}</Button>
             </li>
           ))}
         </ul>

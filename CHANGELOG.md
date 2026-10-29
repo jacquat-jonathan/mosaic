@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Task board:** shared actions, labelled filters, readable cards, and retry notices preserve lane dragging, subtask completion, lifecycle views, and exports. Older loads and late task prompts stay tied to their vault.
+
 - **Planning views:** saved titles and queries now use shared task/note results, notices, and completion controls. Missing saved views remain explicit.
 
 - **Query views:** shared results preserve task and note queries, displayed expressions, metadata, and source actions, with readable wrapping in narrow panes.

@@ -337,4 +337,44 @@ describe("planner board", () => {
     fireEvent.click(screen.getByRole("button", { name: "Later" }));
     expect(await screen.findByRole("button", { name: "New task" })).toBeTruthy();
   });
+  it("ignores older lifecycle loads and offers retry after failure", async () => {
+    let finish!: (value: PlannerTask[]) => void;
+    vi.spyOn(api, "plannerTasks")
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finish = resolve;
+          }),
+      )
+      .mockResolvedValue([task("archived-task", "new", { epic_id: "archived", archived_at: "x" })]);
+    render(<BoardView />);
+    fireEvent.change(screen.getByLabelText("Planner lifecycle view"), { target: { value: "archived" } });
+    await screen.findByText("Task archived-task");
+    finish(activeTasks);
+    await waitFor(() => expect(screen.queryByText("Task t1")).toBeNull());
+    cleanup();
+    vi.spyOn(api, "plannerSummary").mockRejectedValueOnce(new Error("offline")).mockResolvedValue(summary);
+    render(<BoardView />);
+    expect(await screen.findByText("offline")).toBeTruthy();
+    await userEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(screen.queryByText("offline")).toBeNull());
+  });
+  it("cancelled or late task-name prompts cannot create a task in another vault", async () => {
+    let finish!: (value: string | null) => void;
+    useUi.setState({
+      askText: vi.fn(
+        () =>
+          new Promise<string | null>((resolve) => {
+            finish = resolve;
+          }),
+      ),
+    });
+    const create = vi.spyOn(api, "createPlannerTask");
+    render(<BoardView />);
+    await screen.findByText("Task t1");
+    await userEvent.click(screen.getByRole("button", { name: "New task" }));
+    useVault.setState({ vault: { root: "/other", name: "Other" } });
+    finish("Late task");
+    await waitFor(() => expect(create).not.toHaveBeenCalled());
+  });
 });

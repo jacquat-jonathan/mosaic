@@ -661,3 +661,9 @@ The final audit migrates `views/ConflictBar.tsx` to shared notices, actions, and
 comparison/diff dialog. Failed comparisons are explicit and retryable, pending decisions
 block duplicates/dismissal, and resolution returns to its owning editor pane. Explicit
 Discard removes a deleted file's in-memory draft from every pane without writing it.
+
+
+`views/WorkspaceNotices.tsx` adopts shared offline/history/link-repair banners, serialized
+actions, readable wrapping, local scrolling and focus return. Reconnect explicitly preserves
+the current workspace and non-file drafts, refreshes vault metadata, and reconciles existing
+buffers with disk; it no longer restores a fresh layout over unsaved text.

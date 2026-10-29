@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Workspace notices:** shared offline/history/link-repair banners wrap in narrow windows and disable duplicate actions. Reconnecting preserves unsaved buffers, tabs and drafts, then reconciles disk changes.
+
 - **File conflicts:** shared notices and a comparison dialog add readable diffs, explicit failed-read retries, disabled pending decisions, and focus return. Discard now clears a deleted file’s in-memory draft without saving it.
 
 - **Source editors:** shared loading/read-only notices and scoped search/replace controls improve keyboard focus and narrow layouts while preserving code typography, syntax, line numbers, and saved edits.

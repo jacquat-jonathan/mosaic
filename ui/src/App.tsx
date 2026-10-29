@@ -26,6 +26,7 @@ import { AreaSidebar } from "./views/AreaSidebar";
 import { useWorkspace } from "./state/workspace";
 import { contextKind, isSpecialTab } from "./views/specialTabs";
 import { startAttention } from "./state/attention";
+import { WorkspaceNotices } from "./views/WorkspaceNotices";
 import { useReview } from "./state/review";
 
 export function App() {
@@ -100,8 +101,6 @@ function Main() {
   const sidebarWidth = useUi((s) => s.sidebarWidth);
   const rightWidth = useUi((s) => s.rightWidth);
   const indexing = useVault((s) => s.indexing);
-  const offline = useVault((s) => s.offline);
-  const unfinishedRenames = useVault((s) => s.unfinishedRenames);
   const active = useWorkspace((s) => s.panes.find((p) => p.id === s.focused)?.active ?? null);
   useEffect(() => startAttention(), [vault.root]);
   useEffect(() => {
@@ -182,27 +181,7 @@ function Main() {
           </aside>
         )}
         <main className="main">
-          {offline && (
-            <div className="notice warn" role="alert">
-              <span>
-                The vault folder is unavailable (disk ejected or folder moved). Unsaved changes are kept in memory.
-              </span>
-              <button onClick={() => void useVault.getState().openVault(vault.root)}>Retry</button>
-            </div>
-          )}
-          {vault.history_warning && (
-            <div className="notice warn" role="alert">
-              <span>{vault.history_warning}</span>
-            </div>
-          )}
-          {unfinishedRenames.map((op) => (
-            <div key={op.id} className="notice warn" role="alert">
-              <span>
-                Moving {op.from} to {op.to} didn't finish: some links may still point to the old name.
-              </span>
-              <button onClick={() => void useVault.getState().fixLinks(op.id)}>Fix links</button>
-            </div>
-          ))}
+          <WorkspaceNotices />
           <Workspace />
         </main>
         {right && contextKind(active) && (

@@ -80,3 +80,54 @@ test("conflict notices and comparison share themes and fit scaled narrow windows
   await expect.poll(() => dialog.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
   await page.screenshot({ path: info.outputPath("conflict-narrow.png") });
 });
+
+async function banners(page: Page) {
+  await page.evaluate(async () => {
+    const path = "/src/state/vault.ts";
+    const { useVault } = await import(path);
+    useVault.setState({
+      offline: true,
+      vault: {
+        ...useVault.getState().vault,
+        history_warning: "History is temporarily unavailable. Your files are still available.",
+      },
+      unfinishedRenames: [{ id: 99, from: "A long folder/Original note.md", to: "Another folder/Renamed note.md" }],
+    });
+  });
+}
+test("workspace reconnect preserves the unsaved note and its open tab", async ({ page }) => {
+  await conflict(page);
+  await banners(page);
+  const notices = page.getByRole("region", { name: "Workspace notices", exact: true });
+  await notices.getByRole("button", { name: "Retry", exact: true }).click();
+  await expect(notices).toHaveCount(0);
+  await expect(page.locator(".cm-content")).toContainText("my unsaved words");
+  await expect(page.getByRole("tab", { name: "Ideas Close tab", exact: true })).toBeVisible();
+  await expect(page.getByText("This file changed on disk while you were editing it.", { exact: true })).toBeVisible();
+});
+test("workspace notices share themes and fit scaled narrow windows", async ({ page }, info) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open folder…", exact: true }).click();
+  await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  for (const theme of ["Light", "Dark", "System"]) {
+    await page.getByRole("radio", { name: theme, exact: true }).check();
+    await banners(page);
+    const notices = page.getByRole("region", { name: "Workspace notices", exact: true });
+    await expect(notices).toHaveCSS("font-size", "14px");
+    await expect(notices.getByRole("alert").first()).toHaveCSS(
+      "background-color",
+      theme === "Light" ? "rgb(255, 244, 214)" : "rgb(61, 52, 32)",
+    );
+    if (theme !== "System")
+      await page.screenshot({ path: info.outputPath(`workspace-notices-${theme.toLowerCase()}.png`) });
+  }
+  await page.getByLabel("Interface density", { exact: true }).selectOption("compact");
+  await page.getByRole("slider", { name: "Interface scale", exact: true }).press("End");
+  await page.setViewportSize({ width: 320, height: 900 });
+  const notices = page.getByRole("region", { name: "Workspace notices", exact: true });
+  await expect.poll(() => notices.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
+  await notices.getByRole("button", { name: "Fix links", exact: true }).focus();
+  await expect(notices.getByRole("button", { name: "Fix links", exact: true })).toBeInViewport();
+  await page.screenshot({ path: info.outputPath("workspace-notices-narrow.png") });
+});

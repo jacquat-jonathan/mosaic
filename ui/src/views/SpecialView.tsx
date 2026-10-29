@@ -15,9 +15,11 @@ import { Settings } from "./Settings";
 import { SearchPanel } from "./SearchPanel";
 import { cell } from "../editor/queryBlock";
 import { TaskBoard } from "./TaskBoard";
+import { TaskQueryView } from "./TaskQueryView";
 
 export function SpecialView({ path }: { path: string }) {
   const { kind, id } = parseView(path);
+  const root = useVault((s) => s.vault?.root);
   switch (kind) {
     case "calendar":
       return <CalendarView />;
@@ -52,6 +54,7 @@ export function SpecialView({ path }: { path: string }) {
     case "board":
       return <TaskBoard />;
     case "tasks":
+      return <TaskQueryView key={`${root}/${kind}/${id}`} kind={kind} id={id} />;
     case "overdue":
     case "projects":
     case "planning":

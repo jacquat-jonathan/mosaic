@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Tasks:** shared result rows, readable metadata, loading/error notices, and retry actions. Completion waits for saving and returns focus to the remaining results.
+
 - **Note details:** shared attachments, backlink/mention rows, outline actions, and context controls. Failed loads can be retried, link actions disable while saving, and the context drawer fits scaled narrow windows.
 
 - **Note properties:** shared fields, switches, chips, actions, and validation make the properties form consistent. Fields stack in narrow panels, duplicate names are explained, and cancelled additions restore focus.

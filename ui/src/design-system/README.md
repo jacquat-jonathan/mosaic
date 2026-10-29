@@ -494,3 +494,8 @@ backlinks, mentions, section movement, and source navigation. Failed backlinks/m
 distinct from empty results and expose retries; mention writes serialize and guard the vault.
 The context header has its own sibling scope for all detail types. Its close action restores
 workspace focus, while Calendar context content remains for its own migration.
+
+`views/TaskQueryView.tsx` starts task-list adoption with Tasks. Shared actions and notices
+wrap native completion checkboxes and readable result metadata. Requests guard the active
+vault, writes serialize until acknowledged, and removed rows return focus to the results.
+Other task-list routes retain their existing rendering until their individual passes.

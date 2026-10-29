@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { openMockVault } from "./mock-vault";
 async function openView(page: Page, kind: string, id?: string) {
   await page.evaluate(
     async ({ kind, id }) => {
@@ -14,7 +15,7 @@ async function openView(page: Page, kind: string, id?: string) {
 }
 test("Tasks retain completion, note navigation and focus after removing a result", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open folder…", exact: true }).click();
+  await openMockVault(page);
   await openView(page, "tasks");
   const view = page.getByRole("main", { name: "Tasks", exact: true });
   const checkbox = view.getByRole("checkbox", { name: /^Ship the calendar/ });
@@ -29,7 +30,7 @@ test("Tasks follow themes and fit narrow scaled panes", async ({ page }, testInf
   await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/");
-  await page.getByRole("button", { name: "Open folder…", exact: true }).click();
+  await openMockVault(page);
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await openView(page, "tasks");
   const view = page.getByRole("main", { name: "Tasks", exact: true });
@@ -70,7 +71,7 @@ for (const [kind, title] of [
         ),
       );
     await page.goto("/");
-    await page.getByRole("button", { name: "Open folder…", exact: true }).click();
+    await openMockVault(page);
     if (kind === "projects")
       await page.evaluate(async () => {
         const mock = (

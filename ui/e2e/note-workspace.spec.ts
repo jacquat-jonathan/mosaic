@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { openMockVault } from "./mock-vault";
 
 async function readIdeas(page: Page) {
   return page.evaluate(() =>
@@ -23,7 +24,7 @@ async function readWelcome(page: Page) {
 test("note details retain backlinks, mention linking, attachments and keyboard section moves", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/");
-  await page.getByRole("button", { name: "Open folder…", exact: true }).click();
+  await openMockVault(page);
   await page.evaluate(async () => {
     const mock = (
       window as unknown as {
@@ -105,7 +106,7 @@ test("note details follow themes and fit the scaled context drawer", async ({ pa
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
   await page.goto("/");
-  await page.getByRole("button", { name: "Open folder…", exact: true }).click();
+  await openMockVault(page);
   await page.getByRole("treeitem", { name: /^Welcome/ }).click();
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const details = page.getByRole("group", { name: "Note details", exact: true });
@@ -147,7 +148,7 @@ test("note properties retain YAML edits, duplicate validation and focus after ad
 }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/");
-  await page.getByRole("button", { name: "Open folder…", exact: true }).click();
+  await openMockVault(page);
   await page.getByRole("treeitem", { name: /^Welcome/ }).click();
   const context = page.getByRole("complementary", { name: "Workspace context", exact: true });
   const form = context.getByRole("group", { name: "Note properties", exact: true });
@@ -192,7 +193,7 @@ test("note properties share themes and stack while keeping note typography separ
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
   await page.goto("/");
-  await page.getByRole("button", { name: "Open folder…", exact: true }).click();
+  await openMockVault(page);
   await page.getByRole("treeitem", { name: /^Welcome/ }).click();
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByLabel("Interface density", { exact: true }).selectOption("compact");
@@ -227,7 +228,7 @@ test("note properties share themes and stack while keeping note typography separ
 
 test("note formatting preserves selection, undo, toolbar keys and cancelled-link focus", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open folder…", exact: true }).click();
+  await openMockVault(page);
   await page.getByRole("treeitem", { name: "Ideas", exact: true }).click();
   const editor = page.locator(".cm-content");
   await editor.click();
@@ -258,7 +259,7 @@ test("note formatting follows themes without changing note typography at maximum
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
   await page.goto("/");
-  await page.getByRole("button", { name: "Open folder…", exact: true }).click();
+  await openMockVault(page);
   await page.getByRole("treeitem", { name: "Ideas", exact: true }).click();
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByLabel("Interface density", { exact: true }).selectOption("compact");
@@ -272,7 +273,11 @@ test("note formatting follows themes without changing note typography at maximum
       .check();
     await page.getByRole("tab", { name: "Ideas Close tab", exact: true }).click();
     await editor.click();
-    await editor.press("Meta+a");
+    // Keep the selection anchor visible. Select-all can scroll to the end of the note,
+    // causing CodeMirror to hide the toolbar anchored at its now offscreen first line.
+    await editor.press("Meta+End");
+    await editor.press("Meta+Home");
+    await editor.press("Shift+End");
     await expect(toolbar).toBeVisible();
     await expect(toolbar).toBeInViewport();
     await expect(toolbar).toHaveCSS("font-size", "14px");
@@ -293,7 +298,7 @@ test("note formatting follows themes without changing note typography at maximum
 
 test("workspace tabs preserve keyboard selection, closing, splits and resize controls", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open folder…", exact: true }).click();
+  await openMockVault(page);
   await page.getByRole("treeitem", { name: "Ideas", exact: true }).click();
   await page.getByRole("treeitem", { name: /^Welcome/ }).click({ modifiers: ["Alt"] });
   const tabs = page.getByRole("tablist", { name: "Workspace tabs", exact: true });
@@ -323,7 +328,7 @@ test("workspace chrome follows themes and keeps controls reachable in narrow pan
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
   await page.goto("/");
-  await page.getByRole("button", { name: "Open folder…", exact: true }).click();
+  await openMockVault(page);
   await page.getByRole("treeitem", { name: "Ideas", exact: true }).click();
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const bar = page.locator(".workspace-tabbar");

@@ -630,3 +630,9 @@ legacy-control branch is removed; SVG/document typography stays owned by the ren
 Editable cells have explicit labels and keyboard context menus; CSV delimiter, newline,
 quoting, cell editing, and renderer typography remain intact. Wide table data scrolls locally
 while toolbar actions wrap in narrow panes.
+
+
+`viewers/PdfViewer.tsx` adopts readable page metadata and shared loading/error/retry states.
+Page canvases retain PDF.js rendering, resize to their pane, expose labelled busy states,
+and keep lazy loading. File reads guard their vault/lifetime; failed files and pages can be
+retried. Compact embedded previews retain their existing page limits and scrolling.

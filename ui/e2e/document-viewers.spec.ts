@@ -302,3 +302,66 @@ test("table controls share themes and fit scaled narrow panes", async ({ page },
   await expect.poll(() => controls.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
   await page.screenshot({ path: info.outputPath("table-narrow.png") });
 });
+
+test("PDF preserves pages, retries invalid files, and resizes page rendering", async ({ page }) => {
+  await setup(page);
+  await page.evaluate(async () => {
+    const m = (window as unknown as { __mosaic: { mockInvoke(command: string, args: object): Promise<unknown> } })
+      .__mosaic;
+    await m.mockInvoke("write_file", {
+      path: "Docs/broken.pdf",
+      content: "data:application/pdf;base64,YnJva2Vu",
+      expectedHash: null,
+    });
+  });
+  await openFile(page, "Docs/broken.pdf");
+  await expect(page.getByRole("alert")).toContainText("Couldn't open this PDF");
+  await page.evaluate(async () => {
+    const m = (window as unknown as { __mosaic: { mockInvoke(command: string, args: object): Promise<unknown> } })
+      .__mosaic;
+    const content = await m.mockInvoke("read_raw", { path: "Docs/sample.pdf" });
+    await m.mockInvoke("write_file", { path: "Docs/broken.pdf", content, expectedHash: null });
+  });
+  await page.getByRole("button", { name: "Retry PDF", exact: true }).click();
+  await expect(page.getByRole("group", { name: "PDF details", exact: true })).toHaveText("2 pages");
+  const canvas = page.getByRole("img", { name: "Page 1", exact: true });
+  await expect(canvas.locator("..")).not.toHaveAttribute("aria-busy", "true");
+  await page.setViewportSize({ width: 500, height: 900 });
+  await expect
+    .poll(() =>
+      canvas.evaluate((el) => el.getBoundingClientRect().width - el.parentElement!.getBoundingClientRect().width),
+    )
+    .toBeLessThanOrEqual(1);
+});
+test("PDF metadata and notices share themes and fit scaled narrow panes", async ({ page }, info) => {
+  await setup(page);
+  await openFile(page, "Docs/sample.pdf");
+  await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  for (const theme of ["Light", "Dark", "System"]) {
+    await page.getByRole("radio", { name: theme, exact: true }).check();
+    await openFile(page, "Docs/sample.pdf");
+    const details = page.getByRole("group", { name: "PDF details", exact: true });
+    await expect(details).toHaveCSS("font-size", "13px");
+    await expect(details).toHaveCSS("color", theme === "Light" ? "rgb(107, 112, 128)" : "rgb(154, 159, 173)");
+    await expect(page.getByRole("img", { name: "Page 1", exact: true }).locator("..")).not.toHaveAttribute(
+      "aria-busy",
+      "true",
+    );
+    if (theme !== "System") await page.screenshot({ path: info.outputPath(`pdf-${theme.toLowerCase()}.png`) });
+    await page.getByRole("tab", { name: "Settings Close tab", exact: true }).click();
+  }
+  await page.getByLabel("Interface density", { exact: true }).selectOption("compact");
+  await page.getByRole("slider", { name: "Interface scale", exact: true }).press("End");
+  await openFile(page, "Docs/sample.pdf");
+  await page.setViewportSize({ width: 320, height: 900 });
+  await expect(page.getByRole("group", { name: "PDF details", exact: true })).toBeInViewport();
+  const canvas = page.getByRole("img", { name: "Page 1", exact: true });
+  await expect(canvas.locator("..")).not.toHaveAttribute("aria-busy", "true");
+  await expect
+    .poll(() =>
+      canvas.evaluate((el) => el.getBoundingClientRect().width - el.parentElement!.getBoundingClientRect().width),
+    )
+    .toBeLessThanOrEqual(1);
+  await page.screenshot({ path: info.outputPath("pdf-narrow.png") });
+});

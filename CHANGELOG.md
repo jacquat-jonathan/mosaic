@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **PDFs:** readable page metadata and shared loading/error notices add retries for failed files/pages. Pages fit resized panes, rendering exposes busy states, and late reads stay tied to their vault.
+
 - **CSV tables:** shared view choices, metadata, and row/column actions preserve delimiter-aware editing. Cells have explicit labels, and Shift+F10 opens their context menu from the keyboard.
 
 - **Charts:** shared Chart/Source choices, rendering/error notices, and keyboard-scrollable previews preserve local vault data, source edits, and theme redraws.

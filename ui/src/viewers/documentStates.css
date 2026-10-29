@@ -1,0 +1,26 @@
+.mosaic-ds.document-state {
+  flex: 1;
+  min-width: 0;
+  padding: var(--mds-space-8);
+  display: grid;
+  align-content: start;
+  gap: var(--mds-space-7);
+  overflow: auto;
+  color: var(--mds-text);
+  background: var(--mds-surface);
+}
+.mosaic-ds.document-state .mds-notice {
+  overflow-wrap: anywhere;
+}
+.mosaic-ds.pdf-details {
+  background: transparent;
+  color: var(--mds-text-muted);
+  font-size: var(--mds-text-small);
+}
+.pdf-page {
+  min-width: 0;
+}
+.pdf-page canvas {
+  max-width: 100%;
+  height: auto !important;
+}

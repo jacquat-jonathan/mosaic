@@ -137,3 +137,57 @@ test("task editor shares themes and fills narrow scaled panes", async ({ page },
   await editor.getByRole("button", { name: "Close task editor", exact: true }).click();
   await expect(page.getByRole("article", { name: "Ship release", exact: true })).toBeFocused();
 });
+
+test("epic editor and history retain saving, keyboard dismissal and focus return", async ({ page }) => {
+  await board(page);
+  const create = page.getByRole("button", { name: "New epic", exact: true });
+  await create.click();
+  const dialog = page.getByRole("dialog", { name: "New epic", exact: true });
+  await expect(dialog.getByLabel("Title", { exact: true })).toBeFocused();
+  await dialog.getByLabel("Title", { exact: true }).fill("Next release");
+  await dialog.getByLabel("Color", { exact: true }).fill("#2255aa");
+  await dialog.getByLabel("Title", { exact: true }).press("Enter");
+  await expect(dialog).toHaveCount(0);
+  await expect(create).toBeFocused();
+  const lane = page.locator(".planner-lane", { hasText: "Next release" });
+  await lane.getByRole("button", { name: "Edit", exact: true }).click();
+  const edit = page.getByRole("dialog", { name: "Edit epic", exact: true });
+  await expect(edit.getByLabel("Color", { exact: true })).toHaveValue("#2255aa");
+  await edit.getByLabel("Title", { exact: true }).fill("Final release");
+  await edit.getByRole("button", { name: "Save epic", exact: true }).click();
+  const renamed = page.locator(".planner-lane", { hasText: "Final release" });
+  await expect(renamed.getByRole("button", { name: "Edit", exact: true })).toBeFocused();
+  const history = renamed.getByRole("button", { name: "History", exact: true });
+  await history.click();
+  const historyDialog = page.getByRole("dialog", { name: "Final release history", exact: true });
+  await expect(historyDialog).toContainText("Created epic");
+  await historyDialog.press("Escape");
+  await expect(history).toBeFocused();
+});
+test("epic dialog shares themes and fits scaled narrow windows", async ({ page }, testInfo) => {
+  await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+  await board(page);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  for (const theme of ["Light", "Dark", "System"] as const) {
+    await page.getByRole("radio", { name: theme, exact: true }).check();
+    await page.getByRole("tab", { name: "Task board Close tab", exact: true }).click();
+    await page.getByRole("button", { name: "New epic", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "New epic", exact: true });
+    await expect(dialog).toHaveCSS("font-size", "14px");
+    await expect(dialog).toHaveCSS("background-color", theme === "Light" ? "rgb(255, 255, 255)" : "rgb(30, 31, 36)");
+    if (theme !== "System")
+      await page.screenshot({ path: testInfo.outputPath(`epic-editor-${theme.toLowerCase()}.png`) });
+    await dialog.press("Escape");
+    await page.getByRole("tab", { name: "Settings Close tab", exact: true }).click();
+  }
+  await page.getByLabel("Interface density", { exact: true }).selectOption("compact");
+  await page.getByRole("slider", { name: "Interface scale", exact: true }).press("End");
+  await page.getByRole("tab", { name: "Task board Close tab", exact: true }).click();
+  await page.setViewportSize({ width: 320, height: 900 });
+  await page.getByRole("button", { name: "New epic", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "New epic", exact: true });
+  await expect(dialog.getByRole("button", { name: "Close dialog", exact: true })).toBeInViewport();
+  await expect.poll(() => dialog.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
+  await expect.poll(() => dialog.evaluate((el) => el.getBoundingClientRect().right)).toBeLessThanOrEqual(321);
+  await page.screenshot({ path: testInfo.outputPath("epic-editor-narrow.png") });
+});

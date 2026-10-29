@@ -5,8 +5,8 @@ The visual design and gallery were approved on 2026-10-28 after review of typogr
 icons, focus behavior, overlays, workflows, runs, chat, and Activity & review.
 **Settings → Appearance** was visually accepted on 2026-10-28. Settings navigation, header,
 and sections, Connections & safety, workflows, runs, chats, Activity & review, file history,
-Welcome, app navigation, Files and Find, and Note workspace are migrated. Task lists are also migrated; the task board is next.
-Remaining planning surfaces keep their existing controls.
+Welcome, app navigation, Files and Find, and Note workspace are migrated. Task lists and the task board are also migrated. Calendar is next;
+remaining planning surfaces keep their existing controls.
 
 ## Open the gallery
 
@@ -512,3 +512,8 @@ and optional shared activity rendering. Writes and decisions serialize, fields d
 while pending, failed archive/delete requests retain the editor, and stale decisions
 check the selected task revision and vault. Closing restores its card or board heading.
 Narrow pane containers show the editor at full width, with a media fallback for older WebKit.
+
+`views/planner/EpicEditor.tsx` adopts shared edit/history dialogs with explicit opener
+references (including Safari pointer focus), title focus, Enter submission, serialized
+writes, pending dismissal guards, and draft-preserving errors. Activity inherits the dialog
+scope; task/epic editor legacy styles are removed only where no consumer remains.

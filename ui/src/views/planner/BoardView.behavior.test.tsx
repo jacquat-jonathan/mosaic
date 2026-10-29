@@ -25,6 +25,14 @@ vi.mock("./TaskEditor", () => ({
   ),
 }));
 vi.mock("./EpicEditor", () => ({
+  EpicHistoryDialog: ({ epic, onClose }: { epic: PlannerEpic; onClose(): void }) => (
+    <section role="dialog">
+      <div data-testid="activity">History {epic.id}</div>
+      <button aria-label="Close epic history" onClick={onClose}>
+        Close
+      </button>
+    </section>
+  ),
   EpicEditor: ({ epic, onClose, onDone }: { epic: PlannerEpic | null; onClose(): void; onDone(): void }) => (
     <aside data-testid="epic-editor">
       {epic ? `Editing ${epic.title}` : "New epic editor"}

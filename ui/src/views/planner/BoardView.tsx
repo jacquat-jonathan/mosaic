@@ -16,8 +16,7 @@ import { useUi } from "../../state/ui";
 import { useVault } from "../../state/vault";
 import { MigrationWizard } from "./MigrationWizard";
 import { TaskEditor } from "./TaskEditor";
-import { ActivityTimeline } from "./ActivityTimeline";
-import { EpicEditor } from "./EpicEditor";
+import { EpicEditor, EpicHistoryDialog } from "./EpicEditor";
 import { treeAutoScrollStep } from "../treeAutoScroll";
 import {
   descendantsFrom,
@@ -81,6 +80,8 @@ export function BoardView() {
       loadVersion.current++;
     };
   }, []);
+  const epicReturn = useRef<HTMLElement | null>(null),
+    historyReturn = useRef<HTMLElement | null>(null);
   const retryFocus = useRef(false),
     boardHeading = useRef<HTMLHeadingElement>(null),
     retryButton = useRef<HTMLButtonElement>(null);
@@ -471,7 +472,14 @@ export function BoardView() {
               <Button variant="secondary" onClick={() => void createTask(null)}>
                 New task
               </Button>
-              <Button onClick={() => setEpicEditor("new")}>New epic</Button>
+              <Button
+                onClick={(event) => {
+                  epicReturn.current = event.currentTarget;
+                  setEpicEditor("new");
+                }}
+              >
+                New epic
+              </Button>
               <Button onClick={() => void openMigration()}>Import Markdown tasks…</Button>
             </>
           )}
@@ -669,8 +677,24 @@ export function BoardView() {
                     {lifecycle === "active" && <Button onClick={() => void createTask(lane.id)}>+ Task</Button>}
                     {epicInView && (
                       <>
-                        <Button onClick={() => setHistoryEpic(lane.epic!)}>History</Button>
-                        {lifecycle === "active" && <Button onClick={() => setEpicEditor(lane.epic!)}>Edit</Button>}
+                        <Button
+                          onClick={(event) => {
+                            historyReturn.current = event.currentTarget;
+                            setHistoryEpic(lane.epic!);
+                          }}
+                        >
+                          History
+                        </Button>
+                        {lifecycle === "active" && (
+                          <Button
+                            onClick={(event) => {
+                              epicReturn.current = event.currentTarget;
+                              setEpicEditor(lane.epic!);
+                            }}
+                          >
+                            Edit
+                          </Button>
+                        )}
                         {lane.epic!.trashed_at ? (
                           <Button
                             onClick={() =>
@@ -806,6 +830,8 @@ export function BoardView() {
       )}
       {epicEditor && (
         <EpicEditor
+          key={epicEditor === "new" ? "new" : epicEditor.id}
+          returnFocusRef={epicReturn}
           epic={epicEditor === "new" ? null : epicEditor}
           defaultColor={DEFAULT_EPIC_COLOR}
           onClose={() => setEpicEditor(null)}
@@ -817,23 +843,7 @@ export function BoardView() {
         />
       )}
       {historyEpic && (
-        <div className="modal-backdrop" onMouseDown={() => setHistoryEpic(null)}>
-          <section
-            className="modal planner-history-dialog"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="epic-history-title"
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <header>
-              <h2 id="epic-history-title">{historyEpic.title} history</h2>
-              <button aria-label="Close epic history" onClick={() => setHistoryEpic(null)}>
-                ×
-              </button>
-            </header>
-            <ActivityTimeline kind="epic" id={historyEpic.id} revision={historyEpic.revision} defaultOpen />
-          </section>
-        </div>
+        <EpicHistoryDialog epic={historyEpic} onClose={() => setHistoryEpic(null)} returnFocusRef={historyReturn} />
       )}
     </div>
   );

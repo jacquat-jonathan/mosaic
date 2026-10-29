@@ -3456,46 +3456,6 @@ pre.template-preview {
   gap: 10px;
   margin: 24px 0 12px;
 }
-.epic-editor > header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.epic-editor > header h2 {
-  margin: 0;
-}
-.epic-editor > header button {
-  border: 0;
-  background: none;
-  font-size: 20px;
-}
-.epic-editor form {
-  display: grid;
-  gap: 12px;
-  margin-top: 16px;
-}
-.epic-editor form label {
-  display: grid;
-  gap: 5px;
-  color: var(--muted);
-  font-size: 12px;
-}
-.epic-editor form input:not([type="color"]) {
-  width: 100%;
-  min-width: 0;
-  padding: 8px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
-  color: var(--fg);
-  font: inherit;
-}
-.epic-editor footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 4px;
-}
 .migration-wizard {
   max-width: 840px;
   margin: 0 auto;

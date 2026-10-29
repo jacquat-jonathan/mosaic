@@ -162,7 +162,7 @@ test("compare a conflicting edit and load the disk version", async ({ page }) =>
   await openVault(page);
   const editor = await createEditingConflict(page);
   await page.getByRole("button", { name: "Compare" }).click();
-  const comparison = page.getByText("Disk version → your version").locator("..");
+  const comparison = page.getByRole("dialog", { name: "Disk version → your version", exact: true });
   await expect(comparison).toContainText("Changed by an agent.");
   await expect(comparison).toContainText("my unsaved words");
   await comparison.getByRole("button", { name: "Load disk version" }).click();

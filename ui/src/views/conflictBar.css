@@ -1,0 +1,23 @@
+.mosaic-ds.conflict-notices {
+  flex: none;
+  min-width: 0;
+}
+.mosaic-ds.conflict-notices .mds-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--mds-space-5);
+}
+.mosaic-ds.conflict-notices .mds-notice > span {
+  flex: 1 1 260px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.mosaic-ds.conflict-notices .conflict-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--mds-space-4);
+}
+.mosaic-ds.conflict-notices .mds-button {
+  white-space: normal;
+}

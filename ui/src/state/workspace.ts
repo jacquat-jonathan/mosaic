@@ -66,6 +66,8 @@ interface WorkspaceState {
   externalChange(path: string): Promise<void>;
   renamed(from: string, to: string): void;
   deleted(path: string): void;
+  /** Explicitly discard the in-memory draft of a file already deleted on disk. */
+  discardDeleted(path: string): void;
   activePath(): string | null;
   resize(index: number, delta: number): void;
   /** Restores the tabs and splits last used with this vault. */
@@ -448,6 +450,15 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
           else get().closeTab(pane.id, t);
         }
       }
+    },
+
+    discardDeleted(path) {
+      if (!get().buffers[path]?.deleted) return;
+      clearTimeout(saveTimers.get(path));
+      saveTimers.delete(path);
+      updateBuffer(path, { dirty: false, conflict: null, error: null });
+      get().deleted(path);
+      dropUnusedBuffers();
     },
 
     resize(index, delta) {

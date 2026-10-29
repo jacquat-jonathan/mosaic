@@ -655,3 +655,9 @@ search/replace controls. CodeMirror owns its panel markup and keyboard/search mo
 adapter uses foundation tokens for fields, actions, checkboxes, focus and responsive wrapping.
 The source scroller retains the configured code font at 13px, line-number preferences,
 syntax loading/fallbacks, and editing/save behavior.
+
+
+The final audit migrates `views/ConflictBar.tsx` to shared notices, actions, and the wide
+comparison/diff dialog. Failed comparisons are explicit and retryable, pending decisions
+block duplicates/dismissal, and resolution returns to its owning editor pane. Explicit
+Discard removes a deleted file's in-memory draft from every pane without writing it.

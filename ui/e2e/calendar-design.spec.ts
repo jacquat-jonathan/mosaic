@@ -59,10 +59,13 @@ test("day calendar retains period navigation, layer filters and keyboard event c
 for (const [route, label] of [
   ["today", "Today"],
   ["week", "My week"],
+  ["calendar", "Calendar"],
 ]) {
   test(`${label} calendar shares themes and fits scaled narrow panes`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+    if (route === "calendar")
+      await page.addInitScript(() => localStorage.setItem("mosaic:planner-calendar-mode", "month"));
     await openCalendar(page, route);
     await page.getByRole("button", { name: "Settings", exact: true }).click();
     const calendar = page.getByRole("main", { name: "Calendar", exact: true });
@@ -90,7 +93,7 @@ for (const [route, label] of [
   });
 }
 
-test("week calendar retains five-day layout, keyboard view choices and the month boundary", async ({ page }) => {
+test("week calendar retains five-day layout, keyboard view choices and month navigation", async ({ page }) => {
   await openCalendar(page, "week");
   let calendar = page.getByRole("main", { name: "Calendar", exact: true });
   await expect(calendar.locator(".planner-time-day")).toHaveCount(5);
@@ -103,6 +106,20 @@ test("week calendar retains five-day layout, keyboard view choices and the month
   await expect(week).toBeFocused();
   await calendar.getByRole("radio", { name: "Month", exact: true }).click();
   calendar = page.getByRole("main", { name: "Calendar", exact: true });
-  await expect(calendar).toHaveCSS("font-size", "13px");
-  await expect(calendar.getByRole("tab", { name: "Month", exact: true })).toBeFocused();
+  await expect(calendar).toHaveCSS("font-size", "14px");
+  await expect(calendar.getByRole("radio", { name: "Month", exact: true })).toBeFocused();
+});
+
+test("month retains its grid, keyboard event opening and day navigation", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("mosaic:planner-calendar-mode", "month"));
+  await openCalendar(page, "calendar");
+  const calendar = page.getByRole("main", { name: "Calendar", exact: true });
+  await expect(calendar.getByRole("gridcell")).toHaveCount(30);
+  await calendar.getByRole("button", { name: "Calendar demo", exact: true }).press("Enter");
+  await expect(page.getByRole("complementary", { name: "Edit Calendar demo", exact: true })).toBeVisible();
+  await expect(calendar.getByRole("radio", { name: "Month", exact: true })).toBeChecked();
+  await page.getByRole("button", { name: "Close event editor", exact: true }).click();
+  await calendar.getByRole("gridcell").first().press("Enter");
+  await expect(calendar.getByRole("radio", { name: "Day", exact: true })).toBeChecked();
+  await expect(calendar.getByRole("radio", { name: "Day", exact: true })).toBeFocused();
 });

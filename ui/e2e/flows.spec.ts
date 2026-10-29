@@ -529,7 +529,7 @@ test("create calendar events, subscriptions and work sessions", async ({ page })
 
   await page.getByRole("radio", { name: "Month", exact: true }).click();
   await expect(page.getByRole("grid")).toBeVisible();
-  await page.getByRole("tab", { name: "Day", exact: true }).click();
+  await page.getByRole("radio", { name: "Day", exact: true }).click();
   await expect(page.locator(".planner-calendar-content.mode-day")).toBeVisible();
   await page.getByRole("radio", { name: "Week", exact: true }).click();
 

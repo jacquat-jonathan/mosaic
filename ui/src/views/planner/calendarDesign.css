@@ -140,3 +140,32 @@
   min-width: 164px;
   grid-template-columns: 54px minmax(110px, 1fr);
 }
+
+.mosaic-ds.calendar-design .planner-month-weekday {
+  font-size: var(--mds-text-hint);
+  text-transform: none;
+}
+.mosaic-ds.calendar-design .planner-month-cell {
+  border-radius: var(--mds-radius-control);
+  padding: var(--mds-space-5);
+  gap: var(--mds-space-3);
+}
+.mosaic-ds.calendar-design .planner-month-date {
+  font-size: var(--mds-text-body);
+}
+.mosaic-ds.calendar-design .planner-month-cell.other-month {
+  opacity: 1;
+}
+.mosaic-ds.calendar-design .planner-month-cell.other-month .planner-month-date {
+  color: var(--mds-text-muted);
+}
+.mosaic-ds.calendar-design .planner-workload {
+  font-size: var(--mds-text-small);
+}
+.mosaic-ds.calendar-design .planner-month-item,
+.mosaic-ds.calendar-design .planner-due,
+.mosaic-ds.calendar-design .planner-month-drop-preview {
+  font-size: var(--mds-text-small);
+  line-height: var(--mds-leading);
+  border-radius: var(--mds-radius-item);
+}

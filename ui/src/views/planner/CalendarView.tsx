@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type HTMLAttributes } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Download, RefreshCw, Upload } from "lucide-react";
 import { Button, Notice, SegmentedControl } from "../../design-system/components";
 import { DesignSystemScope } from "../DesignSystemScope";
@@ -19,7 +19,7 @@ import {
 } from "../../ipc/types";
 import { useSettings } from "../../state/settings";
 import { useVault } from "../../state/vault";
-import { Segmented, Toolbar } from "../../viewers/Toolbar";
+import { Toolbar } from "../../viewers/Toolbar";
 import { EventEditor } from "./EventEditor";
 import { EventArchiveDialog } from "./EventArchiveDialog";
 import { CalendarSourcesDialog } from "./CalendarSourcesDialog";
@@ -65,10 +65,6 @@ const localInstant = (day: string, hour: number) => {
 };
 const plusIsoDays = (day: string, count: number) => isoDay(addDays(new Date(`${day}T12:00:00`), count));
 
-function CalendarSurface({ adopted, ...props }: HTMLAttributes<HTMLElement> & { adopted: boolean }) {
-  return adopted ? <DesignSystemScope as="main" {...props} /> : <main {...props} />;
-}
-
 export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
   const root = useVault((state) => state.vault?.root) ?? "",
     sunday = useSettings((state) => state.weekStart === "sunday");
@@ -91,7 +87,6 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
   const calendarContainer = useRef<HTMLDivElement>(null),
     modeFocus = useRef(false),
     retryFocus = useRef(false);
-  const adopted = mode !== "month";
   useEffect(() => {
     if (modeFocus.current || (!loading && retryFocus.current)) {
       const controls = calendarContainer.current?.querySelector<HTMLElement>(
@@ -480,11 +475,7 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
       ref={calendarContainer}
       className={`planner-calendar-page ${editor || overlayDetails || selectedSession ? "with-editor" : ""}`}
     >
-      <CalendarSurface
-        adopted={adopted}
-        className={`planner-calendar ${adopted ? "calendar-design" : ""}`}
-        aria-label="Calendar"
-      >
+      <DesignSystemScope as="main" className="planner-calendar calendar-design" aria-label="Calendar">
         <Toolbar>
           <Button className="icon" aria-label="Previous period" onClick={() => step(-1)}>
             <ChevronLeft size={16} />
@@ -568,48 +559,33 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
           >
             <RefreshCw size={15} />
           </Button>
-          {adopted ? (
-            <SegmentedControl<CalendarMode>
-              label="Calendar view"
-              value={mode}
-              options={[
-                { value: "month", label: "Month" },
-                { value: "week", label: "Week" },
-                { value: "day", label: "Day" },
-              ]}
-              onChange={setMode}
-            />
-          ) : (
-            <Segmented<CalendarMode>
-              value={mode}
-              options={[
-                { value: "month", label: "Month" },
-                { value: "week", label: "Week" },
-                { value: "day", label: "Day" },
-              ]}
-              onChange={setMode}
-            />
-          )}
+          <SegmentedControl<CalendarMode>
+            label="Calendar view"
+            value={mode}
+            options={[
+              { value: "month", label: "Month" },
+              { value: "week", label: "Week" },
+              { value: "day", label: "Day" },
+            ]}
+            onChange={setMode}
+          />
         </Toolbar>
-        {error &&
-          (adopted ? (
-            <Notice tone="error">
-              {error}
-              <Button
-                data-calendar-retry
-                onClick={() => {
-                  retryFocus.current = true;
-                  void load();
-                }}
-              >
-                Retry calendar
-              </Button>
-            </Notice>
-          ) : (
-            <p className="error-text calendar-error">{error}</p>
-          ))}
+        {error && (
+          <Notice tone="error">
+            {error}
+            <Button
+              data-calendar-retry
+              onClick={() => {
+                retryFocus.current = true;
+                void load();
+              }}
+            >
+              Retry calendar
+            </Button>
+          </Notice>
+        )}
         {loading && !data && (
-          <p className={adopted ? "mds-hint calendar-loading" : "panel-meta calendar-loading"} role="status">
+          <p className="mds-hint calendar-loading" role="status">
             Loading planner calendar…
           </p>
         )}
@@ -648,7 +624,7 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
           ) : (
             <>
               <WeekView
-                designSystem={adopted}
+                designSystem
                 days={days}
                 data={selectedData}
                 overlays={overlay.occurrences}
@@ -688,7 +664,7 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
                 }
               />
               <UnscheduledTray
-                designSystem={adopted}
+                designSystem
                 tasks={selectedData.unscheduled_tasks}
                 epics={epics}
                 onSchedule={(task) => void scheduleTask(task, isoDay(anchor), 9)}
@@ -696,7 +672,7 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
             </>
           )}
         </div>
-      </CalendarSurface>
+      </DesignSystemScope>
       {editor && (
         <EventEditor
           key={editor.series?.id ?? `new:${editor.initialStart ?? ""}:${editor.initialEnd ?? ""}`}

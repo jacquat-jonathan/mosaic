@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Month calendar:** shared controls and readable date/event metadata preserve the grid, event dragging, and day navigation. Keyboard actions on event buttons now stay with the event.
+
 - **Week calendar:** shared controls and larger event/task metadata preserve the five-day grid, keyboard view changes, and independent scrolling in narrow panes.
 
 - **Today/day calendar:** shared navigation, view choices, notices, and readable event/task metadata preserve scheduling and layer filters. Keyboard users can create an event from an empty time slot.

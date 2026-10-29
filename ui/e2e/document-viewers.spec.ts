@@ -143,3 +143,64 @@ test("diagram controls share themes and fit scaled narrow panes", async ({ page 
   await expect(controls.getByRole("status")).toHaveCount(0);
   await page.screenshot({ path: info.outputPath("diagram-narrow.png") });
 });
+
+async function drawing(page: Page) {
+  await page.evaluate(async () => {
+    const m = (window as unknown as { __mosaic: { mockInvoke(command: string, args: object): Promise<unknown> } })
+      .__mosaic;
+    await m.mockInvoke("write_file", {
+      path: "Sketch.excalidraw",
+      content: JSON.stringify({
+        type: "excalidraw",
+        version: 2,
+        source: "mosaic",
+        elements: [],
+        appState: {},
+        files: {},
+      }),
+      expectedHash: null,
+    });
+  });
+  await openFile(page, "Sketch.excalidraw");
+}
+test("drawing controls preserve source repair and load the drawing engine", async ({ page }) => {
+  await setup(page);
+  await drawing(page);
+  const controls = page.getByRole("group", { name: "Drawing controls", exact: true });
+  await expect(page.locator(".excalidraw-host .excalidraw")).toBeVisible();
+  await controls.getByRole("radio", { name: "Source", exact: true }).click();
+  await replaceSource(page, "{broken");
+  await controls.getByRole("radio", { name: "Drawing", exact: true }).click();
+  await expect(controls.getByRole("alert")).toContainText("Can't open this drawing");
+  await expect(controls.getByRole("radio", { name: "Source", exact: true })).toBeChecked();
+  await replaceSource(page, '{"type":"excalidraw","version":2,"elements":[],"appState":{},"files":{}}');
+  await controls.getByRole("radio", { name: "Drawing", exact: true }).click();
+  await expect(page.locator(".excalidraw-host .excalidraw")).toBeVisible();
+  await expect(controls.getByRole("alert")).toHaveCount(0);
+  await expect.poll(() => readFile(page, "Sketch.excalidraw")).toContain('"elements":[]');
+});
+test("drawing controls share themes and fit scaled narrow panes", async ({ page }, info) => {
+  await setup(page);
+  await drawing(page);
+  await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  for (const theme of ["Light", "Dark", "System"]) {
+    await page.getByRole("radio", { name: theme, exact: true }).check();
+    await openFile(page, "Sketch.excalidraw");
+    const controls = page.getByRole("group", { name: "Drawing controls", exact: true });
+    await expect(controls).toHaveCSS("font-size", "14px");
+    await expect(controls).toHaveCSS("background-color", theme === "Light" ? "rgb(246, 246, 248)" : "rgb(24, 25, 29)");
+    await expect(page.locator(".excalidraw-host .excalidraw")).toBeVisible();
+    if (theme !== "System") await page.screenshot({ path: info.outputPath(`drawing-${theme.toLowerCase()}.png`) });
+    await page.getByRole("tab", { name: "Settings Close tab", exact: true }).click();
+  }
+  await page.getByLabel("Interface density", { exact: true }).selectOption("compact");
+  await page.getByRole("slider", { name: "Interface scale", exact: true }).press("End");
+  await openFile(page, "Sketch.excalidraw");
+  await page.setViewportSize({ width: 320, height: 900 });
+  const controls = page.getByRole("group", { name: "Drawing controls", exact: true });
+  await expect(controls.getByRole("radio", { name: "Source", exact: true })).toBeInViewport();
+  await expect.poll(() => controls.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
+  await expect(page.locator(".excalidraw-host .excalidraw")).toBeVisible();
+  await page.screenshot({ path: info.outputPath("drawing-narrow.png") });
+});

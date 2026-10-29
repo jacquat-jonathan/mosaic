@@ -612,3 +612,9 @@ animations; canvas nodes, note previews, geometry, and source rendering stay out
 Graphviz diagrams opt into shared `DocumentToolbar` controls, labelled Graph/Source choices,
 error notices, and a keyboard-scrollable preview. DOT source editing, rendering, and theme
 redraws remain intact. Charts retain their previous controls until their separate migration.
+
+
+`viewers/ExcalidrawEditor.tsx` adopts shared Drawing/Source controls and loading/error
+notices around Excalidraw. View changes re-parse the current source; invalid JSON returns
+to editable Source and can be repaired. Excalidraw's own rendering and tool controls remain
+owned by the specialized engine, including its existing theme and saving behavior.

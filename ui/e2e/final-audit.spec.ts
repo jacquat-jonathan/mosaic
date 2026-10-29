@@ -128,8 +128,11 @@ test("workspace notices share themes and fit scaled narrow windows", async ({ pa
   await page.setViewportSize({ width: 320, height: 900 });
   const notices = page.getByRole("region", { name: "Workspace notices", exact: true });
   await expect.poll(() => notices.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
-  await notices.getByRole("button", { name: "Fix links", exact: true }).focus();
-  await expect(notices.getByRole("button", { name: "Fix links", exact: true })).toBeInViewport();
+  const fixLinks = notices.getByRole("button", { name: "Fix links", exact: true });
+  await fixLinks.scrollIntoViewIfNeeded();
+  await fixLinks.focus();
+  await expect(fixLinks).toBeFocused();
+  await expect(fixLinks).toBeInViewport();
   await page.screenshot({ path: info.outputPath("workspace-notices-narrow.png") });
 });
 

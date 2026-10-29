@@ -551,3 +551,8 @@ post-action focus intents support Safari pointer focus as well as keyboard use.
 notices, and modal controls. Loading, failed reads, and empty archives stay distinct.
 Restore/delete actions serialize and guard the vault; removed rows return focus to the
 selected view, and closing restores the calendar chooser action.
+
+`views/planner/OverlayDetails.tsx` adopts shared subscribed-event details, notices, meeting
+links, and copy controls without changing source events. Copies serialize and show local
+errors; a late copy cannot close a different selected occurrence. Closing and successful
+copying restore calendar focus, with full-width detail panes at narrow sizes.

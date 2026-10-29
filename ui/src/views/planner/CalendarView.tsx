@@ -84,6 +84,8 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
     [error, setError] = useState<string | null>(null),
     [loading, setLoading] = useState(true),
     [show, setShow] = useState({ events: true, sessions: true, due: true });
+  const selectedOverlay = useRef(overlayDetails);
+  selectedOverlay.current = overlayDetails;
   const editorReturn = useRef<HTMLElement | null>(null);
   const returnEditorFocus = () =>
     requestAnimationFrame(() => {
@@ -453,6 +455,7 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
     }
   };
   const importOverlay = async (item: CalendarOverlayOccurrence) => {
+    if (!current()) return;
     try {
       await api.createPlannerEvent({
         title: item.title,
@@ -468,10 +471,14 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
         timezone: item.timezone,
         recurrence_rule: null,
       });
-      setOverlayDetails(null);
+      if (!current()) return;
+      const same = selectedOverlay.current === item;
+      if (same) setOverlayDetails(null);
       await load();
+      if (same) returnEditorFocus();
     } catch (reason) {
-      setError(errorMessage(reason));
+      if (current()) setError(errorMessage(reason));
+      throw reason;
     }
   };
   const selectedData = data ?? emptyRange(from, to),
@@ -482,7 +489,7 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
   return (
     <div
       ref={calendarContainer}
-      className={`planner-calendar-page ${editor || overlayDetails || selectedSession ? "with-editor" : ""} ${editor || selectedSession ? "with-design-editor" : ""}`}
+      className={`planner-calendar-page ${editor || overlayDetails || selectedSession ? "with-editor" : ""} ${editor || selectedSession || overlayDetails ? "with-design-editor" : ""}`}
     >
       <DesignSystemScope
         as="main"
@@ -731,9 +738,13 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
       )}
       {overlayDetails && (
         <OverlayDetails
+          key={`${overlayDetails.source_id}/${overlayDetails.uid}/${overlayDetails.occurrence_key}`}
           occurrence={overlayDetails}
-          onImport={() => void importOverlay(overlayDetails)}
-          onClose={() => setOverlayDetails(null)}
+          onImport={() => importOverlay(overlayDetails)}
+          onClose={() => {
+            setOverlayDetails(null);
+            returnEditorFocus();
+          }}
         />
       )}{" "}
       {importing && (

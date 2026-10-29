@@ -362,7 +362,7 @@ describe("planner calendar container", () => {
     expect(screen.getByTestId("overlay-details")).toBeTruthy();
     act(() => invoke(childProps.overlay, "onClose"));
     act(() => invoke(childProps.week, "onOverlay", external));
-    act(() => invoke(childProps.overlay, "onImport"));
+    await act(async () => invoke(childProps.overlay, "onImport"));
     await waitFor(() => expect(api.createPlannerEvent).toHaveBeenCalled());
 
     act(() => invoke(childProps.week, "onEventDelete", recurring));

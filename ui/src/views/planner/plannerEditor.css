@@ -192,3 +192,27 @@
 .mosaic-ds.planner-editor-design > header .mds-icon-button {
   flex: none;
 }
+.mosaic-ds.planner-editor-design.overlay-details > header > div {
+  flex: 1;
+  min-width: 0;
+}
+.mosaic-ds.planner-editor-design.overlay-details h2 {
+  margin: var(--mds-space-3) 0 0;
+  overflow-wrap: anywhere;
+}
+.mosaic-ds.planner-editor-design.overlay-details .overlay-source {
+  display: flex;
+  align-items: center;
+  gap: var(--mds-space-3);
+  font-size: var(--mds-text-hint);
+  color: var(--mds-text-muted);
+}
+.mosaic-ds.planner-editor-design.overlay-details p {
+  font-size: var(--mds-text-body);
+  overflow-wrap: anywhere;
+  line-height: var(--mds-leading);
+}
+.mosaic-ds.planner-editor-design.overlay-details > .mds-button {
+  white-space: normal;
+  text-align: left;
+}

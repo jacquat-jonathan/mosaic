@@ -400,3 +400,46 @@ test("event archive shares themes and fits scaled narrow windows", async ({ page
   await expect.poll(() => dialog.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
   await page.screenshot({ path: testInfo.outputPath("event-archive-narrow.png") });
 });
+
+test("subscribed event details retain source information, copy and focus return", async ({ page }) => {
+  await openCalendar(page);
+  const card = page.locator(".planner-timed-item.overlay", { hasText: "Design sync" });
+  await card.press("Enter");
+  const details = page.getByRole("complementary", { name: "Read-only calendar event", exact: true });
+  await expect(details.getByRole("button", { name: "Close event details", exact: true })).toBeFocused();
+  await expect(details).toContainText("Studio 4");
+  await details.getByRole("button", { name: "Close event details", exact: true }).click();
+  await expect(card).toBeFocused();
+  await card.press("Enter");
+  await details.getByRole("button", { name: "Copy this occurrence to Mosaic", exact: true }).click();
+  await expect(details).toHaveCount(0);
+  await expect(card).toBeFocused();
+  await expect(page.locator(".planner-timed-item.event", { hasText: "Design sync" })).toBeVisible();
+});
+test("subscribed event details share themes and fit narrow panes", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+  await openCalendar(page);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  for (const theme of ["Light", "Dark", "System"] as const) {
+    await page.getByRole("radio", { name: theme, exact: true }).check();
+    await page.getByRole("tab", { name: "Today Close tab", exact: true }).click();
+    await page.locator(".planner-timed-item.overlay", { hasText: "Design sync" }).press("Enter");
+    const details = page.getByRole("complementary", { name: "Read-only calendar event", exact: true });
+    await expect(details).toHaveCSS("font-size", "14px");
+    await expect(details).toHaveCSS("background-color", theme === "Light" ? "rgb(246, 246, 248)" : "rgb(24, 25, 29)");
+    if (theme !== "System")
+      await page.screenshot({ path: testInfo.outputPath(`subscribed-event-${theme.toLowerCase()}.png`) });
+    await details.getByRole("button", { name: "Close event details", exact: true }).click();
+    await page.getByRole("tab", { name: "Settings Close tab", exact: true }).click();
+  }
+  await page.getByLabel("Interface density", { exact: true }).selectOption("compact");
+  await page.getByRole("slider", { name: "Interface scale", exact: true }).press("End");
+  await page.getByRole("tab", { name: "Today Close tab", exact: true }).click();
+  await page.locator(".planner-timed-item.overlay", { hasText: "Design sync" }).press("Enter");
+  await page.setViewportSize({ width: 320, height: 900 });
+  const details = page.getByRole("complementary", { name: "Read-only calendar event", exact: true });
+  await expect(details.getByRole("button", { name: "Close event details", exact: true })).toBeInViewport();
+  await expect.poll(() => details.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
+  await page.screenshot({ path: testInfo.outputPath("subscribed-event-narrow.png") });
+});

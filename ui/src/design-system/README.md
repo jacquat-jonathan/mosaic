@@ -5,8 +5,8 @@ The visual design and gallery were approved on 2026-10-28 after review of typogr
 icons, focus behavior, overlays, workflows, runs, chat, and Activity & review.
 **Settings → Appearance** was visually accepted on 2026-10-28. Settings navigation, header,
 and sections, Connections & safety, workflows, runs, chats, Activity & review, file history,
-Welcome, app navigation, Files and Find, and Note workspace are migrated. **Task lists** are next;
-remaining workspace and planning surfaces keep their existing controls.
+Welcome, app navigation, Files and Find, and Note workspace are migrated. Task lists are also migrated; the task board is next.
+Remaining planning surfaces keep their existing controls.
 
 ## Open the gallery
 
@@ -495,7 +495,7 @@ distinct from empty results and expose retries; mention writes serialize and gua
 The context header has its own sibling scope for all detail types. Its close action restores
 workspace focus, while Calendar context content remains for its own migration.
 
-`views/TaskQueryView.tsx` adopts Tasks, Overdue, Project tasks, and saved queries. Shared actions and notices
+`views/TaskQueryView.tsx` adopts Tasks, Overdue, Project tasks, saved queries, and planning views. Shared actions and notices
 wrap native completion checkboxes and readable result metadata. Requests guard the active
 vault, writes serialize until acknowledged, and removed rows return focus to the results.
-Planning views retain their existing rendering until their individual passes.
+Saved planning titles and queries retain their vault-local storage; unavailable saved views stay explicit.

@@ -58,9 +58,17 @@ for (const [kind, title] of [
   ["overdue", "Overdue"],
   ["projects", "Project tasks"],
   ["query", "Query"],
+  ["planning", "My planning"],
 ]) {
   test(`${title} retains filtered results and themed narrow layouts`, async ({ page }, testInfo) => {
     await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+    if (kind === "planning")
+      await page.addInitScript(() =>
+        localStorage.setItem(
+          "mosaic:planning:/mock/vault",
+          JSON.stringify([{ id: "mine", title: "My planning", query: "task:open Overdue show:status,due" }]),
+        ),
+      );
     await page.goto("/");
     await page.getByRole("button", { name: "Open folder…", exact: true }).click();
     if (kind === "projects")
@@ -75,7 +83,11 @@ for (const [kind, title] of [
         });
       });
     const taskName = kind === "projects" ? /^Project milestone/ : /^Overdue review/;
-    await openView(page, kind, kind === "query" ? "task:open Overdue show:status,due" : undefined);
+    await openView(
+      page,
+      kind,
+      kind === "query" ? "task:open Overdue show:status,due" : kind === "planning" ? "mine" : undefined,
+    );
     if (kind === "query")
       await expect(page.locator(".task-query-expression")).toHaveText("task:open Overdue show:status,due");
     const view = page.getByRole("main", { name: title, exact: true });
@@ -87,7 +99,9 @@ for (const [kind, title] of [
     await page.getByRole("radio", { name: "Light", exact: true }).check();
     await page.getByLabel("Interface density", { exact: true }).selectOption("compact");
     await page.getByRole("slider", { name: "Interface scale", exact: true }).press("End");
-    await page.getByRole("tab", { name: `${title} Close tab`, exact: true }).click();
+    await page
+      .getByRole("tab", { name: `${kind === "planning" ? "Planning view · mine" : title} Close tab`, exact: true })
+      .click();
     await expect(view).toHaveCSS("background-color", "rgb(255, 255, 255)");
     await page.setViewportSize({ width: 320, height: 900 });
     await expect.poll(() => view.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);

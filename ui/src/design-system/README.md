@@ -536,3 +536,8 @@ minute precision, timezone conversion, all-day intervals, and revision conflicts
 times reference their message, pending writes disable duplicates, and unchanged background
 revisions retain edited minutes. Closing/saving returns to the source or the selected calendar
 mode if the source moved. The shared native event-field labels use the approved label weight.
+
+`views/CalendarContext.tsx` and `CalendarTaskList.tsx` adopt the daily-note action, open-task
+count, overdue rows, hierarchy/progress, and source links. Failed reads offer retry, task
+writes serialize until acknowledged, and late reads guard their day/vault scope. Completion
+and retries restore focus; the final legacy task-list renderer/styles are removed.

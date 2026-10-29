@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Calendar details:** shared daily-note actions, readable task rows, and loading/error notices retain overdue completion. Failed loads can be retried, saving disables duplicate updates, and completion restores focus.
+
 - **Work sessions:** shared date/time fields, validation, conflict notices, and actions preserve exact minutes and all-day sessions. Failed writes retain drafts, background refreshes keep edited minutes, and closing returns to the calendar.
 
 - **Event editor:** shared fields, actions, activity, and notices retain dates, recurrence, colors, and revision checks. Writes disable duplicate edits, failures keep drafts, and closing returns to the calendar.

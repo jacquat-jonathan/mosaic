@@ -1,0 +1,79 @@
+.mosaic-ds.calendar-context {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  padding: var(--mds-space-8);
+  overflow: auto;
+  background: var(--mds-surface-subtle);
+}
+.mosaic-ds.calendar-context h3 {
+  color: var(--mds-text);
+  font-size: var(--mds-text-body);
+  text-transform: none;
+  letter-spacing: normal;
+  margin: 0 0 var(--mds-space-5);
+  overflow-wrap: anywhere;
+}
+.mosaic-ds.calendar-context h3:focus-visible {
+  outline: var(--mds-focus-width) solid var(--mds-accent);
+  outline-offset: var(--mds-focus-offset);
+}
+.mosaic-ds.calendar-context .mds-hint,
+.mosaic-ds.calendar-context .mds-notice {
+  margin-block: var(--mds-space-6);
+}
+.mosaic-ds.calendar-context .calendar-tasks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--mds-space-5);
+}
+.mosaic-ds.calendar-context .calendar-task {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--mds-space-3);
+  min-width: 0;
+  font-size: var(--mds-text-body);
+  line-height: var(--mds-leading);
+}
+.mosaic-ds.calendar-context .calendar-task input {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 3px 0 0;
+  accent-color: var(--mds-accent);
+}
+.mosaic-ds.calendar-context .calendar-task input:focus-visible {
+  outline: var(--mds-focus-width) solid var(--mds-accent);
+  outline-offset: var(--mds-focus-offset);
+}
+.mosaic-ds.calendar-context .calendar-task-text {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.mosaic-ds.calendar-context .calendar-task.status-done .calendar-task-text,
+.mosaic-ds.calendar-context .calendar-task.status-cancelled .calendar-task-text {
+  text-decoration: line-through;
+  color: var(--mds-text-muted);
+}
+.mosaic-ds.calendar-context .calendar-task.status-moved .calendar-task-text {
+  color: var(--mds-text-muted);
+}
+.mosaic-ds.calendar-context .calendar-progress {
+  font-size: var(--mds-text-small);
+  color: var(--mds-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.mosaic-ds.calendar-context .calendar-note-link {
+  display: flex;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: left;
+  justify-content: flex-start;
+  color: var(--mds-text-muted);
+  padding: var(--mds-space-2);
+  font-size: var(--mds-text-hint);
+}

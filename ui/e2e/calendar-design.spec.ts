@@ -249,3 +249,38 @@ test("work session editor follows themes and fills narrow panes", async ({ page 
   await expect.poll(() => editor.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
   await page.screenshot({ path: testInfo.outputPath("work-session-narrow.png") });
 });
+
+test("calendar details retain overdue completion, focus and daily-note opening", async ({ page }) => {
+  await openCalendar(page);
+  const details = page.getByRole("group", { name: "Calendar details", exact: true });
+  await details.getByRole("checkbox", { name: /^Overdue review/ }).press("Space");
+  await expect(details.getByText("No overdue tasks.")).toBeVisible();
+  await expect(details.getByRole("heading", { name: "Overdue", exact: true })).toBeFocused();
+  await details.getByRole("button", { name: "Open daily note", exact: true }).click();
+  await expect(page.locator(".cm-content")).toContainText("Write the release notes");
+  await expect(details).toHaveCount(0);
+});
+test("calendar details follow themes and fit the scaled context drawer", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+  await openCalendar(page);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const details = page.getByRole("group", { name: "Calendar details", exact: true });
+  for (const theme of ["Light", "Dark", "System"] as const) {
+    await page.getByRole("radio", { name: theme, exact: true }).check();
+    await page.getByRole("tab", { name: "Today Close tab", exact: true }).click();
+    await expect(details).toHaveCSS("font-size", "14px");
+    await expect(details).toHaveCSS("background-color", theme === "Light" ? "rgb(246, 246, 248)" : "rgb(24, 25, 29)");
+    if (theme !== "System")
+      await page.screenshot({ path: testInfo.outputPath(`calendar-details-${theme.toLowerCase()}.png`) });
+    await page.getByRole("tab", { name: "Settings Close tab", exact: true }).click();
+  }
+  await page.getByLabel("Interface density", { exact: true }).selectOption("compact");
+  await page.getByRole("slider", { name: "Interface scale", exact: true }).press("End");
+  await page.getByRole("tab", { name: "Today Close tab", exact: true }).click();
+  await page.setViewportSize({ width: 320, height: 900 });
+  await page.getByRole("button", { name: "Show right panel", exact: true }).click();
+  await expect(details.getByRole("button", { name: "Open daily note", exact: true })).toBeInViewport();
+  await expect.poll(() => details.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
+  await page.screenshot({ path: testInfo.outputPath("calendar-details-narrow.png") });
+});

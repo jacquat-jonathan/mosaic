@@ -1,19 +1,13 @@
-import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import { contextKind, parseView } from "./specialTabs";
-import { api } from "../ipc/api";
-import { errorMessage } from "../ipc/types";
 import { useVault } from "../state/vault";
 import { useWorkspace } from "../state/workspace";
 import { useUi } from "../state/ui";
 import { ChatContext } from "./ChatContext";
 import { usePlanning } from "../state/planning";
 import { WorkflowContext } from "./Workflows";
-import { dayStamp } from "../daily";
-import { openDailyNote } from "../actions";
-import type { Days } from "../ipc/types";
-import { TaskList } from "./CalendarView";
 
+import { CalendarContext } from "./CalendarContext";
 import { NoteDetails } from "./NoteDetails";
 import { IconButton } from "../design-system/components";
 import { DesignSystemScope } from "./DesignSystemScope";
@@ -24,6 +18,7 @@ export function RightPanel() {
   const active = useWorkspace((s) => s.panes.find((p) => p.id === s.focused)?.active ?? null);
   const kind = contextKind(active);
   const root = useVault((s) => s.vault?.root);
+  const day = usePlanning((s) => s.selectedDay);
   if (!active || !kind) return null;
   const id = parseView(active).id;
   return (
@@ -55,50 +50,8 @@ export function RightPanel() {
       ) : kind === "workflow" ? (
         <WorkflowContext name={id} />
       ) : (
-        <CalendarContext />
+        <CalendarContext key={`${root}/${day}`} />
       )}
     </aside>
-  );
-}
-function CalendarContext() {
-  const day = usePlanning((s) => s.selectedDay);
-  const revision = useVault((s) => s.revision);
-  const [data, setData] = useState<Days | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [tick, setTick] = useState(0);
-  useEffect(() => {
-    let live = true;
-    setData(null);
-    setError(null);
-    void api.days(day, day, dayStamp()).then(
-      (d) => live && setData(d),
-      (e) => live && setError(errorMessage(e)),
-    );
-    return () => {
-      live = false;
-    };
-  }, [day, revision, tick]);
-  return (
-    <div className="context-content">
-      <h3>{day}</h3>
-      <button onClick={() => void openDailyNote(new Date(`${day}T12:00`), { newTab: true })}>Open daily note</button>
-      {error && <p className="error-text">{error}</p>}
-      {data && (
-        <>
-          <p>{data.days[0]?.tasks.filter((t) => t.status === "open").length ?? 0} open tasks</p>
-          <h3>Overdue</h3>
-          <TaskList
-            tasks={data.overdue}
-            showNote
-            onTick={(t, done) =>
-              void api.setTask(t.path, t.line, t.text, done).then(
-                () => setTick((n) => n + 1),
-                (e) => setError(errorMessage(e)),
-              )
-            }
-          />
-        </>
-      )}
-    </div>
   );
 }

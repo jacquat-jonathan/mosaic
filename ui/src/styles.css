@@ -2748,56 +2748,6 @@ svg path.flow-on {
   font-size: 12px;
   margin: 4px 0;
 }
-.calendar-tasks {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-.calendar-task {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  font-size: 13px;
-  line-height: 1.35;
-}
-.calendar-task input {
-  margin-top: 2px;
-  flex: none;
-}
-.calendar-task-text {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-.calendar-task.status-done .calendar-task-text,
-.calendar-task.status-cancelled .calendar-task-text {
-  color: var(--muted);
-  text-decoration: line-through;
-}
-.calendar-task.status-moved .calendar-task-text {
-  color: var(--muted);
-}
-.calendar-progress {
-  color: var(--muted);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-}
-.calendar-note-link {
-  display: inline;
-  margin-left: 6px;
-  padding: 0 4px;
-  font-size: 11px;
-  color: var(--accent);
-  background: none;
-  border: none;
-  cursor: pointer;
-}
-.calendar-note-link:hover {
-  text-decoration: underline;
-}
-
 .tessera-answer {
   white-space: pre-wrap;
   margin-top: 7px;

@@ -1,91 +1,153 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
+import { Button, Dialog, Notice, SegmentedControl } from "../../design-system/components";
 import { api } from "../../ipc/api";
 import { errorMessage, type PlannerEvent } from "../../ipc/types";
+import { useVault } from "../../state/vault";
+import { DesignSystemScope } from "../DesignSystemScope";
+import "./calendarDialogs.css";
 
-export function EventArchiveDialog({ onChange, onClose }: { onChange(): Promise<void>; onClose(): void }) {
+export function EventArchiveDialog({
+  onChange,
+  onClose,
+  returnFocusRef,
+}: {
+  onChange(): Promise<void>;
+  onClose(): void;
+  returnFocusRef?: RefObject<HTMLElement | null>;
+}) {
+  const root = useVault((state) => state.vault?.root),
+    live = useRef(true),
+    lock = useRef(false),
+    generation = useRef(0),
+    controls = useRef<HTMLDivElement>(null),
+    retry = useRef<HTMLButtonElement>(null);
   const [events, setEvents] = useState<PlannerEvent[]>([]),
     [view, setView] = useState<"archive" | "trash">("archive"),
     [busy, setBusy] = useState(false),
+    [loading, setLoading] = useState(true),
     [error, setError] = useState<string | null>(null);
-  const load = async () => {
+  const current = useCallback(() => live.current && root === useVault.getState().vault?.root, [root]);
+  const load = useCallback(async () => {
+    const version = ++generation.current;
+    const valid = () => current() && generation.current === version;
+    if (!current()) return;
+    setLoading(true);
     try {
-      setEvents(await api.plannerEvents(true, true));
-      setError(null);
+      const next = await api.plannerEvents(true, true);
+      if (valid()) {
+        setEvents(next);
+        setError(null);
+      }
     } catch (reason) {
-      setError(errorMessage(reason));
+      if (valid()) setError(errorMessage(reason));
+    } finally {
+      if (valid()) setLoading(false);
     }
-  };
-  // biome-ignore lint/correctness/useExhaustiveDependencies: loads once when the dialog opens
+  }, [current]);
   useEffect(() => {
+    live.current = true;
     void load();
-  }, []);
+    return () => {
+      live.current = false;
+      generation.current++;
+    };
+  }, [load]);
+  const returnActionFocus = () =>
+    setTimeout(() => {
+      if (current()) controls.current?.querySelector<HTMLInputElement>("input:checked")?.focus();
+    }, 0);
   const run = async (action: () => Promise<unknown>) => {
+    if (lock.current || !current()) return;
+    lock.current = true;
     setBusy(true);
     setError(null);
     try {
       await action();
-      await load();
-      await onChange();
+      if (current()) {
+        await load();
+        await onChange();
+      }
     } catch (reason) {
-      setError(errorMessage(reason));
+      if (current()) setError(errorMessage(reason));
     } finally {
-      setBusy(false);
+      lock.current = false;
+      if (current()) {
+        setBusy(false);
+        returnActionFocus();
+      }
     }
   };
   const visible = events.filter((item) =>
     view === "trash" ? !!item.trashed_at : !!item.archived_at && !item.trashed_at,
   );
   return (
-    <div className="modal-backdrop" onMouseDown={onClose}>
-      <section
-        className="modal event-archive"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="event-archive-title"
-        onMouseDown={(event) => event.stopPropagation()}
+    <DesignSystemScope className="calendar-dialog-scope">
+      <Dialog
+        open
+        title="Local event archive"
+        size="wide"
+        onClose={onClose}
+        dismissible={!busy}
+        returnFocusRef={returnFocusRef}
+        actions={
+          <Button variant="secondary" disabled={busy} aria-label="Close event archive" onClick={onClose}>
+            Close
+          </Button>
+        }
       >
-        <header>
-          <h2 id="event-archive-title">Local event archive</h2>
-          <button aria-label="Close event archive" onClick={onClose}>
-            ×
-          </button>
-        </header>
-        <div className="segmented">
-          <button aria-pressed={view === "archive"} onClick={() => setView("archive")}>
-            Archive
-          </button>
-          <button aria-pressed={view === "trash"} onClick={() => setView("trash")}>
-            Deleted
-          </button>
+        <div ref={controls}>
+          <SegmentedControl<"archive" | "trash">
+            label="Archived event view"
+            value={view}
+            disabled={busy}
+            options={[
+              { value: "archive", label: "Archive" },
+              { value: "trash", label: "Deleted" },
+            ]}
+            onChange={setView}
+          />
         </div>
-        {error && <p className="error-text">{error}</p>}
-        <div className="event-archive-list">
-          {visible.length === 0 ? (
-            <p className="panel-meta">No events here.</p>
-          ) : (
-            visible.map((item) => (
-              <article key={item.id}>
+        {error && (
+          <Notice tone="error">
+            {error}
+            <Button ref={retry} disabled={busy || loading} onClick={() => void load().then(returnActionFocus)}>
+              Retry archived events
+            </Button>
+          </Notice>
+        )}
+        {loading ? (
+          <p className="mds-hint" role="status">
+            Loading archived events…
+          </p>
+        ) : !error && !visible.length ? (
+          <p className="mds-hint">No events here.</p>
+        ) : (
+          <ul className="calendar-archive-list" aria-label="Archived events">
+            {visible.map((item) => (
+              <li key={item.id}>
                 <div>
                   <strong>{item.title}</strong>
-                  <span>{item.all_day ? item.start_value : new Date(item.start_value).toLocaleString()}</span>
+                  <p className="mds-hint">
+                    {item.all_day ? item.start_value : new Date(item.start_value).toLocaleString()}
+                  </p>
                 </div>
-                <button disabled={busy} onClick={() => void run(() => api.restorePlannerEvent(item.id, item.revision))}>
+                <Button disabled={busy} onClick={() => void run(() => api.restorePlannerEvent(item.id, item.revision))}>
                   Restore
-                </button>
+                </Button>
                 {view === "archive" && (
-                  <button
-                    className="danger"
+                  <Button
+                    variant="danger"
                     disabled={busy}
                     onClick={() => void run(() => api.trashPlannerEvent(item.id, item.revision))}
                   >
                     Delete
-                  </button>
+                  </Button>
                 )}
-              </article>
-            ))
-          )}
-        </div>
-      </section>
-    </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Dialog>
+    </DesignSystemScope>
   );
 }

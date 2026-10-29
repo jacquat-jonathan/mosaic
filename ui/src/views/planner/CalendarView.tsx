@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Download, RefreshCw, Upload } from "lucide-react";
+import { Button, Notice, SegmentedControl } from "../../design-system/components";
+import { DesignSystemScope } from "../DesignSystemScope";
+import "./calendarDesign.css";
 import { api, inTauri, onPlannerChanged } from "../../ipc/api";
 import {
   errorMessage,
@@ -16,7 +19,7 @@ import {
 } from "../../ipc/types";
 import { useSettings } from "../../state/settings";
 import { useVault } from "../../state/vault";
-import { Segmented, Toolbar } from "../../viewers/Toolbar";
+import { Toolbar } from "../../viewers/Toolbar";
 import { EventEditor } from "./EventEditor";
 import { EventArchiveDialog } from "./EventArchiveDialog";
 import { CalendarSourcesDialog } from "./CalendarSourcesDialog";
@@ -81,13 +84,53 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
     [error, setError] = useState<string | null>(null),
     [loading, setLoading] = useState(true),
     [show, setShow] = useState({ events: true, sessions: true, due: true });
+  const selectedOverlay = useRef(overlayDetails);
+  selectedOverlay.current = overlayDetails;
+  const editorReturn = useRef<HTMLElement | null>(null);
+  const returnEditorFocus = () =>
+    requestAnimationFrame(() => {
+      const target = editorReturn.current;
+      (target?.isConnected
+        ? target
+        : calendarContainer.current?.querySelector<HTMLElement>('input[type="radio"]:checked')
+      )?.focus();
+    });
+  const calendarContainer = useRef<HTMLDivElement>(null),
+    modeFocus = useRef(false),
+    retryFocus = useRef(false);
+  useEffect(() => {
+    if (modeFocus.current || (!loading && retryFocus.current)) {
+      const controls = calendarContainer.current?.querySelector<HTMLElement>(
+        error && retryFocus.current
+          ? "[data-calendar-retry]"
+          : 'input[role="radio"]:checked, input[type="radio"]:checked, [role="tab"][aria-selected="true"]',
+      );
+      controls?.focus();
+      modeFocus.current = false;
+      retryFocus.current = false;
+    }
+  }, [mode, loading, error]);
+  const live = useRef(true),
+    loadVersion = useRef(0);
+  const current = useCallback(() => live.current && root === useVault.getState().vault?.root, [root]);
+  useEffect(() => {
+    live.current = true;
+    return () => {
+      live.current = false;
+      loadVersion.current++;
+    };
+  }, []);
+  const [previewing, setPreviewing] = useState(false);
+  const importGeneration = useRef(0);
   const importInput = useRef<HTMLInputElement>(null);
   const days = useMemo(() => visibleDays(anchor, mode, sunday), [anchor, mode, sunday]),
     from = isoDay(days[0]),
     to = isoDay(days.at(-1)!);
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
   const load = useCallback(async () => {
-    if (!root) return;
+    if (!root || !current()) return;
+    const version = ++loadVersion.current;
+    const valid = () => current() && version === loadVersion.current;
     setLoading(true);
     try {
       const [range, nextOverlay, nextEpics, nextEvents] = await Promise.all([
@@ -96,42 +139,50 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
         api.plannerEpics(false, false),
         api.plannerEvents(false, false),
       ]);
-      if (useVault.getState().vault?.root !== root) return;
+      if (!valid()) return;
       setData(range);
       setOverlay(nextOverlay);
       setEpics(nextEpics);
       setEvents(nextEvents);
       setError(null);
     } catch (reason) {
-      setError(errorMessage(reason));
-      setData(emptyRange(from, to));
-      setOverlay(emptyOverlay);
+      if (valid()) {
+        setError(errorMessage(reason));
+        setData(emptyRange(from, to));
+        setOverlay(emptyOverlay);
+      }
     } finally {
-      setLoading(false);
+      if (valid()) setLoading(false);
     }
-  }, [root, from, to, timezone]);
+  }, [root, from, to, timezone, current]);
   useEffect(() => {
     void load();
   }, [load]);
   useEffect(() => {
     let off: (() => void) | undefined;
+    let active = true;
     void onPlannerChanged((change) => {
       if (change.root === root) void load();
     }).then((value) => {
-      off = value;
+      if (active) off = value;
+      else value();
     });
-    return () => off?.();
+    return () => {
+      active = false;
+      off?.();
+    };
   }, [root, load]);
   const refreshSubscriptions = useCallback(
     async (force = false) => {
+      if (!current()) return;
       try {
         await api.refreshCalendarSubscriptions(force);
-        await load();
+        if (current()) await load();
       } catch (reason) {
-        setError(errorMessage(reason));
+        if (current()) setError(errorMessage(reason));
       }
     },
-    [load],
+    [load, current],
   );
   useEffect(() => {
     if (!root) return;
@@ -145,6 +196,8 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
     };
   }, [root, refreshSubscriptions]);
   const setMode = (next: CalendarMode) => {
+    if (next === mode) return;
+    modeFocus.current = true;
     setSelectedRange(null);
     setModeState(next);
     try {
@@ -183,11 +236,12 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
     });
   };
   const sessionAction = async (action: () => Promise<unknown>) => {
+    if (!current()) return;
     try {
       await action();
-      await load();
+      if (current()) await load();
     } catch (reason) {
-      setError(errorMessage(reason));
+      if (current()) setError(errorMessage(reason));
     }
   };
   const scheduleTask = (task: PlannerTask, day: string, hour: number | null) => {
@@ -271,6 +325,7 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
     if (series && !occurrence.all_day) setEditor({ occurrence: resizedEvent(occurrence, delta), series });
   };
   const resizeEvent = async (occurrence: EventOccurrence, delta: number) => {
+    if (!current()) return;
     const series = events.find((item) => item.id === occurrence.series_id);
     if (!series || occurrence.all_day || !delta) return;
     const next = resizedEvent(occurrence, delta),
@@ -292,16 +347,19 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
       if (next.recurring)
         await api.replacePlannerEventOccurrence(series.id, series.revision, next.occurrence_key, input);
       else await api.updatePlannerEvent(series.id, { ...input, expected_revision: series.revision });
-      const nextEvents = await api.plannerEvents(false, false),
-        nextSeries = nextEvents.find((item) => item.id === series.id) ?? series;
+      if (!current()) return;
+      const nextEvents = await api.plannerEvents(false, false);
+      if (!current()) return;
+      const nextSeries = nextEvents.find((item) => item.id === series.id) ?? series;
       setEvents(nextEvents);
       setEditor({ occurrence: next, series: nextSeries });
       await load();
     } catch (reason) {
-      setError(errorMessage(reason));
+      if (current()) setError(errorMessage(reason));
     }
   };
   const moveEvent = async (occurrence: EventOccurrence, day: string, hour?: number | null) => {
+    if (!current()) return;
     const series = events.find((item) => item.id === occurrence.series_id);
     if (!series) return;
     let start: string, end: string;
@@ -339,10 +397,11 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
       if (occurrence.recurring)
         await api.replacePlannerEventOccurrence(series.id, series.revision, occurrence.occurrence_key, input);
       else await api.updatePlannerEvent(series.id, { ...input, expected_revision: series.revision });
+      if (!current()) return;
       setEditor(null);
       await load();
     } catch (reason) {
-      setError(errorMessage(reason));
+      if (current()) setError(errorMessage(reason));
     }
   };
   const deleteEvent = (occurrence: EventOccurrence) => {
@@ -355,43 +414,56 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
         return;
       }
       const archived = await api.archivePlannerEvent(series.id, series.revision);
-      await api.trashPlannerEvent(archived.id, archived.revision);
+      if (current()) await api.trashPlannerEvent(archived.id, archived.revision);
     });
   };
   const chooseIcal = async (file: File) => {
+    const version = ++importGeneration.current;
+    const valid = () => current() && version === importGeneration.current;
+    setPreviewing(true);
     try {
       if (file.size > 10 * 1024 * 1024) throw new Error("iCalendar files must be 10 MB or smaller");
-      const preview = await api.previewPlannerIcal(await file.text(), "ics-file", timezone);
-      setImporting({ preview, fileName: file.name });
-      setError(null);
+      const content = await file.text();
+      if (!valid()) return;
+      const preview = await api.previewPlannerIcal(content, "ics-file", timezone);
+      if (valid()) {
+        setImporting({ preview, fileName: file.name });
+        setError(null);
+      }
     } catch (reason) {
-      setError(errorMessage(reason));
+      if (valid()) setError(errorMessage(reason));
     } finally {
-      if (importInput.current) importInput.current.value = "";
+      if (valid()) {
+        setPreviewing(false);
+        if (importInput.current) importInput.current.value = "";
+      }
     }
   };
   const exportIcal = async () => {
+    if (!current()) return;
     try {
       if (inTauri) {
         const { save } = await import("@tauri-apps/plugin-dialog");
+        if (!current()) return;
         const path = await save({
           title: "Export Mosaic calendar",
           defaultPath: "mosaic-calendar.ics",
           filters: [{ name: "iCalendar", extensions: ["ics"] }],
         });
-        if (path) await api.exportPlannerIcalFile(path);
+        if (path && current()) await api.exportPlannerIcalFile(path);
       } else {
-        const content = await api.exportPlannerIcal(),
-          url = URL.createObjectURL(new Blob([content], { type: "text/calendar" })),
+        const content = await api.exportPlannerIcal();
+        if (!current()) return;
+        const url = URL.createObjectURL(new Blob([content], { type: "text/calendar" })),
           link = document.createElement("a");
         link.href = url;
         link.download = "mosaic-calendar.ics";
         link.click();
         URL.revokeObjectURL(url);
       }
-      setError(null);
+      if (current()) setError(null);
     } catch (reason) {
-      setError(errorMessage(reason));
+      if (current()) setError(errorMessage(reason));
     }
   };
   const toggleSubscription = async (id: string, visible: boolean) => {
@@ -405,6 +477,7 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
     }
   };
   const importOverlay = async (item: CalendarOverlayOccurrence) => {
+    if (!current()) return;
     try {
       await api.createPlannerEvent({
         title: item.title,
@@ -420,10 +493,14 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
         timezone: item.timezone,
         recurrence_rule: null,
       });
-      setOverlayDetails(null);
+      if (!current()) return;
+      const same = selectedOverlay.current === item;
+      if (same) setOverlayDetails(null);
       await load();
+      if (same) returnEditorFocus();
     } catch (reason) {
-      setError(errorMessage(reason));
+      if (current()) setError(errorMessage(reason));
+      throw reason;
     }
   };
   const selectedData = data ?? emptyRange(from, to),
@@ -432,16 +509,33 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
       : null,
     today = isoDay(new Date());
   return (
-    <div className={`planner-calendar-page ${editor || overlayDetails || selectedSession ? "with-editor" : ""}`}>
-      <main className="planner-calendar">
+    <div
+      ref={calendarContainer}
+      className={`planner-calendar-page ${editor || overlayDetails || selectedSession ? "with-editor" : ""} ${editor || selectedSession || overlayDetails ? "with-design-editor" : ""}`}
+    >
+      <DesignSystemScope
+        as="main"
+        className="planner-calendar calendar-design"
+        aria-label="Calendar"
+        onClickCapture={(event) => {
+          const target = (event.target as HTMLElement).closest<HTMLElement>('button,[role="button"]');
+          if (target) editorReturn.current = target;
+        }}
+        onKeyDownCapture={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            const target = (event.target as HTMLElement).closest<HTMLElement>('button,[role="button"]');
+            if (target) editorReturn.current = target;
+          }
+        }}
+      >
         <Toolbar>
-          <button className="icon" aria-label="Previous period" onClick={() => step(-1)}>
+          <Button className="icon" aria-label="Previous period" onClick={() => step(-1)}>
             <ChevronLeft size={16} />
-          </button>
-          <button className="icon" aria-label="Next period" onClick={() => step(1)}>
+          </Button>
+          <Button className="icon" aria-label="Next period" onClick={() => step(1)}>
             <ChevronRight size={16} />
-          </button>
-          <button onClick={() => setAnchor(atNoon(new Date()))}>Today</button>
+          </Button>
+          <Button onClick={() => setAnchor(atNoon(new Date()))}>Today</Button>
           <h2 className="calendar-title">{title}</h2>
           <span className="spacer" />
           <details className="calendar-chooser">
@@ -481,8 +575,8 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
                   <i style={{ background: item.color }} /> {item.name} 🔒
                 </label>
               ))}
-              <button onClick={() => setArchivesOpen(true)}>Archived local events…</button>
-              <button onClick={() => setSourcesOpen(true)}>Manage subscriptions…</button>
+              <Button onClick={() => setArchivesOpen(true)}>Archived local events…</Button>
+              <Button onClick={() => setSourcesOpen(true)}>Manage subscriptions…</Button>
             </div>
           </details>
           <input
@@ -495,29 +589,30 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
               if (file) void chooseIcal(file);
             }}
           />
-          <button aria-label="Import iCalendar file" onClick={() => importInput.current?.click()}>
-            <Upload size={14} /> Import
-          </button>
-          <button aria-label="Export iCalendar file" onClick={() => void exportIcal()}>
+          <Button disabled={previewing} aria-label="Import iCalendar file" onClick={() => importInput.current?.click()}>
+            <Upload size={14} /> {previewing ? "Reading…" : "Import"}
+          </Button>
+          <Button aria-label="Export iCalendar file" onClick={() => void exportIcal()}>
             <Download size={14} /> Export
-          </button>
-          <button
+          </Button>
+          <Button
             onClick={() => {
               setSelectedRange(null);
               newEvent();
             }}
           >
             New event
-          </button>
-          <button
+          </Button>
+          <Button
             className="icon"
             aria-label="Refresh calendar"
             disabled={loading}
             onClick={() => void refreshSubscriptions(true)}
           >
             <RefreshCw size={15} />
-          </button>
-          <Segmented<CalendarMode>
+          </Button>
+          <SegmentedControl<CalendarMode>
+            label="Calendar view"
             value={mode}
             options={[
               { value: "month", label: "Month" },
@@ -527,8 +622,25 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
             onChange={setMode}
           />
         </Toolbar>
-        {error && <p className="error-text calendar-error">{error}</p>}
-        {loading && !data && <p className="panel-meta calendar-loading">Loading planner calendar…</p>}
+        {error && (
+          <Notice tone="error">
+            {error}
+            <Button
+              data-calendar-retry
+              onClick={() => {
+                retryFocus.current = true;
+                void load();
+              }}
+            >
+              Retry calendar
+            </Button>
+          </Notice>
+        )}
+        {loading && !data && (
+          <p className="mds-hint calendar-loading" role="status">
+            Loading planner calendar…
+          </p>
+        )}
         <div className={`planner-calendar-content mode-${mode}`}>
           {mode === "month" ? (
             <MonthView
@@ -564,6 +676,7 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
           ) : (
             <>
               <WeekView
+                designSystem
                 days={days}
                 data={selectedData}
                 overlays={overlay.occurrences}
@@ -603,6 +716,7 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
                 }
               />
               <UnscheduledTray
+                designSystem
                 tasks={selectedData.unscheduled_tasks}
                 epics={epics}
                 onSchedule={(task) => void scheduleTask(task, isoDay(anchor), 9)}
@@ -610,7 +724,7 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
             </>
           )}
         </div>
-      </main>
+      </DesignSystemScope>
       {editor && (
         <EventEditor
           key={editor.series?.id ?? `new:${editor.initialStart ?? ""}:${editor.initialEnd ?? ""}`}
@@ -619,11 +733,12 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
           onClose={() => {
             setEditor(null);
             setSelectedRange(null);
+            returnEditorFocus();
           }}
           onDone={() => {
             setEditor(null);
             setSelectedRange(null);
-            void load();
+            void load().then(returnEditorFocus);
           }}
         />
       )}
@@ -632,23 +747,31 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
           key={`${selectedSession.session.id}:${selectedSession.session.revision}`}
           session={selectedSession.session}
           taskTitle={selectedSession.task_title}
-          onClose={() => setSelectedSessionId(null)}
+          onClose={() => {
+            setSelectedSessionId(null);
+            returnEditorFocus();
+          }}
           onReload={() => void load()}
           onDone={() => {
             setSelectedSessionId(null);
-            void load();
+            void load().then(returnEditorFocus);
           }}
         />
       )}
       {overlayDetails && (
         <OverlayDetails
+          key={`${overlayDetails.source_id}/${overlayDetails.uid}/${overlayDetails.occurrence_key}`}
           occurrence={overlayDetails}
-          onImport={() => void importOverlay(overlayDetails)}
-          onClose={() => setOverlayDetails(null)}
+          onImport={() => importOverlay(overlayDetails)}
+          onClose={() => {
+            setOverlayDetails(null);
+            returnEditorFocus();
+          }}
         />
       )}{" "}
       {importing && (
         <IcalImportWizard
+          returnFocusRef={editorReturn}
           {...importing}
           onCancel={() => setImporting(null)}
           onDone={() => {
@@ -659,6 +782,7 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
       )}
       {sourcesOpen && (
         <CalendarSourcesDialog
+          returnFocusRef={editorReturn}
           subscriptions={overlay.subscriptions}
           onClose={() => setSourcesOpen(false)}
           onChange={async () => {
@@ -666,7 +790,9 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
           }}
         />
       )}
-      {archivesOpen && <EventArchiveDialog onClose={() => setArchivesOpen(false)} onChange={load} />}
+      {archivesOpen && (
+        <EventArchiveDialog returnFocusRef={editorReturn} onClose={() => setArchivesOpen(false)} onChange={load} />
+      )}
     </div>
   );
 }

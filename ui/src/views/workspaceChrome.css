@@ -1,0 +1,162 @@
+.mosaic-ds.workspace-tabbar {
+  height: var(--titlebar);
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--mds-space-2);
+  padding: 0 var(--mds-space-3) 0 var(--mds-space-4);
+  border-bottom: 1px solid var(--mds-border);
+  background: var(--mds-surface);
+  min-width: 0;
+  container-type: inline-size;
+  container-name: workspace-tabs;
+}
+.mosaic-ds.workspace-tabbar .tabs {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  gap: var(--mds-space-1);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.mosaic-ds.workspace-tabbar .tabs::-webkit-scrollbar {
+  display: none;
+}
+.mosaic-ds.workspace-tabbar .bar-toggle {
+  flex: none;
+  color: var(--mds-text-muted);
+}
+.mosaic-ds.workspace-tabbar .bar-toggle.active {
+  color: var(--mds-text);
+  background: var(--mds-surface-selected);
+}
+.pane.focused .mosaic-ds.workspace-tabbar {
+  box-shadow: inset 0 2px 0 var(--mds-accent);
+}
+.mosaic-ds.workspace-tabbar .tab {
+  display: flex;
+  align-items: center;
+  gap: var(--mds-space-3);
+  height: 32px;
+  padding: 0 var(--mds-space-2) 0 var(--mds-space-5);
+  border-radius: var(--mds-radius-group) var(--mds-radius-group) 0 0;
+  max-width: min(220px, 100%);
+  color: var(--mds-text-muted);
+  flex: none;
+}
+.mosaic-ds.workspace-tabbar[data-density="compact"] .tab {
+  height: 28px;
+}
+.mosaic-ds.workspace-tabbar .tab:hover {
+  background: var(--mds-surface-hover);
+}
+.mosaic-ds.workspace-tabbar .tab.active {
+  background: var(--mds-surface-subtle);
+  color: var(--mds-text);
+}
+.mosaic-ds.workspace-tabbar .tab:focus-visible {
+  outline: var(--mds-focus-width) solid var(--mds-accent);
+  outline-offset: -2px;
+}
+.mosaic-ds.workspace-tabbar .tab-icon {
+  display: inline-flex;
+  flex: none;
+}
+.mosaic-ds.workspace-tabbar .tab-name {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mosaic-ds.workspace-tabbar .tab-close {
+  flex: none;
+  padding: 2px;
+  opacity: 0;
+}
+.mosaic-ds.workspace-tabbar .tab-close svg {
+  width: 14px;
+  height: 14px;
+}
+.mosaic-ds.workspace-tabbar .tab:hover .tab-close,
+.mosaic-ds.workspace-tabbar .tab.active .tab-close,
+.mosaic-ds.workspace-tabbar .tab:focus-within .tab-close,
+.mosaic-ds.workspace-tabbar .tab-close.dirty {
+  opacity: 1;
+}
+.mosaic-ds.workspace-tabbar .tab-close.dirty svg {
+  display: none;
+}
+.mosaic-ds.workspace-tabbar .tab-close.dirty::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  margin: 3.5px;
+  border-radius: 50%;
+  background: var(--mds-text);
+}
+.mosaic-ds.workspace-tabbar .tab-close.dirty:hover svg,
+.mosaic-ds.workspace-tabbar .tab-close.dirty:focus-visible svg {
+  display: block;
+}
+.mosaic-ds.workspace-tabbar .tab-close.dirty:hover::before,
+.mosaic-ds.workspace-tabbar .tab-close.dirty:focus-visible::before {
+  display: none;
+}
+.mosaic-ds.pane-divider {
+  flex: none;
+  background: var(--mds-border);
+  position: relative;
+  z-index: 5;
+}
+.panes.row > .mosaic-ds.pane-divider {
+  width: 1px;
+}
+.panes.column > .mosaic-ds.pane-divider {
+  height: 1px;
+}
+.mosaic-ds.pane-divider::after {
+  content: "";
+  position: absolute;
+  inset: 0 -3px;
+  cursor: col-resize;
+}
+.panes.column > .mosaic-ds.pane-divider::after {
+  inset: -3px 0;
+  cursor: row-resize;
+}
+.mosaic-ds.pane-divider:focus-visible {
+  outline: var(--mds-focus-width) solid var(--mds-accent);
+  outline-offset: 0;
+}
+.mosaic-ds.workspace-empty {
+  background: var(--mds-surface);
+  color: var(--mds-text-muted);
+  overflow: auto;
+}
+
+@container workspace-tabs (max-width: 220px) {
+  .mosaic-ds.workspace-tabbar .workspace-split-toggle {
+    display: none;
+  }
+}
+@container workspace-tabs (max-width: 160px) {
+  .mosaic-ds.workspace-tabbar .workspace-context-toggle {
+    display: none;
+  }
+}
+@container workspace-tabs (max-width: 120px) {
+  .mosaic-ds.workspace-tabbar .workspace-sidebar-toggle {
+    display: none;
+  }
+}
+
+@supports not (container-type: inline-size) {
+  @media (max-width: 520px) {
+    .mosaic-ds.workspace-tabbar :is(.workspace-split-toggle, .workspace-context-toggle) {
+      display: none;
+    }
+  }
+}

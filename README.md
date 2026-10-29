@@ -46,7 +46,7 @@ Links you click open in your browser.
 - **Plan:** an independent epic-swimlane Board and month/week/day Calendar. Drag planner cards between
   New, Blocked, In progress, In QA and Done; schedule multiple work sessions, create recurring local
   events, import/export `.ics`, and add read-only iCalendar overlays. Existing Markdown checkboxes stay
-  separate and can be copied into the planner only through a previewed, duplicate-safe import.
+  separate from planner tasks.
 - **AI workspace:** automatically saved chats per vault, model choices and attachments; manual,
   scheduled or note-created-event workflows with a guided setup, per-workflow models, allowed
   folders, pause controls, safe event chains and run details.

@@ -1,39 +1,22 @@
 import { useEffect, useState } from "react";
-import {
-  FilePlus,
-  FolderPlus,
-  FolderOpen,
-  Files,
-  Search,
-  Shapes,
-  Bot,
-  ChevronDown,
-  ChevronsDownUp,
-  PanelLeftClose,
-  Settings as Gear,
-  CalendarDays,
-} from "lucide-react";
-import { api, onIndexProgress, pickFolder, revealInFinder } from "./ipc/api";
+import { api, onIndexProgress } from "./ipc/api";
+import { Welcome } from "./views/Welcome";
+import { WindowChrome } from "./views/WindowChrome";
+import { DestinationNavigation } from "./views/DestinationNavigation";
+import { SidebarHeader } from "./views/SidebarHeader";
+import { DesignSystemScope } from "./views/DesignSystemScope";
+import { errorMessage } from "./ipc/types";
 import { useVault } from "./state/vault";
-import { FileTree } from "./views/FileTree";
+import { FileTree, FileTreeToolbar } from "./views/FileTree";
 import { Workspace } from "./views/Workspace";
 import { ConfirmDialog, ContextMenu, ErrorToast, PromptDialog } from "./views/Overlays";
-import {
-  createVault,
-  newNote,
-  newNoteDir,
-  NEW_KINDS,
-  newOfKind,
-  openDailyNote,
-  openVaultFolder,
-  revealInTree,
-} from "./actions";
+import { revealInTree } from "./actions";
 import { useShortcuts } from "./shortcuts";
-import { RIGHT_DEFAULT, SIDEBAR_DEFAULT, useUi, type MenuItem, type Destination } from "./state/ui";
+import { RIGHT_DEFAULT, SIDEBAR_DEFAULT, useUi } from "./state/ui";
 import { RightPanel } from "./views/RightPanel";
 import { QuickSwitcher } from "./views/QuickSwitcher";
 import { startBookmarkSync, startVaultSync } from "./sync";
-import { startUpdateListeners } from "./views/Settings";
+import { startUpdateListeners } from "./state/updates";
 import "./state/settings";
 import { Picker } from "./views/Picker";
 import { NewNoteDialog } from "./views/NewNoteDialog";
@@ -42,22 +25,32 @@ import { HistoryModal } from "./views/HistoryModal";
 import { AreaSidebar } from "./views/AreaSidebar";
 import { useWorkspace } from "./state/workspace";
 import { contextKind, isSpecialTab } from "./views/specialTabs";
-import { useChat } from "./state/chat";
-import { useAttention, startAttention } from "./state/attention";
+import { startAttention } from "./state/attention";
+import { WorkspaceNotices } from "./views/WorkspaceNotices";
 import { useReview } from "./state/review";
-import { shortcutOf } from "./commands";
 
 export function App() {
   const vault = useVault((s) => s.vault);
   const [booting, setBooting] = useState(true);
 
   useEffect(() => {
-    (async () => {
-      const current = await api.currentVault();
-      const last = current?.root ?? (await api.lastVault());
-      if (last) await useVault.getState().openVault(last);
-      setBooting(false);
+    let live = true;
+    void (async () => {
+      try {
+        const current = await api.currentVault();
+        if (!live) return;
+        const last = current?.root ?? (await api.lastVault());
+        if (!live) return;
+        if (last) await useVault.getState().openVault(last);
+      } catch (cause) {
+        if (live) useVault.getState().setError(errorMessage(cause));
+      } finally {
+        if (live) setBooting(false);
+      }
     })();
+    return () => {
+      live = false;
+    };
   }, []);
 
   useShortcuts();
@@ -83,7 +76,7 @@ export function App() {
     };
   }, []);
 
-  if (booting) return <div className="app-loading" data-tauri-drag-region />;
+  if (booting) return <Welcome loading />;
   return (
     <>
       {vault ? <Main /> : <Welcome />}
@@ -94,74 +87,9 @@ export function App() {
       <Picker />
       <NewNoteDialog />
       <HistoryModal />
-      <ErrorToast />
+      {vault && <ErrorToast />}
     </>
   );
-}
-
-async function chooseVault() {
-  const path = await pickFolder();
-  if (!path) return;
-  await useVault.getState().openVault(path);
-}
-
-function Welcome() {
-  return (
-    <main className="welcome" data-tauri-drag-region>
-      <img src="/icon.png" alt="" width={96} height={96} />
-      <h1>Mosaic</h1>
-      <p>Open a folder to use it as your vault. Existing Obsidian vaults work as they are.</p>
-      <div className="welcome-actions">
-        <button className="primary" onClick={() => void chooseVault()}>
-          <FolderOpen size={16} /> Open folder…
-        </button>
-        <button className="secondary" onClick={() => void createVault()}>
-          <FolderPlus size={16} /> Create new vault…
-        </button>
-      </div>
-    </main>
-  );
-}
-
-const TABS: { id: Destination; label: string; section: string; icon: typeof Files }[] = [
-  { id: "notes", label: "Files", section: "Files", icon: Files },
-  { id: "find", label: "Find", section: "Files", icon: Search },
-  { id: "plan", label: "Plan", section: "Plan", icon: CalendarDays },
-  { id: "ai", label: "AI", section: "AI", icon: Bot },
-];
-
-/** Dropdown under the vault name: recent vaults, open or create another, reveal in Finder. */
-async function showVaultMenu(anchor: DOMRect) {
-  const current = useVault.getState().vault;
-  const recent = await api.recentVaults().catch(() => []);
-  const others = recent.filter((v) => v.root !== current?.root);
-  const items: MenuItem[] = [
-    ...recent.map<MenuItem>((v) => ({
-      label: v.name,
-      detail: v.exists ? v.root.replace(/^\/Users\/[^/]+/, "~") : "Folder not found",
-      checked: v.root === current?.root,
-      disabled: !v.exists,
-      action: () => v.root !== current?.root && void useVault.getState().openVault(v.root),
-    })),
-    { label: "", separator: true },
-    { label: "Open folder as vault…", action: () => void openVaultFolder() },
-    { label: "Create new vault…", action: () => void createVault() },
-    { label: "", separator: true },
-    { label: "Reveal vault in Finder", action: () => void revealInFinder("") },
-    ...(others.length
-      ? [
-          {
-            label: "Remove from list",
-            children: others.map<MenuItem>((v) => ({
-              label: v.name,
-              detail: v.exists ? undefined : "Folder not found",
-              action: () => void api.forgetVault(v.root),
-            })),
-          },
-        ]
-      : []),
-  ];
-  useUi.getState().showMenu(anchor.left, anchor.bottom + 4, items);
 }
 
 function Main() {
@@ -173,14 +101,6 @@ function Main() {
   const sidebarWidth = useUi((s) => s.sidebarWidth);
   const rightWidth = useUi((s) => s.rightWidth);
   const indexing = useVault((s) => s.indexing);
-  const offline = useVault((s) => s.offline);
-  const unfinishedRenames = useVault((s) => s.unfinishedRenames);
-  const pendingReviews = useReview((s) => s.pending.length);
-  const chatAttention = useChat(
-    (s) =>
-      Object.values(s.chats).filter((c) => c.run === null && (c.items.at(-1)?.kind === "error" || c.noMosaic)).length,
-  );
-  const attention = useAttention((s) => s.count);
   const active = useWorkspace((s) => s.panes.find((p) => p.id === s.focused)?.active ?? null);
   useEffect(() => startAttention(), [vault.root]);
   useEffect(() => {
@@ -227,67 +147,9 @@ function Main() {
   useEffect(() => useReview.getState().watch(), [vault.root]);
   return (
     <div className={`shell ${left ? "" : "no-left"}`}>
-      <header className="window-chrome" data-tauri-drag-region>
-        <span className="window-title" data-tauri-drag-region>
-          Mosaic — {vault.name}
-        </span>
-        <span className="window-version" data-tauri-drag-region>
-          v{version || "—"}
-        </span>
-      </header>
+      <WindowChrome vaultName={vault.name} version={version} />
       <div className="shell-body">
-        <nav className="icon-bar" aria-label="Destinations" data-focus-region tabIndex={-1}>
-          <div role="tablist" aria-orientation="vertical" className="icon-bar-group">
-            {TABS.map((t, index) => (
-              <button
-                key={t.id}
-                data-section={t.section}
-                data-section-start={index > 0 && TABS[index - 1].section !== t.section ? "true" : undefined}
-                role="tab"
-                aria-selected={tab === t.id}
-                tabIndex={tab === t.id ? 0 : -1}
-                onKeyDown={(e) => {
-                  if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) return;
-                  e.preventDefault();
-                  const i = TABS.indexOf(t);
-                  const at =
-                    e.key === "Home"
-                      ? 0
-                      : e.key === "End"
-                        ? TABS.length - 1
-                        : (i + (e.key === "ArrowDown" ? 1 : -1) + TABS.length) % TABS.length;
-                  useUi.setState({ destination: TABS[at].id, leftSidebar: true });
-                  (e.currentTarget.parentElement?.children[at] as HTMLElement)?.focus();
-                }}
-                aria-label={t.label}
-                title={left && tab === t.id ? `${t.label} — click to hide the sidebar` : t.label}
-                className={tab === t.id ? "active" : ""}
-                onClick={() => ui().selectDestination(t.id)}
-              >
-                <t.icon size={18} />
-                {t.id === "ai" && pendingReviews + attention + chatAttention > 0 && (
-                  <span
-                    className="tab-badge"
-                    aria-label={`${pendingReviews + attention + chatAttention} need attention`}
-                  >
-                    {pendingReviews + attention + chatAttention}
-                  </span>
-                )}
-              </button>
-            ))}
-          </div>
-          <button
-            data-section="Settings"
-            data-section-start="true"
-            className={active === "mosaic:settings" ? "active" : ""}
-            aria-pressed={active === "mosaic:settings"}
-            title={`Settings (${shortcutOf("settings")})`}
-            aria-label="Settings"
-            onClick={() => ui().openSettings()}
-          >
-            <Gear size={18} />
-          </button>
-        </nav>
+        <DestinationNavigation />
         {left && (
           <aside
             className="sidebar"
@@ -296,80 +158,18 @@ function Main() {
             data-focus-region
             tabIndex={-1}
           >
-            <div className="sidebar-head">
-              <button
-                className="vault-name"
-                title={`${vault.root}\nSwitch, open or create a vault`}
-                aria-haspopup="menu"
-                onClick={(e) => void showVaultMenu(e.currentTarget.getBoundingClientRect())}
-              >
-                <span>{vault.name}</span>
-                <ChevronDown size={13} />
-              </button>
-              <button
-                className="head-button"
-                aria-label="Hide sidebar"
-                title={`Hide sidebar (${shortcutOf("toggle-left")})`}
-                onClick={() => ui().toggleLeftSidebar()}
-              >
-                <PanelLeftClose size={16} />
-              </button>
-            </div>
+            <SidebarHeader key={vault.root} vault={vault} />
             {tab === "notes" && (
               <>
-                <div className="tree-toolbar">
-                  <button
-                    aria-label="New note"
-                    title={`New note (${shortcutOf("new-note")})`}
-                    onClick={() => void newNote(newNoteDir())}
-                  >
-                    <FilePlus size={15} />
-                  </button>
-                  <button
-                    aria-label="New…"
-                    title="New diagram, drawing, chart or graph"
-                    onClick={(e) => {
-                      const r = e.currentTarget.getBoundingClientRect();
-                      ui().showMenu(
-                        r.left,
-                        r.bottom + 4,
-                        NEW_KINDS.map((k) => ({ label: k.label, action: () => void newOfKind("", k) })),
-                      );
-                    }}
-                  >
-                    <Shapes size={15} />
-                  </button>
-                  <button
-                    aria-label="New folder"
-                    title={`New folder (${shortcutOf("new-folder")})`}
-                    onClick={() => void useVault.getState().newFolder("")}
-                  >
-                    <FolderPlus size={15} />
-                  </button>
-                  <button
-                    aria-label="Today's note"
-                    title={`Open today's daily note (${shortcutOf("daily-note")})`}
-                    onClick={() => void openDailyNote()}
-                  >
-                    <CalendarDays size={15} />
-                  </button>
-                  <span className="spacer" />
-                  <button
-                    aria-label="Collapse all folders"
-                    title="Collapse all folders"
-                    onClick={() => useVault.setState({ expanded: new Set() })}
-                  >
-                    <ChevronsDownUp size={15} />
-                  </button>
-                </div>
+                <FileTreeToolbar />
                 <FileTree />
               </>
             )}
             {tab !== "notes" && <AreaSidebar destination={tab} />}
             {indexing && (
-              <div className="status">
+              <DesignSystemScope className="sidebar-indexing" role="status">
                 Indexing {indexing.done.toLocaleString()} / {indexing.total.toLocaleString()}
-              </div>
+              </DesignSystemScope>
             )}
             <Resizer
               side="right"
@@ -381,27 +181,7 @@ function Main() {
           </aside>
         )}
         <main className="main">
-          {offline && (
-            <div className="notice warn" role="alert">
-              <span>
-                The vault folder is unavailable (disk ejected or folder moved). Unsaved changes are kept in memory.
-              </span>
-              <button onClick={() => void useVault.getState().openVault(vault.root)}>Retry</button>
-            </div>
-          )}
-          {vault.history_warning && (
-            <div className="notice warn" role="alert">
-              <span>{vault.history_warning}</span>
-            </div>
-          )}
-          {unfinishedRenames.map((op) => (
-            <div key={op.id} className="notice warn" role="alert">
-              <span>
-                Moving {op.from} to {op.to} didn't finish: some links may still point to the old name.
-              </span>
-              <button onClick={() => void useVault.getState().fixLinks(op.id)}>Fix links</button>
-            </div>
-          ))}
+          <WorkspaceNotices />
           <Workspace />
         </main>
         {right && contextKind(active) && (

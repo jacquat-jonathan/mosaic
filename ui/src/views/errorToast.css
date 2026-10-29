@@ -1,0 +1,27 @@
+.mosaic-ds.error-toast-scope {
+  position: fixed;
+  z-index: 70;
+  inset-inline: 16px;
+  bottom: 16px;
+  max-width: 600px;
+  margin-inline: auto;
+  color: var(--mds-text);
+  box-shadow: var(--mds-shadow-floating);
+  border-radius: var(--mds-radius-control);
+  overflow: hidden;
+}
+.mosaic-ds.error-toast-scope .mds-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--mds-space-5);
+  border: 0;
+}
+.mosaic-ds.error-toast-scope .mds-notice > span {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  align-self: center;
+}
+.mosaic-ds.error-toast-scope .mds-icon-button {
+  flex: none;
+}

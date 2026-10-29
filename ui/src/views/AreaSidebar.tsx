@@ -1,7 +1,8 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { Bot, CalendarClock, Inbox, ListChecks, MessagesSquare, Plug, Workflow } from "lucide-react";
+import { useVault } from "../state/vault";
 import { useUi, type Destination } from "../state/ui";
-import { useChat, chatGroup } from "../state/chat";
+import { ChatList } from "./ChatHistory";
 import { useWorkspace } from "../state/workspace";
 import { useAttention } from "../state/attention";
 import { useReview } from "../state/review";
@@ -9,14 +10,21 @@ import { SearchPanel } from "./SearchPanel";
 import { TagsPanel } from "./TagsPanel";
 import { BookmarksPanel } from "./BookmarksPanel";
 import { viewPath, parseView } from "./specialTabs";
+import { Button, SegmentedControl } from "../design-system/components";
+import { DesignSystemScope } from "./DesignSystemScope";
+import "./sidebarNavigation.css";
+
+export { ChatList } from "./ChatHistory";
 
 export function AreaSidebar({ destination }: { destination: Destination }) {
   const tab = useUi((s) => s.sidebarTab);
+  const root = useVault((s) => s.vault?.root);
   const open = useUi.getState().openView;
+  const active = useWorkspace((state) => state.panes.find((pane) => pane.id === state.focused)?.active);
   if (destination === "find")
     return (
       <>
-        <div className="area-nav" aria-label="Find views">
+        <DesignSystemScope as="nav" className="area-nav find-navigation" aria-label="Find views">
           {(
             [
               ["search", "Search"],
@@ -24,26 +32,52 @@ export function AreaSidebar({ destination }: { destination: Destination }) {
               ["tags", "Tags"],
             ] as const
           ).map(([id, title]) => (
-            <button key={id} aria-pressed={tab === id} onClick={() => useUi.getState().setSidebarTab(id)}>
+            <Button
+              className="area-link"
+              key={id}
+              aria-pressed={(tab === "tags" || tab === "bookmarks" ? tab : "search") === id}
+              onClick={() => useUi.getState().setSidebarTab(id)}
+            >
               {title}
-            </button>
+            </Button>
           ))}
-          <button onClick={() => open("search")}>Open search in workspace</button>
-        </div>
-        {tab === "tags" ? <TagsPanel /> : tab === "bookmarks" ? <BookmarksPanel /> : <SearchPanel />}
+          <Button className="area-link" onClick={() => open("search")}>
+            Open search in workspace
+          </Button>
+        </DesignSystemScope>
+        {tab === "tags" ? (
+          <TagsPanel key={root} />
+        ) : tab === "bookmarks" ? (
+          <BookmarksPanel key={root} />
+        ) : (
+          <SearchPanel key={root} />
+        )}
       </>
     );
   if (destination === "plan")
     return (
-      <nav className="area-nav" aria-label="Plan views">
-        <button onClick={() => open("board")}>Board</button>
-        <button onClick={() => open("calendar")}>Calendar</button>
-        <p className="panel-meta">Markdown task queries remain available through Search and query blocks.</p>
-      </nav>
+      <DesignSystemScope as="nav" className="area-nav plan-navigation" aria-label="Plan views">
+        <Button
+          className="area-link"
+          aria-current={active === viewPath("board") ? "page" : undefined}
+          onClick={() => open("board")}
+        >
+          Board
+        </Button>
+        <Button
+          className="area-link"
+          aria-current={active && ["calendar", "week", "today"].includes(parseView(active).kind) ? "page" : undefined}
+          onClick={() => open("calendar")}
+        >
+          Calendar
+        </Button>
+        <p className="mds-hint">Markdown task queries remain available through Search and query blocks.</p>
+      </DesignSystemScope>
     );
   return <AiSidebar />;
 }
 export function AiSidebar() {
+  const newChat = useRef<HTMLButtonElement>(null);
   const open = useUi.getState().openView;
   const section = useUi((s) => s.aiSection);
   const active = useWorkspace((s) => s.panes.find((p) => p.id === s.focused)?.active);
@@ -59,36 +93,42 @@ export function AiSidebar() {
   const agents = useAttention((s) => s.agents);
   const pending = useReview((s) => s.pending.length);
   const disconnected = useAttention((s) => s.disconnected);
-  const chats = useChat((s) => s.chats);
   const item = (kind: string, label: string, Icon: typeof Workflow, id?: string) => (
-    <button
+    <Button
+      className="area-link"
       key={kind + (id ?? "")}
       aria-current={
         active === viewPath(kind, id) || (kind === "runs" && active?.startsWith("mosaic:run/")) ? "page" : undefined
       }
       onClick={() => open(kind, id)}
     >
-      <Icon size={15} /> <span>{label}</span>
-    </button>
+      <Icon size={16} aria-hidden="true" /> <span>{label}</span>
+    </Button>
   );
   return (
-    <nav className="area-nav ai-nav" aria-label="AI views">
-      <div className="ai-section-switch" role="group" aria-label="AI sidebar section">
-        {(["chats", "automations"] as const).map((value) => (
-          <button key={value} aria-pressed={section === value} onClick={() => useUi.getState().setAiSection(value)}>
-            {value === "chats" ? "Chats" : "Automations"}
-          </button>
-        ))}
-      </div>
+    <DesignSystemScope as="nav" className="area-nav ai-nav" aria-label="AI views">
+      <SegmentedControl
+        label="AI sidebar section"
+        value={section}
+        options={[
+          { value: "chats", label: "Chats" },
+          { value: "automations", label: "Automations" },
+        ]}
+        onChange={(value) => useUi.getState().setAiSection(value)}
+      />
       <div className="ai-section-content">
         {section === "chats" ? (
           <>
-            <button className="primary ai-new-chat" onClick={() => useUi.getState().showChat()}>
+            <Button
+              variant="secondary"
+              ref={newChat}
+              className="area-link ai-new-chat"
+              onClick={() => useUi.getState().showChat()}
+            >
               + New chat
-            </button>
+            </Button>
             {item("chats", "All chats", MessagesSquare)}
-            <ChatList />
-            {!Object.keys(chats).length && <p className="panel-meta">Your saved conversations appear here.</p>}
+            <ChatList fallback={newChat} inheritScope />
           </>
         ) : (
           <>
@@ -110,75 +150,6 @@ export function AiSidebar() {
         {item("agents", "Agent library", Bot)}
         {item("connections", `Connections${disconnected ? " · Disconnected" : ""}`, Plug)}
       </details>
-    </nav>
-  );
-}
-export function ChatList() {
-  const active = useWorkspace((s) => s.panes.find((p) => p.id === s.focused)?.active);
-  const chats = useChat((s) => s.chats);
-  return (
-    <>
-      {["Today", "Previous 7 days", "Older"].map((group) => {
-        const list = Object.values(chats)
-          .filter((c) => chatGroup(c.updated) === group)
-          .sort((a, b) => b.updated - a.updated);
-        return list.length ? (
-          <details key={group} open={group !== "Older"}>
-            <summary>{group}</summary>
-            {list.map((c) => (
-              <div className="chat-nav-row" key={c.id}>
-                <button
-                  aria-current={active === viewPath("chat", c.id) ? "page" : undefined}
-                  onClick={() => useUi.getState().openView("chat", c.id)}
-                >
-                  {c.title}
-                  {c.run !== null
-                    ? " · Running"
-                    : c.items.at(-1)?.kind === "error"
-                      ? " · Failed"
-                      : c.noMosaic
-                        ? " · Tools disconnected"
-                        : ""}
-                </button>
-                <button
-                  aria-label={`Actions for ${c.title}`}
-                  onClick={(e) => {
-                    const r = e.currentTarget.getBoundingClientRect();
-                    useUi.getState().showMenu(r.left, r.bottom, [
-                      {
-                        label: "Rename",
-                        action: async () => {
-                          const title = await useUi.getState().askText({ title: "Rename chat", value: c.title });
-                          if (title?.trim()) useChat.getState().update(c.id, { title: title.trim() });
-                        },
-                      },
-                      {
-                        label: "Delete chat",
-                        danger: true,
-                        action: async () => {
-                          if (
-                            !(await useUi
-                              .getState()
-                              .ask({ title: "Delete chat?", body: c.title, confirmLabel: "Delete", danger: true }))
-                          )
-                            return;
-                          useChat.getState().remove(c.id);
-                          const ws = useWorkspace.getState();
-                          for (const pane of ws.panes)
-                            if (pane.tabs.includes(viewPath("chat", c.id)))
-                              ws.closeTab(pane.id, viewPath("chat", c.id));
-                        },
-                      },
-                    ]);
-                  }}
-                >
-                  ⋯
-                </button>
-              </div>
-            ))}
-          </details>
-        ) : null;
-      })}
-    </>
+    </DesignSystemScope>
   );
 }

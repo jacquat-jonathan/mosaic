@@ -12,7 +12,7 @@ vi.mock("./CalendarView", () => ({
   CalendarView: ({ initialMode }: { initialMode?: string }) => <div>calendar:{initialMode}</div>,
 }));
 vi.mock("./ChatPanel", () => ({ ChatPanel: ({ id }: { id: string }) => <div>chat:{id}</div> }));
-vi.mock("./AreaSidebar", () => ({ ChatList: () => <div>chat-list</div> }));
+vi.mock("./ChatHistory", () => ({ ChatHistoryPage: () => <div>Chats</div> }));
 vi.mock("./Workflows", () => ({
   Workflows: ({ name, runsOnly, agentsOnly }: { name?: string; runsOnly?: boolean; agentsOnly?: boolean }) => (
     <div>
@@ -22,8 +22,8 @@ vi.mock("./Workflows", () => ({
   WorkflowForm: () => <div>workflow-form</div>,
   RunDetail: ({ id }: { id: string }) => <div>run:{id}</div>,
 }));
-vi.mock("./ActivityPanel", () => ({ ActivityPanel: () => <div>activity-panel</div> }));
-vi.mock("./ConnectAi", () => ({ ConnectAiSection: () => <div>connect-ai</div> }));
+vi.mock("./ActivityPanel", () => ({ ActivityPanel: () => <div>Activity &amp; review</div> }));
+vi.mock("./ConnectAi", () => ({ ConnectAiSection: () => <div>Connections</div> }));
 vi.mock("./Settings", () => ({ Settings: () => <div>settings</div> }));
 vi.mock("./SearchPanel", () => ({ SearchPanel: () => <div>search</div> }));
 vi.mock("./TaskBoard", () => ({ TaskBoard: () => <div>task-board</div> }));
@@ -95,15 +95,16 @@ test("queries task views, toggles tasks and opens their notes", async () => {
 
 test("covers saved, overdue, project, generic and empty task queries", async () => {
   vi.spyOn(api, "query").mockResolvedValue({ columns: [], rows: [], total: 0 });
-  for (const [path, heading] of [
-    ["mosaic:planning/mine", "My planning"],
-    ["mosaic:overdue", "Overdue"],
-    ["mosaic:projects", "Project tasks"],
-    ["mosaic:tasks", "Tasks"],
+  for (const [path, heading, expectedQuery] of [
+    ["mosaic:planning/mine", "My planning", "task:open tag:mine"],
+    ["mosaic:overdue", "Overdue", "task:open due<today sort:due limit:1000"],
+    ["mosaic:projects", "Project tasks", "task:open tag:project sort:due limit:1000"],
+    ["mosaic:tasks", "Tasks", "task:open sort:due limit:1000"],
   ]) {
     const view = render(<SpecialView path={path} />);
     expect(await screen.findByRole("heading", { name: heading })).toBeTruthy();
     expect(await screen.findByText(/No tasks match this view/)).toBeTruthy();
+    expect(api.query).toHaveBeenCalledWith(expectedQuery);
     view.unmount();
   }
 

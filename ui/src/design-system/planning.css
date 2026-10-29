@@ -1,0 +1,298 @@
+/* Board and Calendar presentation. Consumer-owned drag/drop and date calculations stay outside. */
+.mosaic-ds .mds-board-grid {
+  display: grid;
+  grid-auto-columns: minmax(180px, 1fr);
+  grid-auto-flow: column;
+  gap: var(--mds-space-5);
+  overflow: auto;
+  padding: var(--mds-space-2);
+  min-width: 0;
+}
+.mosaic-ds .mds-board-column {
+  min-width: 0;
+  border: 1px solid var(--mds-border);
+  border-radius: var(--mds-radius-control);
+  background: var(--mds-surface-subtle);
+}
+.mosaic-ds .mds-board-column > header,
+.mosaic-ds .mds-task-tray > header,
+.mosaic-ds .mds-epic-header {
+  display: flex;
+  align-items: center;
+  gap: var(--mds-space-4);
+  padding: var(--mds-space-5);
+}
+.mosaic-ds .mds-board-column > header > :is(h3, h4),
+.mosaic-ds .mds-task-tray h3,
+.mosaic-ds .mds-epic-header > :is(h2, h3) {
+  margin: 0;
+  font-size: var(--mds-text-body);
+  font-weight: var(--mds-weight-strong);
+  overflow-wrap: anywhere;
+}
+.mosaic-ds .mds-board-column > header > .mds-badge {
+  margin-left: auto;
+}
+.mosaic-ds .mds-board-column-body,
+.mosaic-ds .mds-task-tray-body {
+  display: grid;
+  align-content: start;
+  gap: var(--mds-space-4);
+  padding: var(--mds-space-5);
+}
+.mosaic-ds .mds-board-card {
+  display: grid;
+  gap: var(--mds-space-4);
+  min-width: 0;
+  padding: var(--mds-space-6);
+  border: 1px solid var(--mds-border);
+  border-radius: var(--mds-radius-control);
+  background: var(--mds-surface);
+}
+.mosaic-ds .mds-board-card[draggable="true"] {
+  cursor: grab;
+}
+.mosaic-ds .mds-board-card[data-dragging] {
+  opacity: var(--mds-disabled-opacity);
+}
+.mosaic-ds .mds-board-card[data-selected],
+.mosaic-ds .mds-board-column[data-drop-target] {
+  border-color: var(--mds-accent);
+}
+.mosaic-ds .mds-board-card-title {
+  justify-content: flex-start;
+  padding: 0;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  font-weight: var(--mds-weight-strong);
+}
+.mosaic-ds .mds-board-card p {
+  margin: 0;
+  font-size: var(--mds-text-hint);
+  overflow-wrap: anywhere;
+}
+.mosaic-ds .mds-planning-meta {
+  font-size: var(--mds-text-small);
+  color: var(--mds-text-muted);
+  overflow-wrap: anywhere;
+}
+.mosaic-ds .mds-board-card footer,
+.mosaic-ds .mds-epic-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--mds-space-3);
+}
+.mosaic-ds .mds-board-drop {
+  border: 1px dashed var(--mds-border);
+  border-radius: var(--mds-radius-control);
+  padding: var(--mds-space-6);
+  color: var(--mds-text-muted);
+  font-size: var(--mds-text-small);
+}
+.mosaic-ds .mds-board-drop[data-active] {
+  border-color: var(--mds-accent);
+  background: var(--mds-surface-selected);
+  color: var(--mds-text);
+}
+.mosaic-ds .mds-epic-header {
+  flex-wrap: wrap;
+  border-left: var(--mds-space-2) solid var(--mds-planning-color);
+  border-radius: var(--mds-radius-group);
+  background: var(--mds-surface-subtle);
+}
+.mosaic-ds .mds-epic-actions {
+  margin-left: auto;
+}
+.mosaic-ds .mds-epic-lane {
+  min-width: 0;
+  border-radius: var(--mds-radius-group);
+}
+.mosaic-ds .mds-epic-lane[draggable="true"] {
+  cursor: grab;
+}
+.mosaic-ds .mds-epic-lane[data-dragging] {
+  opacity: var(--mds-disabled-opacity);
+}
+.mosaic-ds .mds-epic-lane[data-drop-position="before"] {
+  box-shadow: 0 calc(-1 * var(--mds-space-2)) 0 var(--mds-accent);
+}
+.mosaic-ds .mds-epic-lane[data-drop-position="after"] {
+  box-shadow: 0 var(--mds-space-2) 0 var(--mds-accent);
+}
+.mosaic-ds .mds-calendar-chooser {
+  position: relative;
+  max-width: 100%;
+}
+.mosaic-ds .mds-calendar-layers {
+  position: absolute;
+  top: calc(100% + var(--mds-space-2));
+  left: 0;
+  z-index: 10;
+  width: min(280px, 75vw);
+  display: grid;
+  gap: var(--mds-space-4);
+  padding: var(--mds-space-6);
+  border: 1px solid var(--mds-border);
+  border-radius: var(--mds-radius-menu);
+  background: var(--mds-surface);
+  box-shadow: var(--mds-shadow-floating);
+}
+.mosaic-ds .mds-calendar-layers label {
+  display: flex;
+  align-items: center;
+  gap: var(--mds-space-4);
+  overflow-wrap: anywhere;
+}
+.mosaic-ds .mds-calendar-layers label > span:not(.mds-planning-dot) {
+  flex: 1;
+  min-width: 0;
+}
+.mosaic-ds .mds-calendar-layers input[type="checkbox"] {
+  margin: 0;
+  width: var(--mds-icon-size);
+  height: var(--mds-icon-size);
+  flex: none;
+  accent-color: var(--mds-accent);
+}
+.mosaic-ds .mds-planning-dot {
+  width: var(--mds-space-4);
+  height: var(--mds-space-4);
+  flex: none;
+  border-radius: 50%;
+  background: var(--mds-planning-color);
+}
+.mosaic-ds .mds-calendar-layers footer {
+  display: grid;
+  gap: var(--mds-space-2);
+  border-top: 1px solid var(--mds-border);
+  padding-top: var(--mds-space-4);
+}
+.mosaic-ds .mds-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--mds-calendar-columns), minmax(150px, 1fr));
+  gap: var(--mds-space-4);
+  overflow: auto;
+  padding: var(--mds-space-2);
+  min-width: 0;
+}
+.mosaic-ds .mds-calendar-day {
+  min-width: 0;
+  border: 1px solid var(--mds-border);
+  border-radius: var(--mds-radius-control);
+  background: var(--mds-surface);
+  padding: var(--mds-space-4);
+}
+.mosaic-ds .mds-calendar-day[data-today] {
+  border-color: var(--mds-accent);
+}
+.mosaic-ds .mds-calendar-day-heading {
+  width: 100%;
+  justify-content: flex-start;
+  font-weight: var(--mds-weight-strong);
+  margin-bottom: var(--mds-space-4);
+}
+.mosaic-ds .mds-calendar-day-heading[aria-pressed="true"] {
+  background: var(--mds-surface-selected);
+}
+.mosaic-ds .mds-calendar-day-items {
+  display: grid;
+  gap: var(--mds-space-3);
+  min-height: 80px;
+  align-content: start;
+}
+.mosaic-ds .mds-calendar-chip {
+  display: grid;
+  gap: var(--mds-space-1);
+  width: 100%;
+  min-width: 0;
+  padding: var(--mds-space-4);
+  border: 1px solid var(--mds-border);
+  border-left: var(--mds-space-2) solid var(--mds-planning-color);
+  border-radius: var(--mds-radius-item);
+  background: var(--mds-surface-subtle);
+  color: var(--mds-text);
+  font: var(--mds-text-small) / var(--mds-leading) var(--mds-font-ui);
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.mosaic-ds .mds-calendar-chip strong {
+  font-weight: var(--mds-weight-strong);
+}
+.mosaic-ds .mds-calendar-chip:hover:not(:disabled),
+.mosaic-ds .mds-calendar-chip[data-selected] {
+  background: var(--mds-surface-selected);
+}
+.mosaic-ds .mds-calendar-chip--session {
+  border-left-style: dashed;
+}
+.mosaic-ds .mds-calendar-chip--due {
+  border-left-color: var(--mds-danger);
+}
+.mosaic-ds .mds-calendar-chip-kind,
+.mosaic-ds .mds-calendar-chip-time {
+  color: var(--mds-text-muted);
+}
+.mosaic-ds .mds-calendar-chip-kind svg {
+  vertical-align: middle;
+}
+.mosaic-ds .mds-calendar-chip:disabled {
+  opacity: var(--mds-disabled-opacity);
+}
+.mosaic-ds .mds-board-grid:focus-visible,
+.mosaic-ds .mds-calendar-grid:focus-visible,
+.mosaic-ds .mds-calendar-chip:focus-visible,
+.mosaic-ds .mds-calendar-layers input:focus-visible {
+  outline: var(--mds-focus-width) solid var(--mds-accent);
+  outline-offset: var(--mds-focus-offset);
+}
+.mosaic-ds .mds-task-tray {
+  min-width: 0;
+  border: 1px solid var(--mds-border);
+  border-radius: var(--mds-radius-group);
+  background: var(--mds-surface-subtle);
+}
+.mosaic-ds .mds-task-tray-group h4 {
+  display: flex;
+  align-items: center;
+  gap: var(--mds-space-4);
+  margin: var(--mds-space-4) 0;
+  font-size: var(--mds-text-hint);
+  font-weight: var(--mds-weight-strong);
+  overflow-wrap: anywhere;
+}
+.mosaic-ds .mds-task-tray-group > div {
+  display: grid;
+  gap: var(--mds-space-3);
+}
+.mosaic-ds .mds-task-tray-item {
+  display: grid;
+  justify-content: stretch;
+  gap: var(--mds-space-2);
+  padding: var(--mds-space-5);
+  background: var(--mds-surface);
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.mosaic-ds .mds-task-tray-item strong {
+  font-weight: var(--mds-weight-strong);
+}
+.mosaic-ds .mds-planning-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.mosaic-ds[data-density="compact"] .mds-board-card,
+.mosaic-ds[data-density="compact"] .mds-calendar-chip,
+.mosaic-ds[data-density="compact"] .mds-task-tray-item,
+.mosaic-ds [data-density="compact"] .mds-board-card,
+.mosaic-ds [data-density="compact"] .mds-calendar-chip,
+.mosaic-ds [data-density="compact"] .mds-task-tray-item {
+  padding: var(--mds-space-4);
+}

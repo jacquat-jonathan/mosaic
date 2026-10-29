@@ -57,6 +57,7 @@ export function WeekView({
   today,
   show,
   selectedRange,
+  designSystem = false,
   onEvent,
   onSession,
   onOverlay,
@@ -77,6 +78,7 @@ export function WeekView({
   today: string;
   show: { events: boolean; sessions: boolean; due: boolean };
   selectedRange: SelectedRange | null;
+  designSystem?: boolean;
   onEvent(id: string, key: string): void;
   onSession(session: PlannerWorkSession): void;
   onOverlay(item: CalendarOverlayOccurrence): void;
@@ -339,6 +341,9 @@ export function WeekView({
               {HOURS.map((hour) => (
                 <button
                   className="planner-hour-cell"
+                  onClick={(event) => {
+                    if (event.detail === 0) onEmptyRange(day, hour, hour + 1);
+                  }}
                   aria-label={`Create event ${day} ${hourLabel(hour)}`}
                   key={hour}
                   data-selecting={active && hour >= active.start && hour < active.end ? "true" : undefined}
@@ -380,6 +385,7 @@ export function WeekView({
                   key={item.id}
                   item={item}
                   hourHeight={hourHeight}
+                  designSystem={designSystem}
                   onEvent={onEvent}
                   onSession={onSession}
                   onOverlay={onOverlay}
@@ -467,6 +473,7 @@ function SessionChip({
 
 function TimedItem({
   item,
+  designSystem,
   hourHeight,
   onEvent,
   onSession,
@@ -480,6 +487,7 @@ function TimedItem({
   onSessionMenu,
 }: {
   item: ReturnType<typeof timedLayout>[number];
+  designSystem: boolean;
   hourHeight: number;
   onEvent(id: string, key: string): void;
   onSession(session: PlannerWorkSession): void;
@@ -568,7 +576,7 @@ function TimedItem({
       <div
         role="button"
         tabIndex={0}
-        className={`planner-timed-item event${height >= MIN_MULTILINE_TITLE_HEIGHT ? " multiline-title" : ""}`}
+        className={`planner-timed-item event${height >= (designSystem ? 40 : MIN_MULTILINE_TITLE_HEIGHT) ? " multiline-title" : ""}`}
         draggable
         style={style}
         onDragStart={(drag) => {
@@ -589,7 +597,7 @@ function TimedItem({
         }}
         onClick={() => onEvent(event.series_id, event.occurrence_key)}
         onKeyDown={(key) => {
-          if (key.key === "Enter" || key.key === " ") {
+          if (key.target === key.currentTarget && (key.key === "Enter" || key.key === " ")) {
             key.preventDefault();
             onEvent(event.series_id, event.occurrence_key);
           }
@@ -604,7 +612,7 @@ function TimedItem({
     const overlay = item.overlay as CalendarOverlayOccurrence;
     return (
       <button
-        className={`planner-timed-item overlay${height >= MIN_MULTILINE_TITLE_HEIGHT ? " multiline-title" : ""}`}
+        className={`planner-timed-item overlay${height >= (designSystem ? 40 : MIN_MULTILINE_TITLE_HEIGHT) ? " multiline-title" : ""}`}
         style={style}
         onClick={() => onOverlay(overlay)}
       >
@@ -634,7 +642,7 @@ function TimedItem({
       }}
       onClick={() => onSession(session.session)}
       onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
+        if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) {
           event.preventDefault();
           onSession(session.session);
         }

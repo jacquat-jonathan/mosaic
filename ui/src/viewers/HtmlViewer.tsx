@@ -2,9 +2,14 @@ import { useEffect, useMemo, useState } from "react";
 import { Globe2, Minus, Plus, RotateCcw, ShieldAlert, ShieldCheck, WifiOff } from "lucide-react";
 import type { Buffer } from "../state/workspace";
 import { api, fileUrl, htmlPreviewDocumentUrl } from "../ipc/api";
-import { parentOf } from "../state/vault";
+import { parentOf, useVault } from "../state/vault";
+import { errorMessage } from "../ipc/types";
+import { Button, IconButton, Notice, SegmentedControl } from "../design-system/components";
+import { DesignSystemScope } from "../views/DesignSystemScope";
+import "./htmlControls.css";
+import "./documentStates.css";
 import { CodeEditor } from "./CodeEditor";
-import { Segmented, Toolbar } from "./Toolbar";
+import { DocumentToolbar } from "./Toolbar";
 import { useVaultPreferences } from "../state/vaultPreferences";
 import { renderMermaid } from "../editor/render";
 import { sanitizeMermaidSvg } from "../sanitizeSvg";
@@ -252,6 +257,9 @@ export function HtmlViewer({ buffer }: { buffer: Buffer }) {
   const internetAllowed = networkChoice === true;
   const [zoom, setZoom] = useState(1);
   // Each built document gets a fresh iframe: swapping srcdoc on a live sandboxed frame can leave it blank.
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [retry, setRetry] = useState(0);
+  const [loading, setLoading] = useState(true);
   const [doc, setDoc] = useState<{ url: string; seq: number } | null>(null);
 
   useEffect(() => {
@@ -267,15 +275,26 @@ export function HtmlViewer({ buffer }: { buffer: Buffer }) {
   useEffect(() => {
     if (mode !== "preview") return;
     let live = true;
-    void sandboxedDoc(buffer.path, content, scripts, internetAllowed ? requestedOrigins : [])
-      .then(htmlPreviewDocumentUrl)
-      .then((url) => {
-        if (live) setDoc((prev) => ({ url, seq: (prev?.seq ?? 0) + 1 }));
-      });
+    const current = () => live && useVault.getState().vault?.root === vaultRoot;
+    setDoc(null);
+    setPreviewError(null);
+    setLoading(true);
+    void (async () => {
+      try {
+        const html = await sandboxedDoc(buffer.path, content, scripts, internetAllowed ? requestedOrigins : []);
+        if (!current()) return;
+        const url = await htmlPreviewDocumentUrl(html);
+        if (current()) setDoc((prev) => ({ url, seq: (prev?.seq ?? 0) + 1 }));
+      } catch (cause) {
+        if (current()) setPreviewError(errorMessage(cause));
+      } finally {
+        if (current()) setLoading(false);
+      }
+    })();
     return () => {
       live = false;
     };
-  }, [buffer.path, content, scripts, internetAllowed, requestedOrigins, mode]);
+  }, [buffer.path, content, scripts, internetAllowed, requestedOrigins, mode, retry, vaultRoot]);
 
   useEffect(() => setZoom(1), [buffer.path]);
 
@@ -294,8 +313,9 @@ export function HtmlViewer({ buffer }: { buffer: Buffer }) {
 
   return (
     <div className="viewer">
-      <Toolbar>
-        <Segmented<"preview" | "source">
+      <DocumentToolbar label="HTML controls">
+        <SegmentedControl<"preview" | "source">
+          label="HTML view"
           value={mode}
           onChange={setMode}
           options={[
@@ -306,62 +326,87 @@ export function HtmlViewer({ buffer }: { buffer: Buffer }) {
         <span className="spacer" />
         {mode === "preview" && (
           <>
-            <div className="html-zoom" aria-label="HTML preview zoom">
-              <button
-                aria-label="Zoom out"
+            <div className="html-zoom" role="group" aria-label="HTML preview zoom">
+              <IconButton
+                label="Zoom out"
                 title="Zoom out"
                 disabled={zoom <= HTML_ZOOM_MIN}
                 onClick={() => setZoom((value) => clampHtmlZoom(value - HTML_ZOOM_STEP))}
               >
                 <Minus size={14} />
-              </button>
-              <button aria-label="Reset zoom" title="Reset zoom" onClick={() => setZoom(1)}>
+              </IconButton>
+              <Button aria-label="Reset zoom" title="Reset zoom" onClick={() => setZoom(1)}>
                 <RotateCcw size={13} />
                 <span>{Math.round(zoom * 100)}%</span>
-              </button>
-              <button
-                aria-label="Zoom in"
+              </Button>
+              <IconButton
+                label="Zoom in"
                 title="Zoom in"
                 disabled={zoom >= HTML_ZOOM_MAX}
                 onClick={() => setZoom((value) => clampHtmlZoom(value + HTML_ZOOM_STEP))}
               >
                 <Plus size={14} />
-              </button>
+              </IconButton>
             </div>
-            <button
+            <Button
               className={scripts ? "warn-toggle on" : "warn-toggle"}
               onClick={toggleScripts}
+              aria-pressed={scripts}
               title="Override the vault setting for this page until Mosaic quits. Internet access is controlled separately."
             >
               {scripts ? <ShieldAlert size={14} /> : <ShieldCheck size={14} />}
               {permission.label}
-            </button>
+            </Button>
             {networkChoice !== undefined && (
-              <button
+              <Button
                 className={internetAllowed ? "warn-toggle on" : "warn-toggle"}
                 onClick={() => chooseInternet(!internetAllowed)}
+                aria-pressed={internetAllowed}
                 title={`${internetAllowed ? "Block" : "Allow"} the listed internet origins for this page content until Mosaic quits: ${requestedOrigins.join(", ")}`}
               >
                 {internetAllowed ? <Globe2 size={14} /> : <WifiOff size={14} />}
                 {internetAllowed ? "Internet allowed for this page" : "Internet blocked for this page"}
-              </button>
+              </Button>
             )}
           </>
         )}
-      </Toolbar>
+      </DocumentToolbar>
       {mode === "preview" && contentHash !== null && requestedOrigins.length > 0 && networkChoice === undefined && (
-        <div className="notice warn html-network-prompt" role="alert" aria-label="External resource permission">
-          <Globe2 size={16} aria-hidden="true" />
-          <span>
-            <strong>Allow this page to access the internet?</strong> Requested origins:{" "}
-            <code>{requestedOrigins.join(", ")}</code>. Only these origins are granted for this exact page content;
-            scripts remain controlled separately.
-          </span>
-          <div className="button-row">
-            <button onClick={() => chooseInternet(false)}>Keep blocked</button>
-            <button onClick={() => chooseInternet(true)}>Allow for this session</button>
+        <DesignSystemScope className="html-permission">
+          <div
+            className="mds-notice mds-notice--warning html-network-prompt"
+            role="alert"
+            aria-label="External resource permission"
+          >
+            <div className="html-permission-details">
+              <Globe2 size={16} aria-hidden="true" />
+              <span>
+                <strong>Allow this page to access the internet?</strong> Requested origins:{" "}
+                <code>{requestedOrigins.join(", ")}</code>. Only these origins are granted for this exact page content;
+                scripts remain controlled separately.
+              </span>
+            </div>
+            <div className="button-row">
+              <Button onClick={() => chooseInternet(false)}>Keep blocked</Button>
+              <Button onClick={() => chooseInternet(true)}>Allow for this session</Button>
+            </div>
           </div>
-        </div>
+        </DesignSystemScope>
+      )}
+      {mode === "preview" && loading && (
+        <DesignSystemScope className="document-state">
+          <Notice>Loading HTML preview…</Notice>
+        </DesignSystemScope>
+      )}
+      {mode === "preview" && previewError && (
+        <DesignSystemScope className="document-state">
+          <Notice tone="error">Couldn't open this HTML preview: {previewError}</Notice>
+          <div>
+            <Button variant="secondary" onClick={() => setRetry((n) => n + 1)}>
+              Retry preview
+            </Button>
+          </div>
+        </DesignSystemScope>
       )}
       {mode === "source" ? (
         <CodeEditor buffer={buffer} wrap />

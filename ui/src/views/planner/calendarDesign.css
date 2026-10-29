@@ -1,0 +1,175 @@
+.mosaic-ds.calendar-design {
+  --bg: var(--mds-surface);
+  --bg-side: var(--mds-surface-subtle);
+  --fg: var(--mds-text);
+  --muted: var(--mds-text-muted);
+  --border: var(--mds-border);
+  background: var(--mds-surface);
+}
+.mosaic-ds.calendar-design .viewer-toolbar {
+  font-size: var(--mds-text-body);
+  gap: var(--mds-space-3);
+  padding: var(--mds-space-4) var(--mds-space-6);
+  border-color: var(--mds-border);
+  background: var(--mds-surface-subtle);
+}
+.mosaic-ds.calendar-design .viewer-toolbar .mds-button.icon {
+  width: 32px;
+  height: 32px;
+  padding: var(--mds-space-3);
+}
+.mosaic-ds.calendar-design .calendar-title {
+  font-size: var(--mds-text-heading);
+  line-height: var(--mds-leading);
+  margin: 0 var(--mds-space-4);
+  overflow-wrap: anywhere;
+}
+.mosaic-ds.calendar-design .mds-segmented {
+  flex: none;
+}
+.mosaic-ds.calendar-design .mds-notice {
+  margin: var(--mds-space-5);
+}
+.mosaic-ds.calendar-design .calendar-chooser > summary {
+  padding: var(--mds-space-3) var(--mds-space-5);
+  min-height: 32px;
+  border-radius: var(--mds-radius-control);
+  border-color: var(--mds-border);
+}
+.mosaic-ds.calendar-design .calendar-chooser > div {
+  padding: var(--mds-space-5);
+  border-color: var(--mds-border);
+  border-radius: var(--mds-radius-control);
+  background: var(--mds-surface);
+  box-shadow: var(--mds-shadow-floating);
+  max-width: 220px;
+}
+.mosaic-ds.calendar-design .calendar-chooser label {
+  white-space: normal;
+  font-size: var(--mds-text-body);
+}
+.mosaic-ds.calendar-design input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  accent-color: var(--mds-accent);
+}
+.mosaic-ds.calendar-design .calendar-chooser .mds-button {
+  white-space: normal;
+  text-align: left;
+  justify-content: flex-start;
+}
+.mosaic-ds.calendar-design summary:focus-visible,
+.mosaic-ds.calendar-design button:focus-visible,
+.mosaic-ds.calendar-design [tabindex]:focus-visible {
+  outline: var(--mds-focus-width) solid var(--mds-accent);
+  outline-offset: var(--mds-focus-offset);
+}
+.mosaic-ds.calendar-design .planner-week-head > div {
+  font-size: var(--mds-text-body);
+}
+.mosaic-ds.calendar-design .planner-week-head span,
+.mosaic-ds.calendar-design .planner-hours > div,
+.mosaic-ds.calendar-design .planner-all-day-label {
+  font-size: var(--mds-text-small);
+  color: var(--mds-text-muted);
+}
+.mosaic-ds.calendar-design .planner-timed-item {
+  font-size: var(--mds-text-small);
+}
+.mosaic-ds.calendar-design .planner-timed-item .planner-card-title {
+  color: var(--mds-text);
+}
+.mosaic-ds.calendar-design .planner-event-chip {
+  font-size: var(--mds-text-small);
+}
+.mosaic-ds.calendar-design .unscheduled-tray {
+  padding: var(--mds-space-5);
+}
+.mosaic-ds.calendar-design .unscheduled-tray h3 {
+  font-size: var(--mds-text-body);
+}
+.mosaic-ds.calendar-design .unscheduled-tray h4 {
+  font-size: var(--mds-text-hint);
+}
+.mosaic-ds.calendar-design .unscheduled-tray li span {
+  font-size: var(--mds-text-small);
+}
+.mosaic-ds.calendar-design .unscheduled-tray .panel-meta {
+  font-size: var(--mds-text-hint);
+}
+.mosaic-ds.calendar-design .unscheduled-tray li > .mds-button {
+  display: grid;
+  min-width: 0;
+  white-space: normal;
+}
+.mosaic-ds.calendar-design .planner-session-menu {
+  background: var(--mds-surface);
+  color: var(--mds-text);
+  border-color: var(--mds-border);
+  border-radius: var(--mds-radius-control);
+  box-shadow: var(--mds-shadow-floating);
+}
+.mosaic-ds.calendar-design .planner-session-menu button {
+  font: inherit;
+  color: var(--mds-text);
+}
+@media (prefers-reduced-motion: reduce) {
+  .mosaic-ds.calendar-design *,
+  .mosaic-ds.calendar-design *::before {
+    transition: none;
+  }
+}
+
+.mosaic-ds.calendar-design .unscheduled-tray.collapsed {
+  padding: var(--mds-space-2);
+}
+.mosaic-ds.calendar-design .unscheduled-tray.collapsed > header h3,
+.mosaic-ds.calendar-design .unscheduled-tray.collapsed > header > span {
+  display: none;
+}
+.mosaic-ds.calendar-design .unscheduled-tray > header .mds-icon-button {
+  width: 32px;
+  height: 32px;
+  flex: none;
+  padding: var(--mds-space-3);
+}
+.mosaic-ds.calendar-design .mode-day .planner-week-head,
+.mosaic-ds.calendar-design .mode-day .planner-all-day,
+.mosaic-ds.calendar-design .mode-day .planner-time-scroll {
+  min-width: 164px;
+  grid-template-columns: 54px minmax(110px, 1fr);
+}
+
+.mosaic-ds.calendar-design .planner-month-weekday {
+  font-size: var(--mds-text-hint);
+  text-transform: none;
+}
+.mosaic-ds.calendar-design .planner-month-cell {
+  border-radius: var(--mds-radius-control);
+  padding: var(--mds-space-5);
+  gap: var(--mds-space-3);
+}
+.mosaic-ds.calendar-design .planner-month-date {
+  font-size: var(--mds-text-body);
+}
+.mosaic-ds.calendar-design .planner-month-cell.other-month {
+  opacity: 1;
+}
+.mosaic-ds.calendar-design .planner-month-cell.other-month .planner-month-date {
+  color: var(--mds-text-muted);
+}
+.mosaic-ds.calendar-design .planner-workload {
+  font-size: var(--mds-text-small);
+}
+.mosaic-ds.calendar-design .planner-month-item,
+.mosaic-ds.calendar-design .planner-due,
+.mosaic-ds.calendar-design .planner-month-drop-preview {
+  font-size: var(--mds-text-small);
+  line-height: var(--mds-leading);
+  border-radius: var(--mds-radius-item);
+}
+
+.mosaic-ds.calendar-design .planner-session-chip {
+  font-size: var(--mds-text-small);
+}

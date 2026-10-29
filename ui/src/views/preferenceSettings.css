@@ -1,0 +1,50 @@
+.mosaic-ds.preference-settings {
+  min-width: 0;
+}
+.mosaic-ds.preference-settings .mds-setting-control {
+  min-width: 0;
+  max-width: 100%;
+}
+.mosaic-ds.preference-settings .mds-input {
+  width: auto;
+  max-width: 100%;
+}
+.mosaic-ds.preference-settings .mds-icon-button {
+  flex: none;
+  color: var(--mds-text-muted);
+}
+.mosaic-ds.preference-settings .preference-note {
+  margin: var(--mds-space-6) 0;
+  overflow-wrap: anywhere;
+}
+.mosaic-ds.preference-settings .mds-notice {
+  margin-top: var(--mds-space-4);
+  overflow-wrap: anywhere;
+}
+.mosaic-ds.preference-settings .preference-section-reset {
+  margin-top: var(--mds-space-8);
+  white-space: normal;
+}
+.mosaic-ds.preference-settings[data-density="compact"] .mds-setting-row {
+  padding-block: var(--mds-space-5);
+}
+.mosaic-ds.preference-settings .preference-range {
+  display: flex;
+  align-items: center;
+  gap: var(--mds-space-5);
+  min-width: 0;
+}
+.mosaic-ds.preference-settings .preference-range output {
+  width: 50px;
+  flex: none;
+  text-align: right;
+  font-size: var(--mds-text-hint);
+  font-variant-numeric: tabular-nums;
+  color: var(--mds-text-muted);
+}
+.mosaic-ds.preference-settings .preference-path {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: left;
+}

@@ -17,8 +17,6 @@ import type {
   EventOccurrence,
   FileContent,
   IcalImportPreview,
-  MarkdownImportCandidate,
-  MarkdownImportPreview,
   MovePlannerTask,
   PlannerActivityEntry,
   PlannerEpic,
@@ -71,9 +69,6 @@ const plannerEvents: PlannerEvent[] = [];
 const plannerEventExceptions = new Map<string, { action: "cancelled" | "replaced"; replacement: string | null }>();
 const plannerEpics: PlannerEpic[] = [];
 const plannerTasks: PlannerTask[] = [];
-const importedFingerprints = new Set<string>();
-const importedTaskIds = new Map<string, string>();
-const importedEpicIdsByFingerprint = new Map<string, string>();
 const importedIcal = new Set<string>();
 const mockCalendarSubscriptions: CalendarSubscription[] = [
   {
@@ -1732,170 +1727,6 @@ export const mockCommands: typeof commands = {
       return structuredClone(replacement);
     }
   },
-  plannerMigrationPreview: async () => {
-    {
-      const groups: { source_path: string; tasks: MarkdownImportCandidate[] }[] = [];
-      for (const [path, file] of [...files.entries()].sort(([x], [y]) => x.localeCompare(y))) {
-        if (!path.endsWith(".md")) continue;
-        const rows = mockTasks(path, file.content),
-          byLine = new Map<number, string>(),
-          byRow = new Map(rows.map((row) => [row.line, row])),
-          candidates: MarkdownImportCandidate[] = [];
-        for (const row of rows) {
-          const block = /\s\^([\w-]+)\s*$/.exec(row.text)?.[1] ?? null;
-          const clean =
-            taskLabel(row.text)
-              .replace(/\s\^[\w-]+\s*$/, "")
-              .replace(/\s*📅\s*\d{4}-\d{2}-\d{2}/g, "")
-              .trim() || "Untitled task";
-          const fingerprint = hash(block ? `${path}\0block\0${block}` : `${path}\0line\0${row.line}\0${clean}`);
-          byLine.set(row.line, fingerprint);
-          let ancestor = byRow.get(row.line);
-          while (ancestor?.parent) ancestor = byRow.get(ancestor.parent);
-          const epic_fingerprint = ancestor
-            ? (byLine.get(ancestor.line) ?? (ancestor.line === row.line ? fingerprint : null))
-            : null;
-          const kind = row.depth === 0 ? "epic" : row.depth === 1 ? "task" : "subtask";
-          const status =
-            row.mark.toLowerCase() === "x"
-              ? "done"
-              : row.mark === ">" || row.mark === "-"
-                ? "new"
-                : mockWorkflow(row.text, row.mark);
-          const archived = row.mark === ">" || row.mark === "-";
-          candidates.push({
-            source_path: path,
-            source_line: row.line,
-            block_id: block,
-            fingerprint,
-            parent_fingerprint: row.parent ? (byLine.get(row.parent) ?? null) : null,
-            epic_fingerprint,
-            depth: row.depth,
-            kind,
-            title: clean,
-            status,
-            due_date: row.due,
-            all_day_session_date: null,
-            archived,
-            default_selected: !archived && (kind === "epic" || status !== "done"),
-            duplicate: importedFingerprints.has(fingerprint),
-          });
-        }
-        if (candidates.length) groups.push({ source_path: path, tasks: candidates });
-      }
-      const all = groups.flatMap((group) => group.tasks);
-      return {
-        planner_revision: plannerRevision,
-        groups,
-        candidates: all.length,
-        selected_by_default: all.filter((item) => item.default_selected && !item.duplicate).length,
-        duplicates: all.filter((item) => item.duplicate).length,
-      } satisfies MarkdownImportPreview;
-    }
-  },
-  plannerImportMarkdown: async (preview, selectedFingerprints, allowDuplicates, timezone) => {
-    const a: Record<string, unknown> = { preview, selectedFingerprints, allowDuplicates, timezone };
-    {
-      const preview = a.preview as MarkdownImportPreview,
-        selected = new Set(a.selectedFingerprints as string[]),
-        all = preview.groups.flatMap((group) => group.tasks),
-        known = new Set(all.map((item) => item.fingerprint));
-      for (const item of selected)
-        if (!known.has(item)) throw err("invalid", "Migration selection contains an unknown task");
-      const importedEpicIds: string[] = [],
-        importedTaskIdsNow: string[] = [],
-        skipped: string[] = [],
-        mappedEpics = new Map<string, string>(),
-        mappedTasks = new Map<string, string>();
-      for (const item of all
-        .filter((item) => selected.has(item.fingerprint))
-        .sort((x, y) => x.depth - y.depth || x.source_line - y.source_line)) {
-        if (!a.allowDuplicates && importedFingerprints.has(item.fingerprint)) {
-          skipped.push(item.fingerprint);
-          const priorEpic = importedEpicIdsByFingerprint.get(item.fingerprint),
-            priorTask = importedTaskIds.get(item.fingerprint);
-          if (priorEpic) mappedEpics.set(item.fingerprint, priorEpic);
-          if (priorTask) mappedTasks.set(item.fingerprint, priorTask);
-          continue;
-        }
-        const at = plannerNow();
-        if (item.kind === "epic") {
-          const id = nextPlannerId("epic"),
-            created: PlannerEpic = {
-              id,
-              title: item.title,
-              description: "",
-              color: "#6477d4",
-              position: (plannerEpics.at(-1)?.position ?? 0) + 1024,
-              revision: 1,
-              created_at: at,
-              updated_at: at,
-              archived_at: item.archived ? at : null,
-              trashed_at: null,
-            };
-          plannerEpics.push(created);
-          importedFingerprints.add(item.fingerprint);
-          importedEpicIdsByFingerprint.set(item.fingerprint, id);
-          mappedEpics.set(item.fingerprint, id);
-          importedEpicIds.push(id);
-          continue;
-        }
-        const id = nextPlannerId("task"),
-          epic_id = item.epic_fingerprint
-            ? (mappedEpics.get(item.epic_fingerprint) ??
-              importedEpicIdsByFingerprint.get(item.epic_fingerprint) ??
-              null)
-            : null,
-          parentCandidate = item.parent_fingerprint
-            ? all.find((candidate) => candidate.fingerprint === item.parent_fingerprint)
-            : null,
-          parent_id =
-            parentCandidate?.kind === "epic"
-              ? null
-              : item.parent_fingerprint
-                ? (mappedTasks.get(item.parent_fingerprint) ?? importedTaskIds.get(item.parent_fingerprint) ?? null)
-                : null;
-        const created: PlannerTask = {
-          id,
-          epic_id,
-          parent_id,
-          title: item.title,
-          description: "",
-          status: item.status,
-          due_date: item.due_date,
-          estimate_minutes: null,
-          position:
-            Math.max(
-              0,
-              ...plannerTasks
-                .filter(
-                  (task) => task.epic_id === epic_id && task.parent_id === parent_id && task.status === item.status,
-                )
-                .map((task) => task.position),
-            ) + 1024,
-          revision: 1,
-          created_at: at,
-          updated_at: at,
-          completed_at: item.status === "done" ? at : null,
-          archived_at: item.archived ? at : null,
-          trashed_at: null,
-        };
-        plannerTasks.push(created);
-        importedFingerprints.add(item.fingerprint);
-        importedTaskIds.set(item.fingerprint, created.id);
-        mappedTasks.set(item.fingerprint, created.id);
-        importedTaskIdsNow.push(created.id);
-      }
-      const affected = [...importedEpicIds, ...importedTaskIdsNow];
-      if (affected.length) plannerChanged(affected);
-      return {
-        planner_revision: plannerRevision,
-        imported_epic_ids: importedEpicIds,
-        imported_task_ids: importedTaskIdsNow,
-        skipped_duplicates: skipped,
-      };
-    }
-  },
   plannerIcalPreview: async (sourceKind, content, fallbackTimezone) => {
     const a: Record<string, unknown> = { sourceKind, content, fallbackTimezone };
     return mockIcalPreview(String(a.content), String(a.sourceKind));
@@ -2797,11 +2628,6 @@ const PARAMS: Record<string, [keyof typeof commands, string[]]> = {
     "plannerReplaceEventOccurrence",
     ["seriesId", "expectedRevision", "occurrenceKey", "input"],
   ],
-  planner_migration_preview: ["plannerMigrationPreview", []],
-  planner_import_markdown: [
-    "plannerImportMarkdown",
-    ["preview", "selectedFingerprints", "allowDuplicates", "timezone"],
-  ],
   planner_ical_preview: ["plannerIcalPreview", ["sourceKind", "content", "fallbackTimezone"]],
   planner_ical_import: ["plannerIcalImport", ["preview", "selectedKeys", "allowDuplicates"]],
   planner_ical_export: ["plannerIcalExport", []],
@@ -2975,7 +2801,10 @@ function mockQuery(q: string): QueryResult {
       if (!columns.includes(f)) columns.push(f);
       rows = rows.filter((r) => {
         const x = String(value(r, f) ?? "").toLowerCase();
-        const y = v.toLowerCase();
+        const relative = /^today([+-]\d+)?$/i.exec(v);
+        const date = new Date();
+        if (relative) date.setDate(date.getDate() + Number(relative[1] ?? 0));
+        const y = relative ? mockDay(date) : v.toLowerCase();
         return op === "="
           ? x === y
           : op === "!="

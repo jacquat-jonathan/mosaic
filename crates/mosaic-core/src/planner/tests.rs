@@ -1,18 +1,10 @@
 use super::*;
-use crate::index::Index;
-use crate::{Vault, Workspace};
+use crate::Workspace;
 use std::fs;
 use std::time::{Duration, Instant};
 
 fn in_memory() -> PlannerStore {
     PlannerStore::in_memory().unwrap()
-}
-
-fn workspace() -> (tempfile::TempDir, Workspace) {
-    let dir = tempfile::tempdir().unwrap();
-    let vault = Vault::open(dir.path()).unwrap();
-    let index = Index::in_memory().unwrap();
-    (dir, Workspace::new(vault, index))
 }
 
 fn epic(store: &mut PlannerStore, title: &str) -> Epic {
@@ -600,93 +592,6 @@ fn archived_parents_and_epics_hide_their_active_descendants_from_active_planning
 }
 
 #[test]
-fn markdown_import_previews_maps_and_deduplicates_without_editing_notes() {
-    let (dir, workspace) = workspace();
-    workspace.files.mkdir("Daily").unwrap();
-    workspace.files
-        .create(
-            "Daily/2026-10-13.md",
-            "# Tuesday\n\n- [ ] Parent 📅 2026-10-16 ^parent\n    - [ ] Review <!-- mosaic:state=in-qa --> ^review\n        - [ ] Detail ^detail\n- [x] Finished ^done\n- [>] Deferred ^moved\n",
-        )
-        .unwrap();
-    let note = dir.path().join("Daily/2026-10-13.md");
-    let before = fs::read(&note).unwrap();
-
-    let preview = workspace.preview_markdown_planner_import().unwrap();
-    assert_eq!(preview.candidates, 5);
-    assert_eq!(preview.selected_by_default, 4);
-    let candidates: Vec<_> = preview
-        .groups
-        .iter()
-        .flat_map(|group| &group.tasks)
-        .collect();
-    assert_eq!(candidates[0].title, "Parent");
-    assert_eq!(candidates[0].kind, MarkdownImportKind::Epic);
-    assert_eq!(candidates[0].due_date.as_deref(), Some("2026-10-16"));
-    assert_eq!(candidates[1].kind, MarkdownImportKind::Task);
-    assert_eq!(candidates[1].status, TaskStatus::InQa);
-    assert_eq!(
-        candidates[1].parent_fingerprint,
-        Some(candidates[0].fingerprint.clone())
-    );
-    assert_eq!(candidates[2].kind, MarkdownImportKind::Subtask);
-    assert_eq!(
-        candidates[2].parent_fingerprint,
-        Some(candidates[1].fingerprint.clone())
-    );
-    assert!(candidates[4].archived);
-
-    let selected: Vec<String> = candidates
-        .iter()
-        .map(|candidate| candidate.fingerprint.clone())
-        .collect();
-    let imported = workspace
-        .planner
-        .import_markdown_tasks(&preview, &selected, false, "Europe/Zurich")
-        .unwrap();
-    assert_eq!(imported.imported_epic_ids.len(), 3);
-    assert_eq!(imported.imported_task_ids.len(), 2);
-    assert_eq!(workspace.planner.summary().unwrap().epics, 3);
-    assert_eq!(workspace.planner.summary().unwrap().tasks, 2);
-    assert!(
-        workspace
-            .planner
-            .work_sessions(None, true)
-            .unwrap()
-            .is_empty()
-    );
-    let epics = workspace.planner.epics(true, false).unwrap();
-    let parent_epic = epics.iter().find(|epic| epic.title == "Parent").unwrap();
-    let tasks = workspace.planner.tasks(true, false).unwrap();
-    let review = tasks.iter().find(|task| task.title == "Review").unwrap();
-    let detail = tasks.iter().find(|task| task.title == "Detail").unwrap();
-    assert_eq!(review.epic_id.as_deref(), Some(parent_epic.id.as_str()));
-    assert_eq!(review.parent_id, None);
-    assert_eq!(detail.epic_id, review.epic_id);
-    assert_eq!(detail.parent_id.as_deref(), Some(review.id.as_str()));
-    assert_eq!(fs::read(&note).unwrap(), before);
-
-    let revision = workspace.planner.summary().unwrap().revision;
-    let repeated = workspace
-        .planner
-        .import_markdown_tasks(&preview, &selected, false, "Europe/Zurich")
-        .unwrap();
-    assert!(repeated.imported_task_ids.is_empty());
-    assert_eq!(repeated.skipped_duplicates.len(), 5);
-    assert_eq!(workspace.planner.summary().unwrap().revision, revision);
-    assert_eq!(fs::read(&note).unwrap(), before);
-
-    let failed = workspace.planner.import_markdown_tasks(
-        &preview,
-        &["not-a-preview-fingerprint".into()],
-        false,
-        "Europe/Zurich",
-    );
-    assert!(failed.is_err());
-    assert_eq!(workspace.planner.summary().unwrap().revision, revision);
-}
-
-#[test]
 fn a_closed_vault_copy_keeps_planner_content_and_history() {
     let source = tempfile::tempdir().unwrap();
     let source_workspace = Workspace::open(source.path()).unwrap();
@@ -755,7 +660,7 @@ fn recovery_from_the_last_valid_backup_is_explicit() {
 }
 
 #[test]
-fn opening_a_pre_planner_vault_and_previewing_migration_never_changes_markdown() {
+fn opening_a_pre_planner_vault_and_board_never_changes_markdown() {
     let dir = tempfile::tempdir().unwrap();
     fs::create_dir(dir.path().join("Projects")).unwrap();
     let note = dir.path().join("Projects/Release.md");
@@ -771,8 +676,7 @@ fn opening_a_pre_planner_vault_and_previewing_migration_never_changes_markdown()
 
     let workspace = Workspace::open(dir.path()).unwrap();
     workspace.sync(|_, _| {}).unwrap();
-    let preview = workspace.preview_markdown_planner_import().unwrap();
-    assert_eq!(preview.candidates, 2);
+    assert!(workspace.planner.summary().unwrap().is_empty);
     drop(workspace);
 
     assert_eq!(fs::read(&note).unwrap(), before_note);

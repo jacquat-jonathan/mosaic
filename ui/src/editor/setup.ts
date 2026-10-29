@@ -13,6 +13,7 @@ import {
   drawSelection,
   dropCursor,
   keymap,
+  tooltips,
   highlightSpecialChars,
   rectangularSelection,
 } from "@codemirror/view";
@@ -153,6 +154,7 @@ function base(onChange: (text: string) => void): Extension {
     closeBrackets(),
     highlightSelectionMatches(),
     search({ top: true }),
+    tooltips({ position: "absolute" }),
     EditorState.allowMultipleSelections.of(true),
     syntaxHighlighting(highlight),
     keymap.of([

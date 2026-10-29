@@ -27,7 +27,7 @@ test("chat history cannot push automation navigation down the sidebar, and Manag
   render(<AiSidebar />);
   expect(screen.getByRole("button", { name: "Discuss the report" })).toBeTruthy();
   expect(screen.queryByRole("button", { name: "All runs" })).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: "Automations" }));
+  fireEvent.click(screen.getByRole("radio", { name: "Automations" }));
   expect(screen.queryByRole("button", { name: "Discuss the report" })).toBeNull();
   expect(screen.queryByRole("button", { name: "+ New chat" })).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "All runs" }));

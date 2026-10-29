@@ -1,10 +1,7 @@
-// A persistent workspace chat with Claude. Claude Code runs headless in the vault (src-tauri/src/chat.rs)
-// and changes notes only through Mosaic's tools, so every change is in AI activity with Undo, and in
-// reviewed folders becomes a proposal. The open note is attached as context; agents from Agents/
-// start a message (pick one, or type /name).
-
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
-import { Bot, Paperclip, Plus, Save, Square, TextSelect, X } from "lucide-react";
+import { Bot, Paperclip, Plus, Save, TextSelect, X } from "lucide-react";
+import { Badge, Button, IconButton, Notice } from "../design-system/components";
+import { ChatComposer } from "../design-system/patterns";
 import { api } from "../ipc/api";
 import { errorMessage, type Agent, type ClaudeInfo } from "../ipc/types";
 import { chatAsMarkdown, listenToChat, useChat, type ChatItem } from "../state/chat";
@@ -13,87 +10,149 @@ import { useVault } from "../state/vault";
 import { useWorkspace } from "../state/workspace";
 import { isSpecialTab } from "./specialTabs";
 import { TranscriptItem, openTranscriptLink } from "./Transcript";
+import { DesignSystemScope } from "./DesignSystemScope";
 import { dayStamp } from "../daily";
 import { noteSelection } from "../editor/noteViews";
 import { vaultPrefs } from "../state/vaultPreferences";
+import "../design-system/patterns.css";
+import "./workflowStatus.css";
+import "./chatPanel.css";
 
-const noteName = (p: string) => (p.split("/").pop() ?? p).replace(/\.md$/i, "");
-
+const noteName = (path: string) => (path.split("/").pop() ?? path).replace(/\.md$/i, "");
 export function ChatPanel({ id }: { id: string }) {
-  const chat = useChat((s) => s.chats[id]);
+  const chat = useChat((state) => state.chats[id]);
+  const root = useChat((state) => state.root);
   if (!chat)
     return (
-      <div className="empty">
-        <p>This chat is no longer available.</p>
-        <button onClick={() => useUi.getState().showChat()}>New chat</button>
-      </div>
+      <DesignSystemScope className="chat chat-unavailable" role="group" aria-label="Chat">
+        <Notice>This chat is no longer available.</Notice>
+        <Button variant="secondary" disabled={!root} onClick={() => useUi.getState().showChat()}>
+          New chat
+        </Button>
+      </DesignSystemScope>
     );
-  return <ConversationView key={id} id={id} />;
+  return <ConversationView key={`${root}:${id}`} id={id} root={root} />;
 }
-function ConversationView({ id }: { id: string }) {
-  const chat = useChat((s) => s.chats[id]);
+function ConversationView({ id, root }: { id: string; root: string | null }) {
+  const chat = useChat((state) => state.chats[id]);
   const { items, run, cost, noMosaic, attached, selection, agent, draft: input, model } = chat;
-  const storageError = useChat((s) => s.storageError);
-  const update = (patch: Partial<typeof chat>) => useChat.getState().update(id, patch);
-  const setAgent = (agent: string | null) => update({ agent });
-  const setAttached = (f: (a: string[]) => string[]) => update({ attached: f(attached) });
-  const setSelection = (selection: typeof chat.selection) => update({ selection });
-  const setInput = (draft: string) => update({ draft });
-  const active = useWorkspace((s) => s.panes.map((p) => p.active).find((p) => p && !isSpecialTab(p)) ?? null);
+  const storageError = useChat((state) => state.storageError);
+  const update = (patch: Partial<typeof chat>) => {
+    if (current()) useChat.getState().update(id, patch);
+  };
+  const current = () =>
+    !!root &&
+    useChat.getState().root === root &&
+    useVault.getState().vault?.root === root &&
+    !!useChat.getState().chats[id];
+  const active = useWorkspace(
+    (state) => state.panes.map((pane) => pane.active).find((path) => path && !isSpecialTab(path)) ?? null,
+  );
   const [claude, setClaude] = useState<ClaudeInfo | null>(null);
   const [agents, setAgents] = useState<Agent[]>([]);
+  const [checkError, setCheckError] = useState<string | null>(null);
+  const [checkTick, setCheckTick] = useState(0);
   const [skipped, setSkipped] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [returnRename, setReturnRename] = useState(false);
+  const saveOpener = useRef<HTMLElement | null>(null);
+  const saveLock = useRef(false);
   const list = useRef<HTMLDivElement>(null);
-
+  const message = useRef<HTMLTextAreaElement>(null);
+  const renameButton = useRef<HTMLButtonElement>(null);
+  const pickerOpener = useRef<HTMLElement | null>(null);
+  const picker = useUi((state) => state.picker);
   useEffect(() => {
+    let live = true;
     listenToChat();
-    api.chatCheck().then(setClaude, () => setClaude({ path: null, version: null }));
-    api.agents().then(setAgents, () => setAgents([]));
-  }, []);
+    setCheckError(null);
+    setClaude(null);
+    void api.chatCheck().then(
+      (info) => {
+        if (live) setClaude(info);
+      },
+      (cause) => {
+        if (live) setCheckError(errorMessage(cause));
+      },
+    );
+    void api.agents().then(
+      (result) => {
+        if (live) setAgents(result);
+      },
+      () => {
+        if (live) setAgents([]);
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, [checkTick]);
   useEffect(() => {
-    list.current?.scrollTo({ top: list.current.scrollHeight });
+    if (list.current) list.current.scrollTop = list.current.scrollHeight;
   }, [items, run]);
-
+  useEffect(() => {
+    if (!picker && pickerOpener.current) {
+      pickerOpener.current.focus({ preventScroll: true });
+      pickerOpener.current = null;
+    }
+  }, [picker]);
+  useEffect(() => {
+    if (!renaming && returnRename) {
+      renameButton.current?.focus({ preventScroll: true });
+      setReturnRename(false);
+    }
+  }, [renaming, returnRename]);
+  useEffect(() => {
+    if (!saving && saveOpener.current) {
+      if (saveOpener.current.isConnected) saveOpener.current.focus({ preventScroll: true });
+      saveOpener.current = null;
+    }
+  }, [saving]);
   const candidate = active && !isSpecialTab(active) ? active : (attached[0] ?? null);
   const activeNote = candidate !== skipped ? candidate : null;
   const context = useMemo(
     () => [...new Set([...(activeNote ? [activeNote] : []), ...attached])],
     [activeNote, attached],
   );
-
   const send = () => {
-    let text = input.trim();
-    let use = agent;
-    // "/name rest" runs an agent.
+    if (!current() || run !== null || !claude?.path) return;
+    let text = input.trim(),
+      chosen = agent;
     const slash = /^\/([\p{L}\p{N}-]+)\s*([\s\S]*)$/u.exec(text);
     if (slash) {
-      const found = agents.find((a) => a.name === slash[1].toLowerCase());
+      const found = agents.find((entry) => entry.name === slash[1].toLowerCase());
       if (!found) return setError(`No agent named “${slash[1]}” in ${vaultPrefs().agents_folder}/.`);
-      use = found.name;
+      chosen = found.name;
       text = slash[2];
     }
-    if (!text && !use) return;
+    if (!text && !chosen) return;
     setError(null);
-    setInput("");
-    void useChat.getState().send(id, text || "Go ahead.", context, activeNote, use, selection, model || null);
-    setSelection(null);
+    update({ draft: "", selection: null });
+    void useChat.getState().send(id, text || "Go ahead.", context, activeNote, chosen, selection, model || null);
   };
-  const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-      e.preventDefault();
+  const onKey = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+      event.preventDefault();
       if (run === null) send();
     }
   };
-  const attach = () => {
+  const attach = (opener: HTMLElement) => {
+    if (!current()) return;
+    pickerOpener.current = opener;
     const notes = useVault
       .getState()
-      .entries.filter((e) => !e.is_dir && e.path.toLowerCase().endsWith(".md") && !context.includes(e.path));
+      .entries.filter(
+        (entry) => !entry.is_dir && entry.path.toLowerCase().endsWith(".md") && !context.includes(entry.path),
+      );
     useUi.getState().openPicker({
       placeholder: "Attach a note to the chat",
-      items: notes.map((n) => ({ id: n.path, label: noteName(n.path), detail: n.path })),
+      items: notes.map((note) => ({ id: note.path, label: noteName(note.path), detail: note.path })),
       hint: "↵ attach · esc cancel",
-      onPick: (it) => setAttached((a) => [...a, it.id]),
+      onPick: (item) => {
+        if (current()) update({ attached: [...new Set([...useChat.getState().chats[id].attached, item.id])] });
+      },
     });
   };
   const attachSelection = () => {
@@ -102,11 +161,17 @@ function ConversationView({ id }: { id: string }) {
     if (!picked) return setError("Select some text in the open note first.");
     if (picked.text.length > 20_000)
       return setError("That selection is too large to attach (maximum 20,000 characters).");
-    setSelection({ path: picked.path, text: picked.text });
+    update({ selection: { path: picked.path, text: picked.text } });
     setError(null);
+    message.current?.focus();
   };
-  const save = async () => {
-    const first = items.find((i) => i.kind === "user") as Extract<ChatItem, { kind: "user" }> | undefined;
+  const save = async (opener: HTMLElement) => {
+    if (!current() || saveLock.current || run !== null || !items.length) return;
+    saveLock.current = true;
+    saveOpener.current = opener;
+    setSaving(true);
+    setError(null);
+    const first = items.find((item) => item.kind === "user") as Extract<ChatItem, { kind: "user" }> | undefined;
     const words = (first?.text ?? "Chat")
       .replace(/[\\/:*?"<>|#^[\]]/g, "")
       .split(/\s+/)
@@ -115,171 +180,216 @@ function ConversationView({ id }: { id: string }) {
     const time = new Date().toTimeString().slice(0, 5).replace(":", "");
     const path = `${vaultPrefs().agents_folder}/Chats/${dayStamp()} ${time} ${words}.md`.replace(/\s+\.md$/, ".md");
     try {
-      await api.create(path, `# ${words}\n\n${chatAsMarkdown(items)}\n`);
-      void useWorkspace.getState().open(path, { newTab: true });
-    } catch (e) {
-      setError(errorMessage(e));
+      await api.create(path, `# ${words}\n\n${chatAsMarkdown(items)}\n`, root!);
+      if (current()) await useWorkspace.getState().open(path, { newTab: true });
+    } catch (cause) {
+      if (current()) setError(errorMessage(cause));
+    } finally {
+      saveLock.current = false;
+      setSaving(false);
     }
   };
-
-  if (claude && !claude.path) {
-    return (
-      <div className="chat">
-        <div className="chat-empty">
-          <Bot size={22} />
-          <p>
-            The chat uses <strong>Claude Code</strong>, which isn't installed. Install it from claude.com/claude-code,
-            run <code>claude</code> once in a terminal to log in, then reopen this panel.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
+  const rename = async () => {
+    if (!current() || renaming) return;
+    setRenaming(true);
+    try {
+      const title = await useUi.getState().askText({ title: "Rename chat", value: chat.title });
+      if (current() && title?.trim()) update({ title: title.trim() });
+    } finally {
+      setRenaming(false);
+      if (current()) setReturnRename(true);
+    }
+  };
   return (
-    <div className="chat">
-      <header className="workspace-heading">
+    <DesignSystemScope className="chat chat-panel workflow-status-scope" role="group" aria-label="Chat">
+      <header className="chat-panel-heading">
         <div>
-          <h2>{chat.title}</h2>
-          <span>Claude Code · {model || "Default model"}</span>
+          <h1>{chat.title}</h1>
+          <p className="mds-hint">Claude Code · {model || "Default model"}</p>
         </div>
-        <button
-          onClick={async () => {
-            const title = await useUi.getState().askText({ title: "Rename chat", value: chat.title });
-            if (title?.trim()) update({ title: title.trim() });
-          }}
-        >
+        <Button ref={renameButton} disabled={renaming || saving} onClick={() => void rename()}>
           Rename
-        </button>
+        </Button>
       </header>
-      {storageError && <p className="error-text">{storageError}</p>}
-      <div className="chat-list" ref={list} onClick={openTranscriptLink}>
-        {items.length === 0 && (
-          <div className="chat-empty">
-            <Bot size={22} />
-            <p>
-              Ask Claude about your notes, or to change them. Changes appear in AI activity, with Undo; in folders you
-              review, they wait for you.
-            </p>
-            {agents.length > 0 && (
-              <div className="chat-starters">
-                {agents.map((a) => (
-                  <button key={a.name} title={a.description} onClick={() => setAgent(a.name)}>
-                    {a.title}
-                  </button>
-                ))}
+      {storageError && <Notice tone="error">{storageError}</Notice>}
+      {checkError ? (
+        <Notice tone="error">
+          {checkError}
+          <Button variant="secondary" onClick={() => setCheckTick((tick) => tick + 1)}>
+            Retry connection check
+          </Button>
+        </Notice>
+      ) : !claude ? (
+        <Notice>Checking Claude Code…</Notice>
+      ) : !claude.path ? (
+        <Notice>
+          Chat uses Claude Code, which isn't installed. Install it from claude.com/claude-code, run <code>claude</code>{" "}
+          once in a terminal to log in, then retry.
+          <Button variant="secondary" onClick={() => setCheckTick((tick) => tick + 1)}>
+            Retry connection check
+          </Button>
+        </Notice>
+      ) : (
+        <>
+          <div
+            className="chat-list mds-transcript"
+            ref={list}
+            role="region"
+            aria-label="Chat transcript"
+            tabIndex={0}
+            onClick={(event) => {
+              if (current()) openTranscriptLink(event, (cause) => setError(errorMessage(cause)));
+            }}
+          >
+            {!items.length && (
+              <div className="chat-empty">
+                <Bot size={22} aria-hidden="true" />
+                <p>
+                  Ask Claude about your notes, or to change them. Changes appear in AI activity, with Undo; in folders
+                  you review, they wait for you.
+                </p>
+                {!!agents.length && (
+                  <div className="chat-starters">
+                    {agents.map((entry) => (
+                      <Button
+                        variant="secondary"
+                        key={entry.name}
+                        title={entry.description}
+                        onClick={() => {
+                          update({ agent: entry.name });
+                          message.current?.focus();
+                        }}
+                      >
+                        {entry.title}
+                      </Button>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
+            {items.map((item, index) => (
+              <TranscriptItem key={index} item={item} />
+            ))}
+            {run !== null && (
+              <p className="mds-hint" role="status">
+                Working…
+              </p>
+            )}
           </div>
-        )}
-        {items.map((it, i) => (
-          <TranscriptItem key={i} item={it} />
-        ))}
-        {run !== null && <div className="chat-thinking">Working…</div>}
-      </div>
-      {noMosaic && (
-        <p className="chat-warn">
-          Mosaic's tools weren't connected for that answer: Claude could read files but not change them through Mosaic.
-        </p>
+          {noMosaic && (
+            <Notice tone="warning">
+              Mosaic's tools weren't connected for that answer: Claude could read files but not change them through
+              Mosaic.
+            </Notice>
+          )}
+          {error && <Notice tone="error">{error}</Notice>}
+          <ChatComposer
+            value={input}
+            onChange={(draft) => update({ draft })}
+            onSend={send}
+            onStop={() => {
+              if (current()) useChat.getState().stop(id);
+            }}
+            busy={run !== null}
+            canSend={!!input.trim() || !!agent}
+            messageLabel="Message to Claude"
+            textareaProps={{
+              ref: message,
+              disabled: false,
+              onKeyDown: onKey,
+              placeholder: agent
+                ? "Anything to add for this agent? (↵ to run)"
+                : agents.length
+                  ? "Ask Claude… (↵ to send, /agent to run one)"
+                  : "Ask Claude… (↵ to send)",
+            }}
+            model={model}
+            onModelChange={(value) => update({ model: value })}
+            modelOptions={[
+              { value: "", label: "Default model" },
+              { value: "sonnet", label: "Sonnet" },
+              { value: "opus", label: "Opus" },
+              { value: "haiku", label: "Haiku" },
+            ]}
+            sendVariant="secondary"
+            stopVariant="secondary"
+            annotation={cost > 0 ? <Badge title="What this chat has cost so far">${cost.toFixed(2)}</Badge> : null}
+            footerStart={
+              <>
+                <IconButton
+                  label="New chat"
+                  disabled={!items.length || saving}
+                  onClick={() => useUi.getState().showChat()}
+                >
+                  <Plus aria-hidden="true" />
+                </IconButton>
+                <IconButton
+                  label="Save as note"
+                  disabled={!items.length || run !== null || saving}
+                  onClick={(event) => void save(event.currentTarget)}
+                >
+                  <Save aria-hidden="true" />
+                </IconButton>
+              </>
+            }
+            attachmentContent={
+              <>
+                {agent && (
+                  <span className="mds-attachment" title={agents.find((entry) => entry.name === agent)?.description}>
+                    <Bot size={14} aria-hidden="true" />
+                    {agents.find((entry) => entry.name === agent)?.title ?? agent}
+                    <IconButton
+                      label="Don't use this agent"
+                      onClick={() => {
+                        update({ agent: null });
+                        message.current?.focus();
+                      }}
+                    >
+                      <X />
+                    </IconButton>
+                  </span>
+                )}
+                {context.map((path) => (
+                  <span className="mds-attachment" key={path} title={path}>
+                    {noteName(path)}
+                    <IconButton
+                      label={`Detach ${noteName(path)}`}
+                      onClick={() => {
+                        if (path === activeNote) setSkipped(path);
+                        update({ attached: attached.filter((entry) => entry !== path) });
+                        message.current?.focus();
+                      }}
+                    >
+                      <X />
+                    </IconButton>
+                  </span>
+                ))}
+                {selection && (
+                  <span className="mds-attachment" title={selection.text}>
+                    <TextSelect size={14} aria-hidden="true" />
+                    Selection from {noteName(selection.path)}
+                    <IconButton
+                      label="Detach selected text"
+                      onClick={() => {
+                        update({ selection: null });
+                        message.current?.focus();
+                      }}
+                    >
+                      <X />
+                    </IconButton>
+                  </span>
+                )}
+                <IconButton label="Attach selected text from the open note" onClick={attachSelection}>
+                  <TextSelect aria-hidden="true" />
+                </IconButton>
+                <IconButton label="Attach a note" onClick={(event) => attach(event.currentTarget)}>
+                  <Paperclip aria-hidden="true" />
+                </IconButton>
+              </>
+            }
+          />
+        </>
       )}
-      {error && <p className="error-text chat-warn">{error}</p>}
-      <div className="chat-compose">
-        <div className="chat-chips">
-          {agent && (
-            <span className="chat-chip agent" title={agents.find((a) => a.name === agent)?.description}>
-              <Bot size={11} /> {agents.find((a) => a.name === agent)?.title ?? agent}
-              <button aria-label="Don't use this agent" onClick={() => setAgent(null)}>
-                <X size={10} />
-              </button>
-            </span>
-          )}
-          {context.map((p) => (
-            <span key={p} className="chat-chip" title={p}>
-              {noteName(p)}
-              <button
-                aria-label={`Detach ${noteName(p)}`}
-                onClick={() => (p === activeNote ? setSkipped(p) : setAttached((a) => a.filter((x) => x !== p)))}
-              >
-                <X size={10} />
-              </button>
-            </span>
-          ))}
-          {selection && (
-            <span className="chat-chip selection" title={selection.text}>
-              <TextSelect size={11} /> Selection from {noteName(selection.path)}
-              <button aria-label="Detach selected text" onClick={() => setSelection(null)}>
-                <X size={10} />
-              </button>
-            </span>
-          )}
-          <button className="chat-chip add" title="Attach selected text from the open note" onClick={attachSelection}>
-            <TextSelect size={11} />
-          </button>
-          <button className="chat-chip add" title="Attach a note" onClick={attach}>
-            <Paperclip size={11} />
-          </button>
-        </div>
-        <textarea
-          aria-label="Message to Claude"
-          value={input}
-          rows={3}
-          placeholder={
-            agent
-              ? "Anything to add for this agent? (↵ to run)"
-              : agents.length
-                ? "Ask Claude… (↵ to send, /agent to run one)"
-                : "Ask Claude… (↵ to send)"
-          }
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={onKey}
-        />
-        <div className="chat-actions">
-          <button
-            title="New chat"
-            aria-label="New chat"
-            onClick={() => useUi.getState().showChat()}
-            disabled={!items.length}
-          >
-            <Plus size={14} />
-          </button>
-          <button
-            title="Save this chat as a note in Agents/Chats"
-            aria-label="Save as note"
-            onClick={() => void save()}
-            disabled={!items.length || run !== null}
-          >
-            <Save size={14} />
-          </button>
-          {cost > 0 && (
-            <span className="chat-cost" title="What this chat has cost so far">
-              ${cost.toFixed(2)}
-            </span>
-          )}
-          <label className="chat-model" title="Claude Code model for new answers">
-            <select
-              aria-label="Chat model"
-              value={model}
-              onChange={(e) => update({ model: e.target.value })}
-              disabled={run !== null}
-            >
-              <option value="">Default model</option>
-              <option value="sonnet">Sonnet</option>
-              <option value="opus">Opus</option>
-              <option value="haiku">Haiku</option>
-            </select>
-          </label>
-          <span className="spacer" />
-          {run !== null ? (
-            <button className="danger" onClick={() => useChat.getState().stop(id)}>
-              <Square size={12} /> Stop
-            </button>
-          ) : (
-            <button className="primary" onClick={send} disabled={!input.trim() && !agent}>
-              Send
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
+    </DesignSystemScope>
   );
 }

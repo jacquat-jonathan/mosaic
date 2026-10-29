@@ -64,6 +64,12 @@
   color: var(--mds-text-muted);
   margin: var(--mds-space-6) 0 var(--mds-space-8);
 }
+.mosaic-ds .mds-workflow-title {
+  padding: 0;
+  font: inherit;
+  text-align: left;
+  white-space: normal;
+}
 .mosaic-ds .mds-metadata {
   margin: 0;
 }
@@ -170,6 +176,10 @@
   margin-top: auto;
   padding-top: var(--mds-space-8);
   border-top: 1px solid var(--mds-border);
+}
+.mosaic-ds .mds-runs-ledger {
+  min-width: 0;
+  container: mds-runs / inline-size;
 }
 .mosaic-ds .mds-runs-table {
   width: 100%;
@@ -439,6 +449,22 @@
   padding: var(--mds-space-10);
 }
 @media (max-width: 760px) {
+  .mosaic-ds .mds-runs-table .mds-run-started,
+  .mosaic-ds .mds-runs-table .mds-run-duration {
+    display: none;
+  }
+  .mosaic-ds .mds-runs-table .mds-run-mobile {
+    display: block;
+  }
+  .mosaic-ds .mds-runs-table th:first-child {
+    width: 54%;
+  }
+  .mosaic-ds .mds-runs-table th:nth-child(2) {
+    width: 46%;
+  }
+}
+
+@container mds-runs (max-width: 760px) {
   .mosaic-ds .mds-runs-table .mds-run-started,
   .mosaic-ds .mds-runs-table .mds-run-duration {
     display: none;

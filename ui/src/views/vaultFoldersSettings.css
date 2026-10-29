@@ -1,0 +1,67 @@
+.mosaic-ds.vault-folders-settings {
+  min-width: 0;
+}
+.mosaic-ds.vault-folders-settings .mds-setting-text,
+.mosaic-ds.vault-folders-settings .mds-setting-control {
+  min-width: 0;
+  max-width: 100%;
+}
+.mosaic-ds.vault-folders-settings .mds-setting-text {
+  flex-basis: 240px;
+}
+.mosaic-ds.vault-folders-settings .mds-setting-control {
+  flex: 0 1 auto;
+}
+.mosaic-ds.vault-folders-settings .mds-button {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.mosaic-ds.vault-folders-settings .mds-icon-button {
+  flex: none;
+  color: var(--mds-text-muted);
+}
+.mosaic-ds.vault-folders-settings .mds-input {
+  width: 210px;
+  max-width: 100%;
+}
+.mosaic-ds.vault-folders-settings .vault-settings-identity .mds-hint {
+  font-family: var(--font-mono);
+  font-size: var(--mds-text-small);
+  overflow-wrap: anywhere;
+}
+.mosaic-ds.vault-folders-settings .vault-settings-note {
+  margin: var(--mds-space-6) 0 0;
+}
+.mosaic-ds.vault-folders-settings .vault-setting-notice {
+  margin-top: var(--mds-space-4);
+  overflow-wrap: anywhere;
+}
+.mosaic-ds.vault-folders-settings .vault-folder-colors {
+  margin-top: var(--mds-space-8);
+}
+.mosaic-ds.vault-folders-settings .vault-folder-colors summary {
+  color: var(--mds-text-muted);
+}
+.mosaic-ds.vault-folders-settings summary:focus-visible {
+  outline: var(--mds-focus-width) solid var(--mds-accent);
+  outline-offset: var(--mds-focus-offset);
+}
+.mosaic-ds.vault-folders-settings .vault-color-controls,
+.mosaic-ds.vault-folders-settings .vault-color-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--mds-space-4);
+  margin-top: var(--mds-space-4);
+}
+.mosaic-ds.vault-folders-settings .vault-color-row > span:first-child {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.mosaic-ds.vault-folders-settings .vault-section-reset {
+  margin-top: var(--mds-space-8);
+}
+.mosaic-ds.vault-folders-settings[data-density="compact"] .mds-setting-row {
+  padding-block: var(--mds-space-5);
+}

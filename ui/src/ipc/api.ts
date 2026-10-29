@@ -12,7 +12,6 @@ import type {
   CreatePlannerTask,
   CreatePlannerWorkSession,
   IcalImportPreview,
-  MarkdownImportPreview,
   MovePlannerTask,
   PlannerChanged,
   UpdatePlannerEpic,
@@ -144,13 +143,6 @@ export const api = {
     occurrenceKey: string,
     input: CreatePlannerEvent,
   ) => cmd.plannerReplaceEventOccurrence(seriesId, expectedRevision, occurrenceKey, input),
-  plannerMigrationPreview: () => cmd.plannerMigrationPreview(),
-  importMarkdownToPlanner: (
-    preview: MarkdownImportPreview,
-    selectedFingerprints: string[],
-    allowDuplicates: boolean,
-    timezone: string,
-  ) => cmd.plannerImportMarkdown(preview, selectedFingerprints, allowDuplicates, timezone),
   previewPlannerIcal: (
     content: string,
     sourceKind = "ics-file",

@@ -1,0 +1,48 @@
+.workflow-list-page {
+  min-width: 0;
+}
+.mosaic-ds.workflow-list {
+  min-width: 0;
+}
+.mosaic-ds.workflow-list .workflow-list-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--mds-space-6);
+  margin-bottom: var(--mds-space-9);
+}
+.mosaic-ds.workflow-list .workflow-list-heading > div {
+  flex: 1;
+  min-width: 160px;
+}
+.mosaic-ds.workflow-list h1 {
+  font-size: var(--mds-text-heading);
+  margin: 0 0 var(--mds-space-4);
+}
+.mosaic-ds.workflow-list .workflow-list-heading p {
+  margin: 0;
+}
+.mosaic-ds.workflow-list .workflow-list-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(360px, 100%), 1fr));
+  gap: var(--mds-space-8);
+}
+.mosaic-ds.workflow-list .mds-notice {
+  margin-block: var(--mds-space-6);
+  overflow-wrap: anywhere;
+}
+.mosaic-ds.workflow-list .workflow-list-note {
+  margin: var(--mds-space-8) 0;
+}
+.mosaic-ds.workflow-list .mds-workflow-card {
+  overflow-wrap: anywhere;
+}
+.mosaic-ds.workflow-list .mds-button {
+  white-space: normal;
+}
+.mosaic-ds.workflow-list .mds-workflow-card footer {
+  flex-wrap: wrap;
+}
+.mosaic-ds.workflow-list[data-density="compact"] .mds-workflow-card {
+  padding: var(--mds-space-7);
+}

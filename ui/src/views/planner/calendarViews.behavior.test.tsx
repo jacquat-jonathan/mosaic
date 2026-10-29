@@ -344,6 +344,7 @@ describe("week calendar", () => {
     fireEvent.keyDown(eventResize, { key: "ArrowUp" });
     fireEvent.keyDown(eventResize, { key: "ArrowDown" });
     fireEvent.keyDown(eventResize, { key: "Enter" });
+    expect(p.onEvent).not.toHaveBeenCalled();
     expect(p.onEventResize).toHaveBeenCalledWith(expect.anything(), -15);
     expect(p.onEventResize).toHaveBeenCalledWith(expect.anything(), 15);
 
@@ -356,6 +357,8 @@ describe("week calendar", () => {
     expect(p.onSessionCancel).toHaveBeenCalled();
     const sessionResize = screen.getByLabelText(/Resize Write tests/);
     fireEvent.keyDown(sessionResize, { key: "ArrowDown" });
+    fireEvent.keyDown(sessionResize, { key: "Enter" });
+    expect(p.onSession).not.toHaveBeenCalled();
     expect(p.onSessionResizeStart).toHaveBeenCalled();
     expect(p.onSessionResize).toHaveBeenCalledWith(expect.anything(), 15);
     window.dispatchEvent(new Event("click"));
@@ -372,5 +375,11 @@ describe("week calendar", () => {
     rerender(<WeekView {...p} selectedRange={{ day: "2026-10-28", startHour: 9, endHour: 10 }} />);
     fireEvent.mouseDown(document.body);
     window.dispatchEvent(new Event("mouseup"));
+  });
+  it("creates an event from a keyboard-activated empty time slot", () => {
+    const p = props();
+    render(<WeekView {...p} />);
+    fireEvent.click(screen.getAllByRole("button", { name: /^Create event/ })[0], { detail: 0 });
+    expect(p.onEmptyRange).toHaveBeenCalledTimes(1);
   });
 });

@@ -115,7 +115,10 @@ test("create, edit, autosave, find and reopen a note", async ({ page }) => {
 
   await page.getByRole("tab", { name: "Find" }).click();
   await page.getByRole("textbox", { name: "Search notes" }).fill("uniquely searchable");
-  const result = page.locator(".result", { hasText: "E2E journey" });
+  const result = page
+    .getByRole("list", { name: "Search results", exact: true })
+    .getByRole("button")
+    .filter({ hasText: "E2E journey" });
   await expect(result).toBeVisible();
   await result.click();
   await expect(editor).toContainText("uniquely searchable E2E sentence");
@@ -159,7 +162,7 @@ test("compare a conflicting edit and load the disk version", async ({ page }) =>
   await openVault(page);
   const editor = await createEditingConflict(page);
   await page.getByRole("button", { name: "Compare" }).click();
-  const comparison = page.getByText("Disk version → your version").locator("..");
+  const comparison = page.getByRole("dialog", { name: "Disk version → your version", exact: true });
   await expect(comparison).toContainText("Changed by an agent.");
   await expect(comparison).toContainText("my unsaved words");
   await comparison.getByRole("button", { name: "Load disk version" }).click();
@@ -176,7 +179,7 @@ test("accept an agent's proposal from review", async ({ page }) => {
     ),
   );
   await page.getByRole("tab", { name: "AI" }).click();
-  await page.getByRole("button", { name: "Automations", exact: true }).click();
+  await page.getByRole("radio", { name: "Automations", exact: true }).click();
   await page.getByRole("button", { name: /Activity & review · 1/ }).click();
   await page.getByRole("region", { name: "Waiting for your review" }).getByRole("button", { name: "Review" }).click();
   await page.getByRole("button", { name: "Accept", exact: true }).click();
@@ -193,7 +196,7 @@ test("reject an agent's proposal with feedback", async ({ page }) => {
     ),
   );
   await page.getByRole("tab", { name: "AI" }).click();
-  await page.getByRole("button", { name: "Automations", exact: true }).click();
+  await page.getByRole("radio", { name: "Automations", exact: true }).click();
   await page.getByRole("button", { name: /Activity & review · 1/ }).click();
   await page.getByRole("region", { name: "Waiting for your review" }).getByRole("button", { name: "Review" }).click();
   await page.getByRole("button", { name: "Reject…" }).click();
@@ -207,10 +210,8 @@ test("create a planner task and move it through the workflow", async ({ page }) 
   await openVault(page);
   await page.getByRole("tab", { name: "Plan" }).click();
   await page.getByRole("button", { name: "Board", exact: true }).click();
-  const startEmpty = page.getByRole("button", { name: "Start empty" });
-  if (await startEmpty.isVisible()) await startEmpty.click();
   await page.getByRole("button", { name: "New task", exact: true }).click();
-  const prompt = page.getByRole("heading", { name: "New task" }).locator("..");
+  const prompt = page.getByRole("dialog", { name: "New task", exact: true });
   await prompt.getByPlaceholder("What needs doing?").fill("Verify the release journey");
   await prompt.getByRole("button", { name: "OK" }).click();
 
@@ -226,7 +227,7 @@ test("calendar event cards only wrap titles when they have room for another line
   await openVault(page);
   await page.getByRole("tab", { name: "Plan" }).click();
   await page.getByRole("button", { name: "Calendar", exact: true }).click();
-  await page.getByRole("tab", { name: "Week", exact: true }).click();
+  await page.getByRole("radio", { name: "Week", exact: true }).click();
 
   const card = page.locator(".planner-timed-item.overlay"),
     title = card.locator(".planner-card-title");
@@ -251,7 +252,7 @@ test("calendar event cards only wrap titles when they have room for another line
   expect(bounds!.titleLeft).toBeGreaterThanOrEqual(bounds!.cardLeft);
   expect(bounds!.titleRight).toBeLessThanOrEqual(bounds!.cardRight);
 
-  await page.setViewportSize({ width: 1280, height: 1200 });
+  await page.setViewportSize({ width: 1280, height: 1440 });
   await expect(card).toHaveClass(/multiline-title/);
   await expect(title).toHaveCSS("white-space", "normal");
 });
@@ -279,25 +280,25 @@ test("exercise the bundled file viewers and settings surfaces", async ({ page })
   await expect(page.getByText("alpha", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Row" }).click();
   await page.getByRole("button", { name: "Column" }).click();
-  await page.getByRole("tab", { name: "Source" }).click();
-  await page.getByRole("tab", { name: "Table" }).click();
+  await page.getByRole("radio", { name: "Source" }).click();
+  await page.getByRole("radio", { name: "Table" }).click();
 
   await openMockPath(page, "Docs/page.html");
   await expect(page.locator('iframe[title="Docs/page.html"]')).toBeVisible();
   await page.getByRole("button", { name: "Zoom in" }).click();
   await page.getByRole("button", { name: "Reset zoom" }).click();
   await page.getByRole("button", { name: /Scripts blocked|Scripts allowed/ }).click();
-  await page.getByRole("tab", { name: "Source" }).click();
-  await page.getByRole("tab", { name: "Preview" }).click();
+  await page.getByRole("radio", { name: "Source" }).click();
+  await page.getByRole("radio", { name: "Preview" }).click();
 
   for (const [path, marker] of [
     ["Charts/Sales.vl.json", "Chart"],
     ["Graph.dot", "Graph"],
   ] as const) {
     await openMockPath(page, path);
-    await page.getByRole("tab", { name: marker, exact: true }).click();
+    await page.getByRole("radio", { name: marker, exact: true }).click();
     await page.waitForTimeout(250);
-    await page.getByRole("tab", { name: "Source", exact: true }).click();
+    await page.getByRole("radio", { name: "Source", exact: true }).click();
   }
 
   await openMockPath(page, "Attachments/diagram.svg");
@@ -332,7 +333,7 @@ test("manage workflows and inspect every AI workspace", async ({ page }) => {
   await openVault(page);
   await page.getByRole("tab", { name: "AI" }).click();
 
-  await page.getByRole("button", { name: "Automations", exact: true }).click();
+  await page.getByRole("radio", { name: "Automations", exact: true }).click();
   await page.locator(".ai-manage summary").click();
   await page.getByRole("button", { name: "Agent library", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Agents", exact: true })).toBeVisible();
@@ -343,12 +344,12 @@ test("manage workflows and inspect every AI workspace", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Resume automations" })).toBeVisible();
   await page.getByRole("button", { name: "Resume automations" }).click();
 
-  const firstWorkflow = page.locator(".workflow-card").first();
+  const firstWorkflow = page.locator(".mds-workflow-card").first();
   await firstWorkflow.getByRole("button", { name: "Run now" }).click();
   const workspacePane = page.getByRole("region", { name: "Workspace pane" });
   await expect(workspacePane.getByRole("heading", { name: "Run log" })).toBeVisible();
   await expect(workspacePane.locator(".run-transcript strong")).toHaveText("Mock run completed.");
-  await expect(workspacePane.getByRole("button", { name: "Read Ideas" })).toBeVisible();
+  await expect(workspacePane.locator(".mds-tool summary").filter({ hasText: "Read Ideas" })).toBeVisible();
   await workspacePane.getByRole("button", { name: "Open activity and reviews" }).click();
   await expect(page.getByRole("heading", { name: "Activity & review" })).toBeVisible();
 
@@ -357,11 +358,11 @@ test("manage workflows and inspect every AI workspace", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Create workflow" })).toBeVisible();
   await page.getByLabel("Name").fill("Coverage sweep");
   await page.getByLabel("Instructions").fill("Review the vault and summarize anything that needs attention.");
-  await page.getByLabel("Run on a schedule").check();
+  await page.getByRole("switch", { name: "Run on a schedule", exact: true }).click();
   await page.getByRole("combobox", { name: /^Schedule/ }).selectOption("every");
   await page.getByRole("spinbutton", { name: "Hours" }).fill("6");
   await page.getByRole("combobox", { name: /^Model/ }).selectOption("sonnet");
-  await page.getByLabel("Can use the web").check();
+  await page.getByRole("switch", { name: "Can use the web (search and fetch pages)", exact: true }).click();
   await page.getByRole("button", { name: "Create workflow" }).click();
   await expect(workspacePane.getByRole("heading", { name: "Coverage sweep" })).toBeVisible();
 
@@ -372,7 +373,7 @@ test("manage workflows and inspect every AI workspace", async ({ page }) => {
   await expect(ledger.locator("tbody tr").first()).toContainText("Completed");
   const runTitle = await ledger.locator("tbody tr").first().getByRole("button").innerText();
   await page.setViewportSize({ width: 480, height: 900 });
-  await expect(ledger.locator(".run-mobile-started").first()).toBeVisible();
+  await expect(ledger.locator("time.mds-run-mobile").first()).toBeVisible();
   expect(await ledger.evaluate((el) => el.scrollWidth <= el.parentElement!.clientWidth + 1)).toBe(true);
   await ledger.getByRole("button", { name: runTitle, exact: true }).first().click();
   await expect(workspacePane.getByRole("heading", { name: "Run log" })).toBeVisible();
@@ -394,7 +395,7 @@ test("Ledger activity keeps reviews first and exposes history and undo beside ea
     ),
   );
   await page.getByRole("tab", { name: "AI", exact: true }).click();
-  await page.getByRole("button", { name: "Automations", exact: true }).click();
+  await page.getByRole("radio", { name: "Automations", exact: true }).click();
   await page.getByRole("button", { name: /Activity & review · 1/ }).click();
   const review = page.getByRole("region", { name: "Waiting for your review" });
   const applied = page.getByRole("region", { name: "Applied changes" });
@@ -428,37 +429,30 @@ test("chat with the assistant and manage the saved conversation", async ({ page 
   await page.getByRole("button", { name: "Send" }).click();
   await expect(page.getByText("Done: I added a line to")).toBeVisible({ timeout: 5_000 });
   await expect(page.getByTitle("What this chat has cost so far")).toBeVisible();
-  await page.getByRole("button", { name: "Read Ideas" }).click();
+  await page.locator(".chat .mds-tool summary").filter({ hasText: "Read Ideas" }).click();
+  await page.getByRole("button", { name: "Open Ideas.md", exact: true }).click();
   await expect(page.locator(".cm-content")).toContainText("Ideas");
 
   await page.getByRole("tab", { name: "AI", exact: true }).click();
   await page.getByRole("button", { name: "+ New chat", exact: true }).click();
   await page.getByRole("button", { name: "Rename" }).click();
-  await page.locator(".modal input").fill("Coverage conversation");
+  await page.getByRole("dialog").getByRole("textbox").fill("Coverage conversation");
   await page.getByRole("button", { name: "OK" }).click();
   await expect(page.getByRole("heading", { name: "Coverage conversation" })).toBeVisible();
   await page.getByRole("button", { name: "All chats", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Chats", exact: true })).toBeVisible();
 });
 
-test("import planner tasks and manage an epic lifecycle", async ({ page }) => {
+test("manage an epic lifecycle", async ({ page }) => {
   await openVault(page);
   await page.getByRole("tab", { name: "Plan" }).click();
   await page.getByRole("button", { name: "Board", exact: true }).click();
-  await page.getByRole("button", { name: "Preview import" }).click();
-  const wizard = page.getByRole("region", { name: "Import Markdown tasks" });
-  await expect(wizard.getByRole("heading", { name: "Preview Markdown task import" })).toBeVisible();
-  const importButton = wizard.getByRole("button", { name: /^Import \d+ items$/ });
-  await expect(importButton).toBeEnabled();
-  await importButton.click();
-  await expect(page.getByRole("heading", { name: "Board", exact: true })).toBeVisible();
-
   await page.getByRole("button", { name: "New epic" }).click();
   const epicDialog = page.getByRole("dialog", { name: "New epic" });
   await epicDialog.getByLabel("Title").fill("Coverage epic");
   await epicDialog.getByLabel("Color").fill("#2255aa");
   await epicDialog.getByRole("button", { name: "Save epic" }).click();
-  const lane = page.locator(".planner-lane", { hasText: "Coverage epic" });
+  const lane = page.locator(".mds-epic-lane", { hasText: "Coverage epic" });
   await expect(lane).toBeVisible();
   await lane.getByRole("button", { name: "History" }).click();
   await expect(page.getByRole("dialog", { name: "Coverage epic history" })).toBeVisible();
@@ -468,15 +462,19 @@ test("import planner tasks and manage an epic lifecycle", async ({ page }) => {
   const editEpic = page.getByRole("dialog", { name: "Edit epic" });
   await editEpic.getByLabel("Title").fill("Coverage epic updated");
   await editEpic.getByRole("button", { name: "Save epic" }).click();
-  const updatedLane = page.locator(".planner-lane", { hasText: "Coverage epic updated" });
+  const updatedLane = page.locator(".mds-epic-lane", { hasText: "Coverage epic updated" });
   await updatedLane.getByRole("button", { name: "Archive" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Archive" }).click();
   await page.getByLabel("Planner lifecycle view").selectOption("archived");
-  const archivedLane = page.locator(".planner-lane", { hasText: "Coverage epic updated" });
-  await expect(archivedLane.locator("strong", { hasText: "Coverage epic updated" })).toBeVisible();
+  const archivedLane = page.locator(".mds-epic-lane", { hasText: "Coverage epic updated" });
+  await expect(archivedLane.getByRole("heading", { name: "Coverage epic updated", exact: true })).toBeVisible();
   await archivedLane.getByRole("button", { name: "Restore" }).click();
   await page.getByLabel("Planner lifecycle view").selectOption("active");
-  await expect(page.locator(".planner-lane", { hasText: "Coverage epic updated" }).locator("strong")).toBeVisible();
+  await expect(
+    page
+      .locator(".mds-epic-lane", { hasText: "Coverage epic updated" })
+      .getByRole("heading", { name: "Coverage epic updated", exact: true }),
+  ).toBeVisible();
 
   await page.getByLabel("Search planner tasks").fill("release");
   await page.getByLabel("Filter by status").selectOption("new");
@@ -487,8 +485,6 @@ test("create calendar events, subscriptions and work sessions", async ({ page })
   await openVault(page);
   await page.getByRole("tab", { name: "Plan" }).click();
   await page.getByRole("button", { name: "Board", exact: true }).click();
-  const startEmpty = page.getByRole("button", { name: "Start empty" });
-  if (await startEmpty.isVisible()) await startEmpty.click();
   await page.getByRole("button", { name: "New task", exact: true }).click();
   await page.getByPlaceholder("What needs doing?").fill("Calendar coverage task");
   await page.getByRole("button", { name: "OK" }).click();
@@ -523,11 +519,11 @@ test("create calendar events, subscriptions and work sessions", async ({ page })
   await eventEditor.getByLabel("Participants").fill("qa@example.com, dev@example.com");
   await eventEditor.getByRole("button", { name: "Save" }).click();
 
-  await page.getByRole("tab", { name: "Month", exact: true }).click();
+  await page.getByRole("radio", { name: "Month", exact: true }).click();
   await expect(page.getByRole("grid")).toBeVisible();
-  await page.getByRole("tab", { name: "Day", exact: true }).click();
+  await page.getByRole("radio", { name: "Day", exact: true }).click();
   await expect(page.locator(".planner-calendar-content.mode-day")).toBeVisible();
-  await page.getByRole("tab", { name: "Week", exact: true }).click();
+  await page.getByRole("radio", { name: "Week", exact: true }).click();
 
   const showTasks = page.getByRole("button", { name: "Show open tasks" });
   if (await showTasks.isVisible()) await showTasks.click();
@@ -536,6 +532,7 @@ test("create calendar events, subscriptions and work sessions", async ({ page })
   await taskButton.click();
   const sessionCard = page.locator(".planner-timed-item.session", { hasText: "Calendar coverage task" }).first();
   await expect(sessionCard).toBeVisible();
+  await page.getByRole("button", { name: "Hide open tasks", exact: true }).click();
   await sessionCard.click();
   const sessionEditor = page.getByRole("complementary", { name: "Edit work session for Calendar coverage task" });
   await sessionEditor.getByLabel("All day").check();
@@ -551,7 +548,7 @@ test("release notes wrap inside a narrow settings pane", async ({ page }) => {
     .getByRole("button", { name: "About & updates" })
     .click();
   await page.getByRole("button", { name: "Check for updates" }).click();
-  const note = page.locator(".release li").first();
+  const note = page.locator(".about-release li").first();
   await expect(note).toContainText("release notes");
   await expect(note).toHaveCSS("white-space", "normal");
   const bounds = await note.evaluate((el) => ({
@@ -565,7 +562,7 @@ test("release notes wrap inside a narrow settings pane", async ({ page }) => {
   expect(bounds.scroll).toBeLessThanOrEqual(bounds.width + 1);
   expect(bounds.height).toBeGreaterThan(bounds.line * 1.5);
   expect(bounds.right).toBeLessThanOrEqual(bounds.pane);
-  for (const note of await page.locator(".release li").all()) {
+  for (const note of await page.locator(".about-release li").all()) {
     const overflow = await note.evaluate((el) => el.scrollWidth - el.clientWidth);
     expect(overflow).toBeLessThanOrEqual(1);
   }
@@ -622,18 +619,18 @@ test("Focused separates chat history from automation navigation and compacts run
   await page.getByRole("tab", { name: "AI", exact: true }).click();
   const sidebar = page.getByRole("navigation", { name: "AI views" });
   await expect(sidebar.getByRole("button", { name: "+ New chat" })).toBeVisible();
-  await sidebar.getByRole("button", { name: "Automations", exact: true }).click();
+  await sidebar.getByRole("radio", { name: "Automations", exact: true }).click();
   await expect(sidebar.getByRole("button", { name: "+ New chat" })).toHaveCount(0);
   await sidebar.getByRole("button", { name: "Workflows", exact: true }).click();
-  await page.locator(".workflow-card").first().getByRole("button", { name: "Run now" }).click();
-  await expect(page.locator(".run-heading .run-status")).toHaveText("Completed");
-  await expect(page.locator(".run-meta")).toContainText("Default model");
+  await page.locator(".mds-workflow-card").first().getByRole("button", { name: "Run now" }).click();
+  await expect(page.locator(".mds-run-panel > header .mds-status")).toHaveText("Completed");
+  await expect(page.locator(".mds-run-meta")).toContainText("Default model");
   const details = page.locator(".run-details").first();
   await expect(details.locator("dl")).not.toBeVisible();
   await details.locator("summary").click();
   await expect(details.locator("dl")).toContainText("Trigger");
   await expect(page.locator(".right-wrap")).toHaveCount(0);
-  await sidebar.getByRole("button", { name: "Chats", exact: true }).click();
+  await sidebar.getByRole("radio", { name: "Chats", exact: true }).click();
   await expect(sidebar.getByRole("button", { name: "+ New chat" })).toBeVisible();
   await expect(sidebar.getByRole("button", { name: "All runs" })).toHaveCount(0);
 });

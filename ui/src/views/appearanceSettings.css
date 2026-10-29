@@ -1,0 +1,65 @@
+.mosaic-ds.appearance-settings {
+  min-width: 0;
+}
+.mosaic-ds.appearance-settings .mds-setting-control {
+  flex: 0 1 auto;
+  max-width: 100%;
+  min-width: 0;
+  flex-wrap: nowrap;
+}
+.mosaic-ds.appearance-settings .mds-icon-button {
+  flex: none;
+  color: var(--mds-text-muted);
+}
+.mosaic-ds.appearance-settings .mds-input {
+  width: 200px;
+}
+.mosaic-ds.appearance-settings .mds-segmented {
+  flex-wrap: wrap;
+}
+.mosaic-ds.appearance-settings .appearance-note {
+  margin: var(--mds-space-6) 0 0;
+}
+.mosaic-ds.appearance-settings .appearance-range {
+  display: flex;
+  align-items: center;
+  gap: var(--mds-space-5);
+  min-width: 0;
+}
+.mosaic-ds.appearance-settings .appearance-range output {
+  width: 44px;
+  flex: none;
+  text-align: right;
+  font-size: var(--mds-text-hint);
+  font-variant-numeric: tabular-nums;
+  color: var(--mds-text-muted);
+}
+.mosaic-ds.appearance-settings[data-density="compact"] .mds-setting-row {
+  padding-block: var(--mds-space-5);
+}
+.mosaic-ds.appearance-settings .appearance-preview {
+  border: 1px solid var(--mds-border);
+  border-radius: var(--mds-radius-dialog);
+  padding: var(--mds-space-10);
+  margin: var(--mds-space-9) 0;
+  font: var(--note-size, 16px) / var(--note-leading, 1.7) var(--font-text);
+  max-width: var(--note-width, 760px);
+}
+.mosaic-ds.appearance-settings .appearance-preview h1 {
+  font-size: calc(1.9em * var(--heading-scale, 1));
+}
+.mosaic-ds.appearance-settings .appearance-preview h2 {
+  font-size: calc(1.5em * var(--heading-scale, 1));
+  margin: 0.83em 0;
+}
+.mosaic-ds.appearance-settings .appearance-preview pre {
+  font-family: var(--font-mono);
+  overflow: auto;
+}
+.mosaic-ds.appearance-settings .appearance-preview a {
+  color: inherit;
+  text-decoration: underline;
+}
+.mosaic-ds.appearance-settings .appearance-preview input {
+  accent-color: var(--mds-accent);
+}

@@ -1,0 +1,81 @@
+.mosaic-ds.tree-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--mds-space-1);
+  padding: var(--mds-space-3) var(--mds-space-4);
+  flex: none;
+  min-width: 0;
+  background: var(--mds-surface-subtle);
+  color: var(--mds-text-muted);
+}
+.mosaic-ds.tree-toolbar .spacer {
+  flex: 1;
+}
+.mosaic-ds.tree-toolbar .mds-icon-button {
+  flex: none;
+}
+.mosaic-ds.files-panel {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  background: var(--mds-surface-subtle);
+}
+.mosaic-ds.files-panel .tree {
+  padding: var(--mds-space-2) var(--mds-space-3) var(--mds-space-10);
+  min-width: 0;
+}
+.mosaic-ds.files-panel .tree-row {
+  height: 30px;
+  min-height: 30px;
+  gap: var(--mds-space-2);
+  padding-right: var(--mds-space-4);
+  border-radius: var(--mds-radius-item);
+  color: var(--mds-text);
+}
+.mosaic-ds.files-panel[data-density="compact"] .tree-row {
+  height: 28px;
+  min-height: 28px;
+}
+.mosaic-ds.files-panel .tree-row:hover,
+.mosaic-ds.files-panel .tree-row.active:not(.selected) {
+  background: var(--mds-surface-hover);
+}
+.mosaic-ds.files-panel .tree-row.selected,
+.mosaic-ds.files-panel .tree:focus-within .tree-row.selected {
+  background: var(--mds-surface-selected);
+  color: var(--mds-text);
+}
+.mosaic-ds.files-panel .tree-row.active:not(.selected) {
+  box-shadow: inset 2px 0 0 var(--mds-accent);
+}
+.mosaic-ds.files-panel .tree:focus-visible {
+  outline: var(--mds-focus-width) solid var(--mds-accent);
+  outline-offset: -2px;
+}
+.mosaic-ds.files-panel .tree-icon,
+.mosaic-ds.files-panel .tree-mark {
+  color: var(--mds-text-muted);
+}
+.mosaic-ds.files-panel .tree-rename {
+  padding: 2px var(--mds-space-2);
+  border: 1px solid var(--mds-border);
+  background: var(--mds-surface);
+  border-radius: var(--mds-radius-control);
+}
+.mosaic-ds.files-panel .tree-rename:focus-visible {
+  outline-offset: 0;
+}
+.mosaic-ds.files-panel .tree-empty {
+  color: var(--mds-text-muted);
+  font-size: var(--mds-text-hint);
+  padding: var(--mds-space-6) var(--mds-space-4);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.mosaic-ds.files-panel .tree-row.drop {
+  outline-color: var(--mds-accent);
+}
+.mosaic-ds.files-panel .tree.drop {
+  background: var(--mds-surface-selected);
+}

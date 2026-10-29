@@ -1,7 +1,9 @@
-import { lazy, Suspense, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useWorkspace, type Buffer } from "../state/workspace";
 import { CodeEditor } from "./CodeEditor";
-import { Segmented, Toolbar } from "./Toolbar";
+import { DocumentToolbar } from "./Toolbar";
+import { Notice, SegmentedControl } from "../design-system/components";
+import { DesignSystemScope } from "../views/DesignSystemScope";
 
 // Fonts are served from the app bundle (see vite.config.ts), never from Excalidraw's CDN.
 (window as unknown as { EXCALIDRAW_ASSET_PATH: string }).EXCALIDRAW_ASSET_PATH = "/excalidraw-assets/";
@@ -23,7 +25,7 @@ export const EMPTY_DRAWING = JSON.stringify(
 
 export function ExcalidrawEditor({ buffer }: { buffer: Buffer }) {
   const [mode, setMode] = useState<"draw" | "source">("draw");
-  // biome-ignore lint/correctness/useExhaustiveDependencies: only external reloads re-seed the drawing; our own edits live in Excalidraw's state
+  // biome-ignore lint/correctness/useExhaustiveDependencies: external reloads and view changes re-seed the drawing; canvas edits live in Excalidraw's state
   const parsed = useMemo(() => {
     try {
       const text = buffer.content?.trim() ? buffer.content : EMPTY_DRAWING;
@@ -33,14 +35,18 @@ export function ExcalidrawEditor({ buffer }: { buffer: Buffer }) {
     } catch (e) {
       return { data: null, error: (e as Error).message };
     }
-  }, [buffer.version, buffer.path]);
+  }, [buffer.version, buffer.path, mode]);
+  useEffect(() => {
+    if (parsed.error && mode === "draw") setMode("source");
+  }, [parsed.error, mode]);
   const lastWritten = useRef(buffer.content);
   const showSource = mode === "source" || !parsed.data;
 
   return (
     <div className="viewer">
-      <Toolbar>
-        <Segmented<"draw" | "source">
+      <DocumentToolbar label="Drawing controls">
+        <SegmentedControl<"draw" | "source">
+          label="Drawing view"
           value={showSource ? "source" : "draw"}
           onChange={setMode}
           options={[
@@ -49,17 +55,17 @@ export function ExcalidrawEditor({ buffer }: { buffer: Buffer }) {
           ]}
         />
         {parsed.error && (
-          <span className="toolbar-error">Can't open this drawing: {parsed.error}. The file is left untouched.</span>
+          <Notice tone="error">Can't open this drawing: {parsed.error}. The file is left untouched.</Notice>
         )}
-      </Toolbar>
+      </DocumentToolbar>
       {showSource ? (
         <CodeEditor buffer={buffer} />
       ) : (
         <Suspense
           fallback={
-            <div className="empty">
-              <p>Loading drawing tools…</p>
-            </div>
+            <DesignSystemScope>
+              <Notice>Loading drawing tools…</Notice>
+            </DesignSystemScope>
           }
         >
           <ExcalidrawCanvas

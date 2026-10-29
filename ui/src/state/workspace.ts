@@ -66,6 +66,8 @@ interface WorkspaceState {
   externalChange(path: string): Promise<void>;
   renamed(from: string, to: string): void;
   deleted(path: string): void;
+  /** Explicitly discard the in-memory draft of a file already deleted on disk. */
+  discardDeleted(path: string): void;
   activePath(): string | null;
   resize(index: number, delta: number): void;
   /** Restores the tabs and splits last used with this vault. */
@@ -117,10 +119,18 @@ function normalizePaneSizes(panes: Pane[]): Pane[] {
 }
 
 export const useWorkspace = create<WorkspaceState>((set, get) => {
+  let epoch = 0;
+  const operationKey = (path: string) => JSON.stringify([epoch, useVault.getState().vault?.root, path]);
+  const operation = () => {
+    const started = epoch,
+      root = useVault.getState().vault?.root;
+    return () => started === epoch && root === useVault.getState().vault?.root;
+  };
   const updateBuffer = (path: string, patch: Partial<Buffer>) =>
     set((s) => (s.buffers[path] ? { buffers: { ...s.buffers, [path]: { ...s.buffers[path], ...patch } } } : s));
 
   const load = async (path: string) => {
+    const current = operation();
     // A view, not a file: an empty buffer so the tab shows (FileView draws the view).
     if (isSpecialTab(path)) {
       set((s) => ({
@@ -143,6 +153,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
     }
     try {
       const f = await api.read(path);
+      if (!current()) return;
       const prev = get().buffers[path];
       set((s) => ({
         buffers: {
@@ -161,6 +172,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
         },
       }));
     } catch (e) {
+      if (!current()) return;
       set((s) => ({
         buffers: {
           ...s.buffers,
@@ -198,9 +210,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
     buffers: {},
 
     async open(path, opts = {}) {
+      const current = operation();
       const paneId = opts.pane ?? get().focused;
       const previous = get().panes.find((p) => p.id === paneId)?.active ?? null;
       if (previous !== path && !(await leaveDraft(previous))) return;
+      if (!current()) return;
       set((s) => ({
         focused: paneId,
         panes: s.panes.map((p) => {
@@ -216,7 +230,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
         }),
       }));
       if (!get().buffers[path]) await load(path);
-      dropUnusedBuffers();
+      if (current()) dropUnusedBuffers();
     },
 
     closeTab(paneId, path) {
@@ -341,34 +355,41 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
     },
 
     async save(path) {
+      const current = operation(),
+        key = operationKey(path),
+        root = useVault.getState().vault?.root;
       clearTimeout(saveTimers.get(path));
       const b = get().buffers[path];
       if (!b?.dirty || b.content === null || b.conflict || b.deleted) return;
       const content = b.content;
-      saving.add(path);
+      saving.add(key);
       try {
-        const w = await api.write(path, content, b.baseHash || null);
+        const w = await api.write(path, content, b.baseHash || null, root);
+        if (!current()) return;
         const now = get().buffers[path];
         if (now) updateBuffer(path, { baseHash: w.hash, dirty: now.content !== content, error: null });
         if (path.startsWith(`${vaultPrefs().agents_folder}/`)) mirrorAgentsSoon();
         useVault.getState().touched();
       } catch (e) {
+        if (!current()) return;
         if (isCoreError(e) && e.code === "conflict") updateBuffer(path, { conflict: { diskHash: e.current_hash } });
         else updateBuffer(path, { error: errorMessage(e) });
       } finally {
-        saving.delete(path);
+        saving.delete(key);
       }
     },
 
     async externalChange(path) {
+      const current = operation();
       const b = get().buffers[path];
-      if (!b || saving.has(path)) return;
+      if (!b || saving.has(operationKey(path))) return;
       let disk: Awaited<ReturnType<typeof api.read>> | null = null;
       try {
         disk = await api.read(path);
       } catch (e) {
         if (!(isCoreError(e) && e.code === "not_found")) return;
       }
+      if (!current()) return;
       const now = get().buffers[path];
       if (!now) return;
       if (!disk) {
@@ -401,12 +422,13 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
     },
 
     async ensure(path) {
-      if (!get().buffers[path] && !loading.has(path)) {
-        loading.add(path);
+      const key = operationKey(path);
+      if (!get().buffers[path] && !loading.has(key)) {
+        loading.add(key);
         try {
           await load(path);
         } finally {
-          loading.delete(path);
+          loading.delete(key);
         }
       }
     },
@@ -450,6 +472,15 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
       }
     },
 
+    discardDeleted(path) {
+      if (!get().buffers[path]?.deleted) return;
+      clearTimeout(saveTimers.get(path));
+      saveTimers.delete(path);
+      updateBuffer(path, { dirty: false, conflict: null, error: null });
+      get().deleted(path);
+      dropUnusedBuffers();
+    },
+
     resize(index, delta) {
       // Moves `delta` (a fraction of the total) from pane index+1 to pane index.
       set((s) => {
@@ -468,6 +499,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
     },
 
     async restoreLayout(root) {
+      epoch++;
+      const current = operation();
+      for (const timer of saveTimers.values()) clearTimeout(timer);
+      saveTimers.clear();
       layoutRoot = root;
       let saved: Pick<WorkspaceState, "panes" | "direction" | "focused"> | null = null;
       try {
@@ -496,6 +531,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
       );
       set({ panes, direction: saved.direction ?? "row", focused: panes[focusedIndex].id, buffers: {} });
       await Promise.all([...new Set(panes.map((p) => p.active).filter((a): a is string => !!a))].map(load));
+      if (!current()) return;
       // Drop tabs whose files are gone.
       for (const p of get().panes) for (const t of p.tabs) if (get().buffers[t]?.deleted) get().closeTab(p.id, t);
     },

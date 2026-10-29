@@ -3,8 +3,9 @@
 A standalone inventory of Mosaic's existing interface and a candidate component API (v0.3).
 The visual design and gallery were approved on 2026-10-28 after review of typography,
 icons, focus behavior, overlays, workflows, runs, chat, and Activity & review.
-**No application components have been migrated.** Approval of this gallery is a separate step
-from adopting it in the app.
+**Settings → Appearance** was visually accepted on 2026-10-28. Settings navigation, header,
+and sections, Connections & safety, workflows, runs, chats, Activity & review, file history,
+Welcome, app navigation, Files and Find, and Note workspace are migrated. Task lists, the task board, and Calendar, shared overlays, and document-view controls are also migrated. The 30-step migration is complete, including remaining states, embedded editor controls and verified legacy-style cleanup.
 
 ## Open the gallery
 
@@ -18,6 +19,9 @@ Open http://localhost:1421/design-system.html. The existing dev server also serv
 `/design-system.html`, but the dedicated command avoids starting the app or its backend.
 Use the Light / Dark / System controls; `?theme=dark` and `?theme=system` also work.
 Theme and demo choices stay in memory, without reading or writing application settings.
+The dedicated server also redirects `/` and `/index.html` to the gallery, preserving theme
+query parameters. If the page refuses the connection, restart the command above and keep
+its terminal running; the gallery is a local server rather than a permanently hosted page.
 
 ```sh
 pnpm --dir ui design-system:build
@@ -25,7 +29,7 @@ pnpm --dir ui design-system:build
 pnpm --dir ui exec vite preview --config vite.design-system.config.ts --port 1421
 ```
 
-The normal app entry, stylesheet, Tauri configuration, and Vite configuration are unchanged.
+The gallery remains separate from the app entry, Tauri configuration, and Vite configuration.
 The gallery has its own HTML entry and build configuration; it is not an app route. A normal
 app build may clean `ui/dist`, so rebuild the gallery when needed.
 
@@ -51,9 +55,11 @@ review page. They are not new application typography or layout requirements.
 | `tokens.css` | Opt-in theme, color, spacing, type, shape, and motion variables |
 | `controls.css` | Styles for candidate controls under a `.mosaic-ds` ancestor |
 | `components.tsx` | Stateless/controlled React building blocks; no store, IPC, or vault dependencies |
-| `index.ts` | Candidate exports and stylesheet imports, used only by the gallery |
+| `index.ts` | Gallery barrel exports and stylesheet imports |
 | `patterns.tsx`, `patterns.css` | Candidate workflow cards, run ledgers/logs, transcript messages, composer, changes, and diffs |
 | `ProductExamples.tsx` | Interactive product patterns using local sample data, without app stores or a backend |
+| `planning.tsx`, `planning.css` | Reusable Board and Calendar presentation components using shared foundation tokens |
+| `PlanningExamples.tsx` | Interactive Board and Calendar gallery compositions using only local sample data |
 | `IconCatalog.tsx` | Searchable catalog of every canonical icon in the installed Lucide package |
 | `gallery.tsx`, `gallery.css` | Isolated review page with local demonstration state |
 | `../../design-system.html` | Separate HTML entry |
@@ -62,6 +68,217 @@ review page. They are not new application typography or layout requirements.
 All tokens use the `--mds-` prefix. All component styles use `mds-` classes and are scoped
 under `.mosaic-ds`. They do not redefine legacy variables or generic app element styles.
 Only the gallery stylesheet resets `body`; never import it into the application.
+
+## Application adoption: Settings
+
+`views/DesignSystemScope.tsx` adapts the existing app preferences to one opt-in surface.
+It imports only foundation tokens and control styles, sets an explicit local theme scope
+(needed when the app forces a theme different from the system), and maps `--mds-accent`
+to the user's existing accent. Interface scale continues to use the document's existing zoom,
+so it is applied once. Comfortable rows use the approved 14px spacing; Compact uses the
+existing 10px spacing token within this screen. Other migrated sections own their scoped layouts.
+
+The adapter supports semantic `nav` and `header` elements. Settings navigation, header, and
+the active migrated section use separate scopes, so remaining section content keeps its existing
+typography and controls. `views/settingsNavigation.css` owns the migrated layout and replaces
+the old global navigation/header rules. Search uses a visibly labelled field and shared buttons;
+the current section is announced with `aria-current="page"`. Selecting a search result clears
+the query and returns focus to search. Section navigation uses native button keyboard behavior.
+Narrow panes keep navigation in a bounded scroll area above the section body, using the existing
+container breakpoint as well as the narrow-window breakpoint.
+
+`views/AppearanceSettings.tsx` uses shared setting rows, icon buttons, buttons, segmented
+choices, and input styles. Native range inputs add a scoped `mds-range` treatment. Setting
+rows can associate their visible label with a control and expose a hint ID; segmented groups
+can reference that hint. The note preview keeps its note font, size, width, line spacing,
+heading scale, and code font preferences independently of interface typography.
+
+`views/EditorFilesSettings.tsx` adopts shared rows, switches, reset buttons, and notices for
+spellcheck, source line numbers, Trash confirmation, and the vault's HTML script policy.
+Switches associate their hint/error descriptions with the control. The Editor section reset
+retains its app-wide scope and focus return; it does not reset the vault policy. HTML policy
+actions are disabled while saving or when vault preferences are unavailable. Failed writes
+leave the saved value in place and show an inline error. A vault change remounts the policy
+control so pending/error UI from the previous vault does not carry over.
+
+`views/VaultFoldersSettings.tsx` adopts shared rows, buttons, selects, switches, badges, and
+notices for vault selection, folder/note defaults, attachment visibility, and folder colors.
+Changes are serialized within the screen, with disabled controls and inline save errors.
+Picker/prompt/confirmation callbacks check the active vault before changing preferences;
+changing vaults remounts the local UI. Missing paths keep their explicit Create folder action.
+The folder reset touches its nine existing keys, preserving HTML policy, calendar/link settings,
+template assignments, and files. Agent-folder changes and reset refresh generated agent mirrors.
+Picker, text-prompt, and confirmation overlays now use the shared modal patterns described below.
+
+`views/TemplatesSettings.tsx` adopts shared fields, selects, buttons, badges, and notices.
+Folder assignments remain a draft until Save, including after a failed write or a template-list
+retry. Native fieldsets group each inheritance rule; Blank still stops inheritance and removing
+a rule restores it. Starter previews keep their raw Markdown and placeholders, require an explicit
+Add action, preserve existing filenames, and return focus when cancelled or completed. Controls
+are disabled during writes; installation checks the active vault and pins new files to its root.
+The scoped `views/templatesSettings.css` wraps rule controls and preview content in narrow panes.
+
+`views/CalendarLinksSettings.tsx` uses shared setting rows, switches, notices, and reset actions.
+`views/PreferenceControls.tsx` provides app preference controls and the app-only section reset.
+Week start and link opening keep their app scope; daily file names and generated syntax remain
+vault preferences. Vault writes are serialized, disabled when unavailable, and preserve saved
+values after failure. The reset confirmation restores focus and leaves vault preferences intact.
+
+`views/WorkspaceSettings.tsx` shares the app preference controls, including native width ranges
+with associated outputs. Startup-note choices keep their vault scope, serialized writes, load/save
+errors, and a missing-note notice. Picker callbacks check the vault and restore focus after cancel
+or save. Workspace reset changes only its five app defaults and preserves the selected vault note.
+The former legacy `Personalization.tsx` helpers are removed after their final consumer migrated.
+
+`views/ShortcutsSettings.tsx` uses native tables with labelled shared binding buttons, custom
+badges, and live recording/conflict notices. Capture keeps Escape cancellation, Backspace removal,
+and conflict reassignment; Tab or leaving the button cancels capture. Unsupported Control chords
+are refused. Reset returns focus to the first command when its own button disappears. Legacy
+shortcut styles are removed; the shared picker's keyboard labels use the same foundation tokens.
+
+`views/AboutSettings.tsx` adopts shared version rows, badges, notices, and outlined update actions.
+Release notes retain sanitized inline Markdown and external-link handling; long references and
+logs wrap inside narrow panes. `state/updates.ts` retains the shared update state/listeners so
+progress survives Settings navigation. Status/check failures are retryable, cancellation restores
+focus, and restart actions serialize draft decisions and note saves before installation. Existing
+draft confirmations use the shared dialog; native update behavior is unchanged.
+
+`views/ConnectAi.tsx` adopts the shared theme, typography, setup/copy controls, notices, badges,
+and setting rows for Connections & safety. The root owns its heading and scroll layout. Folder
+rules and chain depth keep saved values until write acknowledgement, serialize related actions,
+and require a reload when a successful write cannot be reread. Failed writes retain saved choices.
+Folder-picker callbacks check the vault; cancelled/completed selections and CLI installation
+restore focus. Copy failures are announced. Folder selection uses the shared picker.
+
+`views/WorkflowList.tsx` adopts `WorkflowCard` for Workflows and the Agent library. Cards show
+the real trigger, effective review policy, newest recorded result, and expandable source metadata.
+Agent definitions have no dedicated input/output schema: the read scope references folder rules,
+and output is explicitly defined by the instructions. The complete result remains in its run log.
+The card supports an optional title action and notice; an empty result has no fabricated run state.
+Status labels use normal text with colored, distinct icons to preserve readability across accents;
+filled button variants and faint text remain outside adoption. Actions serialize, guard the vault,
+and restore menu/picker/confirmation focus. Deletion rechecks whether a run started while its
+confirmation was open. The sibling recent-runs ledger shares the approved runs table in its own theme scope.
+`workflowPresentation.ts` retains the shared status, trigger, and duration helpers.
+
+`views/WorkflowForm.tsx` extracts and migrates the shared create/edit form. Fields, text areas,
+switches, notices, folder chips/search, and actions use shared controls. `TextArea` retains the
+same label/error/hint associations as `TextField`. Invalid fields receive focus; draft guards
+include switch edits, refuse navigation during a pending save, and preserve failed drafts.
+Writes retain source hashes and vault roots; subsequent refresh/mirror/navigation phases check
+the original vault. Manual-only creation initializes an empty YAML mapping before deleting optional
+keys. The save footer flows after the form in narrow panes so it does not cover the fields.
+
+`views/WorkflowDetail.tsx` reuses the same guarded card actions for a selected workflow, opens
+the shared editor, and restores Edit focus after cancellation or saving. The context body adopts
+17px titles, 13px metadata, status icons, and a guarded source action with inline errors. Missing
+workflows offer a route back to the list. Local styles override legacy context label/title rules;
+the surrounding workspace/context frame now owns its migrated scope. Obsolete workflow-card
+styles are removed after their final consumer migrated. The run-history page owns its separate theme scope.
+
+`views/RunsHistory.tsx` and `views/RunsLedger.tsx` adopt `RunsTable` for All runs and recent
+history. Sorting, workflow filtering, run navigation, review counts, tool warnings, errors, and
+empty/loading/error states remain explicit. All eight status values map to the same text/icon
+treatments. The table takes an accessible label and only exposes expansion when an inline
+selection is controlled. A named container query adapts to pane width, with a narrow-window
+fallback for older WebKit. Status text stays neutral and notes wrap instead of clipping errors.
+Legacy ledger styles are removed after their final consumer migrated.
+
+`views/RunDetail.tsx` adopts `RunPanel`, status labels, notices, and shared actions. The panel
+accepts a heading level, structured metadata, expandable details, a log title, and transcript
+DOM props so the app retains its focusable scroll region and follow-at-bottom behavior.
+`TranscriptItem` shares sanitized Markdown, tool details, source
+links, errors, and proposed-change actions with chat.
+Tool activity supports all run states and distinguishes reads from writes. Older saved results,
+shortened logs, chain/attempt metadata, changed files, and review outcomes remain available.
+Changed-file and transcript-link failures show an inline notice. Legacy run-only styles are removed.
+
+`views/ChatHistory.tsx` scopes All chats and the sidebar's saved rows independently. Shared
+buttons, badges, and notices retain date groups, newest-first order, older-history disclosure,
+selection, new chat, rename, and deletion. Long titles wrap in both locations. Menu and dialog
+cancellation return focus; deleting a row chooses the next available row or New chat. Pending
+rename/delete decisions check both the chat store and active vault before applying. The existing
+menu/prompt/confirmation overlays remain scheduled separately. The surrounding AI navigation and
+chat conversation stay in their own migration steps; unused legacy chat-row CSS is removed.
+
+`views/ChatPanel.tsx` adopts `ChatComposer`, transcript messages, tool details, attachments,
+model choice, notices, and outlined send/stop actions. The composer exposes controlled attachment,
+footer, annotation, textarea, and action-variant options; its gallery annotation stays out of the
+app. Enter/Shift+Enter/composition rules, agent-only sends, typing while running, stop, cost,
+saved-note export, slash agents, and selected-text context remain intact. Attachment picker and
+rename cancellation restore focus. Saved-note writes serialize and pin their vault root; async
+picker/rename/save continuations check the original chat and vault. Connection-check failures
+are retryable. `ChatContext.tsx` shares scoped metadata, statuses, source actions, and errors.
+The last legacy transcript consumer has migrated, so old chat/transcript CSS and mode are removed.
+The surrounding context frame remains scheduled separately.
+
+`views/ActivityPanel.tsx` adopts `ChangeRow`, notices, outlined review/undo controls, and scoped
+page headings. The row accepts semantic timestamps, action-specific icons, file buttons, list
+semantics, and inline errors. Pending proposals remain oldest first, before newest applied changes;
+stale warnings stay explicit. Loading, empty, failed-load/retry, deleted-file, and undo-conflict
+states retain their recovery actions. Undo serializes mutations and guards its vault; late loads
+and event-listener setup are ignored after unmount. Review/history close restores focus; successful
+undo focuses History when its own button becomes disabled. The review dialog renders as
+a sibling with its own adopted theme. Unused legacy activity-row styles are removed.
+
+`views/ReviewModal.tsx` adopts the wide `Dialog`, shared diff, selectable hunks, notices,
+segmented stale-change comparison, rejection text area, and outlined actions. Failed comparisons
+can be retried and cannot be accepted until the file was read; a missing file remains distinct.
+Conflicts reread the current file before offering Accept anyway. Accept/reject serialize, disable
+fields and dismissal while pending, guard the vault, and retain failed drafts. An accepted change
+is not repeated if opening its file fails. Shared DiffView supports labelled views and optional
+hunk controls. Native and fallback dialogs are checked for keyboard containment, Escape, background
+focus blocking, return focus, themes, and narrow layouts at 130% scale.
+
+`views/HistoryModal.tsx` adopts the compatible wide Dialog, shared diff, notices, and outlined
+restore action. The labelled versions list supports Arrow Up/Down and Home/End, preserves selection,
+and disables rename-only entries. Missing current files stay distinct from failed reads; history,
+current-file, and version failures have retries. Late version responses cannot replace a newer
+selection. Restores serialize, keep the current-file hash guard, block dismissal while pending,
+and report success; a vault change closes the dialog. The body becomes one column in narrow panes,
+while header/actions remain visible. Shared legacy diff CSS remains for ConflictBar until its step;
+unused history-specific styles are removed.
+
+`views/Welcome.tsx` adopts the shared scope, outlined actions, notices, saved theme/density/scale,
+and a bounded scroll layout. Native picker/naming cancellation restores focus; pending actions
+serialize and stay disabled until completion. Inline errors remain visible until retry, including
+store-handled open/create failures. The common vault actions accept an optional validity guard so
+late choices cannot replace a newly opened vault. Startup failures reach Welcome instead of leaving
+a blank loading screen; loading uses the same scoped presentation. Shared naming/picker overlays
+use the shared dialog patterns. Legacy Welcome styles are removed.
+
+`views/WindowChrome.tsx` adopts the shared theme, 13px title and 12.5px version metadata,
+while retaining native drag regions and the space reserved for macOS window controls. Long vault
+names truncate within the strip. The rest of the shell remains scoped separately for subsequent
+navigation passes.
+
+`views/DestinationNavigation.tsx` adopts shared icon buttons and neutral selected surfaces for
+the destination rail. Arrow Up/Down and Home/End retain activation and roving focus; mounting Search
+does not steal keyboard focus from the rail. Click-to-toggle sidebar behavior and Settings remain.
+Attention counts use readable neutral badges and a full screen-reader description. IconButton
+preserves an explicit title so app shortcut hints can accompany its accessible label. Unused legacy
+rail/badge styles are removed; sidebar and workspace content remain scoped separately.
+
+`views/SidebarHeader.tsx` adopts shared vault/menu controls, disabled loading state, inline errors,
+and focus return across menu/picker/prompt cancellation. Recent-vault failures retain open/create
+recovery actions; stale responses and actions guard the vault. AreaSidebar adopts shared navigation
+buttons and the radio-based AI section switch; ChatList can inherit that scope without nesting a
+second theme. The file tree and Find panel bodies retain their own migration boundaries. Scoped
+indexing metadata and width caps keep the frame usable in narrow windows. Resizer adopts a scoped
+focus ring, keyboard arrows/Home/End/reset, scale-correct dragging, and unmount cleanup, preserving
+saved widths and defaults. Legacy navigation/header/resize styles are removed after their consumers
+migrate.
+
+**Contrast decision for this pilot:** retain the approved palettes and existing user-selected
+accents. The migrated controls use normal/muted text, quiet or outlined buttons, and neutral
+selected segments. They introduce no white-on-accent or white-on-danger text. Decisions about
+those filled variants remain required before their first application adoption.
+
+**Dialog compatibility strategy:** `Dialog` feature-detects native modal support. Supported
+older WebKit receives an open dialog in a fixed backdrop, explicit focus containment, background
+ARIA hiding (plus inertness when available), scroll blocking, Escape handling, and focus return.
+Prior background state is restored on close. Backdrop clicks do not dismiss either implementation.
+The app's remaining confirmations stay on their existing implementation until Step 28.
 
 ## Provenance
 
@@ -121,14 +338,17 @@ Approved during the 2026-10-28 design review, before component migration:
   hover highlight never leaves two active rows. Nested menus, context positioning,
   collision detection, and typeahead are not included in this candidate.
   The trigger uses a centered 14px Lucide `ChevronDown`, rather than a baseline-aligned text glyph.
-- Native modal dialogs with explicit Tab wrapping, Escape, and focus restoration. Pass
+- Modal dialogs use native support when available and a focus-managed fallback otherwise. Both
+  provide explicit Tab wrapping, Escape, and focus restoration. Pass
   `returnFocusRef` to restore the opener after mouse activation too (Safari does not focus
-  buttons on mouse clicks). Without it, the previously focused element is restored. These require
-  Safari 15.4+; Mosaic's macOS 12 minimum can include earlier WebKit versions. Resolve the
-  compatibility strategy before adopting this component in the app. Backdrop clicks do not
+  buttons on mouse clicks). Without it, the previously focused element is restored. Native `showModal` is
+  available in Safari 15.4+; earlier supported WebKit uses the fallback without raising Mosaic's
+  macOS minimum. Backdrop clicks do not
   dismiss a dialog; explicit Cancel, the close button, and Escape do. Heading/description,
   body, and footer actions have separate layout regions. `size="wide"` accommodates diffs.
   `initialFocusRef` can focus the main field after the dialog opens, instead of its close button.
+  `dismissible={false}` disables close/Escape during a pending decision. Notice roles can be
+  explicitly set to alert when an urgent warning needs announcement.
 - A tooltip surface derived from existing floating surfaces, displayed on hover/focus,
   associated with its child via `aria-describedby`, and dismissible with Escape. Tooltips
   supplement an existing accessible label. Viewport collision handling is deferred.
@@ -177,7 +397,7 @@ adjustments before migration. Essential hints use muted text instead of faint te
 
 ## Candidate API
 
-The gallery is currently the only consumer. For a later, approved migration:
+The gallery and the first application pilot share these primitives. For subsequent migrations:
 
 ```tsx
 import { Button, SettingRow, Switch, TextField } from "./design-system";
@@ -204,5 +424,314 @@ pnpm --dir ui design-system:build
 pnpm --dir ui e2e design-system.spec.ts --project=chrome --project=webkit
 ```
 
-The browser checks exercise actual keyboard behavior, modal focus, validation, menu dismissal,
-theme selection, and responsive overflow. Existing app flows are not changed by this work.
+The gallery checks exercise keyboard behavior, modal focus, validation, menu dismissal,
+theme selection, and responsive overflow using sample data. App checks use the mock vault.
+
+The Appearance pilot additionally runs in both projects via `pnpm --dir ui e2e appearance.spec.ts`.
+It checks theme/keyboard behavior, preference persistence, individual and confirmed section resets,
+preservation of other preferences, and isolation/overflow at maximum interface scale. Review
+screenshots are written to the corresponding Playwright test output folder.
+
+`pnpm --dir ui e2e settings-navigation.spec.ts` checks keyboard search/selection, focus return,
+empty results, section headings, tab closing, theme changes, scale/density, and isolation from
+remaining section content. WebKit uses Option-Tab to include buttons under Safari's native
+keyboard preference. Both test projects save Light/Dark and narrow-pane review screenshots.
+
+`pnpm --dir ui e2e editor-files.spec.ts` checks keyboard switches, saved app preferences,
+individual/section reset and cancellation, preservation of the vault HTML policy and unrelated
+app preferences, themes, reduced motion, scope isolation, and narrow layouts at 130% scale.
+Component tests additionally cover pending/failed vault saves and unavailable preferences.
+
+`pnpm --dir ui e2e vault-folders.spec.ts` checks folder/note picking and focus return, defaults,
+attachment visibility, colors, explicit folder creation, cancelled/confirmed reset, preservation
+of unrelated data, themes, and narrow layouts including expanded colors. Component checks
+cover serialized writes, stale callbacks after vault switches, associated save errors, explicit
+creation, reset scope, and refused preference repair.
+
+`views/FileTree.tsx` adopts shared icon buttons for the Files toolbar and scoped tokens for
+its custom multi-select tree, file-kind icons, selection, drops, and inline rename input.
+Rows use 14px text and 30px height (28px Compact); folder colors and note typography remain
+independent. Tree keyboard selection, menus, imports, drag scrolling, and file actions retain
+their behavior. The tree and toolbar own sibling theme scopes; Find panels remain separate.
+
+`views/BookmarksPanel.tsx` uses shared list actions, notices, and neutral current-page states.
+Each bookmark has a native open button and an accessible action menu; missing targets retain
+their removal action. Alt+Arrow Up/Down and menu commands complement drag reordering. Writes
+serialize and update the list after acknowledgement; cancelled query prompts restore focus,
+failed writes retain saved order, and stale query choices cannot change a different vault.
+
+`views/TagsPanel.tsx` uses shared buttons, count badges, and retry notices. Loading, empty,
+and error states stay distinct, and cancelled/stale loads cannot replace a newer vault or
+revision. Tag labels wrap in narrow panels; selecting a tag retains the existing Find query.
+
+`views/SearchPanel.tsx` shares labelled search fields, result buttons, notices, and bookmark
+controls in both Find and workspace search. Debouncing, snippets, Enter/meta-Enter opening,
+Escape clearing, indexing feedback, and search bookmarks remain available. New requests clear
+stale hits; failed requests retain a retry action. Bookmark writes serialize, keep saved state
+until acknowledgement, report failures, and avoid local state/focus changes after unmount or a vault switch.
+Acknowledged saves still refresh the matching vault when the query was cleared during a write.
+
+`views/Workspace.tsx` adopts sibling scopes for each tab bar and split divider, with shared
+icon controls and token-based custom tabs. Drag/reorder/split behavior, dirty markers, and
+saved layouts remain. Closing a tab with the keyboard no longer triggers its parent tab;
+split handles expose orientation, current size, arrow resizing, Home/End limits, and Enter
+balancing, with listener cleanup on unmount. Active tabs stay visible as panels resize;
+very narrow bars move split/sidebar/context actions into their shared workspace menu.
+Document bodies keep their independent typography.
+
+`editor/selectionToolbar.ts` keeps CodeMirror’s native tooltip lifecycle while applying shared
+button classes and tokens. Its small preference adapter updates theme/density and unsubscribes
+when the tooltip closes. Arrow/Home/End navigation and Escape retain the selection; cancelled
+link prompts return to the editor and late choices check both the vault and connected editor.
+The large-note read-only notice owns a separate scope, preserving document typography.
+
+`editor/PropertiesEditor.tsx` shares field styles, switches, chips, icon actions, and notices
+in the note details panel. A local scope keeps form typography at
+14px while the note retains its preferences; context panels may explicitly inherit their
+parent scope. Existing YAML transformations and commit behavior remain. Duplicate names
+associate their error with the field; cancelled additions and removed values restore focus.
+The form stacks its fields using a named container query and removes its final legacy rules.
+
+`views/NoteDetails.tsx` owns the note context scope and lets PropertiesEditor inherit it.
+Shared headings, count badges, links, outline controls, and notices retain attachments,
+backlinks, mentions, section movement, and source navigation. Failed backlinks/mentions stay
+distinct from empty results and expose retries; mention writes serialize and guard the vault.
+The context header has its own sibling scope for all detail types. Its close action restores
+workspace focus, while Calendar context content remains for its own migration.
+
+`views/TaskQueryView.tsx` adopts Tasks, Overdue, Project tasks, saved queries, and planning views. Shared actions and notices
+wrap native completion checkboxes and readable result metadata. Requests guard the active
+vault, writes serialize until acknowledged, and removed rows return focus to the results.
+Saved planning titles and queries retain their vault-local storage; unavailable saved views stay explicit.
+
+`views/planner/BoardView.tsx` scopes board controls/cards and onboarding independently
+from the task/epic editors. Shared labelled fields, actions, notices, and token-based
+metadata preserve lane/task dragging, keyboard epic ordering, lifecycle filters, and exports.
+Wide lanes stay in a keyboard-focusable scroller; reduced motion removes drag-target animation.
+Loads ignore older requests, subscriptions clean up even when registration finishes late,
+and task-name decisions check the active vault. Editors retain their own migration passes.
+
+`views/planner/TaskEditor.tsx` adopts a sibling scope for shared fields, notices, actions,
+and optional shared activity rendering. Writes and decisions serialize, fields disable
+while pending, failed archive/delete requests retain the editor, and stale decisions
+check the selected task revision and vault. Closing restores its card or board heading.
+Narrow pane containers show the editor at full width, with a media fallback for older WebKit.
+
+`views/planner/EpicEditor.tsx` adopts shared edit/history dialogs with explicit opener
+references (including Safari pointer focus), title focus, Enter submission, serialized
+writes, pending dismissal guards, and draft-preserving errors. Activity inherits the dialog
+scope; task/epic editor legacy styles are removed only where no consumer remains.
+
+`views/planner/CalendarView.tsx` adopts Today/day, week, and month. Its main surface
+uses shared actions, a labelled radio view selector, notices, and scoped tokens around the
+specialized time grid and task tray. Editors keep separate migration passes.
+Larger event text wraps only when two lines fit. Empty slots support keyboard creation,
+and range loads guard the latest request and active vault.
+
+`views/planner/EventEditor.tsx` adopts an independent editor scope using the common
+`plannerEditor.css` field treatment. Native date parsing and recurrence controls retain
+their semantics, inputs disable during serialized writes, failures keep drafts, and stale
+acknowledgements check the active vault. Calendar captures the opener for focus return;
+narrow container layouts give the editor the pane width. Task-editor checks cover the
+shared stylesheet after extraction.
+
+`views/planner/WorkSessionEditor.tsx` shares date/time fields and notices while preserving
+minute precision, timezone conversion, all-day intervals, and revision conflicts. Invalid
+times reference their message, pending writes disable duplicates, and unchanged background
+revisions retain edited minutes. Closing/saving returns to the source or the selected calendar
+mode if the source moved. The shared native event-field labels use the approved label weight.
+
+`views/CalendarContext.tsx` and `CalendarTaskList.tsx` adopt the daily-note action, open-task
+count, overdue rows, hierarchy/progress, and source links. Failed reads offer retry, task
+writes serialize until acknowledged, and late reads guard their day/vault scope. Completion
+and retries restore focus; the final legacy task-list renderer/styles are removed.
+
+`views/planner/CalendarSourcesDialog.tsx` adopts shared subscription rows, fields, notices,
+and modal controls. Drafts survive errors; adding, visibility changes, refresh, and removal
+serialize against the active vault. Pending writes guard dismissal. Explicit opener and
+post-action focus intents support Safari pointer focus as well as keyboard use.
+
+`views/planner/EventArchiveDialog.tsx` adopts shared Archive/Deleted choices, event rows,
+notices, and modal controls. Loading, failed reads, and empty archives stay distinct.
+Restore/delete actions serialize and guard the vault; removed rows return focus to the
+selected view, and closing restores the calendar chooser action.
+
+`views/planner/OverlayDetails.tsx` adopts shared subscribed-event details, notices, meeting
+links, and copy controls without changing source events. Copies serialize and show local
+errors; a late copy cannot close a different selected occurrence. Closing and successful
+copying restore calendar focus, with full-width detail panes at narrow sizes.
+
+`views/planner/IcalImportWizard.tsx` adopts shared import previews, duplicate choices,
+notices, and modal actions. Selected events remain after errors, pending imports disable
+all choices/dismissal, and closing restores the file-import action. File preview generations
+and vault guards prevent late reads from replacing a newer selection or another vault.
+
+`views/Overlays.tsx` adopts the shared prompt dialog and labelled input. Enter submission,
+Escape/close cancellation, selected initial text, modal keyboard containment, and focus return
+remain explicit; the native-dialog compatibility fallback also applies to global prompts.
+
+Global confirmations use the shared dialog description and quiet/outlined destructive
+controls, retaining confirmation labels, Enter/Space activation, Escape cancellation,
+modal focus containment, and focus return.
+
+`views/NewNoteDialog.tsx` adopts shared modal actions, labelled native fields, template
+preview typography, and notices. Preview hashes/default selection and creation timestamps
+remain pinned. A synchronous write lock blocks repeat creation; dismissal is disabled while
+saving, failed writes retain drafts, and late acknowledgements guard the active vault.
+
+`views/Picker.tsx` adopts shared modal/search fields with an accessible combobox/listbox,
+readable result paths and shortcuts, and explicit empty results. Fuzzy ranking and keyboard
+selection remain unchanged. Global prompt/confirmation resolution closes the modal before
+promise continuations restore explicit openers, preserving Safari focus return.
+
+`views/QuickSwitcher.tsx` adopts the shared search dialog, accessible note options,
+readable paths, and empty-vault guidance. Recent/fuzzy ordering and Enter/Meta/Shift actions
+remain intact. Search dialogs constrain long lists inside the modal at maximum interface
+scale, preserving visible dismissal controls and focus return.
+
+`views/ContextMenu.tsx` retains nested menus, hover opening, and edge flipping while using
+shared tokens and readable details/shortcuts. Arrow/Home/End/type-ahead keys navigate enabled
+items, Right/Left enters/leaves submenus, and Escape/Tab restores the opener. Positioning
+accounts for interface zoom; narrow submenus stay within the viewport.
+
+
+Global error toasts use shared notices and an accessible dismiss action. Long messages wrap,
+automatic expiry pauses during hover/focus, and manual dismissal restores prior focus. Error
+replacement and timer cleanup prevent an older timeout from clearing a newer message.
+
+
+`viewers/canvas/CanvasEditor.tsx` adopts `DocumentToolbar`, shared view choices/actions,
+and scoped React Flow navigation controls. The nonmodal shape palette stays draggable,
+uses shared controls and readable groups, fits the scaled viewport, and restores its opener
+on dismissal. Newly created shapes retain editor focus. Reduced motion disables fit
+animations; canvas nodes, note previews, geometry, and source rendering stay outside scopes.
+
+
+Graphviz diagrams opt into shared `DocumentToolbar` controls, labelled Graph/Source choices,
+error notices, and a keyboard-scrollable preview. DOT source editing, rendering, and theme
+redraws remain intact. Charts now adopt the same shared controls and notices in their separate migration.
+
+
+`viewers/ExcalidrawEditor.tsx` adopts shared Drawing/Source controls and loading/error
+notices around Excalidraw. View changes re-parse the current source; invalid JSON returns
+to editable Source and can be repaired. Excalidraw's own rendering and tool controls remain
+owned by the specialized engine, including its existing theme and saving behavior.
+
+
+Vega-Lite charts adopt shared Chart/Source controls, rendering/error notices, and a
+keyboard-scrollable preview. Local vault data, JSON editing, error recovery and theme
+redraws remain intact. Both `RenderedSourceViewer` consumers are migrated, so its temporary
+legacy-control branch is removed; SVG/document typography stays owned by the renderer.
+
+
+`viewers/CsvEditor.tsx` adopts shared Table/Source choices, metadata, and row/column actions.
+Editable cells have explicit labels and keyboard context menus; CSV delimiter, newline,
+quoting, cell editing, and renderer typography remain intact. Wide table data scrolls locally
+while toolbar actions wrap in narrow panes.
+
+
+`viewers/PdfViewer.tsx` adopts readable page metadata and shared loading/error/retry states.
+Page canvases retain PDF.js rendering, resize to their pane, expose labelled busy states,
+and keep lazy loading. File reads guard their vault/lifetime; failed files and pages can be
+retried. Compact embedded previews retain their existing page limits and scrolling.
+
+
+`viewers/ImageViewer.tsx` adopts shared loading/error/retry states around the existing
+image renderer. Decode failures remain explicit, retries refresh local URLs, and late reads
+guard the active vault/lifetime. The labelled preview supports keyboard focus while image
+fit, source bytes, and document rendering remain intact.
+
+
+`viewers/HtmlViewer.tsx` adopts shared Preview/Source, zoom/script/internet actions, and
+readable consent/loading/error notices. Internet decisions remain tied to the exact page
+content and vault; scripts stay independently controlled. Failed previews can be retried,
+and late prepared documents cannot publish after closing or vault changes. The iframe and
+its document typography remain outside the design-system scope.
+
+
+`viewers/CodeEditor.tsx` adopts shared loading/read-only notices and scoped CodeMirror
+search/replace controls. CodeMirror owns its panel markup and keyboard/search model; the
+adapter uses foundation tokens for fields, actions, checkboxes, focus and responsive wrapping.
+The source scroller retains the configured code font at 13px, line-number preferences,
+syntax loading/fallbacks, and editing/save behavior.
+
+
+The final audit migrates `views/ConflictBar.tsx` to shared notices, actions, and the wide
+comparison/diff dialog. Failed comparisons are explicit and retryable, pending decisions
+block duplicates/dismissal, and resolution returns to its owning editor pane. Explicit
+Discard removes a deleted file's in-memory draft from every pane without writing it.
+
+
+`views/WorkspaceNotices.tsx` adopts shared offline/history/link-repair banners, serialized
+actions, readable wrapping, local scrolling and focus return. Reconnect explicitly preserves
+the current workspace and non-file drafts, refreshes vault metadata, and reconciles existing
+buffers with disk; it no longer restores a fresh layout over unsaved text.
+
+
+`viewers/UnsupportedFile.tsx` and file loading adopt shared notices/actions, readable
+wrapping and pending states. External launches serialize and late refusals stay tied to the
+selected file/vault. Backend restrictions for programs/installers remain in force.
+
+
+## Board and Calendar component inventory
+
+The gallery's **Board** and **Calendar** sections provide shared presentation patterns.
+The application Board now consumes `BoardGrid`, `BoardColumn`, `BoardCard`, `BoardDropIndicator`,
+`EpicLane`, `EpicHeader` and `PlannerExportMenu` directly. Task cards have no status control or
+status text; their column communicates status. Epic creation, task creation within an epic,
+subtasks, due dates, estimates, history, lifecycle actions and export retain their existing
+app behavior. Task and epic dragging use separate payloads; native moves persist through the
+existing planner API, including completion/reopen rules and revision checks. Alt+Left/Right
+offers keyboard task moves. The app retains its saved New / Blocked / In progress / In QA / Done
+statuses and one workspace scroller. Calendar patterns remain available for future adoption.
+
+- `BoardGrid`, `BoardColumn`, `BoardCard`, `BoardDropIndicator`: scrollable status columns,
+  selected cards, empty states and drop feedback. Consumers own drag/drop events and persistence.
+  Gallery cards change status through drag/drop, with Alt+Left/Right on a focused card title
+  as the keyboard equivalent. Cards have no status dropdown. Card drags use a separate payload
+  and stop propagation so they cannot reorder the containing epic; dropping into another epic
+  also updates the sample task's epic assignment.
+- `EpicLane`, `EpicHeader`: the full epic is a drag surface, with controls excluded from drag
+  initiation. Headers provide controlled collapse, epic color, task count, an explicit `+ Task`
+  action, keyboard reorder actions and an action slot. The gallery supports native drag
+  reordering and creates sample tasks in the chosen epic using the shared dialog.
+- `PlannerExportMenu`: JSON/CSV actions using the shared keyboard menu.
+- `CalendarChooser`: controlled layer checkboxes, read-only source labels and an action slot.
+  The disclosure uses normal Tab order, outside dismissal and Escape focus return.
+- `CalendarGrid`, `CalendarDay`, `CalendarChip`: scrollable month/week/day compositions and
+  event, session and due-date treatments, with selected, read-only and disabled states.
+- `CalendarSessionMenu`: edit/unschedule actions using the shared keyboard menu.
+- `TaskTray`, `TaskTrayGroup`, `TaskTrayItem`: controlled collapse, filter slots, epic groups
+  and keyboard scheduling actions.
+
+The primitives have no vault, IPC or store dependencies. Typography, radii, spacing, colors,
+focus and compact padding use foundation tokens. Day/date calculations and demonstration data
+live only in `PlanningExamples.tsx`; these components do not implement a scheduling engine.
+Use `data-density="compact"` on the design-system scope or a descendant wrapper to preview
+compact planning controls. Gallery interactions never export files or change application data.
+
+## Migration completion and retained boundaries
+
+All 30 migration steps are complete. `editor/designSystemDom.ts` adapts renderer-owned
+controls to the live app variables without one store subscription per widget. Query tables
+use keyboard buttons, scoped read/write notices, retry, duplicate-write protection and focus
+restoration. Their table scrolls locally in narrow notes. Note search, completion menus, table
+editing, section actions and diagram actions use the foundation; note text, table data cells,
+code fonts and renderer geometry retain their explicit document settings. CodeMirror tooltips
+use absolute positioning so interface zoom has consistent coordinates in Chrome and WebKit.
+
+Canvas view switches reparse explicit source changes, including invalid-source recovery.
+Long tabs keep their close control within the available width. Workspace file operations check
+the active vault and restore generation before applying responses; writes pin their original
+root. Calendar follow-up actions check the active vault, and resize keys stay on the resize
+control. Supported WebKit without container queries gets stacked property fields and narrow
+tabbar fallbacks. Shared dialogs retain the native/fallback strategy described above.
+
+Unused legacy menu, modal, switcher, picker, new-note, toast and table-add rules were removed
+only after checking that they have no production consumer. The unused PropertiesWidget bridge
+was removed. Retained global CSS supplies document/renderer geometry and layout still consumed
+by migrated views; it is not a second component system. Native pickers, Excalidraw internals,
+ReactFlow geometry and diagram/SVG/HTML content keep their own rendering boundaries. The gallery
+remains a separate entry and does not import app state. The unresolved filled-primary/danger
+contrast decision documented above remains a restriction on future adoption; the app uses quiet, secondary
+and outlined danger actions in affected flows.

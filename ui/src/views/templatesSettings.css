@@ -1,0 +1,76 @@
+.mosaic-ds.template-settings {
+  min-width: 0;
+}
+.mosaic-ds.template-settings > .mds-field {
+  max-width: 480px;
+  margin-top: var(--mds-space-6);
+}
+.mosaic-ds.template-settings h3 {
+  font-size: var(--mds-text-body);
+  margin: var(--mds-space-9) 0 var(--mds-space-4);
+}
+.mosaic-ds.template-settings .template-settings-note,
+.mosaic-ds.template-settings .template-empty {
+  margin: var(--mds-space-6) 0;
+}
+.mosaic-ds.template-settings .mds-notice {
+  margin-top: var(--mds-space-6);
+  overflow-wrap: anywhere;
+}
+.mosaic-ds.template-settings .template-default-rule {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--mds-space-6);
+  min-width: 0;
+  padding: var(--mds-space-6);
+  margin: var(--mds-space-6) 0;
+  border: 1px solid var(--mds-border);
+  border-radius: var(--mds-radius-group);
+}
+.mosaic-ds.template-settings .template-default-rule legend {
+  color: var(--mds-text-muted);
+  font-size: var(--mds-text-small);
+  padding-inline: var(--mds-space-2);
+}
+.mosaic-ds.template-settings .template-default-rule .mds-field {
+  flex: 1 1 180px;
+}
+.mosaic-ds.template-settings .template-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--mds-space-4);
+  margin-top: var(--mds-space-6);
+}
+.mosaic-ds.template-settings .mds-button {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.mosaic-ds.template-settings .template-source-link {
+  display: block;
+  max-width: 100%;
+  text-align: left;
+  margin-bottom: var(--mds-space-3);
+}
+.mosaic-ds.template-settings .template-starter-section details {
+  margin-top: var(--mds-space-4);
+}
+.mosaic-ds.template-settings summary:focus-visible {
+  outline: var(--mds-focus-width) solid var(--mds-accent);
+  outline-offset: var(--mds-focus-offset);
+}
+.mosaic-ds.template-settings .template-starter-preview {
+  max-height: 240px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  border: 1px solid var(--mds-border);
+  border-radius: var(--mds-radius-control);
+  padding: var(--mds-space-6);
+  background: var(--mds-surface-subtle);
+  font: var(--mds-text-small) / var(--mds-leading) var(--font-mono);
+}
+.mosaic-ds.template-settings[data-density="compact"] .template-default-rule {
+  padding: var(--mds-space-5);
+}

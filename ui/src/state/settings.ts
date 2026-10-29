@@ -203,6 +203,7 @@ export function applyPrefs(p: Prefs) {
   root.style.setProperty("--note-leading", String(p.lineSpacing));
   root.style.setProperty("--heading-scale", String(p.headingScale));
   root.style.zoom = String(p.uiScale);
+  root.style.setProperty("--ui-scale", String(p.uiScale));
   root.dataset.density = p.density;
   root.dataset.accent = p.accent;
   if (inTauri) {

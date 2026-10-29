@@ -1,4 +1,4 @@
-import { useId, type ReactNode } from "react";
+import { useId, type ReactNode, type ComponentPropsWithRef } from "react";
 import {
   CheckCircle2,
   CalendarClock,
@@ -16,7 +16,7 @@ import {
   Zap,
   X,
 } from "lucide-react";
-import { Badge, Button, IconButton } from "./components";
+import { Badge, Button, IconButton, type ButtonProps } from "./components";
 
 export type RunState = "ready" | "queued" | "running" | "paused" | "completed" | "needs-review" | "failed" | "skipped";
 const states = {
@@ -51,6 +51,8 @@ export function WorkflowCard({
   metadata,
   lastRun,
   actions,
+  onOpen,
+  notice,
 }: {
   title: string;
   description: string;
@@ -60,14 +62,24 @@ export function WorkflowCard({
   output: string;
   reviewPolicy: string;
   metadata: readonly { label: string; value: ReactNode }[];
-  lastRun?: { state: RunState; when: string; summary: string; action?: ReactNode };
+  lastRun?: { state?: RunState; when: string; summary: string; action?: ReactNode };
   actions: ReactNode;
+  onOpen?: () => void;
+  notice?: ReactNode;
 }) {
   const TriggerIcon = trigger.kind === "schedule" ? CalendarClock : trigger.kind === "event" ? Zap : Circle;
   return (
     <article className="mds-workflow-card" aria-label={title}>
       <header>
-        <h3>{title}</h3>
+        <h3>
+          {onOpen ? (
+            <Button className="mds-workflow-title" onClick={onOpen}>
+              {title}
+            </Button>
+          ) : (
+            title
+          )}
+        </h3>
         <StatusLabel state={state} />
       </header>
       <p>{description}</p>
@@ -89,13 +101,14 @@ export function WorkflowCard({
         <ShieldCheck size={15} aria-hidden="true" />
         <span>{reviewPolicy}</span>
       </p>
+      {notice}
       {lastRun && (
         <div className="mds-workflow-last-run">
           <div>
             <span>Latest run</span>
             <span>{lastRun.when}</span>
           </div>
-          <StatusLabel state={lastRun.state} />
+          {lastRun.state && <StatusLabel state={lastRun.state} />}
           <p>{lastRun.summary}</p>
           {lastRun.action}
         </div>
@@ -132,14 +145,16 @@ export function RunsTable({
   runs,
   onOpenRun,
   selectedId,
+  label = "Workflow runs preview",
 }: {
   runs: readonly RunSummary[];
   onOpenRun(id: string): void;
   selectedId?: string;
+  label?: string;
 }) {
   return (
     <div className="mds-runs-ledger">
-      <table className="mds-runs-table" aria-label="Workflow runs preview">
+      <table className="mds-runs-table" aria-label={label}>
         <thead>
           <tr>
             <th scope="col">Workflow</th>
@@ -159,7 +174,7 @@ export function RunsTable({
                 <Button
                   className="mds-text-action"
                   onClick={() => onOpenRun(run.id)}
-                  aria-expanded={run.id === selectedId}
+                  aria-expanded={selectedId === undefined ? undefined : run.id === selectedId}
                 >
                   {run.title}
                 </Button>
@@ -201,15 +216,17 @@ export function ToolActivity({
   summary,
   state = "completed",
   children,
+  writes = false,
 }: {
   summary: string;
-  state?: "completed" | "needs-review" | "failed";
+  state?: RunState;
+  writes?: boolean;
   children: ReactNode;
 }) {
   return (
     <details className={`mds-tool mds-tool--${state}`}>
       <summary>
-        <Eye size={14} aria-hidden="true" />
+        {writes ? <FilePenLine size={14} aria-hidden="true" /> : <Eye size={14} aria-hidden="true" />}
         <span>{summary}</span>
         <StatusLabel state={state} />
       </summary>
@@ -224,22 +241,33 @@ export function RunPanel({
   metadata,
   children,
   outcome,
+  titleAs: Heading = "h3",
+  details,
+  logTitle = "Run log",
+  transcriptProps,
 }: {
   title: string;
   state: RunState;
-  metadata: string;
+  metadata: ReactNode;
   children: ReactNode;
   outcome: ReactNode;
+  titleAs?: "h1" | "h2" | "h3";
+  details?: ReactNode;
+  logTitle?: string;
+  transcriptProps?: ComponentPropsWithRef<"div">;
 }) {
   return (
     <article className="mds-run-panel" aria-label={`Run detail: ${title}`}>
       <header>
-        <h3>{title}</h3>
+        <Heading>{title}</Heading>
         <StatusLabel state={state} />
       </header>
       <p className="mds-run-meta">{metadata}</p>
-      <h4>Run log</h4>
-      <div className="mds-transcript">{children}</div>
+      {details}
+      <h4>{logTitle}</h4>
+      <div {...transcriptProps} className={["mds-transcript", transcriptProps?.className].filter(Boolean).join(" ")}>
+        {children}
+      </div>
       <footer>{outcome}</footer>
     </article>
   );
@@ -257,6 +285,14 @@ export function ChatComposer({
   model = "",
   modelOptions,
   onModelChange,
+  canSend = !!value.trim(),
+  messageLabel = "Message",
+  textareaProps,
+  attachmentContent,
+  footerStart,
+  annotation = <Badge>Preview</Badge>,
+  sendVariant = "primary",
+  stopVariant = "danger",
 }: {
   value: string;
   onChange(value: string): void;
@@ -269,6 +305,14 @@ export function ChatComposer({
   model?: string;
   modelOptions?: readonly { value: string; label: string }[];
   onModelChange?(value: string): void;
+  canSend?: boolean;
+  messageLabel?: string;
+  textareaProps?: ComponentPropsWithRef<"textarea">;
+  attachmentContent?: ReactNode;
+  footerStart?: ReactNode;
+  annotation?: ReactNode;
+  sendVariant?: ButtonProps["variant"];
+  stopVariant?: ButtonProps["variant"];
 }) {
   const id = useId();
   return (
@@ -276,20 +320,21 @@ export function ChatComposer({
       className="mds-composer"
       onSubmit={(event) => {
         event.preventDefault();
-        if (!busy && value.trim()) onSend();
+        if (!busy && canSend) onSend();
       }}
     >
       <div className="mds-composer-attachments">
-        {attachments.map((name) => (
-          <span className="mds-attachment" key={name}>
-            {name}
-            {onRemoveAttachment && (
-              <IconButton label={`Remove attachment ${name}`} onClick={() => onRemoveAttachment(name)}>
-                <X size={12} />
-              </IconButton>
-            )}
-          </span>
-        ))}
+        {attachmentContent ??
+          attachments.map((name) => (
+            <span className="mds-attachment" key={name}>
+              {name}
+              {onRemoveAttachment && (
+                <IconButton label={`Remove attachment ${name}`} onClick={() => onRemoveAttachment(name)}>
+                  <X size={12} />
+                </IconButton>
+              )}
+            </span>
+          ))}
         {onAttach && (
           <Button onClick={onAttach}>
             <Plus />
@@ -298,19 +343,21 @@ export function ChatComposer({
         )}
       </div>
       <label htmlFor={id} className="mds-label">
-        Message
+        {messageLabel}
       </label>
       <textarea
         id={id}
         className="mds-input"
         rows={3}
         placeholder="Ask about your notes…"
-        value={value}
         disabled={busy}
+        {...textareaProps}
+        value={value}
         onChange={(event) => onChange(event.target.value)}
       />
       <footer>
-        <Badge>Preview</Badge>
+        {footerStart}
+        {annotation}
         {modelOptions && (
           <label className="mds-composer-model">
             Model{" "}
@@ -330,12 +377,12 @@ export function ChatComposer({
           </label>
         )}
         {busy ? (
-          <Button variant="danger" onClick={onStop} disabled={!onStop}>
+          <Button variant={stopVariant} onClick={onStop} disabled={!onStop}>
             <Square />
             Stop
           </Button>
         ) : (
-          <Button type="submit" variant="primary" disabled={!value.trim()}>
+          <Button type="submit" variant={sendVariant} disabled={!canSend}>
             Send
           </Button>
         )}
@@ -352,18 +399,24 @@ export function ChangeRow({
   time,
   stale,
   children,
+  icon = <FilePenLine size={16} aria-hidden="true" />,
+  rowProps,
+  notice,
 }: {
-  name: string;
+  name: ReactNode;
   path: string;
   actor: string;
   action: string;
-  time: string;
+  time: ReactNode;
+  icon?: ReactNode;
+  rowProps?: ComponentPropsWithRef<"div">;
+  notice?: ReactNode;
   stale?: boolean;
   children: ReactNode;
 }) {
   return (
-    <div className="mds-change-row">
-      <FilePenLine size={16} aria-hidden="true" />
+    <div {...rowProps} className={["mds-change-row", rowProps?.className].filter(Boolean).join(" ")}>
+      {icon}
       <div className="mds-change-main">
         <strong>{name}</strong>
         <div className="mds-change-meta">
@@ -373,16 +426,24 @@ export function ChangeRow({
         {stale && <span className="mds-change-stale">File changed since proposal</span>}
       </div>
       <div className="mds-change-actions">{children}</div>
+      {notice}
     </div>
   );
 }
 
-export function DiffView({ lines }: { lines: readonly { type: "context" | "add" | "remove"; text: string }[] }) {
+export function DiffView({
+  lines,
+  label = "Proposed changes",
+}: {
+  lines: readonly { type: "context" | "add" | "remove"; text: string; control?: ReactNode }[];
+  label?: string;
+}) {
   return (
-    <pre className="mds-diff" aria-label="Proposed changes">
+    <pre className="mds-diff" aria-label={label}>
       <code>
         {lines.map((line, index) => (
           <span className={`mds-diff-line mds-diff-line--${line.type}`} key={index}>
+            {line.control}
             <span className="mds-diff-sign">{line.type === "add" ? "+" : line.type === "remove" ? "−" : " "}</span>
             {line.text}
             {"\n"}

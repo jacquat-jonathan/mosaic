@@ -1,0 +1,20 @@
+.mosaic-ds.editor-files-settings {
+  min-width: 0;
+}
+.mosaic-ds.editor-files-settings .mds-icon-button {
+  flex: none;
+  color: var(--mds-text-muted);
+}
+.mosaic-ds.editor-files-settings .editor-settings-note {
+  margin: var(--mds-space-6) 0 0;
+}
+.mosaic-ds.editor-files-settings .mds-notice {
+  margin-top: var(--mds-space-4);
+  overflow-wrap: anywhere;
+}
+.mosaic-ds.editor-files-settings .editor-section-reset {
+  margin-top: var(--mds-space-8);
+}
+.mosaic-ds.editor-files-settings[data-density="compact"] .mds-setting-row {
+  padding-block: var(--mds-space-5);
+}

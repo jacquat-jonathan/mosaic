@@ -4,7 +4,8 @@ import { Plus } from "lucide-react";
 import { useWorkspace, type Buffer } from "../state/workspace";
 import { useUi } from "../state/ui";
 import { CodeEditor } from "./CodeEditor";
-import { Segmented, Toolbar } from "./Toolbar";
+import { DocumentToolbar } from "./Toolbar";
+import { Button, SegmentedControl } from "../design-system/components";
 
 const MAX_ROWS_SHOWN = 2000;
 
@@ -93,9 +94,8 @@ export function CsvEditor({ buffer }: { buffer: Buffer }) {
   const deleteRow = (r: number) => commit(doc.rows.filter((_, i) => i !== r));
   const deleteColumn = (c: number) => commit(doc.rows.map((row) => row.filter((_, i) => i !== c)));
 
-  const rowMenu = (e: React.MouseEvent, r: number, c: number) => {
-    e.preventDefault();
-    useUi.getState().showMenu(e.clientX, e.clientY, [
+  const rowMenu = (x: number, y: number, r: number, c: number) => {
+    useUi.getState().showMenu(x, y, [
       { label: "Insert row above", action: () => addRow(r) },
       { label: "Insert row below", action: () => addRow(r + 1) },
       { label: "", separator: true },
@@ -107,8 +107,9 @@ export function CsvEditor({ buffer }: { buffer: Buffer }) {
   const shown = doc.rows.slice(0, MAX_ROWS_SHOWN);
   return (
     <div className="viewer">
-      <Toolbar>
-        <Segmented<"table" | "source">
+      <DocumentToolbar label="Table controls">
+        <SegmentedControl<"table" | "source">
+          label="Table view"
           value={mode}
           onChange={setMode}
           options={[
@@ -123,15 +124,15 @@ export function CsvEditor({ buffer }: { buffer: Buffer }) {
         <span className="spacer" />
         {mode === "table" && (
           <>
-            <button onClick={() => addRow(doc.rows.length)}>
+            <Button onClick={() => addRow(doc.rows.length)}>
               <Plus size={14} /> Row
-            </button>
-            <button onClick={addColumn}>
+            </Button>
+            <Button onClick={addColumn}>
               <Plus size={14} /> Column
-            </button>
+            </Button>
           </>
         )}
-      </Toolbar>
+      </DocumentToolbar>
       {mode === "source" ? (
         <CodeEditor buffer={buffer} />
       ) : (
@@ -142,14 +143,29 @@ export function CsvEditor({ buffer }: { buffer: Buffer }) {
                 <tr key={r} className={r === 0 ? "csv-head" : undefined}>
                   <td className="csv-rownum">{r === 0 ? "" : r}</td>
                   {Array.from({ length: width }, (_, c) => (
-                    <td key={c} onContextMenu={(e) => rowMenu(e, r, c)}>
+                    <td
+                      key={c}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        rowMenu(e.clientX, e.clientY, r, c);
+                      }}
+                    >
                       <div
                         className="csv-cell"
+                        role="textbox"
+                        aria-label={r === 0 ? `Column ${c + 1} header` : `Row ${r}, column ${c + 1}`}
+                        aria-multiline="true"
                         contentEditable
                         suppressContentEditableWarning
                         spellCheck={false}
                         onBlur={(e) => setCell(r, c, e.currentTarget.innerText.replace(/\n$/, ""))}
                         onKeyDown={(e) => {
+                          if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
+                            e.preventDefault();
+                            const box = e.currentTarget.getBoundingClientRect();
+                            rowMenu(box.left, box.bottom, r, c);
+                            return;
+                          }
                           if (e.key === "Enter" && !e.shiftKey) {
                             e.preventDefault();
                             (e.currentTarget as HTMLElement).blur();

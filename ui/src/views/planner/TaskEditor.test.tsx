@@ -220,3 +220,46 @@ test("shows revision conflicts and handles archived, deleted, and reopened tasks
   await waitFor(() => expect(reopen).toHaveBeenCalledWith("task-1", 3));
   expect(move).toHaveBeenCalledWith("task-1", expect.objectContaining({ expected_revision: 4, status: "in-qa" }));
 });
+
+test("failed archive retains the task and failed saves preserve the draft while serializing controls", async () => {
+  const changed = vi.fn();
+  vi.spyOn(useUi.getState(), "ask").mockResolvedValue(true);
+  vi.spyOn(api, "archivePlannerTask").mockRejectedValue(new Error("archive failed"));
+  let reject!: (reason: Error) => void;
+  const update = vi.spyOn(api, "updatePlannerTask").mockImplementation(
+    () =>
+      new Promise((_resolve, fail) => {
+        reject = fail;
+      }),
+  );
+  render(<TaskEditor task={task()} epics={[]} tasks={[]} onChanged={changed} onClose={vi.fn()} onReload={vi.fn()} />);
+  await userEvent.click(screen.getByRole("button", { name: "Archive" }));
+  expect(await screen.findByText("archive failed")).toBeTruthy();
+  expect(changed).not.toHaveBeenCalled();
+  await userEvent.clear(screen.getByLabelText("Title"));
+  await userEvent.type(screen.getByLabelText("Title"), "Saved draft");
+  await userEvent.click(screen.getByRole("button", { name: "Save changes" }));
+  expect(screen.getByLabelText("Title")).toHaveProperty("disabled", true);
+  await userEvent.click(screen.getByRole("button", { name: "Saving…" }));
+  expect(update).toHaveBeenCalledTimes(1);
+  reject(new Error("save failed"));
+  expect(await screen.findByText("save failed")).toBeTruthy();
+  expect(screen.getByLabelText("Title")).toHaveProperty("value", "Saved draft");
+  expect(screen.getByLabelText("Title")).toHaveProperty("disabled", false);
+});
+test("a late subtask prompt cannot change a newly selected task", async () => {
+  let finish!: (value: string | null) => void;
+  vi.spyOn(useUi.getState(), "askText").mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  const create = vi.spyOn(api, "createPlannerTask");
+  const props = { epics: [], tasks: [], onChanged: vi.fn(), onClose: vi.fn(), onReload: vi.fn() };
+  const view = render(<TaskEditor task={task()} {...props} />);
+  await userEvent.click(screen.getByRole("button", { name: "Add subtask" }));
+  view.rerender(<TaskEditor task={task({ id: "other", title: "Other task" })} {...props} />);
+  finish("Late subtask");
+  await waitFor(() => expect(create).not.toHaveBeenCalled());
+});

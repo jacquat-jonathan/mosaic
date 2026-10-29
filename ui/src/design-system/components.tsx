@@ -23,8 +23,13 @@ export function Button({ variant = "quiet", className, type = "button", ...props
   return <button {...props} type={type} className={classes("mds-button", `mds-button--${variant}`, className)} />;
 }
 
-export function IconButton({ label, className, ...props }: Omit<ButtonProps, "aria-label"> & { label: string }) {
-  return <Button {...props} aria-label={label} title={label} className={classes("mds-icon-button", className)} />;
+export function IconButton({
+  label,
+  className,
+  title = label,
+  ...props
+}: Omit<ButtonProps, "aria-label"> & { label: string }) {
+  return <Button {...props} aria-label={label} title={title} className={classes("mds-icon-button", className)} />;
 }
 
 export function TextField({
@@ -43,6 +48,37 @@ export function TextField({
     <div className="mds-field">
       <label htmlFor={fieldId}>{label}</label>
       <input
+        {...props}
+        id={fieldId}
+        className={classes("mds-input", className)}
+        aria-invalid={error ? true : props["aria-invalid"]}
+        aria-describedby={classes(describedBy, (error || hint) && descriptionId) || undefined}
+      />
+      {(error || hint) && (
+        <span id={descriptionId} className={error ? "mds-field-error" : "mds-hint"}>
+          {error || hint}
+        </span>
+      )}
+    </div>
+  );
+}
+
+export function TextArea({
+  label,
+  hint,
+  error,
+  id,
+  className,
+  "aria-describedby": describedBy,
+  ...props
+}: ComponentPropsWithRef<"textarea"> & { label: string; hint?: string; error?: string }) {
+  const generated = useId();
+  const fieldId = id ?? generated,
+    descriptionId = `${fieldId}-description`;
+  return (
+    <div className="mds-field">
+      <label htmlFor={fieldId}>{label}</label>
+      <textarea
         {...props}
         id={fieldId}
         className={classes("mds-input", className)}
@@ -84,12 +120,14 @@ export function Switch({
   label,
   disabled,
   id,
+  "aria-describedby": describedBy,
 }: {
   checked: boolean;
   onCheckedChange(checked: boolean): void;
   label: string;
   disabled?: boolean;
   id?: string;
+  "aria-describedby"?: string;
 }) {
   return (
     <button
@@ -98,6 +136,7 @@ export function Switch({
       className="mds-switch"
       role="switch"
       aria-label={label}
+      aria-describedby={describedBy}
       aria-checked={checked}
       disabled={disabled}
       onClick={() => onCheckedChange(!checked)}
@@ -109,21 +148,25 @@ export function Switch({
 
 /** Single-choice controls use native radios, including arrow-key navigation and form semantics. */
 export function SegmentedControl<T extends string>({
+  id,
   label,
   value,
   options,
   onChange,
   disabled,
+  "aria-describedby": describedBy,
 }: {
+  id?: string;
   label: string;
   value: T;
   options: readonly { value: T; label: string }[];
   onChange(value: T): void;
   disabled?: boolean;
+  "aria-describedby"?: string;
 }) {
   const name = useId();
   return (
-    <div className="mds-segmented" role="radiogroup" aria-label={label}>
+    <div id={id} className="mds-segmented" role="radiogroup" aria-label={label} aria-describedby={describedBy}>
       {options.map((option) => (
         <label key={option.value}>
           <input
@@ -152,23 +195,47 @@ export function Badge({ children, className, ...props }: HTMLAttributes<HTMLSpan
 export function Notice({
   tone = "neutral",
   children,
+  role,
 }: {
   tone?: "neutral" | "warning" | "error";
   children: ReactNode;
+  role?: "status" | "alert";
 }) {
   return (
-    <div className={`mds-notice mds-notice--${tone}`} role={tone === "error" ? "alert" : "status"}>
+    <div className={`mds-notice mds-notice--${tone}`} role={role ?? (tone === "error" ? "alert" : "status")}>
       {children}
     </div>
   );
 }
 
-export function SettingRow({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
+export function SettingRow({
+  label,
+  hint,
+  controlId,
+  hintId,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  controlId?: string;
+  hintId?: string;
+  children: ReactNode;
+}) {
   return (
     <div className="mds-setting-row">
       <div className="mds-setting-text">
-        <div className="mds-label">{label}</div>
-        {hint && <div className="mds-hint">{hint}</div>}
+        {controlId ? (
+          <label className="mds-label" htmlFor={controlId}>
+            {label}
+          </label>
+        ) : (
+          <div className="mds-label">{label}</div>
+        )}
+        {hint && (
+          <div id={hintId} className="mds-hint">
+            {hint}
+          </div>
+        )}
       </div>
       <div className="mds-setting-control">{children}</div>
     </div>
@@ -220,6 +287,7 @@ export function Dialog({
   returnFocusRef,
   initialFocusRef,
   size = "default",
+  dismissible = true,
 }: {
   open: boolean;
   title: string;
@@ -230,32 +298,98 @@ export function Dialog({
   returnFocusRef?: RefObject<HTMLElement | null>;
   initialFocusRef?: RefObject<HTMLElement | null>;
   size?: "default" | "wide";
+  dismissible?: boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const id = useId();
+  const [nativeModal] = useState(
+    () =>
+      typeof HTMLDialogElement !== "undefined" &&
+      typeof HTMLDialogElement.prototype.showModal === "function" &&
+      typeof HTMLDialogElement.prototype.close === "function",
+  );
   useEffect(() => {
     const element = ref.current;
     if (!element || !open) return;
     const previousFocus = returnFocusRef?.current ?? document.activeElement;
-    element.showModal();
-    initialFocusRef?.current?.focus({ preventScroll: true });
+    const available = () =>
+      [
+        ...element.querySelectorAll<HTMLElement>(
+          "button, input, select, textarea, summary, a[href], [tabindex], [contenteditable=true]",
+        ),
+      ].filter((node) => node.tabIndex >= 0 && !node.matches(":disabled") && node.getClientRects().length > 0);
+    const focusInside = () => {
+      const initial = initialFocusRef?.current;
+      (initial && !initial.matches(":disabled") && initial.getClientRects().length
+        ? initial
+        : (available()[0] ?? element)
+      ).focus({ preventScroll: true });
+    };
+    const hidden: { node: HTMLElement; ariaHidden: string | null; inert: boolean }[] = [];
+    const previousOverflow = document.body.style.overflow;
+    const keepFocus = (event: FocusEvent) => {
+      if (!element.contains(event.target as Node)) focusInside();
+    };
+    if (nativeModal) {
+      element.showModal();
+      initialFocusRef?.current?.focus({ preventScroll: true });
+    } else {
+      element.setAttribute("open", "");
+      // Hide every sibling branch along the modal's ancestor path, preserving prior state.
+      for (let branch: Element | null = element; branch?.parentElement; branch = branch.parentElement) {
+        for (const sibling of branch.parentElement.children) {
+          if (
+            sibling === branch ||
+            !(sibling instanceof HTMLElement) ||
+            ["SCRIPT", "STYLE", "LINK"].includes(sibling.tagName)
+          )
+            continue;
+          hidden.push({ node: sibling, ariaHidden: sibling.getAttribute("aria-hidden"), inert: sibling.inert });
+          sibling.setAttribute("aria-hidden", "true");
+          if ("inert" in sibling) sibling.inert = true;
+        }
+        if (branch.parentElement === document.body) break;
+      }
+      document.body.style.overflow = "hidden";
+      document.addEventListener("focusin", keepFocus);
+      focusInside();
+    }
     return () => {
-      element.close();
+      if (nativeModal) element.close();
+      else {
+        document.removeEventListener("focusin", keepFocus);
+        element.removeAttribute("open");
+        document.body.style.overflow = previousOverflow;
+        for (const { node, ariaHidden, inert } of hidden) {
+          if (ariaHidden === null) node.removeAttribute("aria-hidden");
+          else node.setAttribute("aria-hidden", ariaHidden);
+          if ("inert" in node) node.inert = inert;
+        }
+      }
       if (previousFocus instanceof HTMLElement && previousFocus.isConnected)
         previousFocus.focus({ preventScroll: true });
     };
-  }, [open, returnFocusRef, initialFocusRef]);
-  return (
+  }, [open, returnFocusRef, initialFocusRef, nativeModal]);
+  const dialog = (
     <dialog
       ref={ref}
-      className={`mds-dialog mds-dialog--${size}`}
+      className={`mds-dialog mds-dialog--${size}${nativeModal ? "" : " mds-dialog--fallback"}`}
+      role="dialog"
+      aria-modal={open || undefined}
       aria-labelledby={`${id}-title`}
       aria-describedby={description ? `${id}-description` : undefined}
       tabIndex={-1}
       onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          if (dismissible) onClose();
+          return;
+        }
         if (event.key !== "Tab" || event.altKey || event.ctrlKey || event.metaKey) return;
         const focusable = [
-          ...event.currentTarget.querySelectorAll<HTMLElement>("button, input, select, textarea, a[href], [tabindex]"),
+          ...event.currentTarget.querySelectorAll<HTMLElement>(
+            "button, input, select, textarea, summary, a[href], [tabindex], [contenteditable=true]",
+          ),
         ].filter(
           (element) => element.tabIndex >= 0 && !element.matches(":disabled") && element.getClientRects().length > 0,
         );
@@ -272,7 +406,7 @@ export function Dialog({
       }}
       onCancel={(event) => {
         event.preventDefault();
-        onClose();
+        if (dismissible) onClose();
       }}
     >
       <header className="mds-dialog-header">
@@ -280,13 +414,20 @@ export function Dialog({
           <h2 id={`${id}-title`}>{title}</h2>
           {description && <p id={`${id}-description`}>{description}</p>}
         </div>
-        <IconButton label="Close dialog" onClick={onClose}>
+        <IconButton label="Close dialog" onClick={onClose} disabled={!dismissible}>
           <X />
         </IconButton>
       </header>
       {children && <div className="mds-dialog-body">{children}</div>}
       <footer className="mds-dialog-actions">{actions}</footer>
     </dialog>
+  );
+  return nativeModal ? (
+    dialog
+  ) : (
+    <div className="mds-dialog-fallback-backdrop" hidden={!open}>
+      {dialog}
+    </div>
   );
 }
 

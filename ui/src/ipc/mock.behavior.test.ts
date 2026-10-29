@@ -2,7 +2,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
   IcalImportPreview,
-  MarkdownImportPreview,
   PlannerEpic,
   PlannerEvent,
   PlannerTask,
@@ -10,6 +9,12 @@ import type {
   TemplatePreview,
 } from "./types";
 import { mockCommands, mockInvoke, mockPropose } from "./mock";
+
+// Seed the mock's relative daily notes before import so fixed-format fixtures stay deterministic.
+vi.hoisted(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-10-28T12:00:00Z"));
+});
 
 const invoke = <T>(cmd: string, args: Record<string, unknown> = {}) => mockInvoke(cmd, args) as Promise<T>;
 const rejects = (cmd: string, args: Record<string, unknown>, code: string) =>
@@ -180,6 +185,12 @@ describe("browser mock file and query behavior", () => {
     ]) {
       expect((await invoke<{ rows: unknown[] }>("query_notes", { query })).rows).toEqual(expect.any(Array));
     }
+
+    const overdue = await invoke<{ rows: { task: { text: string } }[] }>("query_notes", {
+      query: "task:open due<today",
+    });
+    expect(overdue.rows.some((row) => row.task.text.startsWith("Overdue review"))).toBe(true);
+    expect(overdue.rows.some((row) => row.task.text.startsWith("Ship the calendar"))).toBe(false);
 
     await rejects("set_task", { path: "missing.md", line: 1, text: "x", done: true }, "not_found");
     await rejects("set_task", { path: "Coverage tasks.md", line: 1, text: "wrong", done: true }, "conflict");
@@ -757,46 +768,6 @@ describe("browser mock planner behavior", () => {
       "/tmp/out.json",
     );
     expect(await invoke<string>("planner_restore_backup", { path: "/tmp/backup" })).toContain("planner.sqlite3");
-  });
-
-  it("imports markdown hierarchy and validates migration selections", async () => {
-    await invoke("create_file", {
-      path: "Coverage migration.md",
-      content: "- [ ] Epic ^epic\n  - [ ] Task 📅 2026-11-03 ^task\n    - [x] Subtask\n- [>] Archived\n",
-      root: "/mock/coverage",
-    });
-    const preview = await invoke<MarkdownImportPreview>("planner_migration_preview");
-    await rejects(
-      "planner_import_markdown",
-      { preview, selectedFingerprints: ["unknown"], allowDuplicates: false, timezone: "UTC" },
-      "invalid",
-    );
-    const selected = preview.groups
-      .find((group) => group.source_path === "Coverage migration.md")!
-      .tasks.map((task) => task.fingerprint);
-    const first = await invoke<{ imported_epic_ids: string[]; imported_task_ids: string[] }>(
-      "planner_import_markdown",
-      {
-        preview,
-        selectedFingerprints: selected,
-        allowDuplicates: false,
-        timezone: "UTC",
-      },
-    );
-    expect(first.imported_epic_ids).not.toHaveLength(0);
-    expect(first.imported_task_ids).not.toHaveLength(0);
-    await invoke("planner_import_markdown", {
-      preview,
-      selectedFingerprints: selected,
-      allowDuplicates: false,
-      timezone: "UTC",
-    });
-    await invoke("planner_import_markdown", {
-      preview,
-      selectedFingerprints: selected,
-      allowDuplicates: true,
-      timezone: "UTC",
-    });
   });
 });
 

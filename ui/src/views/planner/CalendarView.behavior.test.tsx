@@ -362,7 +362,7 @@ describe("planner calendar container", () => {
     expect(screen.getByTestId("overlay-details")).toBeTruthy();
     act(() => invoke(childProps.overlay, "onClose"));
     act(() => invoke(childProps.week, "onOverlay", external));
-    act(() => invoke(childProps.overlay, "onImport"));
+    await act(async () => invoke(childProps.overlay, "onImport"));
     await waitFor(() => expect(api.createPlannerEvent).toHaveBeenCalled());
 
     act(() => invoke(childProps.week, "onEventDelete", recurring));
@@ -396,5 +396,38 @@ describe("planner calendar container", () => {
     vi.mocked(api.refreshCalendarSubscriptions).mockRejectedValueOnce(new Error("refresh failed"));
     fireEvent.click(screen.getByRole("button", { name: "Refresh calendar" }));
     expect(await screen.findByText("refresh failed")).toBeTruthy();
+  });
+  it("day failures remain explicit and can be retried", async () => {
+    vi.mocked(api.plannerCalendarRange).mockRejectedValue(new Error("calendar offline"));
+    render(<CalendarView initialMode="day" />);
+    expect(await screen.findByText("calendar offline")).toBeTruthy();
+    vi.mocked(api.plannerCalendarRange).mockResolvedValue(calendarRange);
+    fireEvent.click(screen.getByRole("button", { name: "Retry calendar" }));
+    await waitFor(() => expect(screen.queryByText("calendar offline")).toBeNull());
+  });
+  it("a late iCalendar preview cannot replace the newer selected file", async () => {
+    let finish!: (value: IcalImportPreview) => void;
+    vi.mocked(api.previewPlannerIcal)
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finish = resolve;
+          }),
+      )
+      .mockResolvedValue(icalPreview);
+    render(<CalendarView initialMode="day" />);
+    await screen.findByTestId("week-view");
+    const input = document.querySelector<HTMLInputElement>('input[type="file"]')!;
+    const a = new File(["A"], "A.ics"),
+      b = new File(["B"], "B.ics");
+    Object.defineProperty(a, "text", { value: async () => "A" });
+    Object.defineProperty(b, "text", { value: async () => "B" });
+    fireEvent.change(input, { target: { files: [a] } });
+    await waitFor(() => expect(api.previewPlannerIcal).toHaveBeenCalledTimes(1));
+    fireEvent.change(input, { target: { files: [b] } });
+    await screen.findByTestId("import-wizard");
+    expect((childProps.importWizard as { fileName: string }).fileName).toBe("B.ics");
+    await act(async () => finish(icalPreview));
+    expect((childProps.importWizard as { fileName: string }).fileName).toBe("B.ics");
   });
 });

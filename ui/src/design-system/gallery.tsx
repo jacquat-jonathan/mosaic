@@ -19,8 +19,10 @@ import {
 } from "./index";
 import "./gallery.css";
 import { ActivityExample, ChatExample, RunExamples, WorkflowExamples } from "./ProductExamples";
+import { BoardExample, CalendarExample } from "./PlanningExamples";
 
-const IconCatalog = lazy(() => import("./IconCatalog"));
+const loadIconCatalog = () => import("./IconCatalog");
+const IconCatalog = lazy(loadIconCatalog);
 
 type Theme = "light" | "dark" | "system";
 const themeOptions = [
@@ -55,6 +57,8 @@ const navigation = [
       ["runs", "Runs & logs"],
       ["chat", "Chat"],
       ["activity", "Activity & review"],
+      ["board", "Board"],
+      ["calendar", "Calendar"],
     ],
   },
   { title: "Review", links: [["decisions", "Sources & decisions"]] },
@@ -132,6 +136,23 @@ function Gallery() {
   const [validation, setValidation] = useState(false);
 
   useEffect(() => {
+    if (!window.location.hash) return;
+    let cancelled = false;
+    let frame = 0;
+    // React creates the anchor targets after the initial browser navigation. Wait for
+    // the icon section too, so its lazy content cannot shift the requested section.
+    void loadIconCatalog().then(() => {
+      frame = requestAnimationFrame(() => {
+        if (!cancelled) document.getElementById(window.location.hash.slice(1))?.scrollIntoView();
+      });
+    });
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(frame);
+    };
+  }, []);
+
+  useEffect(() => {
     const read = () => {
       if (!root.current) return;
       const computed = getComputedStyle(root.current);
@@ -196,7 +217,7 @@ function Gallery() {
         <div className="ds-sidebar-footer">
           Extracted from Mosaic
           <br />
-          <span>Approved design · Migration pending</span>
+          <span>Shared foundations · Product patterns</span>
         </div>
       </aside>
 
@@ -703,8 +724,25 @@ function Gallery() {
           </Section>
 
           <Section
-            id="decisions"
+            id="board"
             number="14"
+            title="Board"
+            description="Task cards, status columns, epic headers and planning actions. Explore selection, filtering, reordering, compact density and empty/drop states."
+          >
+            <BoardExample onAnnounce={announce} />
+          </Section>
+          <Section
+            id="calendar"
+            number="15"
+            title="Calendar"
+            description="Calendar layers, day cells, event and work-session chips, session actions and open tasks. Review month, week and day compositions using local sample data."
+          >
+            <CalendarExample onAnnounce={announce} />
+          </Section>
+
+          <Section
+            id="decisions"
+            number="16"
             title="Sources & decisions"
             description="The foundations, typography, and product patterns are approved. Adopting them in the application remains a separate step."
           >
@@ -764,7 +802,7 @@ function Gallery() {
           </Section>
           <footer className="ds-footer">
             <Layers size={14} />
-            <span>Mosaic design system · Approved design · No components migrated</span>
+            <span>Mosaic design system · Shared foundations · Board & Calendar patterns available for review</span>
           </footer>
         </main>
         <div className="ds-preview-status" role="status">

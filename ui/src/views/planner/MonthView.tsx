@@ -129,6 +129,7 @@ export function MonthView({
             key={day}
             onClick={() => onDay(day)}
             onKeyDown={(event) => {
+              if (event.target !== event.currentTarget) return;
               if (event.key === "Enter" || event.key === " ") {
                 event.preventDefault();
                 onDay(day);

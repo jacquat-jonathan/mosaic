@@ -109,3 +109,23 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* Older supported WebKit keeps fields stacked without container queries. */
+@supports not (container-type: inline-size) {
+  :is(.mosaic-ds.props-form, .mosaic-ds .props-form) .cm-prop {
+    grid-template-columns: minmax(0, 1fr) 24px;
+  }
+  :is(.mosaic-ds.props-form, .mosaic-ds .props-form) .cm-prop-key {
+    grid-column: 1;
+  }
+  :is(.mosaic-ds.props-form, .mosaic-ds .props-form) .cm-prop-value {
+    grid-column: 1;
+  }
+  :is(.mosaic-ds.props-form, .mosaic-ds .props-form) .props-remove {
+    grid-column: 2;
+    grid-row: 1 / 3;
+  }
+  :is(.mosaic-ds.props-form, .mosaic-ds .props-form) .props-add {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

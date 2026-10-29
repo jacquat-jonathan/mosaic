@@ -1,3 +1,5 @@
+import { Notice } from "../design-system/components";
+import { DesignSystemScope } from "./DesignSystemScope";
 import { useVault } from "../state/vault";
 import { parseView } from "./specialTabs";
 import { CalendarView } from "./CalendarView";
@@ -54,6 +56,10 @@ export function SpecialView({ path }: { path: string }) {
     case "query":
       return <TaskQueryView key={`${root}/${kind}/${id}`} kind={kind} id={id} />;
     default:
-      return <div className="empty">This workspace view is no longer available.</div>;
+      return (
+        <DesignSystemScope className="empty workspace-empty">
+          <Notice>This workspace view is no longer available.</Notice>
+        </DesignSystemScope>
+      );
   }
 }

@@ -152,3 +152,11 @@
     display: none;
   }
 }
+
+@supports not (container-type: inline-size) {
+  @media (max-width: 520px) {
+    .mosaic-ds.workspace-tabbar :is(.workspace-split-toggle, .workspace-context-toggle) {
+      display: none;
+    }
+  }
+}

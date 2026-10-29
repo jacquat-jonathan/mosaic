@@ -5,7 +5,7 @@ The visual design and gallery were approved on 2026-10-28 after review of typogr
 icons, focus behavior, overlays, workflows, runs, chat, and Activity & review.
 **Settings → Appearance** was visually accepted on 2026-10-28. Settings navigation, header,
 and sections, Connections & safety, workflows, runs, chats, Activity & review, file history,
-Welcome, app navigation, Files and Find, and Note workspace are migrated. Task lists, the task board, and Calendar, shared overlays, and document-view controls are also migrated. The final audit covers remaining states and legacy-style cleanup.
+Welcome, app navigation, Files and Find, and Note workspace are migrated. Task lists, the task board, and Calendar, shared overlays, and document-view controls are also migrated. The 30-step migration is complete, including remaining states, embedded editor controls and verified legacy-style cleanup.
 
 ## Open the gallery
 
@@ -71,7 +71,7 @@ It imports only foundation tokens and control styles, sets an explicit local the
 (needed when the app forces a theme different from the system), and maps `--mds-accent`
 to the user's existing accent. Interface scale continues to use the document's existing zoom,
 so it is applied once. Comfortable rows use the approved 14px spacing; Compact uses the
-existing 10px spacing token within this screen. Other sections retain their existing styles.
+existing 10px spacing token within this screen. Other migrated sections own their scoped layouts.
 
 The adapter supports semantic `nav` and `header` elements. Settings navigation, header, and
 the active migrated section use separate scopes, so remaining section content keeps its existing
@@ -103,7 +103,7 @@ Picker/prompt/confirmation callbacks check the active vault before changing pref
 changing vaults remounts the local UI. Missing paths keep their explicit Create folder action.
 The folder reset touches its nine existing keys, preserving HTML policy, calendar/link settings,
 template assignments, and files. Agent-folder changes and reset refresh generated agent mirrors.
-Existing picker, text-prompt, and confirmation overlays are retained for their later migration.
+Picker, text-prompt, and confirmation overlays now use the shared modal patterns described below.
 
 `views/TemplatesSettings.tsx` adopts shared fields, selects, buttons, badges, and notices.
 Folder assignments remain a draft until Save, including after a failed write or a template-list
@@ -129,21 +129,21 @@ The former legacy `Personalization.tsx` helpers are removed after their final co
 badges, and live recording/conflict notices. Capture keeps Escape cancellation, Backspace removal,
 and conflict reassignment; Tab or leaving the button cancels capture. Unsupported Control chords
 are refused. Reset returns focus to the first command when its own button disappears. Legacy
-shortcut styles are removed while the picker's keyboard labels retain their existing styling.
+shortcut styles are removed; the shared picker's keyboard labels use the same foundation tokens.
 
 `views/AboutSettings.tsx` adopts shared version rows, badges, notices, and outlined update actions.
 Release notes retain sanitized inline Markdown and external-link handling; long references and
 logs wrap inside narrow panes. `state/updates.ts` retains the shared update state/listeners so
 progress survives Settings navigation. Status/check failures are retryable, cancellation restores
 focus, and restart actions serialize draft decisions and note saves before installation. Existing
-draft confirmation overlays remain for their later migration; native update behavior is unchanged.
+draft confirmations use the shared dialog; native update behavior is unchanged.
 
 `views/ConnectAi.tsx` adopts the shared theme, typography, setup/copy controls, notices, badges,
 and setting rows for Connections & safety. The root owns its heading and scroll layout. Folder
 rules and chain depth keep saved values until write acknowledgement, serialize related actions,
 and require a reload when a successful write cannot be reread. Failed writes retain saved choices.
 Folder-picker callbacks check the vault; cancelled/completed selections and CLI installation
-restore focus. Copy failures are announced. The existing picker remains for its later migration.
+restore focus. Copy failures are announced. Folder selection uses the shared picker.
 
 `views/WorkflowList.tsx` adopts `WorkflowCard` for Workflows and the Agent library. Cards show
 the real trigger, effective review policy, newest recorded result, and expandable source metadata.
@@ -168,7 +168,7 @@ keys. The save footer flows after the form in narrow panes so it does not cover 
 the shared editor, and restores Edit focus after cancellation or saving. The context body adopts
 17px titles, 13px metadata, status icons, and a guarded source action with inline errors. Missing
 workflows offer a route back to the list. Local styles override legacy context label/title rules;
-the surrounding workspace/context frame remains for its later migration. Obsolete workflow-card
+the surrounding workspace/context frame now owns its migrated scope. Obsolete workflow-card
 styles are removed after their final consumer migrated. The run-history page owns its separate theme scope.
 
 `views/RunsHistory.tsx` and `views/RunsLedger.tsx` adopt `RunsTable` for All runs and recent
@@ -239,8 +239,8 @@ and a bounded scroll layout. Native picker/naming cancellation restores focus; p
 serialize and stay disabled until completion. Inline errors remain visible until retry, including
 store-handled open/create failures. The common vault actions accept an optional validity guard so
 late choices cannot replace a newly opened vault. Startup failures reach Welcome instead of leaving
-a blank loading screen; loading uses the same scoped presentation. Existing naming/picker overlays
-stay independent until their migration. Legacy Welcome styles are removed.
+a blank loading screen; loading uses the same scoped presentation. Shared naming/picker overlays
+use the shared dialog patterns. Legacy Welcome styles are removed.
 
 `views/WindowChrome.tsx` adopts the shared theme, 13px title and 12.5px version metadata,
 while retaining native drag regions and the space reserved for macOS window controls. Long vault
@@ -672,3 +672,30 @@ buffers with disk; it no longer restores a fresh layout over unsaved text.
 `viewers/UnsupportedFile.tsx` and file loading adopt shared notices/actions, readable
 wrapping and pending states. External launches serialize and late refusals stay tied to the
 selected file/vault. Backend restrictions for programs/installers remain in force.
+
+
+## Migration completion and retained boundaries
+
+All 30 migration steps are complete. `editor/designSystemDom.ts` adapts renderer-owned
+controls to the live app variables without one store subscription per widget. Query tables
+use keyboard buttons, scoped read/write notices, retry, duplicate-write protection and focus
+restoration. Their table scrolls locally in narrow notes. Note search, completion menus, table
+editing, section actions and diagram actions use the foundation; note text, table data cells,
+code fonts and renderer geometry retain their explicit document settings. CodeMirror tooltips
+use absolute positioning so interface zoom has consistent coordinates in Chrome and WebKit.
+
+Canvas view switches reparse explicit source changes, including invalid-source recovery.
+Long tabs keep their close control within the available width. Workspace file operations check
+the active vault and restore generation before applying responses; writes pin their original
+root. Calendar follow-up actions check the active vault, and resize keys stay on the resize
+control. Supported WebKit without container queries gets stacked property fields and narrow
+tabbar fallbacks. Shared dialogs retain the native/fallback strategy described above.
+
+Unused legacy menu, modal, switcher, picker, new-note, toast and table-add rules were removed
+only after checking that they have no production consumer. The unused PropertiesWidget bridge
+was removed. Retained global CSS supplies document/renderer geometry and layout still consumed
+by migrated views; it is not a second component system. Native pickers, Excalidraw internals,
+ReactFlow geometry and diagram/SVG/HTML content keep their own rendering boundaries. The gallery
+remains a separate entry and does not import app state. The unresolved filled-primary/danger
+contrast decision documented above remains a restriction on future adoption; the app uses quiet, secondary
+and outlined danger actions in affected flows.

@@ -1,9 +1,11 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { X } from "lucide-react";
 import { flushSync } from "react-dom";
 import { useUi } from "../state/ui";
 import { useVault } from "../state/vault";
-import { Button, Dialog, TextField } from "../design-system/components";
+import { Button, Dialog, IconButton, Notice, TextField } from "../design-system/components";
 import { DesignSystemScope } from "./DesignSystemScope";
+import "./errorToast.css";
 
 export { ContextMenu } from "./ContextMenu";
 
@@ -37,16 +39,50 @@ export function ConfirmDialog() {
 export function ErrorToast() {
   const error = useVault((s) => s.error);
   const setError = useVault((s) => s.setError);
+  const [paused, setPaused] = useState(false);
+  const previous = useRef<Element | null>(null);
   useEffect(() => {
-    if (!error) return;
-    const t = setTimeout(() => setError(null), 6000);
-    return () => clearTimeout(t);
-  }, [error, setError]);
+    if (!error) setPaused(false);
+    else if (!document.activeElement?.closest(".error-toast-scope")) previous.current = document.activeElement;
+  }, [error]);
+  useEffect(() => {
+    if (!error || paused) return;
+    const timer = setTimeout(() => {
+      if (useVault.getState().error === error) setError(null);
+    }, 6000);
+    return () => clearTimeout(timer);
+  }, [error, paused, setError]);
   if (!error) return null;
+  const dismiss = () => {
+    const restore = document.activeElement?.closest(".error-toast-scope");
+    setError(null);
+    setPaused(false);
+    if (restore && previous.current instanceof HTMLElement && previous.current.isConnected) previous.current.focus();
+  };
   return (
-    <div className="toast" role="alert" onClick={() => setError(null)}>
-      {error}
-    </div>
+    <DesignSystemScope
+      className="error-toast-scope"
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+      onFocusCapture={() => setPaused(true)}
+      onBlurCapture={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setPaused(false);
+      }}
+      onClick={dismiss}
+    >
+      <Notice tone="error" role="alert">
+        <span>{error}</span>
+        <IconButton
+          label="Dismiss error"
+          onClick={(event) => {
+            event.stopPropagation();
+            dismiss();
+          }}
+        >
+          <X />
+        </IconButton>
+      </Notice>
+    </DesignSystemScope>
   );
 }
 

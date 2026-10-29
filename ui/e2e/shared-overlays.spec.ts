@@ -326,3 +326,55 @@ test("context menu shares themes and fits scaled narrow windows", async ({ page 
   }
   await page.screenshot({ path: info.outputPath("context-menu-narrow.png") });
 });
+
+async function toast(page: Page) {
+  await page.evaluate(async () => {
+    const path = "/src/state/vault.ts";
+    const { useVault } = await import(path);
+    useVault
+      .getState()
+      .setError(
+        "Could not save Folder/A long note name.md. Your draft is still available; retry when the folder is writable.",
+      );
+  });
+}
+test("error toast pauses expiry during focus and supports keyboard dismissal", async ({ page }) => {
+  await setup(page);
+  await page.clock.install();
+  const opener = page.getByRole("button", { name: "New note", exact: true });
+  await opener.focus();
+  await toast(page);
+  const alert = page.getByRole("alert");
+  await expect(opener).toBeFocused();
+  await alert.getByRole("button", { name: "Dismiss error", exact: true }).focus();
+  await page.clock.runFor(7000);
+  await expect(alert).toBeVisible();
+  await page.keyboard.press("Enter");
+  await expect(alert).toHaveCount(0);
+  await expect(opener).toBeFocused();
+  await toast(page);
+  await page.clock.runFor(6000);
+  await expect(alert).toHaveCount(0);
+});
+test("error toast shares themes and wraps in scaled narrow windows", async ({ page }, info) => {
+  await setup(page);
+  await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  for (const theme of ["Light", "Dark", "System"]) {
+    await page.getByRole("radio", { name: theme, exact: true }).check();
+    await toast(page);
+    const alert = page.getByRole("alert");
+    await expect(alert).toHaveCSS("font-size", "14px");
+    await expect(alert).toHaveCSS("background-color", theme === "Light" ? "rgb(253, 228, 226)" : "rgb(67, 35, 31)");
+    if (theme !== "System") await page.screenshot({ path: info.outputPath(`error-toast-${theme.toLowerCase()}.png`) });
+    await alert.getByRole("button", { name: "Dismiss error", exact: true }).click();
+  }
+  await page.getByLabel("Interface density", { exact: true }).selectOption("compact");
+  await page.getByRole("slider", { name: "Interface scale", exact: true }).press("End");
+  await page.setViewportSize({ width: 320, height: 900 });
+  await toast(page);
+  const alert = page.getByRole("alert");
+  await expect(alert.getByRole("button", { name: "Dismiss error", exact: true })).toBeInViewport();
+  await expect.poll(() => alert.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
+  await page.screenshot({ path: info.outputPath("error-toast-narrow.png") });
+});

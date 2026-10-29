@@ -5,7 +5,7 @@ The visual design and gallery were approved on 2026-10-28 after review of typogr
 icons, focus behavior, overlays, workflows, runs, chat, and Activity & review.
 **Settings → Appearance** was visually accepted on 2026-10-28. Settings navigation, header,
 and sections, Connections & safety, workflows, runs, chats, Activity & review, file history,
-Welcome, app navigation, Files and Find, and Note workspace are migrated. Task lists, the task board, and Calendar are also migrated. Shared overlays are next;
+Welcome, app navigation, Files and Find, and Note workspace are migrated. Task lists, the task board, and Calendar and shared overlays are also migrated;
 remaining document controls keep their existing styles.
 
 ## Open the gallery
@@ -595,3 +595,8 @@ scale, preserving visible dismissal controls and focus return.
 shared tokens and readable details/shortcuts. Arrow/Home/End/type-ahead keys navigate enabled
 items, Right/Left enters/leaves submenus, and Escape/Tab restores the opener. Positioning
 accounts for interface zoom; narrow submenus stay within the viewport.
+
+
+Global error toasts use shared notices and an accessible dismiss action. Long messages wrap,
+automatic expiry pauses during hover/focus, and manual dismissal restores prior focus. Error
+replacement and timer cleanup prevent an older timeout from clearing a newer message.

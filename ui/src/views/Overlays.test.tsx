@@ -1,10 +1,13 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
+import { useVault } from "../state/vault";
 import { useUi } from "../state/ui";
-import { ConfirmDialog, PromptDialog } from "./Overlays";
+import { ConfirmDialog, ErrorToast, PromptDialog } from "./Overlays";
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
+  useVault.setState({ error: null });
   useUi.setState({ prompt: null, confirm: null });
 });
 test("prompt submits the field value and cancels with Escape", () => {
@@ -33,4 +36,27 @@ test("confirmation resolves once and Escape declines", () => {
   );
   fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
   expect(resolve).toHaveBeenLastCalledWith(false);
+});
+
+test("toast pauses dismissal while focused and returns to its prior focus", () => {
+  vi.useFakeTimers();
+  render(
+    <>
+      <button>Source</button>
+      <ErrorToast />
+    </>,
+  );
+  const source = screen.getByRole("button", { name: "Source" });
+  source.focus();
+  act(() => useVault.setState({ error: "Could not save" }));
+  const dismiss = screen.getByRole("button", { name: "Dismiss error" });
+  act(() => dismiss.focus());
+  act(() => vi.advanceTimersByTime(7000));
+  expect(screen.getByRole("alert").textContent).toContain("Could not save");
+  fireEvent.click(dismiss);
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(document.activeElement).toBe(source);
+  act(() => useVault.setState({ error: "Another error" }));
+  act(() => vi.advanceTimersByTime(6000));
+  expect(screen.queryByRole("alert")).toBeNull();
 });

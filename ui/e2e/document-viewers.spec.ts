@@ -420,3 +420,85 @@ test("image notices share themes and fit scaled narrow panes", async ({ page }, 
   await expect.poll(() => state.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
   await page.screenshot({ path: info.outputPath("image-narrow.png") });
 });
+
+test("HTML controls preserve zoom, script choices, scoped internet consent and source edits", async ({ page }) => {
+  await setup(page);
+  await page.evaluate(async () => {
+    const m = (window as unknown as { __mosaic: { mockInvoke(command: string, args: object): Promise<unknown> } })
+      .__mosaic;
+    await m.mockInvoke("write_file", {
+      path: "Docs/permissions.html",
+      content: '<h1>HTML preview</h1><img src="https://example.invalid/pixel.png">',
+      expectedHash: null,
+    });
+  });
+  await openFile(page, "Docs/permissions.html");
+  const controls = page.getByRole("group", { name: "HTML controls", exact: true });
+  const permission = page.getByRole("alert", { name: "External resource permission", exact: true });
+  await expect(permission).toContainText("https://example.invalid");
+  await permission.getByRole("button", { name: "Keep blocked", exact: true }).click();
+  await expect(controls.getByRole("button", { name: "Internet blocked for this page", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "false",
+  );
+  const scripts = controls.getByRole("button", { name: /Scripts/ });
+  await expect(scripts).toHaveAttribute("aria-pressed", "false");
+  await scripts.click();
+  await expect(scripts).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator('iframe[title="Docs/permissions.html"]')).toHaveAttribute("sandbox", /allow-scripts/);
+  for (let i = 0; i < 10; i++) await controls.getByRole("button", { name: "Zoom in", exact: true }).click();
+  await expect(controls.getByRole("button", { name: "Zoom in", exact: true })).toBeDisabled();
+  await controls.getByRole("button", { name: "Reset zoom", exact: true }).click();
+  await expect(controls.getByRole("button", { name: "Reset zoom", exact: true })).toContainText("100%");
+  await controls.getByRole("radio", { name: "Source", exact: true }).click();
+  await replaceSource(page, '<h1>Edited HTML</h1><img src="https://example.invalid/pixel.png">');
+  await controls.getByRole("radio", { name: "Preview", exact: true }).click();
+  await expect(permission).toBeVisible();
+  await expect(
+    page
+      .frameLocator('iframe[title="Docs/permissions.html"]')
+      .getByRole("heading", { name: "Edited HTML", exact: true }),
+  ).toBeVisible();
+});
+test("HTML controls share themes and fit scaled narrow panes", async ({ page }, info) => {
+  await setup(page);
+  await openFile(page, "Docs/page.html");
+  await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  for (const theme of ["Light", "Dark", "System"]) {
+    await page.getByRole("radio", { name: theme, exact: true }).check();
+    await openFile(page, "Docs/page.html");
+    const controls = page.getByRole("group", { name: "HTML controls", exact: true });
+    await expect(controls).toHaveCSS("font-size", "14px");
+    await expect(controls).toHaveCSS("background-color", theme === "Light" ? "rgb(246, 246, 248)" : "rgb(24, 25, 29)");
+    await expect(page.locator('iframe[title="Docs/page.html"]')).toBeVisible();
+    if (theme !== "System") await page.screenshot({ path: info.outputPath(`html-${theme.toLowerCase()}.png`) });
+    await page.getByRole("tab", { name: "Settings Close tab", exact: true }).click();
+  }
+  await page.getByLabel("Interface density", { exact: true }).selectOption("compact");
+  await page.getByRole("slider", { name: "Interface scale", exact: true }).press("End");
+  await openFile(page, "Docs/page.html");
+  await page.setViewportSize({ width: 320, height: 900 });
+  const controls = page.getByRole("group", { name: "HTML controls", exact: true });
+  await expect(controls.getByRole("radio", { name: "Source", exact: true })).toBeInViewport();
+  await expect(controls.getByRole("button", { name: /Scripts/ })).toBeInViewport();
+  await expect.poll(() => controls.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
+  await expect(page.locator('iframe[title="Docs/page.html"]')).toBeVisible();
+  await page.screenshot({ path: info.outputPath("html-narrow.png") });
+  await page.evaluate(async () => {
+    const m = (window as unknown as { __mosaic: { mockInvoke(command: string, args: object): Promise<unknown> } })
+      .__mosaic;
+    await m.mockInvoke("write_file", {
+      path: "Docs/narrow.html",
+      content: '<h1>Permission preview</h1><img src="https://a-long-origin-for-preview.example.invalid/pixel.png">',
+      expectedHash: null,
+    });
+  });
+  await openFile(page, "Docs/narrow.html");
+  const permission = page.getByRole("alert", { name: "External resource permission", exact: true });
+  await expect(permission).toBeVisible();
+  await expect.poll(() => permission.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
+  await expect(permission.getByRole("button", { name: "Allow for this session", exact: true })).toBeInViewport();
+  await expect(permission.getByRole("button", { name: "Keep blocked", exact: true })).toBeInViewport();
+  await page.screenshot({ path: info.outputPath("html-permission-narrow.png") });
+});

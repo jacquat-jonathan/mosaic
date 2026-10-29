@@ -642,3 +642,10 @@ retried. Compact embedded previews retain their existing page limits and scrolli
 image renderer. Decode failures remain explicit, retries refresh local URLs, and late reads
 guard the active vault/lifetime. The labelled preview supports keyboard focus while image
 fit, source bytes, and document rendering remain intact.
+
+
+`viewers/HtmlViewer.tsx` adopts shared Preview/Source, zoom/script/internet actions, and
+readable consent/loading/error notices. Internet decisions remain tied to the exact page
+content and vault; scripts stay independently controlled. Failed previews can be retried,
+and late prepared documents cannot publish after closing or vault changes. The iframe and
+its document typography remain outside the design-system scope.

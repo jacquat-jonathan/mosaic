@@ -290,8 +290,8 @@ test("exercise the bundled file viewers and settings surfaces", async ({ page })
   await page.getByRole("button", { name: "Zoom in" }).click();
   await page.getByRole("button", { name: "Reset zoom" }).click();
   await page.getByRole("button", { name: /Scripts blocked|Scripts allowed/ }).click();
-  await page.getByRole("tab", { name: "Source" }).click();
-  await page.getByRole("tab", { name: "Preview" }).click();
+  await page.getByRole("radio", { name: "Source" }).click();
+  await page.getByRole("radio", { name: "Preview" }).click();
 
   for (const [path, marker] of [
     ["Charts/Sales.vl.json", "Chart"],

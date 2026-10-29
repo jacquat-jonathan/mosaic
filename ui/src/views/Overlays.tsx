@@ -1,6 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useUi, type MenuItem } from "../state/ui";
 import { useVault } from "../state/vault";
+import { Button, Dialog, TextField } from "../design-system/components";
+import { DesignSystemScope } from "./DesignSystemScope";
 
 export function ContextMenu() {
   const menu = useUi((s) => s.menu);
@@ -168,32 +170,31 @@ export function PromptDialog() {
   }, [p]);
   if (!p) return null;
   return (
-    <div className="modal-backdrop" onMouseDown={() => answer(null)}>
-      <form
-        className="modal"
-        onMouseDown={(e) => e.stopPropagation()}
-        onSubmit={(e) => {
-          e.preventDefault();
-          answer(input.current?.value ?? "");
-        }}
+    <DesignSystemScope>
+      <Dialog
+        open
+        title={p.title}
+        initialFocusRef={input}
+        onClose={() => answer(null)}
+        actions={
+          <>
+            <Button onClick={() => answer(null)}>Cancel</Button>
+            <Button variant="secondary" type="submit" form="mosaic-prompt-form">
+              OK
+            </Button>
+          </>
+        }
       >
-        <h2>{p.title}</h2>
-        <input
-          ref={input}
-          className="text-input"
-          defaultValue={p.value}
-          placeholder={p.placeholder}
-          onKeyDown={(e) => e.key === "Escape" && answer(null)}
-        />
-        <div className="modal-actions">
-          <button type="button" onClick={() => answer(null)}>
-            Cancel
-          </button>
-          <button type="submit" className="primary">
-            OK
-          </button>
-        </div>
-      </form>
-    </div>
+        <form
+          id="mosaic-prompt-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            answer(input.current?.value ?? "");
+          }}
+        >
+          <TextField ref={input} label={p.title} defaultValue={p.value} placeholder={p.placeholder} />
+        </form>
+      </Dialog>
+    </DesignSystemScope>
   );
 }

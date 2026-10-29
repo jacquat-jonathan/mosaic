@@ -567,3 +567,7 @@ notices, and intentional duplicate choices while preserving hierarchy and untouc
 notes. Writes serialize, pending imports disable all choices/dismissal, failures retain
 selections, and stale acknowledgements guard the vault. The preview receives heading focus;
 cancellation returns to its board entry and completion focuses the loaded board heading.
+
+`views/Overlays.tsx` adopts the shared prompt dialog and labelled input. Enter submission,
+Escape/close cancellation, selected initial text, modal keyboard containment, and focus return
+remain explicit; the native-dialog compatibility fallback also applies to global prompts.

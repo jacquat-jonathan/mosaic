@@ -611,10 +611,16 @@ animations; canvas nodes, note previews, geometry, and source rendering stay out
 
 Graphviz diagrams opt into shared `DocumentToolbar` controls, labelled Graph/Source choices,
 error notices, and a keyboard-scrollable preview. DOT source editing, rendering, and theme
-redraws remain intact. Charts retain their previous controls until their separate migration.
+redraws remain intact. Charts now adopt the same shared controls and notices in their separate migration.
 
 
 `viewers/ExcalidrawEditor.tsx` adopts shared Drawing/Source controls and loading/error
 notices around Excalidraw. View changes re-parse the current source; invalid JSON returns
 to editable Source and can be repaired. Excalidraw's own rendering and tool controls remain
 owned by the specialized engine, including its existing theme and saving behavior.
+
+
+Vega-Lite charts adopt shared Chart/Source controls, rendering/error notices, and a
+keyboard-scrollable preview. Local vault data, JSON editing, error recovery and theme
+redraws remain intact. Both `RenderedSourceViewer` consumers are migrated, so its temporary
+legacy-control branch is removed; SVG/document typography stays owned by the renderer.

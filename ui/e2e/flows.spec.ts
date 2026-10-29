@@ -298,9 +298,9 @@ test("exercise the bundled file viewers and settings surfaces", async ({ page })
     ["Graph.dot", "Graph"],
   ] as const) {
     await openMockPath(page, path);
-    await page.getByRole(marker === "Graph" ? "radio" : "tab", { name: marker, exact: true }).click();
+    await page.getByRole("radio", { name: marker, exact: true }).click();
     await page.waitForTimeout(250);
-    await page.getByRole(marker === "Graph" ? "radio" : "tab", { name: "Source", exact: true }).click();
+    await page.getByRole("radio", { name: "Source", exact: true }).click();
   }
 
   await openMockPath(page, "Attachments/diagram.svg");

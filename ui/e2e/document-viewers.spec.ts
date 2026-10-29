@@ -204,3 +204,53 @@ test("drawing controls share themes and fit scaled narrow panes", async ({ page 
   await expect(page.locator(".excalidraw-host .excalidraw")).toBeVisible();
   await page.screenshot({ path: info.outputPath("drawing-narrow.png") });
 });
+
+test("chart controls preserve local-data rendering, source edits and error recovery", async ({ page }) => {
+  await setup(page);
+  await openFile(page, "Charts/Sales.vl.json");
+  const controls = page.getByRole("group", { name: "Chart controls", exact: true });
+  const preview = page.getByRole("region", { name: "Chart preview", exact: true });
+  await expect(preview.locator("svg")).toBeVisible();
+  await controls.getByRole("radio", { name: "Source", exact: true }).click();
+  await replaceSource(page, "{not json");
+  await controls.getByRole("radio", { name: "Chart", exact: true }).click();
+  await expect(controls.getByRole("alert")).toContainText("not valid JSON");
+  await controls.getByRole("radio", { name: "Source", exact: true }).click();
+  await replaceSource(
+    page,
+    '{"data":{"values":[{"x":"Alpha","y":3},{"x":"Beta","y":7}]},"mark":"bar","encoding":{"x":{"field":"x","type":"nominal"},"y":{"field":"y","type":"quantitative"}}}',
+  );
+  await controls.getByRole("radio", { name: "Chart", exact: true }).click();
+  await expect(preview.locator("svg")).toContainText("Alpha");
+  await expect(controls.getByRole("alert")).toHaveCount(0);
+  await expect.poll(() => readFile(page, "Charts/Sales.vl.json")).toContain("Beta");
+  await preview.focus();
+  await expect(preview).toBeFocused();
+});
+test("chart controls share themes and fit scaled narrow panes", async ({ page }, info) => {
+  await setup(page);
+  await openFile(page, "Charts/Sales.vl.json");
+  await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  for (const theme of ["Light", "Dark", "System"]) {
+    await page.getByRole("radio", { name: theme, exact: true }).check();
+    await openFile(page, "Charts/Sales.vl.json");
+    const controls = page.getByRole("group", { name: "Chart controls", exact: true });
+    await expect(controls).toHaveCSS("font-size", "14px");
+    await expect(controls).toHaveCSS("background-color", theme === "Light" ? "rgb(246, 246, 248)" : "rgb(24, 25, 29)");
+    await expect(page.getByRole("region", { name: "Chart preview", exact: true }).locator("svg")).toBeVisible();
+    await expect(controls.getByRole("status")).toHaveCount(0);
+    if (theme !== "System") await page.screenshot({ path: info.outputPath(`chart-${theme.toLowerCase()}.png`) });
+    await page.getByRole("tab", { name: "Settings Close tab", exact: true }).click();
+  }
+  await page.getByLabel("Interface density", { exact: true }).selectOption("compact");
+  await page.getByRole("slider", { name: "Interface scale", exact: true }).press("End");
+  await openFile(page, "Charts/Sales.vl.json");
+  await page.setViewportSize({ width: 320, height: 900 });
+  const controls = page.getByRole("group", { name: "Chart controls", exact: true });
+  await expect(controls.getByRole("radio", { name: "Source", exact: true })).toBeInViewport();
+  await expect.poll(() => controls.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
+  await expect(page.getByRole("region", { name: "Chart preview", exact: true }).locator("svg")).toBeVisible();
+  await expect(controls.getByRole("status")).toHaveCount(0);
+  await page.screenshot({ path: info.outputPath("chart-narrow.png") });
+});

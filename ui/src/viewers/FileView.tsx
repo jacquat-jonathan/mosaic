@@ -52,7 +52,7 @@ function Viewer({ buffer }: { buffer: Buffer }) {
     case "excalidraw":
       return <ExcalidrawEditor buffer={buffer} />;
     case "graphviz":
-      return <RenderedSourceViewer buffer={buffer} label="Graph" render={renderGraphviz} designSystem />;
+      return <RenderedSourceViewer buffer={buffer} label="Graph" render={renderGraphviz} />;
     case "json":
       if (buffer.path.toLowerCase().endsWith(".vl.json")) {
         return (

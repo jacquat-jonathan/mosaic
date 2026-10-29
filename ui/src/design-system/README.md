@@ -5,8 +5,8 @@ The visual design and gallery were approved on 2026-10-28 after review of typogr
 icons, focus behavior, overlays, workflows, runs, chat, and Activity & review.
 **Settings → Appearance** was visually accepted on 2026-10-28. Settings navigation, header,
 and sections, Connections & safety, workflows, runs, chats, Activity & review, file history,
-Welcome, app navigation, Files and Find, and Note workspace are migrated. Task lists and the task board are also migrated. Calendar is next;
-remaining planning surfaces keep their existing controls.
+Welcome, app navigation, Files and Find, and Note workspace are migrated. Task lists, the task board, and Calendar are also migrated. Shared overlays are next;
+remaining document controls keep their existing styles.
 
 ## Open the gallery
 
@@ -561,3 +561,9 @@ copying restore calendar focus, with full-width detail panes at narrow sizes.
 notices, and modal actions. Selected events remain after errors, pending imports disable
 all choices/dismissal, and closing restores the file-import action. File preview generations
 and vault guards prevent late reads from replacing a newer selection or another vault.
+
+`views/planner/MigrationWizard.tsx` adopts shared preview controls, group/status typography,
+notices, and intentional duplicate choices while preserving hierarchy and untouched source
+notes. Writes serialize, pending imports disable all choices/dismissal, failures retain
+selections, and stale acknowledgements guard the vault. The preview receives heading focus;
+cancellation returns to its board entry and completion focuses the loaded board heading.

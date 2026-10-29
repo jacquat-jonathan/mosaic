@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type DragEvent } from "react";
 import { Button, Notice, Select, TextField } from "../../design-system/components";
 import { ChevronDown, ChevronRight, ArrowUp, ArrowDown } from "lucide-react";
 import { DesignSystemScope } from "../DesignSystemScope";
@@ -47,6 +47,11 @@ const markStarted = (root: string) => {
 };
 
 export function BoardView() {
+  const boardId = useId();
+  const returnImportFocus = () =>
+    requestAnimationFrame(() => {
+      document.getElementById(boardId)?.querySelector<HTMLElement>("[data-import-trigger]")?.focus();
+    });
   const root = useVault((state) => state.vault?.root) ?? "";
   const [summary, setSummary] = useState<PlannerSummary | null>(null),
     [epics, setEpics] = useState<PlannerEpic[]>([]),
@@ -421,7 +426,7 @@ export function BoardView() {
   const onboarding = summary?.is_empty && !!preview?.candidates && !wasStarted(root) && !dismissed;
   if (onboarding && !wizard)
     return (
-      <DesignSystemScope as="main" className="planner-onboarding board-design" aria-label="Planner setup">
+      <DesignSystemScope id={boardId} as="main" className="planner-onboarding board-design" aria-label="Planner setup">
         <h1>Plan your work in Mosaic</h1>
         <p>
           Board and Calendar use independent planner tasks. Your existing Markdown checkboxes stay exactly where they
@@ -436,7 +441,7 @@ export function BoardView() {
           >
             Start empty
           </Button>
-          <Button variant="secondary" onClick={() => setWizard(true)}>
+          <Button data-import-trigger variant="secondary" onClick={() => setWizard(true)}>
             Preview import
           </Button>
           <Button onClick={() => setDismissed(true)}>Later</Button>
@@ -448,21 +453,28 @@ export function BoardView() {
     );
   if (wizard && preview)
     return (
-      <div className="workspace-page">
-        <MigrationWizard
-          preview={preview}
-          onCancel={() => setWizard(false)}
-          onDone={() => {
-            markStarted(root);
-            setWizard(false);
-            void load();
-          }}
-        />
-      </div>
+      <MigrationWizard
+        preview={preview}
+        onCancel={() => {
+          setWizard(false);
+          returnImportFocus();
+        }}
+        onDone={() => {
+          markStarted(root);
+          setWizard(false);
+          void load().then(() => requestAnimationFrame(() => boardHeading.current?.focus()));
+        }}
+      />
     );
   return (
     <div className={`workspace-page planner-board-page ${selected ? "with-editor" : ""}`}>
-      <DesignSystemScope as="main" className="planner-board board-design" aria-label="Task board" aria-busy={loading}>
+      <DesignSystemScope
+        id={boardId}
+        as="main"
+        className="planner-board board-design"
+        aria-label="Task board"
+        aria-busy={loading}
+      >
         <header className="board-toolbar">
           <h1 ref={boardHeading} tabIndex={-1}>
             Board
@@ -480,7 +492,9 @@ export function BoardView() {
               >
                 New epic
               </Button>
-              <Button onClick={() => void openMigration()}>Import Markdown tasks…</Button>
+              <Button data-import-trigger onClick={() => void openMigration()}>
+                Import Markdown tasks…
+              </Button>
             </>
           )}
           <TextField

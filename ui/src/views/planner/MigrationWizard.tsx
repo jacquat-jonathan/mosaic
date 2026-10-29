@@ -1,4 +1,9 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Button, IconButton, Notice } from "../../design-system/components";
+import { X } from "lucide-react";
+import { useVault } from "../../state/vault";
+import { DesignSystemScope } from "../DesignSystemScope";
+import "./migrationWizard.css";
 import { api } from "../../ipc/api";
 import { errorMessage, type MarkdownImportPreview } from "../../ipc/types";
 
@@ -11,6 +16,18 @@ export function MigrationWizard({
   onDone(): void;
   onCancel(): void;
 }) {
+  const root = useVault((state) => state.vault?.root),
+    live = useRef(true),
+    lock = useRef(false),
+    heading = useRef<HTMLHeadingElement>(null);
+  const current = () => live.current && root === useVault.getState().vault?.root;
+  useEffect(() => {
+    live.current = true;
+    heading.current?.focus();
+    return () => {
+      live.current = false;
+    };
+  }, []);
   const defaults = useMemo(
     () =>
       preview.groups
@@ -45,26 +62,45 @@ export function MigrationWizard({
       return next;
     });
   const submit = async () => {
+    if (lock.current || !selected.size || !current()) return;
+    lock.current = true;
     setBusy(true);
     setError(null);
     try {
       const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
       await api.importMarkdownToPlanner(preview, [...selected], includeDuplicates, timezone);
-      onDone();
+      if (current()) onDone();
     } catch (e) {
-      setError(errorMessage(e));
+      if (current()) setError(errorMessage(e));
     } finally {
-      setBusy(false);
+      lock.current = false;
+      if (current()) setBusy(false);
     }
   };
   return (
-    <section className="migration-wizard" aria-label="Import Markdown tasks">
+    <DesignSystemScope
+      className="migration-wizard"
+      role="region"
+      aria-label="Import Markdown tasks"
+      aria-busy={busy}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          event.stopPropagation();
+          event.preventDefault();
+          if (!busy) onCancel();
+        }
+      }}
+    >
       <header>
         <div>
-          <h2>Preview Markdown task import</h2>
+          <h2 ref={heading} tabIndex={-1}>
+            Preview Markdown task import
+          </h2>
           <p>Your notes will not be edited. Imported tasks become independent planner objects.</p>
         </div>
-        <button onClick={onCancel}>Close</button>
+        <IconButton label="Close import preview" disabled={busy} onClick={onCancel}>
+          <X size={16} />
+        </IconButton>
       </header>
       <div className="migration-summary">
         <strong>{selected.size}</strong> of {preview.candidates} items selected
@@ -79,10 +115,11 @@ export function MigrationWizard({
             allSelected = fingerprints.length > 0 && selectedInGroup === fingerprints.length,
             mixed = selectedInGroup > 0 && !allSelected;
           return (
-            <section key={group.source_path}>
+            <section key={group.source_path} role="group" aria-label={group.source_path}>
               <label className="migration-group-toggle">
                 <input
                   type="checkbox"
+                  aria-label={`Select all from ${group.source_path}`}
                   checked={allSelected}
                   disabled={busy || fingerprints.length === 0}
                   ref={(input) => {
@@ -90,7 +127,7 @@ export function MigrationWizard({
                   }}
                   onChange={(event) => toggleGroup(fingerprints, event.target.checked)}
                 />
-                <h3>{group.source_path}</h3>
+                <strong className="migration-source">{group.source_path}</strong>
                 <small>
                   {selectedInGroup}/{fingerprints.length}
                 </small>
@@ -99,10 +136,11 @@ export function MigrationWizard({
                 <label
                   key={task.fingerprint}
                   className={task.duplicate ? "duplicate" : ""}
-                  style={{ paddingLeft: task.depth * 18 }}
+                  style={{ paddingLeft: Math.min(task.depth, 4) * 12 }}
                 >
                   <input
                     type="checkbox"
+                    aria-label={task.title}
                     checked={selected.has(task.fingerprint)}
                     disabled={busy || (task.duplicate && !includeDuplicates)}
                     onChange={(event) => toggle(task.fingerprint, event.target.checked)}
@@ -125,6 +163,7 @@ export function MigrationWizard({
         <label className="migration-duplicates">
           <input
             type="checkbox"
+            disabled={busy}
             checked={includeDuplicates}
             onChange={(event) => {
               setIncludeDuplicates(event.target.checked);
@@ -145,15 +184,16 @@ export function MigrationWizard({
           Allow intentional duplicates
         </label>
       )}
-      {error && <p className="error-text">{error}</p>}
+      {error && <Notice tone="error">{error}</Notice>}
+      {!preview.candidates && <p className="mds-hint">No Markdown tasks to import.</p>}
       <footer>
-        <button onClick={onCancel} disabled={busy}>
+        <Button onClick={onCancel} disabled={busy}>
           Cancel
-        </button>
-        <button className="primary" onClick={() => void submit()} disabled={busy || selected.size === 0}>
+        </Button>
+        <Button variant="secondary" onClick={() => void submit()} disabled={busy || selected.size === 0}>
           {busy ? "Importing…" : `Import ${selected.size} items`}
-        </button>
+        </Button>
       </footer>
-    </section>
+    </DesignSystemScope>
   );
 }

@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Markdown task import:** shared preview controls, readable groups/statuses, notices, and duplicate choices preserve task hierarchy and source notes. Pending imports disable duplicate actions, failures retain selections, and cancellation returns focus.
+
 - **iCalendar import:** shared previews, duplicate choices, notices, and modal actions retain event selection. Importing disables duplicate actions, failures preserve selections, and late file previews cannot replace a newer choice.
 
 - **Subscribed events:** shared detail controls, readable source information, notices, and meeting links retain read-only behavior. Copying disables duplicates, failures stay visible, and closing returns to the calendar.

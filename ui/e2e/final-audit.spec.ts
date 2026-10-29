@@ -171,3 +171,102 @@ test("unsupported file controls share themes and fit scaled narrow panes", async
   await expect.poll(() => region.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
   await page.screenshot({ path: info.outputPath("unsupported-narrow.png") });
 });
+
+async function queryNote(page: Page) {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open folder…", exact: true }).click();
+  await page.evaluate(async () => {
+    const m = (
+      window as unknown as {
+        __mosaic: {
+          mockInvoke(command: string, args: object): Promise<unknown>;
+          useWorkspace: {
+            getState(): {
+              open(path: string, options: { newTab: boolean }): Promise<void>;
+              buffers: Record<string, { content: string }>;
+            };
+          };
+        };
+      }
+    ).__mosaic;
+    await m.mockInvoke("write_file", {
+      path: "Query UI.md",
+      content: "# Query UI\n\n```query\ntask:open\n```\n\nEnd.\n",
+      expectedHash: null,
+    });
+    await m.useWorkspace.getState().open("Query UI.md", { newTab: true });
+  });
+  await expect(page.locator(".editor-query input").first()).toBeVisible();
+}
+test("embedded query keyboard sorting and task updates preserve their source", async ({ page }) => {
+  await queryNote(page);
+  const query = page.locator(".editor-query");
+  const sort = query.getByRole("button", { name: "Sort by Task, ascending", exact: true });
+  await sort.focus();
+  await sort.press("Enter");
+  await expect(query.getByRole("button", { name: "Sort by Task, descending", exact: true })).toBeFocused();
+  const box = query.getByRole("checkbox").first();
+  const label = await box.getAttribute("aria-label");
+  await box.click();
+  await expect(query.getByRole("checkbox", { name: label!, exact: true })).toHaveCount(0);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (
+            window as unknown as {
+              __mosaic: {
+                mockInvoke(command: string, args: object): Promise<unknown>;
+                useWorkspace: {
+                  getState(): {
+                    open(path: string, options: { newTab: boolean }): Promise<void>;
+                    buffers: Record<string, { content: string }>;
+                  };
+                };
+              };
+            }
+          ).__mosaic.useWorkspace.getState().buffers["Query UI.md"].content,
+      ),
+    )
+    .toContain("task:open sort:text");
+});
+test("embedded queries follow app themes and keep narrow results local", async ({ page }, info) => {
+  await queryNote(page);
+  await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const open = () =>
+    page.evaluate(() =>
+      (
+        window as unknown as {
+          __mosaic: {
+            mockInvoke(command: string, args: object): Promise<unknown>;
+            useWorkspace: {
+              getState(): {
+                open(path: string, options: { newTab: boolean }): Promise<void>;
+                buffers: Record<string, { content: string }>;
+              };
+            };
+          };
+        }
+      ).__mosaic.useWorkspace
+        .getState()
+        .open("Query UI.md", { newTab: true }),
+    );
+  for (const theme of ["Light", "Dark", "System"]) {
+    await page.getByRole("radio", { name: theme, exact: true }).check();
+    await open();
+    const query = page.locator(".editor-query");
+    await expect(query).toHaveCSS("font-size", "14px");
+    await expect(query).toHaveCSS("background-color", theme === "Light" ? "rgb(255, 255, 255)" : "rgb(30, 31, 36)");
+    if (theme !== "System") await page.screenshot({ path: info.outputPath(`query-${theme.toLowerCase()}.png`) });
+    await page.getByRole("tab", { name: "Settings Close tab", exact: true }).click();
+  }
+  await page.getByLabel("Interface density", { exact: true }).selectOption("compact");
+  await page.getByRole("slider", { name: "Interface scale", exact: true }).press("End");
+  await open();
+  await page.setViewportSize({ width: 320, height: 900 });
+  const query = page.locator(".editor-query");
+  await expect.poll(() => query.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
+  await expect(page.locator(".cm-content")).toHaveCSS("font-size", "16px");
+  await page.screenshot({ path: info.outputPath("query-narrow.png") });
+});

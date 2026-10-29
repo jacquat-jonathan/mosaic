@@ -34,3 +34,7 @@
 .image-preview .image-viewer {
   min-height: 0;
 }
+.mosaic-ds.document-state .mds-button {
+  max-width: 100%;
+  white-space: normal;
+}

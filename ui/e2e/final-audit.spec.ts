@@ -131,3 +131,43 @@ test("workspace notices share themes and fit scaled narrow windows", async ({ pa
   await expect(notices.getByRole("button", { name: "Fix links", exact: true })).toBeInViewport();
   await page.screenshot({ path: info.outputPath("workspace-notices-narrow.png") });
 });
+
+async function unsupported(page: Page) {
+  await page.evaluate(async () => {
+    const m = (
+      window as unknown as {
+        __mosaic: {
+          mockInvoke(command: string, args: object): Promise<unknown>;
+          useWorkspace: { getState(): { open(path: string, options: { newTab: boolean }): Promise<void> } };
+        };
+      }
+    ).__mosaic;
+    await m.mockInvoke("write_file", { path: "Docs/unknown.bin", content: "Unsupported file", expectedHash: null });
+    await m.useWorkspace.getState().open("Docs/unknown.bin", { newTab: true });
+  });
+}
+test("unsupported file controls share themes and fit scaled narrow panes", async ({ page }, info) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open folder…", exact: true }).click();
+  await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  for (const theme of ["Light", "Dark", "System"]) {
+    await page.getByRole("radio", { name: theme, exact: true }).check();
+    await unsupported(page);
+    const region = page.getByRole("region", { name: "File preview unavailable", exact: true });
+    await expect(region).toHaveCSS("font-size", "14px");
+    await expect(region).toHaveCSS("background-color", theme === "Light" ? "rgb(255, 255, 255)" : "rgb(30, 31, 36)");
+    await region.getByRole("button", { name: "Open in default app", exact: true }).click();
+    await expect(region.getByRole("button", { name: "Open in default app", exact: true })).toBeEnabled();
+    if (theme !== "System") await page.screenshot({ path: info.outputPath(`unsupported-${theme.toLowerCase()}.png`) });
+    await page.getByRole("tab", { name: "Settings Close tab", exact: true }).click();
+  }
+  await page.getByLabel("Interface density", { exact: true }).selectOption("compact");
+  await page.getByRole("slider", { name: "Interface scale", exact: true }).press("End");
+  await unsupported(page);
+  await page.setViewportSize({ width: 320, height: 900 });
+  const region = page.getByRole("region", { name: "File preview unavailable", exact: true });
+  await expect(region.getByRole("button", { name: "Open in default app", exact: true })).toBeInViewport();
+  await expect.poll(() => region.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
+  await page.screenshot({ path: info.outputPath("unsupported-narrow.png") });
+});

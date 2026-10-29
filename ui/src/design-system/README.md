@@ -667,3 +667,8 @@ Discard removes a deleted file's in-memory draft from every pane without writing
 actions, readable wrapping, local scrolling and focus return. Reconnect explicitly preserves
 the current workspace and non-file drafts, refreshes vault metadata, and reconciles existing
 buffers with disk; it no longer restores a fresh layout over unsaved text.
+
+
+`viewers/UnsupportedFile.tsx` and file loading adopt shared notices/actions, readable
+wrapping and pending states. External launches serialize and late refusals stay tied to the
+selected file/vault. Backend restrictions for programs/installers remain in force.

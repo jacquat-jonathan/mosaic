@@ -194,3 +194,58 @@ test("picker shares themes and fits scaled narrow windows", async ({ page }, inf
   await expect.poll(() => dialog.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
   await page.screenshot({ path: info.outputPath("picker-narrow.png") });
 });
+
+async function switcher(page: Page) {
+  await page.evaluate(async () => {
+    const path = "/src/state/ui.ts";
+    const { useUi } = await import(path);
+    useUi.getState().setSwitcher(true);
+  });
+}
+test("quick switcher retains search, keyboard opening, creation and focus return", async ({ page }) => {
+  await setup(page);
+  const opener = page.getByRole("button", { name: "New note", exact: true });
+  await opener.focus();
+  await switcher(page);
+  const dialog = page.getByRole("dialog", { name: "Quick switcher", exact: true });
+  const search = dialog.getByRole("combobox", { name: "Find or create a note", exact: true });
+  await expect(search).toBeFocused();
+  await search.press("Escape");
+  await expect(opener).toBeFocused();
+  await switcher(page);
+  await search.fill("Welcome");
+  await search.press("Enter");
+  await expect(dialog).toHaveCount(0);
+  await expect(page.locator(".cm-content")).toContainText("Welcome");
+  await switcher(page);
+  await search.fill("New switcher note");
+  await expect(dialog.getByRole("option", { name: "Create “New switcher note”", exact: true })).toBeVisible();
+  await search.press("Enter");
+  await expect(page.getByRole("dialog", { name: "New note", exact: true }).getByLabel("Name")).toHaveValue(
+    "New switcher note",
+  );
+});
+test("quick switcher shares themes and fits scaled narrow windows", async ({ page }, info) => {
+  await setup(page);
+  await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  for (const theme of ["Light", "Dark", "System"]) {
+    await page.getByRole("radio", { name: theme, exact: true }).check();
+    await switcher(page);
+    const dialog = page.getByRole("dialog", { name: "Quick switcher", exact: true });
+    await expect(dialog).toHaveCSS("font-size", "14px");
+    await expect(dialog).toHaveCSS("background-color", theme === "Light" ? "rgb(255, 255, 255)" : "rgb(30, 31, 36)");
+    if (theme !== "System")
+      await page.screenshot({ path: info.outputPath(`quick-switcher-${theme.toLowerCase()}.png`) });
+    await page.keyboard.press("Escape");
+  }
+  await page.getByLabel("Interface density", { exact: true }).selectOption("compact");
+  await page.getByRole("slider", { name: "Interface scale", exact: true }).press("End");
+  await page.setViewportSize({ width: 320, height: 900 });
+  await switcher(page);
+  const dialog = page.getByRole("dialog", { name: "Quick switcher", exact: true });
+  await expect(dialog.getByRole("button", { name: "Close dialog", exact: true })).toBeInViewport();
+  await expect(dialog.getByRole("button", { name: "Cancel", exact: true })).toBeInViewport();
+  await expect.poll(() => dialog.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
+  await page.screenshot({ path: info.outputPath("quick-switcher-narrow.png") });
+});

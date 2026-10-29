@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Quick switcher:** shared search controls and readable note paths preserve recent/fuzzy ranking, keyboard opening, new-tab shortcuts, and note creation. Empty vaults explain how to create a note.
+
 - **Pickers:** shared search dialogs, readable results and accessible keyboard selection preserve fuzzy ranking, commands, and folder choices, including empty results and focus return.
 
 - **New note:** shared modal controls, template fields, previews, and notices retain exact-template creation. Pending creation blocks duplicate actions and dismissal; failures preserve the draft.

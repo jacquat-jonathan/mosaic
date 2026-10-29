@@ -1,6 +1,6 @@
 .mosaic-ds.search-overlay-scope .mds-dialog {
   width: 600px;
-  margin: 10vh auto auto;
+  margin: auto;
 }
 .mosaic-ds.search-overlay-scope .search-overlay-results {
   min-width: 0;
@@ -56,4 +56,9 @@
   min-width: 0;
   display: grid;
   gap: var(--mds-space-3);
+}
+
+.mosaic-ds.search-overlay-scope .mds-dialog-header h2 {
+  white-space: normal;
+  overflow-wrap: anywhere;
 }

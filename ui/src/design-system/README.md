@@ -585,3 +585,8 @@ saving, failed writes retain drafts, and late acknowledgements guard the active 
 readable result paths and shortcuts, and explicit empty results. Fuzzy ranking and keyboard
 selection remain unchanged. Global prompt/confirmation resolution closes the modal before
 promise continuations restore explicit openers, preserving Safari focus return.
+
+`views/QuickSwitcher.tsx` adopts the shared search dialog, accessible note options,
+readable paths, and empty-vault guidance. Recent/fuzzy ordering and Enter/Meta/Shift actions
+remain intact. Search dialogs constrain long lists inside the modal at maximum interface
+scale, preserving visible dismissal controls and focus return.

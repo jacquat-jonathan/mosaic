@@ -87,3 +87,53 @@ test("board shares themes and keeps wide lanes inside a scaled narrow scroller",
     .toBeGreaterThan(0);
   await page.screenshot({ path: testInfo.outputPath("board-narrow.png") });
 });
+
+test("task editor saves fields and returns focus to its card", async ({ page }) => {
+  await board(page);
+  await page.getByRole("article", { name: "Ship release", exact: true }).press("Enter");
+  let editor = page.getByRole("complementary", { name: "Edit Ship release", exact: true });
+  await expect(editor.getByLabel("Title", { exact: true })).toBeFocused();
+  await editor.getByLabel("Title", { exact: true }).fill("");
+  await expect(editor.getByRole("button", { name: "Save changes", exact: true })).toBeDisabled();
+  await editor.getByLabel("Title", { exact: true }).fill("Release Mosaic");
+  await editor.getByLabel("Description", { exact: true }).fill("Verified on both browsers");
+  await editor.getByLabel("Due date", { exact: true }).fill("2026-11-12");
+  await editor.getByLabel("Estimate (minutes)", { exact: true }).fill("45");
+  await editor.getByRole("button", { name: "Save changes", exact: true }).click();
+  editor = page.getByRole("complementary", { name: "Edit Release Mosaic", exact: true });
+  await expect(editor.getByLabel("Title", { exact: true })).toHaveValue("Release Mosaic");
+  await editor.getByLabel("Status", { exact: true }).selectOption("blocked");
+  await expect(page.getByLabel("Release: Blocked", { exact: true })).toContainText("Release Mosaic");
+  await editor.getByRole("button", { name: "Close task editor", exact: true }).click();
+  await expect(page.getByRole("article", { name: "Release Mosaic", exact: true })).toBeFocused();
+});
+test("task editor shares themes and fills narrow scaled panes", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+  await board(page);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  for (const theme of ["Light", "Dark", "System"] as const) {
+    await page.getByRole("radio", { name: theme, exact: true }).check();
+    await page.getByRole("tab", { name: "Task board Close tab", exact: true }).click();
+    await page.getByRole("article", { name: "Ship release", exact: true }).press("Enter");
+    const editor = page.getByRole("complementary", { name: "Edit Ship release", exact: true });
+    await expect(editor).toHaveCSS("font-size", "14px");
+    await expect(editor).toHaveCSS("background-color", theme === "Light" ? "rgb(246, 246, 248)" : "rgb(24, 25, 29)");
+    if (theme !== "System")
+      await page.screenshot({ path: testInfo.outputPath(`task-editor-${theme.toLowerCase()}.png`) });
+    await editor.getByRole("button", { name: "Close task editor", exact: true }).click();
+    await page.getByRole("tab", { name: "Settings Close tab", exact: true }).click();
+  }
+  await page.getByLabel("Interface density", { exact: true }).selectOption("compact");
+  await page.getByRole("slider", { name: "Interface scale", exact: true }).press("End");
+  await page.getByRole("tab", { name: "Task board Close tab", exact: true }).click();
+  await page.getByRole("article", { name: "Ship release", exact: true }).press("Enter");
+  await page.setViewportSize({ width: 320, height: 900 });
+  const editor = page.getByRole("complementary", { name: "Edit Ship release", exact: true });
+  await expect(editor.getByLabel("Title", { exact: true })).toBeInViewport();
+  await expect(page.getByRole("main", { name: "Task board", exact: true })).toHaveCount(0);
+  await expect.poll(() => editor.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
+  await page.screenshot({ path: testInfo.outputPath("task-editor-narrow.png") });
+  await editor.getByRole("button", { name: "Close task editor", exact: true }).click();
+  await expect(page.getByRole("article", { name: "Ship release", exact: true })).toBeFocused();
+});

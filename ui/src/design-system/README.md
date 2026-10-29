@@ -506,3 +506,9 @@ metadata preserve lane/task dragging, keyboard epic ordering, lifecycle filters,
 Wide lanes stay in a keyboard-focusable scroller; reduced motion removes drag-target animation.
 Loads ignore older requests, subscriptions clean up even when registration finishes late,
 and task-name decisions check the active vault. Editors retain their own migration passes.
+
+`views/planner/TaskEditor.tsx` adopts a sibling scope for shared fields, notices, actions,
+and optional shared activity rendering. Writes and decisions serialize, fields disable
+while pending, failed archive/delete requests retain the editor, and stale decisions
+check the selected task revision and vault. Closing restores its card or board heading.
+Narrow pane containers show the editor at full width, with a media fallback for older WebKit.

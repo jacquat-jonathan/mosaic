@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Task editor:** shared fields, actions, activity, and conflict notices retain task lifecycle decisions. Failed saves preserve drafts, failed archives keep the task open, and narrow panes give editing the full width.
+
 - **Task board:** shared actions, labelled filters, readable cards, and retry notices preserve lane dragging, subtask completion, lifecycle views, and exports. Older loads and late task prompts stay tied to their vault.
 
 - **Planning views:** saved titles and queries now use shared task/note results, notices, and completion controls. Missing saved views remain explicit.

@@ -183,6 +183,13 @@ export function BoardView() {
       off?.();
     };
   }, [root, load]);
+  const focusTask = (id: string) =>
+    requestAnimationFrame(() => {
+      const target = [...(boardScrollRef.current?.querySelectorAll<HTMLElement>("[data-task-id]") ?? [])].find(
+        (element) => element.dataset.taskId === id,
+      );
+      (target ?? boardHeading.current)?.focus();
+    });
   const selected = tasks.find((task) => task.id === selectedId) ?? null;
   const allLanes = useMemo(() => swimlanes(epics, tasks), [epics, tasks]);
   const hierarchy = useMemo(() => taskChildren(tasks), [tasks]);
@@ -781,13 +788,18 @@ export function BoardView() {
       </DesignSystemScope>
       {selected && (
         <TaskEditor
+          key={`${root}/${selected.id}`}
           task={selected}
           epics={epics}
           tasks={tasks}
-          onClose={() => setSelectedId(null)}
+          onClose={() => {
+            setSelectedId(null);
+            focusTask(selected.id);
+          }}
           onReload={() => void load()}
           onChanged={(task) => {
             setSelectedId(task?.id ?? null);
+            if (!task) focusTask("");
             void load();
           }}
         />
@@ -873,6 +885,7 @@ function TaskCard({
       onClick={(event) => {
         if (!(event.target as HTMLElement).closest("button,input")) onSelect(task.id);
       }}
+      data-task-id={task.id}
       aria-label={task.title}
       tabIndex={0}
       onKeyDown={(event) => {
@@ -908,7 +921,9 @@ function TaskCard({
                 aria-label={`Mark ${child.title} ${child.status === "done" ? "not done" : "done"}`}
                 onChange={() => onToggleDone(child)}
               />
-              <Button onClick={() => onSelect(child.id)}>{child.title}</Button>
+              <Button data-task-id={child.id} onClick={() => onSelect(child.id)}>
+                {child.title}
+              </Button>
             </li>
           ))}
         </ul>

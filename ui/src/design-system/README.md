@@ -600,3 +600,10 @@ accounts for interface zoom; narrow submenus stay within the viewport.
 Global error toasts use shared notices and an accessible dismiss action. Long messages wrap,
 automatic expiry pauses during hover/focus, and manual dismissal restores prior focus. Error
 replacement and timer cleanup prevent an older timeout from clearing a newer message.
+
+
+`viewers/canvas/CanvasEditor.tsx` adopts `DocumentToolbar`, shared view choices/actions,
+and scoped React Flow navigation controls. The nonmodal shape palette stays draggable,
+uses shared controls and readable groups, fits the scaled viewport, and restores its opener
+on dismissal. Newly created shapes retain editor focus. Reduced motion disables fit
+animations; canvas nodes, note previews, geometry, and source rendering stay outside scopes.

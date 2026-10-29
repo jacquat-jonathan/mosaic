@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Canvas:** shared toolbar/view choices, navigation controls, and a readable shape palette preserve card editing and palette dragging. Palette dismissal restores focus, scaled windows keep controls visible, and fit animations respect reduced motion.
+
 - **Error toast:** shared notices and an accessible dismiss action wrap long messages. Automatic dismissal pauses during reading or keyboard focus, and manual dismissal returns focus.
 
 - **Context menus:** shared colors, spacing, readable details and icons preserve nested menus and edge flipping. Arrow/Home/End/type-ahead navigation, submenu focus, Escape and focus return now work from the keyboard, including scaled windows.

@@ -270,3 +270,93 @@ test("embedded queries follow app themes and keep narrow results local", async (
   await expect(page.locator(".cm-content")).toHaveCSS("font-size", "16px");
   await page.screenshot({ path: info.outputPath("query-narrow.png") });
 });
+
+async function editorNote(page: Page) {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open folder…", exact: true }).click();
+  await page.evaluate(async () => {
+    const m = (
+      window as unknown as {
+        __mosaic: {
+          mockInvoke(command: string, args: object): Promise<unknown>;
+          useWorkspace: { getState(): { open(path: string, options: { newTab: boolean }): Promise<void> } };
+        };
+      }
+    ).__mosaic;
+    await m.mockInvoke("write_file", {
+      path: "Editor UI.md",
+      content: "# Editor UI\n\n| Name | Qty |\n| --- | --- |\n| Apple | 3 |\n\nAfter table.\n",
+      expectedHash: null,
+    });
+    await m.useWorkspace.getState().open("Editor UI.md", { newTab: true });
+  });
+  await expect(page.getByRole("group", { name: "Table editing", exact: true })).toBeVisible();
+}
+test("note table and search controls keep note fonts and keyboard behavior", async ({ page }) => {
+  await editorNote(page);
+  const toolbar = page.getByRole("group", { name: "Table editing", exact: true });
+  await expect(toolbar).toHaveCSS("font-size", "14px");
+  await expect(page.locator(".cm-table-wrap td").first()).toHaveCSS("font-size", "14.5px");
+  await toolbar.getByRole("button", { name: "Markdown", exact: true }).click();
+  await page.getByRole("button", { name: "Back to table", exact: true }).click();
+  await expect(toolbar).toBeVisible();
+  await page.locator(".cm-content .cm-line").last().click();
+  await page.keyboard.press("Meta+f");
+  const search = page.locator(".cm-search");
+  await expect(search).toHaveCSS("font-size", "14px");
+  await search.getByRole("textbox", { name: "Find", exact: true }).fill("After");
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".cm-content")).toBeFocused();
+});
+test("note editor controls follow themes and fit compact scaled panes", async ({ page }, info) => {
+  await editorNote(page);
+  await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const open = () =>
+    page.evaluate(async () => {
+      const path = "/src/state/workspace.ts";
+      const { useWorkspace } = await import(path);
+      await useWorkspace.getState().open("Editor UI.md", { newTab: true });
+    });
+  for (const theme of ["Light", "Dark", "System"]) {
+    await page.getByRole("radio", { name: theme, exact: true }).check();
+    await open();
+    const toolbar = page.getByRole("group", { name: "Table editing", exact: true });
+    await expect(toolbar).toHaveCSS("color", theme === "Light" ? "rgb(29, 31, 38)" : "rgb(228, 229, 234)");
+    if (theme !== "System") await page.screenshot({ path: info.outputPath(`editor-${theme.toLowerCase()}.png`) });
+    await page.getByRole("tab", { name: "Settings Close tab", exact: true }).click();
+  }
+  await page.getByLabel("Interface density", { exact: true }).selectOption("compact");
+  await page.getByRole("slider", { name: "Interface scale", exact: true }).press("End");
+  await open();
+  await page.setViewportSize({ width: 320, height: 900 });
+  const toolbar = page.getByRole("group", { name: "Table editing", exact: true });
+  await expect.poll(() => toolbar.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
+  await page.locator(".cm-content").focus();
+  await page.keyboard.press("Meta+f");
+  const search = page.locator(".cm-search");
+  await expect.poll(() => search.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
+  await page.screenshot({ path: info.outputPath("editor-narrow.png") });
+});
+test("note completion remains keyboard operated and fits scaled narrow windows", async ({ page }, info) => {
+  await editorNote(page);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.getByRole("slider", { name: "Interface scale", exact: true }).press("End");
+  await page.evaluate(async () => {
+    const path = "/src/state/workspace.ts";
+    const { useWorkspace } = await import(path);
+    await useWorkspace.getState().open("Editor UI.md", { newTab: true });
+  });
+  await page.setViewportSize({ width: 320, height: 900 });
+  await page.locator(".cm-content .cm-line").last().click();
+  await page.keyboard.press("End");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("/table");
+  const list = page.getByRole("listbox");
+  await expect(list).toBeVisible();
+  await expect(list).toHaveCSS("font-size", "14px");
+  await expect.poll(() => list.evaluate((el) => el.getBoundingClientRect().right)).toBeLessThanOrEqual(320);
+  await page.screenshot({ path: info.outputPath("editor-completion-narrow.png") });
+  await page.keyboard.press("Enter");
+  await expect(page.locator(".cm-table-wrap")).toHaveCount(2);
+});

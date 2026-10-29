@@ -1,5 +1,6 @@
 import { StateEffect, StateField } from "@codemirror/state";
 import { WidgetType, type EditorView } from "@codemirror/view";
+import { editorButton } from "./designSystemDom";
 export const editTableSource = StateEffect.define<{ from: number; to: number } | null>();
 export const tableSource = StateField.define<{ from: number; to: number } | null>({
   create: () => null,
@@ -13,8 +14,8 @@ export const tableSource = StateField.define<{ from: number; to: number } | null
 });
 export class TableSourceButton extends WidgetType {
   toDOM(view: EditorView) {
-    const button = document.createElement("button");
-    button.className = "table-source-back";
+    const button = editorButton(document.createElement("button"));
+    button.classList.add("table-source-back");
     button.textContent = "Back to table";
     button.addEventListener("mousedown", (e) => e.preventDefault());
     button.addEventListener("click", () => {

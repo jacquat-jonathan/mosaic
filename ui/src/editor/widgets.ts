@@ -3,7 +3,8 @@ import { createElement, type ReactElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { renderMath } from "./render";
 import { sanitizeSvg } from "../sanitizeSvg";
-import { PropertiesEditor } from "./PropertiesEditor";
+import { editorScope, editorButton } from "./designSystemDom";
+import "./editorControls.css";
 import { isDark } from "../theme";
 import type { EditorContext } from "./context";
 
@@ -95,15 +96,18 @@ export class RenderedBlockWidget extends WidgetType {
   /** "Open as diagram" on a rendered Mermaid flowchart, state or class diagram. */
   private addOpenAsDiagram(el: HTMLElement) {
     if (this.lang !== "mermaid" || !this.ctx.openAsDiagram || !diagramKind(this.source)) return;
-    const open = document.createElement("button");
-    open.className = "block-action";
+    const actions = editorScope(document.createElement("span"));
+    actions.classList.add("editor-block-actions");
+    const open = editorButton(document.createElement("button"));
+    open.classList.add("block-action");
     open.textContent = "Open as diagram";
     open.title = "Make an editable canvas from this diagram, next to the note";
     open.addEventListener("click", (e) => {
       e.stopPropagation();
       this.ctx.openAsDiagram!(this.source);
     });
-    el.appendChild(open);
+    actions.append(open);
+    el.appendChild(actions);
   }
   get estimatedHeight() {
     return 120;
@@ -279,44 +283,6 @@ export class CanvasEmbedWidget extends WidgetType {
 export function stripFrontmatter(text: string): string {
   const m = /^---\r?\n[\s\S]*?\r?\n---[ \t]*(\r?\n|$)/.exec(text);
   return m ? text.slice(m[0].length) : text;
-}
-
-/** The note's frontmatter as an editable form (PropertiesEditor); "Edit as YAML" shows the source. */
-export class PropertiesWidget extends WidgetType {
-  private roots = new WeakMap<HTMLElement, Root>();
-  constructor(
-    readonly yaml: string,
-    /** Where the frontmatter block ends (it starts at 0, and the closing --- has no line break). */
-    readonly end: number,
-  ) {
-    super();
-  }
-  eq(o: PropertiesWidget) {
-    return o.yaml === this.yaml && o.end === this.end;
-  }
-  toDOM(view: EditorView) {
-    const el = document.createElement("div");
-    const root = createRoot(el);
-    this.roots.set(el, root);
-    const onChange = (yaml: string) => {
-      const block = yaml.trim() ? `---\n${yaml.endsWith("\n") ? yaml : `${yaml}\n`}---` : "";
-      view.dispatch({ changes: { from: 0, to: this.end, insert: block } });
-    };
-    const onEditSource = () => {
-      view.dispatch({ selection: { anchor: 4 } });
-      view.focus();
-    };
-    root.render(createElement(PropertiesEditor, { yaml: this.yaml, onChange, onEditSource }));
-    return el;
-  }
-  destroy(dom: HTMLElement) {
-    const root = this.roots.get(dom);
-    // Unmount after the current render, as React requires.
-    if (root) queueMicrotask(() => root.unmount());
-  }
-  ignoreEvent() {
-    return true;
-  }
 }
 
 /** A nested ordered list's number shown as an outline number ("2.1."); the Markdown keeps "1.". */

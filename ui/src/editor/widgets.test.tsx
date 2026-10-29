@@ -14,7 +14,6 @@ import {
   MathWidget,
   NoteEmbedWidget,
   OutlineNumberWidget,
-  PropertiesWidget,
   ReactWidget,
   RenderedBlockWidget,
   RuleWidget,
@@ -149,16 +148,8 @@ test("rendered blocks handle links, source replacement, async success and errors
   await vi.waitFor(() => expect(failed.textContent).toContain("drawing failed"));
 });
 
-test("properties and React widgets mount, update and unmount", async () => {
+test("React widgets mount, update and unmount", async () => {
   const view = fakeView();
-  const properties = new PropertiesWidget("title: Test\n", 20);
-  const propertyDom = properties.toDOM(view);
-  document.body.append(propertyDom);
-  await act(async () => {});
-  expect(properties.eq(new PropertiesWidget("title: Test\n", 20))).toBe(true);
-  properties.destroy(propertyDom);
-  await act(async () => {});
-
   const react = new ReactWidget("key", () => <strong>Hosted content</strong>, "hosted");
   const reactDom = react.toDOM(view);
   document.body.append(reactDom);

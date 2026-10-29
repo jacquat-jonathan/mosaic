@@ -575,3 +575,8 @@ remain explicit; the native-dialog compatibility fallback also applies to global
 Global confirmations use the shared dialog description and quiet/outlined destructive
 controls, retaining confirmation labels, Enter/Space activation, Escape cancellation,
 modal focus containment, and focus return.
+
+`views/NewNoteDialog.tsx` adopts shared modal actions, labelled native fields, template
+preview typography, and notices. Preview hashes/default selection and creation timestamps
+remain pinned. A synchronous write lock blocks repeat creation; dismissal is disabled while
+saving, failed writes retain drafts, and late acknowledgements guard the active vault.

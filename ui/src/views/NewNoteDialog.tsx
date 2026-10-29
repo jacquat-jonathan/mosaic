@@ -1,4 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
+import { Button, Dialog as SharedDialog, Notice } from "../design-system/components";
+import { DesignSystemScope } from "./DesignSystemScope";
+import "./newNoteDialog.css";
 import { api } from "../ipc/api";
 import { errorMessage, type TemplateList, type TemplatePreview } from "../ipc/types";
 import { useUi } from "../state/ui";
@@ -51,7 +54,16 @@ function Dialog({
   });
   const [reload, setReload] = useState(0);
   const input = useRef<HTMLInputElement>(null);
-  const form = useRef<HTMLFormElement>(null);
+  const formId = useId();
+  const lock = useRef(false);
+  const mounted = useRef(true);
+  const current = () => mounted.current && useVault.getState().vault?.root === root;
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const entries = useVault((s) => s.entries);
   const revision = useVault((s) => s.revision);
   const close = () => useUi.setState({ newNote: null });
@@ -68,12 +80,8 @@ function Dialog({
   const previewKey = JSON.stringify([path, choice, timestamp, revision, reload]);
   const [renderedKey, setRenderedKey] = useState("");
   useEffect(() => {
-    const previous = document.activeElement as HTMLElement | null;
     input.current?.focus();
     input.current?.select();
-    return () => {
-      if (previous?.isConnected) previous.focus();
-    };
   }, []);
   // biome-ignore lint/correctness/useExhaustiveDependencies: `request` and `previewKey` are derived from the listed values
   useEffect(() => {
@@ -105,8 +113,9 @@ function Dialog({
     };
   }, [path, choice, timestamp, revision, reload, validation]);
   const create = async () => {
-    if (!preview || renderedKey !== previewKey || busy || validation) return;
-    if (useVault.getState().vault?.root !== root) return close();
+    if (!preview || renderedKey !== previewKey || lock.current || validation) return;
+    if (!current()) return;
+    lock.current = true;
     setBusy(true);
     setError(null);
     try {
@@ -119,17 +128,22 @@ function Dialog({
         blank: !preview.template,
         expected_template_hash: preview.template_hash,
       });
-      if (useVault.getState().vault?.root !== root) return close();
+      if (!current()) return;
       await useVault.getState().refresh();
+      if (!current()) return;
       useVault.getState().revealParents(out.path);
       useVault.getState().setSelection([out.path]);
       close();
       await useWorkspace.getState().open(out.path, { newTab });
       requestAnimationFrame(() => document.querySelector<HTMLElement>(".pane.active .cm-content")?.focus());
     } catch (e) {
-      setError(errorMessage(e));
-      setBusy(false);
-      setPreview(null);
+      if (current()) {
+        setError(errorMessage(e));
+        setPreview(null);
+      }
+    } finally {
+      lock.current = false;
+      if (current()) setBusy(false);
     }
   };
   const templates = list?.templates.filter((t) => t.path.toLowerCase().includes(search.toLowerCase())) ?? [];
@@ -137,134 +151,119 @@ function Dialog({
     ? `${list.default.template} · default from ${list.default.rule_folder || "Vault root"}`
     : "Blank · folder default";
   return (
-    <div className="modal-backdrop" onMouseDown={() => !busy && close()}>
-      <form
-        ref={form}
-        className="modal new-note-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="new-note-title"
-        onMouseDown={(e) => e.stopPropagation()}
-        onSubmit={(e) => {
-          e.preventDefault();
-          void create();
-        }}
-        onKeyDown={(e) => {
-          e.stopPropagation();
-          if (e.key === "Escape") {
-            e.preventDefault();
-            if (!busy) close();
-          }
-          if (e.key === "Tab") {
-            const focusable = [...form.current!.querySelectorAll<HTMLElement>("input, select, button")].filter(
-              (el) => !(el as HTMLInputElement).disabled,
-            );
-            const first = focusable[0],
-              last = focusable[focusable.length - 1];
-            if (e.shiftKey && document.activeElement === first) {
-              e.preventDefault();
-              last?.focus();
-            } else if (!e.shiftKey && document.activeElement === last) {
-              e.preventDefault();
-              first?.focus();
-            }
-          }
-        }}
+    <DesignSystemScope className="new-note-scope">
+      <SharedDialog
+        open
+        title="New note"
+        initialFocusRef={input}
+        dismissible={!busy}
+        onClose={close}
+        actions={
+          <>
+            <Button disabled={busy} onClick={close}>
+              Cancel
+            </Button>
+            <Button
+              variant="secondary"
+              type="submit"
+              form={formId}
+              disabled={!preview || renderedKey !== previewKey || !!validation || busy}
+            >
+              {busy ? "Creating…" : "Create"}
+            </Button>
+          </>
+        }
       >
-        <h2 id="new-note-title">New note</h2>
-        <label>
-          Name
-          <input
-            ref={input}
-            className="text-input"
-            value={name}
-            disabled={busy}
-            onChange={(e) => setName(e.target.value)}
-          />
-        </label>
-        <label>
-          Folder
-          <select value={folder} disabled={busy} onChange={(e) => setFolder(e.target.value)}>
-            <option value="">Vault root</option>
-            {entries
-              .filter((e) => e.is_dir)
-              .map((e) => (
-                <option key={e.path} value={e.path}>
-                  {e.path}
+        <form
+          id={formId}
+          className="new-note-fields"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void create();
+          }}
+        >
+          <label className="mds-field">
+            Name
+            <input
+              ref={input}
+              className="mds-input"
+              value={name}
+              disabled={busy}
+              onChange={(e) => setName(e.target.value)}
+            />
+          </label>
+          <label className="mds-field">
+            Folder
+            <select className="mds-input" value={folder} disabled={busy} onChange={(e) => setFolder(e.target.value)}>
+              <option value="">Vault root</option>
+              {entries
+                .filter((e) => e.is_dir)
+                .map((e) => (
+                  <option key={e.path} value={e.path}>
+                    {e.path}
+                  </option>
+                ))}
+              {folder && !entries.some((e) => e.is_dir && e.path === folder) && (
+                <option value={folder}>{folder} (new folder)</option>
+              )}
+            </select>
+          </label>
+          <label className="mds-field">
+            Find templates
+            <input
+              className="mds-input"
+              value={search}
+              disabled={busy}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Name or path…"
+            />
+          </label>
+          <label className="mds-field">
+            Template
+            <select className="mds-input" value={choice} disabled={busy} onChange={(e) => setChoice(e.target.value)}>
+              <option value="default">Use folder default</option>
+              <option value="blank">Blank</option>
+              {templates.map((t) => (
+                <option key={t.path} value={t.path}>
+                  {t.path}
                 </option>
               ))}
-            {folder && !entries.some((e) => e.is_dir && e.path === folder) && (
-              <option value={folder}>{folder} (new folder)</option>
-            )}
-          </select>
-        </label>
-        <label>
-          Find templates
-          <input
-            className="text-input"
-            value={search}
-            disabled={busy}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Name or path…"
-          />
-        </label>
-        <label>
-          Template
-          <select value={choice} disabled={busy} onChange={(e) => setChoice(e.target.value)}>
-            <option value="default">Use folder default</option>
-            <option value="blank">Blank</option>
-            {templates.map((t) => (
-              <option key={t.path} value={t.path}>
-                {t.path}
-              </option>
-            ))}
-            {choice !== "default" && choice !== "blank" && !templates.some((t) => t.path === choice) && (
-              <option value={choice}>{choice}</option>
-            )}
-          </select>
-        </label>
-        <p className="settings-note">
-          {choice === "default"
-            ? defaultLabel
-            : choice === "blank"
-              ? "Blank · chosen for this note"
-              : `${choice} · chosen for this note`}
-        </p>
-        <div className="template-preview" aria-label="Template preview">
-          <pre>
-            {preview?.content ||
-              (preview
-                ? "Empty note"
-                : validation
-                  ? "Enter a valid, available name to preview."
-                  : error
-                    ? "Choose another template or refresh the preview."
-                    : "Preview loading…")}
-          </pre>
-        </div>
-        {(validation || error) && (
-          <p className="error-text" role="alert">
-            {validation || error}
+              {choice !== "default" && choice !== "blank" && !templates.some((t) => t.path === choice) && (
+                <option value={choice}>{choice}</option>
+              )}
+            </select>
+          </label>
+          <p className="mds-hint">
+            {choice === "default"
+              ? defaultLabel
+              : choice === "blank"
+                ? "Blank · chosen for this note"
+                : `${choice} · chosen for this note`}
           </p>
-        )}
-        {error && (
-          <button type="button" onClick={() => setReload((n) => n + 1)}>
-            Refresh preview
-          </button>
-        )}
-        <div className="modal-actions">
-          <button type="button" disabled={busy} onClick={close}>
-            Cancel
-          </button>
-          <button
-            className="primary"
-            type="submit"
-            disabled={!preview || renderedKey !== previewKey || !!validation || busy}
-          >
-            {busy ? "Creating…" : "Create"}
-          </button>
-        </div>
-      </form>
-    </div>
+          <div className="template-preview" aria-label="Template preview">
+            <pre>
+              {preview?.content ||
+                (preview
+                  ? "Empty note"
+                  : validation
+                    ? "Enter a valid, available name to preview."
+                    : error
+                      ? "Choose another template or refresh the preview."
+                      : "Preview loading…")}
+            </pre>
+          </div>
+          {(validation || error) && (
+            <Notice tone="error" role="alert">
+              {validation || error}
+            </Notice>
+          )}
+          {error && (
+            <Button disabled={busy} onClick={() => setReload((n) => n + 1)}>
+              Refresh preview
+            </Button>
+          )}
+        </form>
+      </SharedDialog>
+    </DesignSystemScope>
   );
 }

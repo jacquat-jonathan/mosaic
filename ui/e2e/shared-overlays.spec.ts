@@ -105,3 +105,34 @@ test("confirmation shares themes and fits scaled narrow windows", async ({ page 
   await expect.poll(() => dialog.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
   await page.screenshot({ path: info.outputPath("confirmation-narrow.png") });
 });
+
+test("new note shares themes and fits scaled narrow windows", async ({ page }, info) => {
+  await setup(page);
+  await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  for (const theme of ["Light", "Dark", "System"]) {
+    await page.getByRole("radio", { name: theme, exact: true }).check();
+    await openNewNote(page);
+    const dialog = page.getByRole("dialog", { name: "New note", exact: true });
+    await expect(dialog).toHaveCSS("font-size", "14px");
+    await expect(dialog).toHaveCSS("background-color", theme === "Light" ? "rgb(255, 255, 255)" : "rgb(30, 31, 36)");
+    if (theme !== "System") await page.screenshot({ path: info.outputPath(`new-note-${theme.toLowerCase()}.png`) });
+    await page.keyboard.press("Escape");
+  }
+  await page.getByLabel("Interface density", { exact: true }).selectOption("compact");
+  await page.getByRole("slider", { name: "Interface scale", exact: true }).press("End");
+  await page.setViewportSize({ width: 320, height: 900 });
+  await openNewNote(page);
+  const dialog = page.getByRole("dialog", { name: "New note", exact: true });
+  await expect(dialog.getByRole("button", { name: "Create", exact: true })).toBeInViewport();
+  await expect.poll(() => dialog.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
+  await page.screenshot({ path: info.outputPath("new-note-narrow.png") });
+});
+
+async function openNewNote(page: Page) {
+  await page.evaluate(async () => {
+    const path = "/src/actions.ts";
+    const { newNote } = await import(path);
+    await newNote("", "Draft", true);
+  });
+}

@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **New note:** shared modal controls, template fields, previews, and notices retain exact-template creation. Pending creation blocks duplicate actions and dismissal; failures preserve the draft.
+
 - **Confirmations:** shared dialogs provide labelled descriptions, consistent destructive actions, keyboard containment, cancellation, and focus return.
 
 - **Prompts:** shared dialogs and labelled fields provide consistent keyboard dismissal, focus containment, and focus return while retaining Enter submission.

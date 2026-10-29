@@ -3,7 +3,7 @@ import { Button, IconButton, Notice, Select, TextArea, TextField } from "../../d
 import { X } from "lucide-react";
 import { DesignSystemScope } from "../DesignSystemScope";
 import { useVault } from "../../state/vault";
-import "./taskEditor.css";
+import "./plannerEditor.css";
 import { api } from "../../ipc/api";
 import { errorMessage, isCoreError, type PlannerEpic, type PlannerTask, type PlannerTaskStatus } from "../../ipc/types";
 import { useUi } from "../../state/ui";
@@ -279,7 +279,7 @@ export function TaskEditor({
   return (
     <DesignSystemScope
       as="aside"
-      className="planner-editor task-editor"
+      className="planner-editor task-editor planner-editor-design"
       aria-label={`Edit ${task.title}`}
       aria-busy={disabled}
     >

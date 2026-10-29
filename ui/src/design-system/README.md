@@ -523,3 +523,10 @@ uses shared actions, a labelled radio view selector, notices, and scoped tokens 
 specialized time grid and task tray. Editors keep separate migration passes.
 Larger event text wraps only when two lines fit. Empty slots support keyboard creation,
 and range loads guard the latest request and active vault.
+
+`views/planner/EventEditor.tsx` adopts an independent editor scope using the common
+`plannerEditor.css` field treatment. Native date parsing and recurrence controls retain
+their semantics, inputs disable during serialized writes, failures keep drafts, and stale
+acknowledgements check the active vault. Calendar captures the opener for focus return;
+narrow container layouts give the editor the pane width. Task-editor checks cover the
+shared stylesheet after extraction.

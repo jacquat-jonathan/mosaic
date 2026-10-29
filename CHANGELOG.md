@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Event editor:** shared fields, actions, activity, and notices retain dates, recurrence, colors, and revision checks. Writes disable duplicate edits, failures keep drafts, and closing returns to the calendar.
+
 - **Month calendar:** shared controls and readable date/event metadata preserve the grid, event dragging, and day navigation. Keyboard actions on event buttons now stay with the event.
 
 - **Week calendar:** shared controls and larger event/task metadata preserve the five-day grid, keyboard view changes, and independent scrolling in narrow panes.

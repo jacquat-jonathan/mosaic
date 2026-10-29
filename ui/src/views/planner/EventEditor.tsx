@@ -1,4 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { Button, IconButton, Notice } from "../../design-system/components";
+import { X } from "lucide-react";
+import { useVault } from "../../state/vault";
+import { DesignSystemScope } from "../DesignSystemScope";
+import "./plannerEditor.css";
 import { api } from "../../ipc/api";
 import {
   errorMessage,
@@ -52,6 +57,7 @@ function CalendarDateInput({ value, onChange }: { value: string; onChange(value:
   useEffect(() => setText(formatCalendarDate(value)), [value]);
   return (
     <input
+      className="mds-input"
       type="text"
       inputMode="numeric"
       placeholder="dd/mm/yyyy"
@@ -90,6 +96,17 @@ export function EventEditor({
   onClose(): void;
   onDone(): void;
 }) {
+  const root = useVault((state) => state.vault?.root),
+    live = useRef(true),
+    lock = useRef(false);
+  const current = () => live.current && root === useVault.getState().vault?.root;
+  useEffect(() => {
+    live.current = true;
+    return () => {
+      live.current = false;
+    };
+  }, []);
+  const scopeName = useId();
   const original = occurrence ?? series,
     timezone = original?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC";
   const [title, setTitle] = useState(original?.title ?? ""),
@@ -165,15 +182,18 @@ export function EventEditor({
     ],
   );
   const run = async (action: () => Promise<unknown>) => {
+    if (lock.current || !current()) return;
+    lock.current = true;
     setBusy(true);
     setError(null);
     try {
       await action();
-      onDone();
+      if (current()) onDone();
     } catch (reason) {
-      setError(errorMessage(reason));
+      if (current()) setError(errorMessage(reason));
     } finally {
-      setBusy(false);
+      lock.current = false;
+      if (current()) setBusy(false);
     }
   };
   const save = () =>
@@ -196,155 +216,206 @@ export function EventEditor({
     if (checked && endDay <= startDay) setEndDay(nextDay(startDay));
   };
   return (
-    <aside className="planner-editor event-editor" aria-label={isExisting ? `Edit ${title}` : "New event"}>
+    <DesignSystemScope
+      as="aside"
+      className="planner-editor event-editor planner-editor-design"
+      aria-label={isExisting ? `Edit ${title}` : "New event"}
+    >
       <header>
         <h2>{isExisting ? "Event" : "New event"}</h2>
-        <button aria-label="Close event editor" onClick={onClose}>
-          ×
-        </button>
+        <IconButton label="Close event editor" onClick={onClose}>
+          <X size={16} />
+        </IconButton>
       </header>
-      {error && <p className="error-text">{error}</p>}
-      {recurring && (
-        <fieldset className="event-scope">
-          <legend>Edit</legend>
-          <label>
-            <input type="radio" checked={scope === "occurrence"} onChange={() => setScope("occurrence")} /> This
-            occurrence
-          </label>
-          <label>
-            <input type="radio" checked={scope === "series"} onChange={() => setScope("series")} /> Entire series
-          </label>
-        </fieldset>
-      )}
-      <label>
-        Title
-        <input autoFocus value={title} onChange={(event) => setTitle(event.target.value)} />
-      </label>
-      <label>
-        Description
-        <textarea rows={4} value={description} onChange={(event) => setDescription(event.target.value)} />
-      </label>
-      <label className="event-check">
-        <input type="checkbox" checked={allDay} onChange={(event) => toggleAllDay(event.target.checked)} /> All day
-      </label>
-      <div className={`event-date-fields ${allDay ? "all-day" : ""}`}>
-        <label>
-          Start day
-          <CalendarDateInput value={startDay} onChange={setStartDay} />
-        </label>
-        {!allDay && (
-          <label>
-            Start time
-            <input type="time" step="900" value={startTime} onChange={(event) => setStartTime(event.target.value)} />
-          </label>
-        )}
-        <label>
-          End day
-          <CalendarDateInput value={endDay} onChange={setEndDay} />
-        </label>
-        {!allDay && (
-          <label>
-            End time
-            <input type="time" step="900" value={endTime} onChange={(event) => setEndTime(event.target.value)} />
-          </label>
-        )}
-      </div>
-      <p className="panel-meta">Time zone: {timezone}</p>
-      {scope === "series" && (
-        <>
-          <div className="planner-editor-row">
+      {error && <Notice tone="error">{error}</Notice>}
+      <fieldset className="planner-editor-fields" disabled={busy} aria-label="Event details">
+        {recurring && (
+          <fieldset className="event-scope">
+            <legend>Edit</legend>
             <label>
-              Repeat
-              <select value={repeat} onChange={(event) => setRepeat(event.target.value as Repeat)}>
-                <option value="none">Does not repeat</option>
-                <option value="daily">Daily</option>
-                <option value="weekdays">Weekdays</option>
-                <option value="weekly">Weekly</option>
-                <option value="monthly">Monthly</option>
-              </select>
+              <input
+                name={scopeName}
+                type="radio"
+                checked={scope === "occurrence"}
+                onChange={() => setScope("occurrence")}
+              />{" "}
+              This occurrence
             </label>
+            <label>
+              <input name={scopeName} type="radio" checked={scope === "series"} onChange={() => setScope("series")} />{" "}
+              Entire series
+            </label>
+          </fieldset>
+        )}
+        <label>
+          Title
+          <input className="mds-input" autoFocus value={title} onChange={(event) => setTitle(event.target.value)} />
+        </label>
+        <label>
+          Description
+          <textarea
+            className="mds-input"
+            rows={4}
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+          />
+        </label>
+        <label className="event-check">
+          <input type="checkbox" checked={allDay} onChange={(event) => toggleAllDay(event.target.checked)} /> All day
+        </label>
+        <div className={`event-date-fields ${allDay ? "all-day" : ""}`}>
+          <label>
+            Start day
+            <CalendarDateInput value={startDay} onChange={setStartDay} />
+          </label>
+          {!allDay && (
+            <label>
+              Start time
+              <input
+                className="mds-input"
+                type="time"
+                step="900"
+                value={startTime}
+                onChange={(event) => setStartTime(event.target.value)}
+              />
+            </label>
+          )}
+          <label>
+            End day
+            <CalendarDateInput value={endDay} onChange={setEndDay} />
+          </label>
+          {!allDay && (
+            <label>
+              End time
+              <input
+                className="mds-input"
+                type="time"
+                step="900"
+                value={endTime}
+                onChange={(event) => setEndTime(event.target.value)}
+              />
+            </label>
+          )}
+        </div>
+        <p className="panel-meta">Time zone: {timezone}</p>
+        {scope === "series" && (
+          <>
+            <div className="planner-editor-row">
+              <label>
+                Repeat
+                <select
+                  className="mds-input"
+                  value={repeat}
+                  onChange={(event) => setRepeat(event.target.value as Repeat)}
+                >
+                  <option value="none">Does not repeat</option>
+                  <option value="daily">Daily</option>
+                  <option value="weekdays">Weekdays</option>
+                  <option value="weekly">Weekly</option>
+                  <option value="monthly">Monthly</option>
+                </select>
+              </label>
+              {repeat !== "none" && (
+                <label>
+                  Every
+                  <input
+                    className="mds-input"
+                    type="number"
+                    min="1"
+                    max="366"
+                    value={interval}
+                    onChange={(event) => setInterval(Number(event.target.value))}
+                  />
+                </label>
+              )}
+            </div>
             {repeat !== "none" && (
               <label>
-                Every
+                Repeat until
                 <input
-                  type="number"
-                  min="1"
-                  max="366"
-                  value={interval}
-                  onChange={(event) => setInterval(Number(event.target.value))}
+                  className="mds-input"
+                  type="date"
+                  value={until}
+                  onChange={(event) => setUntil(event.target.value)}
                 />
               </label>
             )}
-          </div>
-          {repeat !== "none" && (
-            <label>
-              Repeat until
-              <input type="date" value={until} onChange={(event) => setUntil(event.target.value)} />
-            </label>
-          )}
-        </>
-      )}
-      <label>
-        Epic
-        <select value={epic} onChange={(event) => setEpic(event.target.value)}>
-          <option value="">No epic</option>
-          {epics
-            .filter((item) => !item.archived_at)
-            .map((item) => (
-              <option value={item.id} key={item.id}>
-                {item.title}
-              </option>
-            ))}
-        </select>
-      </label>
-      <label>
-        Color
-        <span className="event-color-control">
-          <input type="color" value={visibleColor} onChange={(event) => setColor(event.target.value)} />
-          <output>
-            <i style={{ backgroundColor: visibleColor }} />
-            {color ? visibleColor : epic ? "Epic color" : "Default color"}
-          </output>
-          {color && (
-            <button type="button" onClick={() => setColor("")}>
-              Use {epic ? "epic" : "default"}
-            </button>
-          )}
-        </span>
-      </label>
-      <label>
-        Location
-        <input value={location} onChange={(event) => setLocation(event.target.value)} />
-      </label>
-      <label>
-        Meeting URL
-        <input type="url" value={meeting} onChange={(event) => setMeeting(event.target.value)} />
-      </label>
-      <label>
-        Participants
-        <input
-          value={participants}
-          placeholder="anna@example.com, sam@example.com"
-          onChange={(event) => setParticipants(event.target.value)}
-        />
-      </label>
-      {series && <ActivityTimeline kind="event" id={series.id} revision={series.revision} />}
+          </>
+        )}
+        <label>
+          Epic
+          <select className="mds-input" value={epic} onChange={(event) => setEpic(event.target.value)}>
+            <option value="">No epic</option>
+            {epics
+              .filter((item) => !item.archived_at)
+              .map((item) => (
+                <option value={item.id} key={item.id}>
+                  {item.title}
+                </option>
+              ))}
+          </select>
+        </label>
+        <label>
+          Color
+          <span className="event-color-control">
+            <input
+              className="mds-input"
+              aria-label="Color"
+              type="color"
+              value={visibleColor}
+              onChange={(event) => setColor(event.target.value)}
+            />
+            <output>
+              <i style={{ backgroundColor: visibleColor }} />
+              {color ? visibleColor : epic ? "Epic color" : "Default color"}
+            </output>
+            {color && (
+              <Button type="button" onClick={() => setColor("")}>
+                Use {epic ? "epic" : "default"}
+              </Button>
+            )}
+          </span>
+        </label>
+        <label>
+          Location
+          <input className="mds-input" value={location} onChange={(event) => setLocation(event.target.value)} />
+        </label>
+        <label>
+          Meeting URL
+          <input
+            className="mds-input"
+            type="url"
+            value={meeting}
+            onChange={(event) => setMeeting(event.target.value)}
+          />
+        </label>
+        <label>
+          Participants
+          <input
+            className="mds-input"
+            value={participants}
+            placeholder="anna@example.com, sam@example.com"
+            onChange={(event) => setParticipants(event.target.value)}
+          />
+        </label>
+        {series && <ActivityTimeline designSystem kind="event" id={series.id} revision={series.revision} />}
+      </fieldset>
       <footer>
         {series ? (
-          <button className="danger" disabled={busy} onClick={() => void remove()}>
+          <Button variant="danger" disabled={busy} onClick={() => void remove()}>
             {recurring && scope === "occurrence" ? "Delete occurrence" : "Archive"}
-          </button>
+          </Button>
         ) : (
           <span />
         )}
-        <button
-          className="primary"
+        <Button
+          variant="secondary"
           disabled={busy || !title.trim() || !startDay || !endDay || (!allDay && (!startTime || !endTime))}
           onClick={() => void save()}
         >
           {busy ? "Saving…" : "Save"}
-        </button>
+        </Button>
       </footer>
-    </aside>
+    </DesignSystemScope>
   );
 }

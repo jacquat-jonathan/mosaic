@@ -84,6 +84,15 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
     [error, setError] = useState<string | null>(null),
     [loading, setLoading] = useState(true),
     [show, setShow] = useState({ events: true, sessions: true, due: true });
+  const editorReturn = useRef<HTMLElement | null>(null);
+  const returnEditorFocus = () =>
+    requestAnimationFrame(() => {
+      const target = editorReturn.current;
+      (target?.isConnected
+        ? target
+        : calendarContainer.current?.querySelector<HTMLElement>('input[type="radio"]:checked')
+      )?.focus();
+    });
   const calendarContainer = useRef<HTMLDivElement>(null),
     modeFocus = useRef(false),
     retryFocus = useRef(false);
@@ -473,9 +482,23 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
   return (
     <div
       ref={calendarContainer}
-      className={`planner-calendar-page ${editor || overlayDetails || selectedSession ? "with-editor" : ""}`}
+      className={`planner-calendar-page ${editor || overlayDetails || selectedSession ? "with-editor" : ""} ${editor ? "with-design-editor" : ""}`}
     >
-      <DesignSystemScope as="main" className="planner-calendar calendar-design" aria-label="Calendar">
+      <DesignSystemScope
+        as="main"
+        className="planner-calendar calendar-design"
+        aria-label="Calendar"
+        onClickCapture={(event) => {
+          const target = (event.target as HTMLElement).closest<HTMLElement>('button,[role="button"]');
+          if (target) editorReturn.current = target;
+        }}
+        onKeyDownCapture={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            const target = (event.target as HTMLElement).closest<HTMLElement>('button,[role="button"]');
+            if (target) editorReturn.current = target;
+          }
+        }}
+      >
         <Toolbar>
           <Button className="icon" aria-label="Previous period" onClick={() => step(-1)}>
             <ChevronLeft size={16} />
@@ -681,11 +704,12 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
           onClose={() => {
             setEditor(null);
             setSelectedRange(null);
+            returnEditorFocus();
           }}
           onDone={() => {
             setEditor(null);
             setSelectedRange(null);
-            void load();
+            void load().then(returnEditorFocus);
           }}
         />
       )}

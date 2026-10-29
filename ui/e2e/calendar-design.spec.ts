@@ -123,3 +123,53 @@ test("month retains its grid, keyboard event opening and day navigation", async 
   await expect(calendar.getByRole("radio", { name: "Day", exact: true })).toBeChecked();
   await expect(calendar.getByRole("radio", { name: "Day", exact: true })).toBeFocused();
 });
+
+test("event editor retains dates, recurrence and focus after cancellation", async ({ page }) => {
+  await openCalendar(page);
+  const create = page
+    .getByRole("main", { name: "Calendar", exact: true })
+    .getByRole("button", { name: "New event", exact: true });
+  await create.click();
+  const editor = page.getByRole("complementary", { name: "New event", exact: true });
+  await expect(editor.getByLabel("Title", { exact: true })).toBeFocused();
+  await editor.getByLabel("Title", { exact: true }).fill("Recurring review");
+  await editor.getByRole("combobox", { name: "Repeat", exact: true }).selectOption("weekly");
+  await editor.getByLabel("Every", { exact: true }).fill("2");
+  await editor.getByLabel("Color", { exact: true }).fill("#2255aa");
+  await editor.getByRole("button", { name: "Close event editor", exact: true }).click();
+  await expect(create).toBeFocused();
+});
+test("event editor follows themes and fills scaled narrow panes", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+  await openCalendar(page);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  for (const theme of ["Light", "Dark", "System"] as const) {
+    await page.getByRole("radio", { name: theme, exact: true }).check();
+    await page.getByRole("tab", { name: "Today Close tab", exact: true }).click();
+    await page
+      .getByRole("main", { name: "Calendar", exact: true })
+      .getByRole("button", { name: "New event", exact: true })
+      .click();
+    const editor = page.getByRole("complementary", { name: "New event", exact: true });
+    await expect(editor).toHaveCSS("font-size", "14px");
+    await expect(editor.getByLabel("Title", { exact: true })).toHaveCSS("font-size", "14px");
+    await expect(editor).toHaveCSS("background-color", theme === "Light" ? "rgb(246, 246, 248)" : "rgb(24, 25, 29)");
+    if (theme !== "System")
+      await page.screenshot({ path: testInfo.outputPath(`event-editor-${theme.toLowerCase()}.png`) });
+    await editor.getByRole("button", { name: "Close event editor", exact: true }).click();
+    await page.getByRole("tab", { name: "Settings Close tab", exact: true }).click();
+  }
+  await page.getByLabel("Interface density", { exact: true }).selectOption("compact");
+  await page.getByRole("slider", { name: "Interface scale", exact: true }).press("End");
+  await page.getByRole("tab", { name: "Today Close tab", exact: true }).click();
+  await page
+    .getByRole("main", { name: "Calendar", exact: true })
+    .getByRole("button", { name: "New event", exact: true })
+    .click();
+  await page.setViewportSize({ width: 320, height: 900 });
+  const editor = page.getByRole("complementary", { name: "New event", exact: true });
+  await expect(editor.getByLabel("Title", { exact: true })).toBeInViewport();
+  await expect.poll(() => editor.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
+  await page.screenshot({ path: testInfo.outputPath("event-editor-narrow.png") });
+});

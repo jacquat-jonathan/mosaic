@@ -254,3 +254,51 @@ test("chart controls share themes and fit scaled narrow panes", async ({ page },
   await expect(controls.getByRole("status")).toHaveCount(0);
   await page.screenshot({ path: info.outputPath("chart-narrow.png") });
 });
+
+test("table controls preserve cell edits, structural actions, keyboard menus and source", async ({ page }) => {
+  await setup(page);
+  await openFile(page, "Projects/Data.csv");
+  const controls = page.getByRole("group", { name: "Table controls", exact: true });
+  const cell = page.getByRole("textbox", { name: "Row 1, column 2", exact: true });
+  await cell.fill("Migrated cell");
+  await cell.press("Enter");
+  await expect.poll(() => readFile(page, "Projects/Data.csv")).toContain("Migrated cell");
+  await controls.getByRole("button", { name: "Row", exact: true }).click();
+  await controls.getByRole("button", { name: "Column", exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "Column 4 header", exact: true })).toHaveText("column 4");
+  await cell.focus();
+  await cell.press("Shift+F10");
+  await expect(page.getByRole("menuitem", { name: "Insert row above", exact: true })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(cell).toBeFocused();
+  await cell.press("Shift+F10");
+  await page.getByRole("menuitem", { name: "Insert row below", exact: true }).click();
+  await controls.getByRole("radio", { name: "Source", exact: true }).click();
+  await expect(page.locator(".cm-content")).toContainText("Migrated cell");
+  await controls.getByRole("radio", { name: "Table", exact: true }).click();
+  await expect(cell).toHaveText("Migrated cell");
+});
+test("table controls share themes and fit scaled narrow panes", async ({ page }, info) => {
+  await setup(page);
+  await openFile(page, "Projects/Data.csv");
+  await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  for (const theme of ["Light", "Dark", "System"]) {
+    await page.getByRole("radio", { name: theme, exact: true }).check();
+    await openFile(page, "Projects/Data.csv");
+    const controls = page.getByRole("group", { name: "Table controls", exact: true });
+    await expect(controls).toHaveCSS("font-size", "14px");
+    await expect(controls).toHaveCSS("background-color", theme === "Light" ? "rgb(246, 246, 248)" : "rgb(24, 25, 29)");
+    if (theme !== "System") await page.screenshot({ path: info.outputPath(`table-${theme.toLowerCase()}.png`) });
+    await page.getByRole("tab", { name: "Settings Close tab", exact: true }).click();
+  }
+  await page.getByLabel("Interface density", { exact: true }).selectOption("compact");
+  await page.getByRole("slider", { name: "Interface scale", exact: true }).press("End");
+  await openFile(page, "Projects/Data.csv");
+  await page.setViewportSize({ width: 320, height: 900 });
+  const controls = page.getByRole("group", { name: "Table controls", exact: true });
+  await expect(controls.getByRole("radio", { name: "Source", exact: true })).toBeInViewport();
+  await expect(controls.getByRole("button", { name: "Column", exact: true })).toBeInViewport();
+  await expect.poll(() => controls.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
+  await page.screenshot({ path: info.outputPath("table-narrow.png") });
+});

@@ -624,3 +624,9 @@ Vega-Lite charts adopt shared Chart/Source controls, rendering/error notices, an
 keyboard-scrollable preview. Local vault data, JSON editing, error recovery and theme
 redraws remain intact. Both `RenderedSourceViewer` consumers are migrated, so its temporary
 legacy-control branch is removed; SVG/document typography stays owned by the renderer.
+
+
+`viewers/CsvEditor.tsx` adopts shared Table/Source choices, metadata, and row/column actions.
+Editable cells have explicit labels and keyboard context menus; CSV delimiter, newline,
+quoting, cell editing, and renderer typography remain intact. Wide table data scrolls locally
+while toolbar actions wrap in narrow panes.

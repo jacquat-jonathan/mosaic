@@ -282,8 +282,8 @@ test("exercise the bundled file viewers and settings surfaces", async ({ page })
   await expect(page.getByText("alpha", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Row" }).click();
   await page.getByRole("button", { name: "Column" }).click();
-  await page.getByRole("tab", { name: "Source" }).click();
-  await page.getByRole("tab", { name: "Table" }).click();
+  await page.getByRole("radio", { name: "Source" }).click();
+  await page.getByRole("radio", { name: "Table" }).click();
 
   await openMockPath(page, "Docs/page.html");
   await expect(page.locator('iframe[title="Docs/page.html"]')).toBeVisible();

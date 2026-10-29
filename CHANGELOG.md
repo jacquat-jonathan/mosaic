@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **CSV tables:** shared view choices, metadata, and row/column actions preserve delimiter-aware editing. Cells have explicit labels, and Shift+F10 opens their context menu from the keyboard.
+
 - **Charts:** shared Chart/Source choices, rendering/error notices, and keyboard-scrollable previews preserve local vault data, source edits, and theme redraws.
 
 - **Drawings:** shared Drawing/Source choices and loading/error notices preserve the drawing engine. Returning from Source refreshes the scene, and invalid JSON remains editable for repair.

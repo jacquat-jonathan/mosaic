@@ -69,3 +69,16 @@ test("late query responses from a replaced vault cannot replace the current list
   finish(result);
   await waitFor(() => expect(screen.queryByRole("checkbox", { name: "Ship" })).toBeNull());
 });
+
+test("note queries keep metadata and source actions without task completion controls", async () => {
+  vi.spyOn(api, "query").mockResolvedValue({
+    columns: ["tags", "priority"],
+    total: 1,
+    rows: [{ path: "Plan.md", title: "Plan", modified: 1, tags: ["project"], props: { priority: "high" } }],
+  });
+  render(<SpecialView path="mosaic:query/tag%3Aproject" />);
+  expect(await screen.findByText("priority: high")).toBeTruthy();
+  expect(screen.getByText("tags: #project")).toBeTruthy();
+  expect(screen.queryByRole("checkbox")).toBeNull();
+  expect(screen.getByRole("button", { name: "Plan" })).toBeTruthy();
+});

@@ -56,9 +56,9 @@ export function SpecialView({ path }: { path: string }) {
     case "tasks":
     case "overdue":
     case "projects":
+    case "query":
       return <TaskQueryView key={`${root}/${kind}/${id}`} kind={kind} id={id} />;
     case "planning":
-    case "query":
       return <TaskView kind={kind} id={id} />;
     default:
       return <div className="empty">This workspace view is no longer available.</div>;

@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Query views:** shared results preserve task and note queries, displayed expressions, metadata, and source actions, with readable wrapping in narrow panes.
+
 - **Project tasks:** shared result rows and completion controls preserve the project-tag query and note links, including empty and failed loads.
 
 - **Overdue:** shared task rows and notices retain the due-date filter, completion, and note links. Narrow layouts keep task metadata readable.

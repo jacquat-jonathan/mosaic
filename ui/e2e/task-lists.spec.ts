@@ -57,6 +57,7 @@ test("Tasks follow themes and fit narrow scaled panes", async ({ page }, testInf
 for (const [kind, title] of [
   ["overdue", "Overdue"],
   ["projects", "Project tasks"],
+  ["query", "Query"],
 ]) {
   test(`${title} retains filtered results and themed narrow layouts`, async ({ page }, testInfo) => {
     await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
@@ -74,7 +75,9 @@ for (const [kind, title] of [
         });
       });
     const taskName = kind === "projects" ? /^Project milestone/ : /^Overdue review/;
-    await openView(page, kind);
+    await openView(page, kind, kind === "query" ? "task:open Overdue show:status,due" : undefined);
+    if (kind === "query")
+      await expect(page.locator(".task-query-expression")).toHaveText("task:open Overdue show:status,due");
     const view = page.getByRole("main", { name: title, exact: true });
     await expect(view).toHaveCSS("font-size", "14px");
     await expect(view.getByRole("checkbox", { name: taskName })).toBeVisible();

@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **iCalendar import:** shared previews, duplicate choices, notices, and modal actions retain event selection. Importing disables duplicate actions, failures preserve selections, and late file previews cannot replace a newer choice.
+
 - **Subscribed events:** shared detail controls, readable source information, notices, and meeting links retain read-only behavior. Copying disables duplicates, failures stay visible, and closing returns to the calendar.
 
 - **Event archive:** shared Archive/Deleted choices, event rows, notices, and modal controls retain restore and delete actions. Failed reads can be retried; pending actions disable duplicates and restore focus when rows move.

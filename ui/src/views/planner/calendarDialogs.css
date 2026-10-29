@@ -93,3 +93,41 @@
 .mosaic-ds.calendar-dialog-scope .mds-notice {
   margin-block: var(--mds-space-6);
 }
+.mosaic-ds.calendar-dialog-scope .mds-dialog-header p {
+  overflow-wrap: anywhere;
+}
+.mosaic-ds.calendar-dialog-scope .calendar-import-summary {
+  padding: var(--mds-space-5);
+  border: 1px solid var(--mds-border);
+  border-radius: var(--mds-radius-control);
+  background: var(--mds-surface-subtle);
+  margin-bottom: var(--mds-space-6);
+}
+.mosaic-ds.calendar-dialog-scope .calendar-import-list {
+  display: grid;
+  gap: var(--mds-space-5);
+}
+.mosaic-ds.calendar-dialog-scope .calendar-import-list label {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--mds-space-4);
+  min-width: 0;
+  padding-bottom: var(--mds-space-5);
+  border-bottom: 1px solid var(--mds-border);
+}
+.mosaic-ds.calendar-dialog-scope .calendar-import-list label > span {
+  display: grid;
+  min-width: 0;
+  gap: var(--mds-space-2);
+  overflow-wrap: anywhere;
+}
+.mosaic-ds.calendar-dialog-scope .calendar-import-list small {
+  font-size: var(--mds-text-hint);
+  color: var(--mds-text-muted);
+}
+.mosaic-ds.calendar-dialog-scope .calendar-import-duplicates {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--mds-space-4);
+  margin-top: var(--mds-space-6);
+}

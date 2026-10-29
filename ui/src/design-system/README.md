@@ -556,3 +556,8 @@ selected view, and closing restores the calendar chooser action.
 links, and copy controls without changing source events. Copies serialize and show local
 errors; a late copy cannot close a different selected occurrence. Closing and successful
 copying restore calendar focus, with full-width detail panes at narrow sizes.
+
+`views/planner/IcalImportWizard.tsx` adopts shared import previews, duplicate choices,
+notices, and modal actions. Selected events remain after errors, pending imports disable
+all choices/dismissal, and closing restores the file-import action. File preview generations
+and vault guards prevent late reads from replacing a newer selection or another vault.

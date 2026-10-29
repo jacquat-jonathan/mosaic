@@ -443,3 +443,77 @@ test("subscribed event details share themes and fit narrow panes", async ({ page
   await expect.poll(() => details.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
   await page.screenshot({ path: testInfo.outputPath("subscribed-event-narrow.png") });
 });
+
+async function chooseImport(page: Page) {
+  const day = await page.evaluate(() => {
+    const date = new Date();
+    return `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, "0")}${String(date.getDate()).padStart(2, "0")}`;
+  });
+  const content = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "BEGIN:VEVENT",
+    "UID:migration-import-demo",
+    "SUMMARY:Imported planning",
+    `DTSTART:${day}T120000Z`,
+    `DTEND:${day}T130000Z`,
+    "END:VEVENT",
+    "END:VCALENDAR",
+    "",
+  ].join("\r\n");
+  const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "Import iCalendar file", exact: true }).click();
+  await (await chooser).setFiles({
+    name: "migration-preview.ics",
+    mimeType: "text/calendar",
+    buffer: Buffer.from(content),
+  });
+}
+test("iCalendar import preserves selection, duplicate controls and focus", async ({ page }) => {
+  await openCalendar(page);
+  await chooseImport(page);
+  const dialog = page.getByRole("dialog", { name: "Import calendar events", exact: true });
+  await expect(dialog.getByRole("checkbox", { name: /^Imported planning/ })).toBeChecked();
+  await dialog.getByRole("button", { name: "Import 1 events", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Import iCalendar file", exact: true })).toBeFocused();
+  await expect(page.locator(".planner-timed-item.event", { hasText: "Imported planning" })).toBeVisible();
+  await chooseImport(page);
+  const duplicate = dialog.getByRole("checkbox", { name: /^Imported planning/ });
+  await expect(duplicate).toBeDisabled();
+  await expect(dialog.getByRole("button", { name: "Import 0 events", exact: true })).toBeDisabled();
+  await dialog.getByRole("checkbox", { name: "Allow intentional duplicates", exact: true }).check();
+  await duplicate.check();
+  await dialog.getByRole("checkbox", { name: "Allow intentional duplicates", exact: true }).uncheck();
+  await expect(duplicate).not.toBeChecked();
+  await expect(duplicate).toBeDisabled();
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Import iCalendar file", exact: true })).toBeFocused();
+});
+test("iCalendar import shares themes and fits scaled narrow windows", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+  await openCalendar(page);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  for (const theme of ["Light", "Dark", "System"] as const) {
+    await page.getByRole("radio", { name: theme, exact: true }).check();
+    await page.getByRole("tab", { name: "Today Close tab", exact: true }).click();
+    await chooseImport(page);
+    const dialog = page.getByRole("dialog", { name: "Import calendar events", exact: true });
+    await expect(dialog).toHaveCSS("font-size", "14px");
+    await expect(dialog).toHaveCSS("background-color", theme === "Light" ? "rgb(255, 255, 255)" : "rgb(30, 31, 36)");
+    if (theme !== "System")
+      await page.screenshot({ path: testInfo.outputPath(`ical-import-${theme.toLowerCase()}.png`) });
+    await dialog.press("Escape");
+    await page.getByRole("tab", { name: "Settings Close tab", exact: true }).click();
+  }
+  await page.getByLabel("Interface density", { exact: true }).selectOption("compact");
+  await page.getByRole("slider", { name: "Interface scale", exact: true }).press("End");
+  await page.getByRole("tab", { name: "Today Close tab", exact: true }).click();
+  await page.setViewportSize({ width: 320, height: 900 });
+  await chooseImport(page);
+  const dialog = page.getByRole("dialog", { name: "Import calendar events", exact: true });
+  await expect(dialog.getByRole("button", { name: "Close dialog", exact: true })).toBeInViewport();
+  await expect.poll(() => dialog.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
+  await page.screenshot({ path: testInfo.outputPath("ical-import-narrow.png") });
+});

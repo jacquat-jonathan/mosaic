@@ -120,6 +120,8 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
       loadVersion.current++;
     };
   }, []);
+  const [previewing, setPreviewing] = useState(false);
+  const importGeneration = useRef(0);
   const importInput = useRef<HTMLInputElement>(null);
   const days = useMemo(() => visibleDays(anchor, mode, sunday), [anchor, mode, sunday]),
     from = isoDay(days[0]),
@@ -409,15 +411,25 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
     });
   };
   const chooseIcal = async (file: File) => {
+    const version = ++importGeneration.current;
+    const valid = () => current() && version === importGeneration.current;
+    setPreviewing(true);
     try {
       if (file.size > 10 * 1024 * 1024) throw new Error("iCalendar files must be 10 MB or smaller");
-      const preview = await api.previewPlannerIcal(await file.text(), "ics-file", timezone);
-      setImporting({ preview, fileName: file.name });
-      setError(null);
+      const content = await file.text();
+      if (!valid()) return;
+      const preview = await api.previewPlannerIcal(content, "ics-file", timezone);
+      if (valid()) {
+        setImporting({ preview, fileName: file.name });
+        setError(null);
+      }
     } catch (reason) {
-      setError(errorMessage(reason));
+      if (valid()) setError(errorMessage(reason));
     } finally {
-      if (importInput.current) importInput.current.value = "";
+      if (valid()) {
+        setPreviewing(false);
+        if (importInput.current) importInput.current.value = "";
+      }
     }
   };
   const exportIcal = async () => {
@@ -567,8 +579,8 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
               if (file) void chooseIcal(file);
             }}
           />
-          <Button aria-label="Import iCalendar file" onClick={() => importInput.current?.click()}>
-            <Upload size={14} /> Import
+          <Button disabled={previewing} aria-label="Import iCalendar file" onClick={() => importInput.current?.click()}>
+            <Upload size={14} /> {previewing ? "Reading…" : "Import"}
           </Button>
           <Button aria-label="Export iCalendar file" onClick={() => void exportIcal()}>
             <Download size={14} /> Export
@@ -749,6 +761,7 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
       )}{" "}
       {importing && (
         <IcalImportWizard
+          returnFocusRef={editorReturn}
           {...importing}
           onCancel={() => setImporting(null)}
           onDone={() => {

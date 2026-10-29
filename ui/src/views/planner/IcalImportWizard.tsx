@@ -1,4 +1,8 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { Button, Dialog, Notice } from "../../design-system/components";
+import { useVault } from "../../state/vault";
+import { DesignSystemScope } from "../DesignSystemScope";
+import "./calendarDialogs.css";
 import { api } from "../../ipc/api";
 import { errorMessage, type IcalImportPreview } from "../../ipc/types";
 
@@ -7,12 +11,24 @@ export function IcalImportWizard({
   fileName,
   onDone,
   onCancel,
+  returnFocusRef,
 }: {
   preview: IcalImportPreview;
   fileName: string;
   onDone(): void;
   onCancel(): void;
+  returnFocusRef?: RefObject<HTMLElement | null>;
 }) {
+  const root = useVault((state) => state.vault?.root),
+    live = useRef(true),
+    lock = useRef(false);
+  const current = () => live.current && root === useVault.getState().vault?.root;
+  useEffect(() => {
+    live.current = true;
+    return () => {
+      live.current = false;
+    };
+  }, []);
   const defaults = useMemo(
     () => preview.candidates.filter((item) => !item.duplicate).map((item) => item.key),
     [preview],
@@ -29,40 +45,46 @@ export function IcalImportWizard({
       return next;
     });
   const submit = async () => {
+    if (lock.current || !selected.size || !current()) return;
+    lock.current = true;
     setBusy(true);
     setError(null);
     try {
       await api.importPlannerIcal(preview, [...selected], allowDuplicates);
-      onDone();
+      if (current()) onDone();
     } catch (reason) {
-      setError(errorMessage(reason));
+      if (current()) setError(errorMessage(reason));
     } finally {
-      setBusy(false);
+      lock.current = false;
+      if (current()) setBusy(false);
     }
   };
   return (
-    <div className="modal-backdrop" onMouseDown={onCancel}>
-      <section
-        className="modal ical-import"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="ical-import-title"
-        onMouseDown={(event) => event.stopPropagation()}
+    <DesignSystemScope className="calendar-dialog-scope">
+      <Dialog
+        open
+        size="wide"
+        title="Import calendar events"
+        description={`${fileName} · choose which independent local events to create.`}
+        onClose={onCancel}
+        dismissible={!busy}
+        returnFocusRef={returnFocusRef}
+        actions={
+          <>
+            <Button onClick={onCancel} disabled={busy}>
+              Cancel
+            </Button>
+            <Button variant="secondary" disabled={busy || selected.size === 0} onClick={() => void submit()}>
+              {busy ? "Importing…" : `Import ${selected.size} events`}
+            </Button>
+          </>
+        }
       >
-        <header>
-          <div>
-            <h2 id="ical-import-title">Import calendar events</h2>
-            <p>{fileName} · choose which independent local events to create.</p>
-          </div>
-          <button aria-label="Close import" onClick={onCancel}>
-            ×
-          </button>
-        </header>
-        <div className="migration-summary">
+        <div className="calendar-import-summary">
           <strong>{selected.size}</strong> of {preview.candidates.length} events selected
           {preview.duplicates ? ` · ${preview.duplicates} already imported` : ""}
         </div>
-        <div className="ical-import-list">
+        <div className="calendar-import-list">
           {preview.candidates.map((item) => (
             <label key={item.key} className={item.duplicate ? "duplicate" : ""}>
               <input
@@ -82,10 +104,12 @@ export function IcalImportWizard({
             </label>
           ))}
         </div>
+        {!preview.candidates.length && <p className="mds-hint">No events in this file.</p>}
         {preview.duplicates > 0 && (
-          <label className="migration-duplicates">
+          <label className="calendar-import-duplicates">
             <input
               type="checkbox"
+              disabled={busy}
               checked={allowDuplicates}
               onChange={(event) => {
                 const checked = event.target.checked;
@@ -104,16 +128,8 @@ export function IcalImportWizard({
             Allow intentional duplicates
           </label>
         )}
-        {error && <p className="error-text">{error}</p>}
-        <footer>
-          <button onClick={onCancel} disabled={busy}>
-            Cancel
-          </button>
-          <button className="primary" disabled={busy || selected.size === 0} onClick={() => void submit()}>
-            {busy ? "Importing…" : `Import ${selected.size} events`}
-          </button>
-        </footer>
-      </section>
-    </div>
+        {error && <Notice tone="error">{error}</Notice>}
+      </Dialog>
+    </DesignSystemScope>
   );
 }

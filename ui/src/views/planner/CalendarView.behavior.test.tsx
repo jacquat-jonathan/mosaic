@@ -405,4 +405,29 @@ describe("planner calendar container", () => {
     fireEvent.click(screen.getByRole("button", { name: "Retry calendar" }));
     await waitFor(() => expect(screen.queryByText("calendar offline")).toBeNull());
   });
+  it("a late iCalendar preview cannot replace the newer selected file", async () => {
+    let finish!: (value: IcalImportPreview) => void;
+    vi.mocked(api.previewPlannerIcal)
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finish = resolve;
+          }),
+      )
+      .mockResolvedValue(icalPreview);
+    render(<CalendarView initialMode="day" />);
+    await screen.findByTestId("week-view");
+    const input = document.querySelector<HTMLInputElement>('input[type="file"]')!;
+    const a = new File(["A"], "A.ics"),
+      b = new File(["B"], "B.ics");
+    Object.defineProperty(a, "text", { value: async () => "A" });
+    Object.defineProperty(b, "text", { value: async () => "B" });
+    fireEvent.change(input, { target: { files: [a] } });
+    await waitFor(() => expect(api.previewPlannerIcal).toHaveBeenCalledTimes(1));
+    fireEvent.change(input, { target: { files: [b] } });
+    await screen.findByTestId("import-wizard");
+    expect((childProps.importWizard as { fileName: string }).fileName).toBe("B.ics");
+    await act(async () => finish(icalPreview));
+    expect((childProps.importWizard as { fileName: string }).fileName).toBe("B.ics");
+  });
 });

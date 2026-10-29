@@ -187,6 +187,12 @@ describe("browser mock file and query behavior", () => {
       expect((await invoke<{ rows: unknown[] }>("query_notes", { query })).rows).toEqual(expect.any(Array));
     }
 
+    const overdue = await invoke<{ rows: { task: { text: string } }[] }>("query_notes", {
+      query: "task:open due<today",
+    });
+    expect(overdue.rows.some((row) => row.task.text.startsWith("Overdue review"))).toBe(true);
+    expect(overdue.rows.some((row) => row.task.text.startsWith("Ship the calendar"))).toBe(false);
+
     await rejects("set_task", { path: "missing.md", line: 1, text: "x", done: true }, "not_found");
     await rejects("set_task", { path: "Coverage tasks.md", line: 1, text: "wrong", done: true }, "conflict");
     await invoke("set_task", { path: "Coverage tasks.md", line: 6, text: "Open task 📅 2026-10-20", done: true });

@@ -2975,7 +2975,10 @@ function mockQuery(q: string): QueryResult {
       if (!columns.includes(f)) columns.push(f);
       rows = rows.filter((r) => {
         const x = String(value(r, f) ?? "").toLowerCase();
-        const y = v.toLowerCase();
+        const relative = /^today([+-]\d+)?$/i.exec(v);
+        const date = new Date();
+        if (relative) date.setDate(date.getDate() + Number(relative[1] ?? 0));
+        const y = relative ? mockDay(date) : v.toLowerCase();
         return op === "="
           ? x === y
           : op === "!="

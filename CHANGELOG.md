@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Overdue:** shared task rows and notices retain the due-date filter, completion, and note links. Narrow layouts keep task metadata readable.
+
 - **Tasks:** shared result rows, readable metadata, loading/error notices, and retry actions. Completion waits for saving and returns focus to the remaining results.
 
 - **Note details:** shared attachments, backlink/mention rows, outline actions, and context controls. Failed loads can be retried, link actions disable while saving, and the context drawer fits scaled narrow windows.

@@ -54,8 +54,8 @@ export function SpecialView({ path }: { path: string }) {
     case "board":
       return <TaskBoard />;
     case "tasks":
-      return <TaskQueryView key={`${root}/${kind}/${id}`} kind={kind} id={id} />;
     case "overdue":
+      return <TaskQueryView key={`${root}/${kind}/${id}`} kind={kind} id={id} />;
     case "projects":
     case "planning":
     case "query":

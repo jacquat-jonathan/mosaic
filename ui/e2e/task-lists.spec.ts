@@ -53,3 +53,29 @@ test("Tasks follow themes and fit narrow scaled panes", async ({ page }, testInf
   await expect.poll(() => view.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
   await page.screenshot({ path: testInfo.outputPath("tasks-narrow.png") });
 });
+
+for (const [kind, title] of [["overdue", "Overdue"]]) {
+  test(`${title} retains filtered results and themed narrow layouts`, async ({ page }, testInfo) => {
+    await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+    await page.goto("/");
+    await page.getByRole("button", { name: "Open folder…", exact: true }).click();
+    await openView(page, kind);
+    const view = page.getByRole("main", { name: title, exact: true });
+    await expect(view).toHaveCSS("font-size", "14px");
+    await expect(view.getByRole("checkbox", { name: /^Overdue review/ })).toBeVisible();
+    await expect(view.getByRole("checkbox", { name: /^Ship the calendar/ })).toHaveCount(0);
+    await page.screenshot({ path: testInfo.outputPath(`${kind}-dark.png`) });
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    await page.getByRole("radio", { name: "Light", exact: true }).check();
+    await page.getByLabel("Interface density", { exact: true }).selectOption("compact");
+    await page.getByRole("slider", { name: "Interface scale", exact: true }).press("End");
+    await page.getByRole("tab", { name: `${title} Close tab`, exact: true }).click();
+    await expect(view).toHaveCSS("background-color", "rgb(255, 255, 255)");
+    await page.setViewportSize({ width: 320, height: 900 });
+    await expect.poll(() => view.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
+    await page.screenshot({ path: testInfo.outputPath(`${kind}-narrow.png`) });
+    await view.getByRole("checkbox", { name: /^Overdue review/ }).press("Space");
+    await expect(view.getByText("No tasks match this view.")).toBeVisible();
+    await expect(view.getByRole("heading", { name: title, exact: true })).toBeFocused();
+  });
+}

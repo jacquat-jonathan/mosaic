@@ -4,151 +4,19 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
-- **Unsupported files:** shared loading/status/error notices and external-open actions wrap in narrow panes, disable duplicate launches, and keep late failures tied to the selected file.
-
-- **Workspace notices:** shared offline/history/link-repair banners wrap in narrow windows and disable duplicate actions. Reconnecting preserves unsaved buffers, tabs and drafts, then reconciles disk changes.
-
-- **File conflicts:** shared notices and a comparison dialog add readable diffs, explicit failed-read retries, disabled pending decisions, and focus return. Discard now clears a deleted file’s in-memory draft without saving it.
-
-- **Source editors:** shared loading/read-only notices and scoped search/replace controls improve keyboard focus and narrow layouts while preserving code typography, syntax, line numbers, and saved edits.
-
-- **HTML previews:** shared view/zoom controls, script choices and permission notices preserve per-page consent and source editing. Failed previews can be retried; pending or stale previews stay tied to their vault.
-
-- **Images:** shared loading/error notices and retry actions handle unreadable or invalid images. Previews keep their original rendering, keyboard focus and fit behavior, with late reads guarded by vault and lifetime.
-
-- **PDFs:** readable page metadata and shared loading/error notices add retries for failed files/pages. Pages fit resized panes, rendering exposes busy states, and late reads stay tied to their vault.
-
-- **CSV tables:** shared view choices, metadata, and row/column actions preserve delimiter-aware editing. Cells have explicit labels, and Shift+F10 opens their context menu from the keyboard.
-
-- **Charts:** shared Chart/Source choices, rendering/error notices, and keyboard-scrollable previews preserve local vault data, source edits, and theme redraws.
-
-- **Drawings:** shared Drawing/Source choices and loading/error notices preserve the drawing engine. Returning from Source refreshes the scene, and invalid JSON remains editable for repair.
-
-- **Diagrams:** shared Graph/Source choices, readable render errors, and a keyboard-scrollable preview preserve DOT editing and theme redraws.
-
-- **Canvas:** shared toolbar/view choices, navigation controls, and a readable shape palette preserve card editing and palette dragging. Palette dismissal restores focus, scaled windows keep controls visible, and fit animations respect reduced motion.
-
-- **Error toast:** shared notices and an accessible dismiss action wrap long messages. Automatic dismissal pauses during reading or keyboard focus, and manual dismissal returns focus.
-
-- **Context menus:** shared colors, spacing, readable details and icons preserve nested menus and edge flipping. Arrow/Home/End/type-ahead navigation, submenu focus, Escape and focus return now work from the keyboard, including scaled windows.
-
-- **Quick switcher:** shared search controls and readable note paths preserve recent/fuzzy ranking, keyboard opening, new-tab shortcuts, and note creation. Empty vaults explain how to create a note.
-
-- **Pickers:** shared search dialogs, readable results and accessible keyboard selection preserve fuzzy ranking, commands, and folder choices, including empty results and focus return.
-
-- **New note:** shared modal controls, template fields, previews, and notices retain exact-template creation. Pending creation blocks duplicate actions and dismissal; failures preserve the draft.
-
-- **Confirmations:** shared dialogs provide labelled descriptions, consistent destructive actions, keyboard containment, cancellation, and focus return.
-
-- **Prompts:** shared dialogs and labelled fields provide consistent keyboard dismissal, focus containment, and focus return while retaining Enter submission.
-
-- **Markdown task import:** shared preview controls, readable groups/statuses, notices, and duplicate choices preserve task hierarchy and source notes. Pending imports disable duplicate actions, failures retain selections, and cancellation returns focus.
-
-- **iCalendar import:** shared previews, duplicate choices, notices, and modal actions retain event selection. Importing disables duplicate actions, failures preserve selections, and late file previews cannot replace a newer choice.
-
-- **Subscribed events:** shared detail controls, readable source information, notices, and meeting links retain read-only behavior. Copying disables duplicates, failures stay visible, and closing returns to the calendar.
-
-- **Event archive:** shared Archive/Deleted choices, event rows, notices, and modal controls retain restore and delete actions. Failed reads can be retried; pending actions disable duplicates and restore focus when rows move.
-
-- **Calendar subscriptions:** shared source rows and fields, readable cache/errors, and consistent modal controls retain adding, visibility, refresh, and removal. Pending changes disable duplicates; failed saves keep drafts and completed actions restore focus.
-
-- **Calendar details:** shared daily-note actions, readable task rows, and loading/error notices retain overdue completion. Failed loads can be retried, saving disables duplicate updates, and completion restores focus.
-
-- **Work sessions:** shared date/time fields, validation, conflict notices, and actions preserve exact minutes and all-day sessions. Failed writes retain drafts, background refreshes keep edited minutes, and closing returns to the calendar.
-
-- **Event editor:** shared fields, actions, activity, and notices retain dates, recurrence, colors, and revision checks. Writes disable duplicate edits, failures keep drafts, and closing returns to the calendar.
-
-- **Month calendar:** shared controls and readable date/event metadata preserve the grid, event dragging, and day navigation. Keyboard actions on event buttons now stay with the event.
-
-- **Week calendar:** shared controls and larger event/task metadata preserve the five-day grid, keyboard view changes, and independent scrolling in narrow panes.
-
-- **Today/day calendar:** shared navigation, view choices, notices, and readable event/task metadata preserve scheduling and layer filters. Keyboard users can create an event from an empty time slot.
-
-- **Epics:** shared edit/history dialogs add consistent fields, notices, keyboard dismissal, and focus return. Saving disables duplicate actions and dismissal, and failures preserve the draft.
-
-- **Task editor:** shared fields, actions, activity, and conflict notices retain task lifecycle decisions. Failed saves preserve drafts, failed archives keep the task open, and narrow panes give editing the full width.
-
-- **Task board:** shared actions, labelled filters, readable cards, and retry notices preserve lane dragging, subtask completion, lifecycle views, and exports. Older loads and late task prompts stay tied to their vault.
-
-- **Planning views:** saved titles and queries now use shared task/note results, notices, and completion controls. Missing saved views remain explicit.
-
-- **Query views:** shared results preserve task and note queries, displayed expressions, metadata, and source actions, with readable wrapping in narrow panes.
-
-- **Project tasks:** shared result rows and completion controls preserve the project-tag query and note links, including empty and failed loads.
-
-- **Overdue:** shared task rows and notices retain the due-date filter, completion, and note links. Narrow layouts keep task metadata readable.
-
-- **Tasks:** shared result rows, readable metadata, loading/error notices, and retry actions. Completion waits for saving and returns focus to the remaining results.
-
-- **Note details:** shared attachments, backlink/mention rows, outline actions, and context controls. Failed loads can be retried, link actions disable while saving, and the context drawer fits scaled narrow windows.
-
-- **Note properties:** shared fields, switches, chips, actions, and validation make the properties form consistent. Fields stack in narrow panels, duplicate names are explained, and cancelled additions restore focus.
-
-- **Note formatting:** shared typography, focus rings, theme-aware selection controls, and a consistent read-only notice. Keyboard navigation and cancelled link prompts return to the note; late link choices leave closed notes and other vaults alone.
-
-- **Workspace tabs:** shared controls and typography clarify active tabs and unsaved changes. Split dividers now support keyboard resizing and balancing while retaining tab dragging and saved layouts.
-
-- **Search:** shared labelled fields, result rows, and bookmark controls improve readability. Failed searches can be retried, empty results are explicit, and stale results cannot open while a new query is loading.
-
-- **Tags:** shared tag rows and readable counts keep tag searches one click away. Loading, empty, and failed loads are distinct, with a Retry action.
-
-- **Bookmarks:** shared rows and actions add keyboard opening/reordering, visible missing-file states, focus return, and inline save errors while preserving saved searches, queries, and drag/drop.
-
-- **Files:** shared toolbar controls, clearer file tree selection and typography, and a consistent inline rename field preserve file actions, folder colors, and drag/drop.
-
-- **Sidebar navigation:** shared vault, area, and chat-section controls with clearer selected states and focus return. Side panels resize with the keyboard, account for interface scale while dragging, and stay within narrow windows.
-
-- **Destination navigation:** shared controls, clearer selected states, readable attention counts, and keyboard focus that stays on the rail when moving between areas.
-
-- **Window title:** shared theme and typography make the vault name and app version clearer while retaining the native drag area and narrow-window truncation.
-
-- **Welcome:** consistent open/create controls, loading feedback, and persistent errors. Cancelled choices restore focus, pending actions disable duplicates, and stale choices leave an already-opened vault alone.
-
-- **File history:** consistent version entries, keyboard selection, comparisons, and restore actions. Failed reads can be retried, restores disable while pending, and history closes when switching vaults.
-
-- **Review dialog:** a wider, consistent diff view with partial acceptance, rejection feedback, stale-change comparison, and focus restoration. Decisions disable while saving, failed comparisons can be retried, and older WebKit versions use a focus-managed modal fallback.
-
-- **Activity & review:** consistent change rows keep proposals first and History/Undo beside each applied change. Failed loads can be retried, undo actions disable while pending, and dialogs return focus to their opener.
-
-- **Chat:** consistent messages, expandable tool activity, attachments, model choice, and send/stop controls. Connection failures can be retried, saved-note writes stay tied to the vault, and context details use readable metadata.
-
-- **Chats list:** clearer saved-conversation rows, date groups, selection, and actions. Cancelled rename/delete dialogs restore focus, and pending decisions stay tied to their vault.
-
-- **Run details:** consistent status, metadata, logs, and review outcomes. Expand a tool call to inspect its file, error, or review action; live output follows the log while you stay near the bottom.
-
-- **Run history:** All runs and Recent runs now share the larger table, clear status icons, review counts, tool warnings, and errors. Narrow panes keep dates and durations readable beneath each row.
-
-- **Workflow details:** the selected workflow and its context panel now share readable cards, metadata, statuses, and source actions. Editing receives focus, cancelled drafts stay intact, and returning to details restores the Edit button.
-
-- **Workflow editor:** consistent fields, switches, folder choices, validation, and save actions. Failed saves keep drafts, saving disables edits, and manual-only workflows can be created without a YAML initialization error.
-
-- **Workflow and Agent library cards:** clearer triggers, review policies, latest results, and expandable settings. Actions keep their existing behavior, with disabled saving states and guards against stale selections after switching vaults.
-
-- **Connections & safety:** consistent setup commands, copy feedback, folder rules, and workflow-chain controls. Saves disable related controls, failures keep saved choices, and pending folder selections stay tied to their vault.
-
-- **About & updates:** consistent version details, notices, release notes, progress logs, and update controls. Status failures can be retried, cancellation restores focus, and restart controls disable while drafts and notes are checked.
-
-- **Shortcut settings:** labelled binding controls, clearer recording and conflict notices, and visible custom bindings. Escape cancels capture, Tab leaves it, and resetting shortcuts returns keyboard focus to the list.
-
-- **Workspace settings:** consistent startup choices, sidebar switches, width sliders, and reset actions. The startup-note picker restores focus and keeps pending choices tied to their vault.
-
-- **Calendar & links settings:** consistent date, week-start, and link controls, with clearer save errors. Resetting app preferences preserves the vault's file-name format and link syntax.
-
-- **Templates settings:** consistent folder fields, default rules, notices, and starter previews. Failed saves keep your draft, starter installation preserves existing templates, and preview actions restore keyboard focus.
-
-- **Vault folders settings:** consistent folder choices, attachment switches, color controls, and reset actions. Saving disables related controls, missing folders are created only when requested, and pending choices remain tied to the vault where they started.
-
-- **Editor & files settings:** consistent labelled switches and reset controls for spellcheck, source line numbers, Trash confirmation, and HTML previews. The vault's HTML policy shows save errors and remains separate from the app-wide Editor reset.
-
-- **Settings navigation:** labelled search, consistent section controls and headings, and clearer keyboard focus. Narrow panes keep the sections in a scrollable navigation area above their settings.
-
-- **Appearance settings:** larger interface text, consistent fields and reset controls, and keyboard-friendly theme and note-width choices. Your saved appearance preferences and section reset behavior are preserved.
-
-- **Focused AI workspace:** switch between Chats and Automations, keep older conversations collapsed, and find workflows, runs and reviews together. Run status and metadata use a compact header with expandable details and separate tool warnings.
-
-- **Workflow run logs:** follow answers and tool calls as a workflow runs, open the notes it reads or changes, and revisit its saved log afterward. Markdown formatting and review links match chat; older runs still show their recorded result.
-- **Visual table editing:** cells keep their formatting while you type and save immediately. Use row/column handles, insertion buttons, drag or keyboard reordering, rectangular selection, formatting controls and spreadsheet paste. Markdown source editing is an explicit option; undo/redo and existing links, formulas and alignment are preserved.
-- **Readable update notes:** release descriptions wrap within the settings pane, including long links, instead of being clipped horizontally.
+## 0.27.0 — 2026-10-30
+
+- **A consistent interface throughout Mosaic:** refreshed navigation, settings, dialogs, notes, planning, AI tools, and file previews share larger, readable text and clearer controls. Narrow windows and interface scaling keep actions within reach.
+- **Better keyboard access:** navigate context menus and pickers, reorder bookmarks, resize split panes and sidebars, and create calendar events without a mouse. Dialogs keep keyboard focus inside them and return it when closed; canvas fit animations respect reduced motion.
+- **Visual table editing:** edit formatted cells with immediate saving, insert and reorder rows or columns, select rectangles, apply formatting, and paste spreadsheet data. Undo/redo, links, formulas, alignment, and explicit Markdown source editing remain available.
+- **A focused AI workspace:** switch between Chats and Automations, keep older conversations collapsed, and find workflows, runs, and reviews together. Workflow forms keep drafts after failed saves, and manual-only workflows can be created reliably.
+- **Live workflow logs:** follow answers and tool calls as a workflow runs, open the notes it reads or changes, and revisit its saved log afterward. Expand tool details to inspect errors and review actions; run history makes review counts and tool warnings easier to find.
+- **Clearer file history and conflict review:** compare versions and external changes in readable diffs, retry failed reads, accept selected agent changes, and see rejection feedback. Discarding a deleted file clears its in-memory draft without saving it; reconnecting a vault preserves unsaved work before reconciling disk changes.
+- **More usable Board and Calendar:** clearer task cards, filters, lifecycle actions, event details, subscription controls, and import/archive dialogs. Failed saves preserve drafts, pending actions prevent duplicates, and work-session refreshes retain edited minutes.
+- **Markdown task import removed:** Board tasks remain independent of Markdown checkboxes. Existing planner tasks and note checkboxes remain available; the preview-and-copy import into the Board is no longer offered.
+- **Clearer notes, search, and files:** improved properties, backlinks, attachments, query results, tags, bookmarks, and quick switching include readable metadata, explicit empty states, and retries. Cancelled link and note prompts restore focus, and late actions stay tied to their original vault.
+- **More reliable previews:** HTML, images, PDFs, CSV tables, charts, drawings, and diagrams use clearer loading and error notices with retries where supported. PDFs fit resized panes, CSV cells support keyboard context menus, and drawings refresh after source edits while invalid JSON stays editable.
+- **Safer pending actions and clearer updates:** repeated launches, saves, and decisions are disabled while running, and late results cannot replace a newer file or vault selection. Long release notes wrap within Settings, update failures can be retried, and error notices remain visible while read or focused.
 
 ## 0.26.0 — 2026-10-27
 

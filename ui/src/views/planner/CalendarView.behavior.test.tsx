@@ -325,13 +325,19 @@ describe("planner calendar container", () => {
     act(() => invoke(childProps.week, "onEvent", timed.series_id, timed.occurrence_key));
     expect(screen.getByTestId("event-editor")).toBeTruthy();
     act(() => invoke(childProps.week, "onEmptyRange", "2026-10-29", 8.5, 10));
-    act(() => invoke(childProps.week, "onEventResizePreview", timed, 30));
-    act(() => invoke(childProps.week, "onEventResizePreview", allDay, 30));
     await act(async () => invoke(childProps.week, "onEventResize", timed, 30));
     await waitFor(() => expect(api.updatePlannerEvent).toHaveBeenCalled());
     await act(async () => invoke(childProps.week, "onEventResize", recurring, -30));
     await waitFor(() => expect(api.replacePlannerEventOccurrence).toHaveBeenCalled());
     act(() => invoke(childProps.week, "onEventResize", timed, 0));
+    await act(async () => invoke(childProps.week, "onEventResize", timed, -30, "start"));
+    expect(api.updatePlannerEvent).toHaveBeenLastCalledWith(
+      timed.series_id,
+      expect.objectContaining({
+        start_value: new Date(Date.parse(timed.start_value) - 30 * 60000).toISOString(),
+        end_value: timed.end_value,
+      }),
+    );
 
     await act(async () => invoke(childProps.week, "onEventMove", timed, "2026-10-30", 14));
     await act(async () => invoke(childProps.week, "onEventMove", recurring, "2026-10-30", null));
@@ -344,8 +350,16 @@ describe("planner calendar container", () => {
     act(() => invoke(childProps.sessionEditor, "onClose"));
     act(() => invoke(childProps.week, "onSession", timedSession));
     act(() => invoke(childProps.sessionEditor, "onDone"));
-    act(() => invoke(childProps.week, "onSessionResizeStart"));
     act(() => invoke(childProps.week, "onSessionResize", timedSession, -1000));
+    act(() => invoke(childProps.week, "onSessionResize", timedSession, -30, "start"));
+    expect(api.updatePlannerWorkSession).toHaveBeenLastCalledWith(
+      timedSession.id,
+      expect.objectContaining({
+        start_value: new Date(Date.parse(timedSession.start_value) - 30 * 60000).toISOString(),
+        end_value: timedSession.end_value,
+      }),
+    );
+
     act(() => invoke(childProps.week, "onSessionResize", allDaySession, 30));
     act(() => invoke(childProps.week, "onSessionMove", timedSession, "2026-10-30", 11));
     act(() => invoke(childProps.week, "onSessionMove", allDaySession, "2026-10-30", null));

@@ -26,10 +26,19 @@ import { CalendarSourcesDialog } from "./CalendarSourcesDialog";
 import { IcalImportWizard } from "./IcalImportWizard";
 import { MonthView } from "./MonthView";
 import { OverlayDetails } from "./OverlayDetails";
-import { UnscheduledTray } from "./UnscheduledTray";
+import { UnscheduledTray, type TaskDragPreview } from "./UnscheduledTray";
 import { WeekView } from "./WeekView";
 import { WorkSessionEditor } from "./WorkSessionEditor";
-import { addDays, atNoon, isoDay, localHour, type CalendarMode, visibleDays } from "./calendarModel";
+import {
+  addDays,
+  atNoon,
+  isoDay,
+  localHour,
+  resizeTimedRange,
+  type ResizeEdge,
+  type CalendarMode,
+  visibleDays,
+} from "./calendarModel";
 
 const MODE_KEY = "mosaic:planner-calendar-mode";
 function storedMode(): CalendarMode {
@@ -75,6 +84,7 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
     [epics, setEpics] = useState<PlannerEpic[]>([]),
     [events, setEvents] = useState<PlannerEvent[]>([]),
     [editor, setEditor] = useState<EditorState | null>(null),
+    [taskDragPreview, setTaskDragPreview] = useState<TaskDragPreview | null>(null),
     [selectedSessionId, setSelectedSessionId] = useState<string | null>(null),
     [selectedRange, setSelectedRange] = useState<SelectedRange | null>(null),
     [overlayDetails, setOverlayDetails] = useState<CalendarOverlayOccurrence | null>(null),
@@ -299,36 +309,22 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
   };
   const moveSessionToDay = (session: PlannerWorkSession, day: string) =>
     moveSession(session, day, session.all_day ? null : localHour(session.start_value, session.timezone));
-  const resizeSession = (session: PlannerWorkSession, delta: number) => {
-    if (session.all_day) return;
-    const end = new Date(
-      Math.max(Date.parse(session.start_value) + 15 * 60000, Date.parse(session.end_value) + delta * 60000),
-    ).toISOString();
+  const resizeSession = (session: PlannerWorkSession, delta: number, edge: ResizeEdge = "end") => {
+    if (session.all_day || !delta) return;
     void sessionAction(() =>
       api.updatePlannerWorkSession(session.id, {
         expected_revision: session.revision,
         all_day: false,
-        start_value: session.start_value,
-        end_value: end,
+        ...resizeTimedRange(session.start_value, session.end_value, delta, edge),
         timezone: session.timezone,
       }),
     );
   };
-  const resizedEvent = (occurrence: EventOccurrence, delta: number): EventOccurrence => ({
-    ...occurrence,
-    end_value: new Date(
-      Math.max(Date.parse(occurrence.start_value) + 15 * 60000, Date.parse(occurrence.end_value) + delta * 60000),
-    ).toISOString(),
-  });
-  const previewEventResize = (occurrence: EventOccurrence, delta: number) => {
-    const series = events.find((item) => item.id === occurrence.series_id);
-    if (series && !occurrence.all_day) setEditor({ occurrence: resizedEvent(occurrence, delta), series });
-  };
-  const resizeEvent = async (occurrence: EventOccurrence, delta: number) => {
+  const resizeEvent = async (occurrence: EventOccurrence, delta: number, edge: ResizeEdge = "end") => {
     if (!current()) return;
     const series = events.find((item) => item.id === occurrence.series_id);
     if (!series || occurrence.all_day || !delta) return;
-    const next = resizedEvent(occurrence, delta),
+    const next = { ...occurrence, ...resizeTimedRange(occurrence.start_value, occurrence.end_value, delta, edge) },
       input: CreatePlannerEvent = {
         title: next.title,
         description: next.description,
@@ -348,11 +344,6 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
         await api.replacePlannerEventOccurrence(series.id, series.revision, next.occurrence_key, input);
       else await api.updatePlannerEvent(series.id, { ...input, expected_revision: series.revision });
       if (!current()) return;
-      const nextEvents = await api.plannerEvents(false, false);
-      if (!current()) return;
-      const nextSeries = nextEvents.find((item) => item.id === series.id) ?? series;
-      setEvents(nextEvents);
-      setEditor({ occurrence: next, series: nextSeries });
       await load();
     } catch (reason) {
       if (current()) setError(errorMessage(reason));
@@ -680,9 +671,9 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
                 days={days}
                 data={selectedData}
                 overlays={overlay.occurrences}
-                today={today}
                 show={show}
                 selectedRange={selectedRange}
+                taskDragPreview={taskDragPreview}
                 onEvent={openEvent}
                 onSession={(session) => {
                   setEditor(null);
@@ -702,13 +693,7 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
                 onTaskDrop={dropTask}
                 onSessionMove={moveSession}
                 onEventMove={(event, day, hour) => void moveEvent(event, day, hour)}
-                onEventResizePreview={previewEventResize}
-                onEventResize={(event, minutes) => void resizeEvent(event, minutes)}
-                onSessionResizeStart={() => {
-                  setEditor(null);
-                  setSelectedSessionId(null);
-                  setSelectedRange(null);
-                }}
+                onEventResize={(event, minutes, edge) => void resizeEvent(event, minutes, edge)}
                 onSessionResize={resizeSession}
                 onEventDelete={deleteEvent}
                 onSessionCancel={(session) =>
@@ -720,6 +705,7 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
                 tasks={selectedData.unscheduled_tasks}
                 epics={epics}
                 onSchedule={(task) => void scheduleTask(task, isoDay(anchor), 9)}
+                onDragPreview={setTaskDragPreview}
               />
             </>
           )}

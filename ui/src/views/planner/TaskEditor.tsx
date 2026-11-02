@@ -1,13 +1,13 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button, IconButton, Notice, Select, TextArea, TextField } from "../../design-system/components";
-import { X } from "lucide-react";
+import { ArrowDown, ArrowUp, Check, GripVertical, X } from "lucide-react";
 import { DesignSystemScope } from "../DesignSystemScope";
 import { useVault } from "../../state/vault";
 import "./plannerEditor.css";
 import { api } from "../../ipc/api";
 import { errorMessage, isCoreError, type PlannerEpic, type PlannerTask, type PlannerTaskStatus } from "../../ipc/types";
 import { useUi } from "../../state/ui";
-import { PLANNER_STATUSES } from "./plannerModel";
+import { PLANNER_STATUSES, reorderTasks, taskChildren } from "./plannerModel";
 import { ActivityTimeline } from "./ActivityTimeline";
 
 export function TaskEditor({
@@ -17,6 +17,7 @@ export function TaskEditor({
   onChanged,
   onClose,
   onReload,
+  onSelect,
 }: {
   task: PlannerTask;
   epics: PlannerEpic[];
@@ -24,6 +25,7 @@ export function TaskEditor({
   onChanged(task: PlannerTask | null): void;
   onClose(): void;
   onReload(): void;
+  onSelect?(id: string): void;
 }) {
   const root = useVault((state) => state.vault?.root);
   const identity = `${root}/${task.id}/${task.revision}`;
@@ -35,7 +37,10 @@ export function TaskEditor({
   const current = () => live.current && activeIdentity.current === identity && root === useVault.getState().vault?.root;
   const titleInput = useRef<HTMLInputElement>(null),
     closeButton = useRef<HTMLButtonElement>(null);
-  const [decision, setDecision] = useState(false);
+  const [decision, setDecision] = useState(false),
+    [draggedSubtask, setDraggedSubtask] = useState<string | null>(null),
+    [subtaskDrop, setSubtaskDrop] = useState<{ id: string; after: boolean } | null>(null);
+  const hierarchy = useMemo(() => taskChildren(tasks), [tasks]);
   useEffect(() => {
     live.current = true;
     return () => {
@@ -232,8 +237,8 @@ export function TaskEditor({
       .getState()
       .askText({ title: "New subtask", value: "", placeholder: `Part of ${task.title}` });
     if (!title?.trim()) return;
-    await run(() =>
-      api.createPlannerTask({
+    await run(async () => {
+      await api.createPlannerTask({
         epic_id: task.epic_id,
         parent_id: task.id,
         title: title.trim(),
@@ -241,9 +246,11 @@ export function TaskEditor({
         status: "new",
         due_date: null,
         estimate_minutes: null,
-      }),
-    );
+      });
+      return task;
+    });
   };
+
   const promote = async () => {
     if (
       !task.parent_id ||
@@ -274,6 +281,121 @@ export function TaskEditor({
         position: task.position + direction * 1536,
       }),
     );
+  const orderSubtask = (child: PlannerTask, beforeId: string | null) => {
+    if (readOnly || disabled) return;
+    const siblings = hierarchy.get(child.parent_id ?? "") ?? [];
+    const next = reorderTasks(siblings, child.id, beforeId);
+    const changed = next.filter(
+      (item) => siblings.find((sibling) => sibling.id === item.id)?.position !== item.position,
+    );
+    if (!changed.length) return;
+    void run(async () => {
+      for (const item of changed) {
+        if (!current()) return task;
+        await api.movePlannerTask(item.id, {
+          expected_revision: item.revision,
+          epic_id: item.epic_id,
+          parent_id: item.parent_id,
+          status: item.status,
+          position: item.position,
+        });
+      }
+      return task;
+    });
+  };
+  const renderSubtasks = (parentId: string, parentTitle: string) => {
+    const children = hierarchy.get(parentId) ?? [];
+    if (!children.length) return null;
+    return (
+      <ul className="task-editor-subtask-list" aria-label={`Subtasks of ${parentTitle}`}>
+        {children.map((child, index) => (
+          <li key={child.id}>
+            <div
+              className="task-editor-subtask-row"
+              data-subtask-id={child.id}
+              data-drop-position={subtaskDrop?.id === child.id ? (subtaskDrop.after ? "after" : "before") : undefined}
+              onDragOver={(event) => {
+                const source = tasks.find((item) => item.id === draggedSubtask);
+                if (disabled || readOnly || !source || source.id === child.id || source.parent_id !== child.parent_id)
+                  return;
+                event.preventDefault();
+                event.stopPropagation();
+                event.dataTransfer.dropEffect = "move";
+                const rect = event.currentTarget.getBoundingClientRect();
+                setSubtaskDrop({ id: child.id, after: event.clientY >= rect.top + rect.height / 2 });
+              }}
+              onDragLeave={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setSubtaskDrop(null);
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                const source = tasks.find((item) => item.id === draggedSubtask);
+                if (source && source.parent_id === child.parent_id && source.id !== child.id) {
+                  const rect = event.currentTarget.getBoundingClientRect();
+                  orderSubtask(
+                    source,
+                    event.clientY >= rect.top + rect.height / 2 ? (children[index + 1]?.id ?? null) : child.id,
+                  );
+                }
+                setDraggedSubtask(null);
+                setSubtaskDrop(null);
+              }}
+            >
+              {!readOnly && (
+                <IconButton
+                  label={`Drag ${child.title} to reorder`}
+                  disabled={disabled}
+                  draggable={!disabled}
+                  onDragStart={(event) => {
+                    event.stopPropagation();
+                    event.dataTransfer.setData("application/x-mosaic-editor-subtask", child.id);
+                    event.dataTransfer.effectAllowed = "move";
+                    setDraggedSubtask(child.id);
+                  }}
+                  onDragEnd={() => {
+                    setDraggedSubtask(null);
+                    setSubtaskDrop(null);
+                  }}
+                >
+                  <GripVertical size={14} />
+                </IconButton>
+              )}
+              <Button
+                className="task-editor-subtask-title"
+                aria-label={child.title}
+                title={child.status === "done" ? "Completed" : undefined}
+                disabled={disabled || !onSelect}
+                onClick={() => onSelect?.(child.id)}
+              >
+                {child.status === "done" && <Check size={14} aria-hidden="true" />}
+                <span>{child.title}</span>
+              </Button>
+              {!readOnly && (
+                <span className="task-editor-subtask-order">
+                  <IconButton
+                    label={`Move ${child.title} earlier`}
+                    disabled={disabled || index === 0}
+                    onClick={() => orderSubtask(child, children[index - 1].id)}
+                  >
+                    <ArrowUp size={14} />
+                  </IconButton>
+                  <IconButton
+                    label={`Move ${child.title} later`}
+                    disabled={disabled || index === children.length - 1}
+                    onClick={() => orderSubtask(child, children[index + 2]?.id ?? null)}
+                  >
+                    <ArrowDown size={14} />
+                  </IconButton>
+                </span>
+              )}
+            </div>
+            {renderSubtasks(child.id, child.title)}
+          </li>
+        ))}
+      </ul>
+    );
+  };
   const readOnly = !!task.archived_at || !!task.trashed_at;
   const disabled = busy || decision;
   return (
@@ -357,9 +479,21 @@ export function TaskEditor({
           onChange={(event) => setEstimate(event.target.value)}
         />
       </div>
+      {(hierarchy.get(task.id)?.length ?? 0) > 0 && (
+        <section className="task-editor-subtasks" aria-label="Subtasks">
+          <h3>Subtasks</h3>
+          {renderSubtasks(task.id, task.title)}
+        </section>
+      )}
       {!readOnly && (
         <div className="planner-editor-tools">
-          <Button disabled={disabled} onClick={() => void decide(addSubtask)}>
+          <Button
+            disabled={disabled}
+            onClick={(event) => {
+              event.currentTarget.focus();
+              void decide(addSubtask);
+            }}
+          >
             Add subtask
           </Button>
           {task.parent_id && (

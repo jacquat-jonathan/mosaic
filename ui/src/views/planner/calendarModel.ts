@@ -1,6 +1,16 @@
 import type { CalendarOverlayOccurrence, CalendarWorkSession, EventOccurrence } from "../../ipc/types";
 
 export type CalendarMode = "month" | "week" | "day";
+export type ResizeEdge = "start" | "end";
+export function resizeTimedRange(start: string, end: string, minutes: number, edge: ResizeEdge) {
+  const startMs = Date.parse(start),
+    endMs = Date.parse(end),
+    delta = minutes * 60000;
+  return {
+    start_value: new Date(edge === "start" ? Math.min(endMs - 15 * 60000, startMs + delta) : startMs).toISOString(),
+    end_value: new Date(edge === "end" ? Math.max(startMs + 15 * 60000, endMs + delta) : endMs).toISOString(),
+  };
+}
 export const DAY_MS = 86_400_000;
 export const CALENDAR_START_HOUR = 5;
 export const CALENDAR_END_HOUR = 23;

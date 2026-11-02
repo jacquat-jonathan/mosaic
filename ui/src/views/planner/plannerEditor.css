@@ -216,3 +216,51 @@
   white-space: normal;
   text-align: left;
 }
+
+.mosaic-ds.planner-editor-design .task-editor-subtasks {
+  margin-block: var(--mds-space-6);
+}
+.mosaic-ds.planner-editor-design .task-editor-subtasks h3 {
+  font-size: var(--mds-text-body);
+  margin: 0 0 var(--mds-space-4);
+}
+.mosaic-ds.planner-editor-design .task-editor-subtask-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.mosaic-ds.planner-editor-design .task-editor-subtask-list .task-editor-subtask-list {
+  margin-left: 12px;
+  padding-left: 4px;
+  border-left: 1px solid var(--mds-border);
+}
+.mosaic-ds.planner-editor-design .task-editor-subtask-row {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 2px;
+  padding-block: 3px;
+  border-block: 2px solid transparent;
+}
+.mosaic-ds.planner-editor-design .task-editor-subtask-row[data-drop-position="before"] {
+  border-top-color: var(--mds-accent);
+}
+.mosaic-ds.planner-editor-design .task-editor-subtask-row[data-drop-position="after"] {
+  border-bottom-color: var(--mds-accent);
+}
+.mosaic-ds.planner-editor-design .task-editor-subtask-row > .mds-icon-button {
+  cursor: grab;
+}
+.mosaic-ds.planner-editor-design .task-editor-subtask-title {
+  flex: 1;
+  min-width: 0;
+  justify-content: flex-start;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  padding-inline: 4px;
+}
+.mosaic-ds.planner-editor-design .task-editor-subtask-order {
+  display: flex;
+  flex: none;
+}

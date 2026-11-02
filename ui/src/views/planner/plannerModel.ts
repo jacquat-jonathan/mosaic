@@ -107,7 +107,20 @@ export function swimlanes(epics: PlannerEpic[], tasks: PlannerTask[]): Swimlane[
 
 /** Return active epics in their new persisted order. A null target means last, before Unassigned. */
 export function reorderEpics(epics: PlannerEpic[], movedId: string, beforeId: string | null): PlannerEpic[] {
-  const ordered = [...epics].sort((a, b) => a.position - b.position),
+  return reorderByPosition(epics, movedId, beforeId);
+}
+
+/** Reorder tasks supplied from a single sibling group, without changing their parents or statuses. */
+export function reorderTasks(tasks: PlannerTask[], movedId: string, beforeId: string | null): PlannerTask[] {
+  return reorderByPosition(tasks, movedId, beforeId);
+}
+
+function reorderByPosition<T extends { id: string; position: number }>(
+  items: T[],
+  movedId: string,
+  beforeId: string | null,
+): T[] {
+  const ordered = [...items].sort((a, b) => a.position - b.position),
     moved = ordered.find((epic) => epic.id === movedId);
   if (!moved || beforeId === movedId) return ordered;
   const remaining = ordered.filter((epic) => epic.id !== movedId),

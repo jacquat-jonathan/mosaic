@@ -1,10 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
 import { openMockVault } from "./mock-vault";
-async function openCalendar(page: Page, route = "today", withSession = false) {
+async function openCalendar(page: Page, route = "today", withSession = false, withParent = false) {
   await page.goto("/");
   await openMockVault(page);
   await page.evaluate(
-    async ({ route, withSession }) => {
+    async ({ route, withSession, withParent }) => {
       const mock = (
         window as unknown as {
           __mosaic: {
@@ -34,10 +34,23 @@ async function openCalendar(page: Page, route = "today", withSession = false) {
         },
       });
       if (withSession) {
+        const parent = withParent
+          ? await mock.mockInvoke("planner_create_task", {
+              input: {
+                epic_id: null,
+                parent_id: null,
+                title: "Parent task",
+                description: "",
+                status: "in-progress",
+                due_date: null,
+                estimate_minutes: null,
+              },
+            })
+          : null;
         const task = await mock.mockInvoke("planner_create_task", {
           input: {
             epic_id: null,
-            parent_id: null,
+            parent_id: parent?.id ?? null,
             title: "Session demo",
             description: "",
             status: "new",
@@ -57,7 +70,7 @@ async function openCalendar(page: Page, route = "today", withSession = false) {
       }
       await mock.useWorkspace.getState().open(`mosaic:${route}`, { newTab: true });
     },
-    { route, withSession },
+    { route, withSession, withParent },
   );
 }
 test("day calendar retains period navigation, layer filters and keyboard event creation", async ({ page }) => {
@@ -517,4 +530,181 @@ test("iCalendar import shares themes and fits scaled narrow windows", async ({ p
   await expect(dialog.getByRole("button", { name: "Close dialog", exact: true })).toBeInViewport();
   await expect.poll(() => dialog.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
   await page.screenshot({ path: testInfo.outputPath("ical-import-narrow.png") });
+});
+
+for (const scale of [1, 1.5]) {
+  for (const kind of ["event", "session"] as const) {
+    test(`calendar ${kind} edges and drag anchor follow the pointer at ${scale}x scale`, async ({ page }) => {
+      await page.setViewportSize({ width: 1440, height: 1100 });
+      await openCalendar(page, "today", true);
+      await page.evaluate((scale) => {
+        document.documentElement.style.zoom = String(scale);
+      }, scale);
+      const title = kind === "event" ? "Calendar demo" : "Session demo";
+      const card = page.locator(`.planner-timed-item.${kind}`, { hasText: title });
+      const geometry = () =>
+        card.evaluate((el) => ({
+          top: parseFloat((el as HTMLElement).style.top),
+          height: parseFloat((el as HTMLElement).style.height),
+        }));
+      const original = await geometry();
+      const hourHeight = original.height;
+      // Resize each edge with actual mouse input, including pointer capture outside the card.
+      for (const edge of ["end", "start"] as const) {
+        const handle = card.locator(`.resize-${edge}`);
+        await handle.scrollIntoViewIfNeeded();
+        const box = (await handle.boundingBox())!;
+        const x = box.x + box.width / 2,
+          y = box.y + box.height / 2;
+        await page.mouse.move(x, y);
+        await page.mouse.down();
+        await page.mouse.move(x, y + ((edge === "end" ? 1 : -1) * hourHeight * scale) / 2, { steps: 8 });
+        await expect(page.getByRole("complementary", { name: /event|Work session/i })).toHaveCount(0);
+        await page.mouse.up();
+        const expectedTop = original.top - (edge === "start" ? hourHeight / 2 : 0);
+        const expectedHeight = original.height + hourHeight * (edge === "start" ? 1 : 0.5);
+        await expect.poll(async () => (await geometry()).top).toBeCloseTo(expectedTop, 0);
+        await expect.poll(async () => (await geometry()).height).toBeCloseTo(expectedHeight, 0);
+        // A reload verifies the persisted interval, after the live resize preview has cleared.
+        await page.getByRole("button", { name: "Refresh calendar", exact: true }).click();
+        await expect.poll(async () => (await geometry()).height).toBeCloseTo(expectedHeight, 0);
+      }
+      await card.scrollIntoViewIfNeeded();
+      const beforeMove = await geometry();
+      const box = (await card.boundingBox())!;
+      const x = box.x + box.width / 2,
+        y = box.y + box.height * 0.65;
+      await page.mouse.move(x, y);
+      await page.mouse.down();
+      await page.mouse.move(x + 10, y, { steps: 5 });
+      await page.mouse.move(x + 10, y + hourHeight * scale * 2, { steps: 12 });
+      // Native dragover fires on movement; repeat at the final point for WebKit.
+      await page.mouse.move(x + 11, y + hourHeight * scale * 2);
+      const preview = page.locator(".planner-week-drop-preview");
+      await expect(preview).toBeVisible();
+      await expect
+        .poll(() => preview.evaluate((el) => parseFloat((el as HTMLElement).style.top)))
+        .toBeCloseTo(beforeMove.top + hourHeight * 2, 0);
+      await page.mouse.up();
+      await expect.poll(async () => (await geometry()).top).toBeCloseTo(beforeMove.top + hourHeight * 2, 0);
+      await expect.poll(async () => (await geometry()).height).toBeCloseTo(beforeMove.height, 0);
+    });
+  }
+}
+
+for (const scale of [1, 1.5]) {
+  test(`task-list drops keep the grabbed point aligned at ${scale}x scale`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 1600, height: 1100 });
+    await openCalendar(page, "today", true, true);
+    await page.evaluate((scale) => {
+      document.documentElement.style.zoom = String(scale);
+    }, scale);
+    const showTasks = page.getByRole("button", { name: "Show open tasks", exact: true });
+    if (await showTasks.isVisible()) await showTasks.click();
+    const task = page.locator(".unscheduled-task-card", { hasText: "Session demo" });
+    await task.scrollIntoViewIfNeeded();
+    const source = (await task.boundingBox())!;
+    const parent = page.locator(".unscheduled-task-card", { hasText: "Parent task" });
+    const parentBox = (await parent.boundingBox())!;
+    expect(source.x - parentBox.x).toBeGreaterThan(15 * scale);
+    await expect(page.getByRole("list", { name: "Subtasks of Parent task" })).toContainText("Session demo");
+    await expect(page.locator(".unscheduled-status h5")).toHaveText("In progress");
+    await page.locator(".unscheduled-tray").screenshot({ path: testInfo.outputPath("task-hierarchy.png") });
+    const button = task.locator("button");
+    await expect(button).toHaveCSS("justify-content", "stretch");
+    const leftEdges = await button.evaluate((el) => {
+      const title = el.querySelector("strong")!.getBoundingClientRect();
+      const detail = el.querySelector("span")!.getBoundingClientRect();
+      return { title: title.left, detail: detail.left, button: el.getBoundingClientRect().left };
+    });
+    expect(Math.abs(leftEdges.title - leftEdges.detail)).toBeLessThan(1);
+    expect(leftEdges.title - leftEdges.button).toBeLessThan(12 * scale);
+    const day = page.locator(".planner-time-day");
+    const grid = (await day.boundingBox())!;
+    const hourHeight = grid.height / 18;
+    const grabY = source.height * 0.65;
+    const targetX = grid.x + 20 * scale; // Stay outside the task tray overlay in compact panes.
+    const targetY = grid.y + hourHeight * 7 + grabY; // Start at noon, preserving the source grab point.
+    await page.mouse.move(source.x + source.width / 2, source.y + grabY);
+    await page.mouse.down();
+    await page.mouse.move(source.x + source.width / 2 - 10, source.y + grabY, { steps: 5 });
+    await page.mouse.move(targetX, targetY, { steps: 12 });
+    await page.mouse.move(targetX + 1, targetY);
+    const preview = page.locator(".planner-week-drop-preview");
+    await expect(preview).toBeVisible();
+    const expectedTop = (hourHeight / scale) * 7;
+    await expect
+      .poll(() => preview.evaluate((el) => parseFloat((el as HTMLElement).style.top)))
+      .toBeCloseTo(expectedTop, 0);
+    await expect(preview).toContainText("Session demo");
+    await page.mouse.up();
+    const sessions = page.locator(".planner-timed-item.session", { hasText: "Session demo" });
+    await expect(sessions).toHaveCount(2);
+    await expect
+      .poll(() =>
+        sessions.evaluateAll(
+          (items, expectedTop) =>
+            items.some((el) => Math.abs(parseFloat((el as HTMLElement).style.top) - expectedTop) < 1),
+          expectedTop,
+        ),
+      )
+      .toBe(true);
+  });
+}
+
+test.describe("current-time indicator", () => {
+  test.use({ timezoneId: "Europe/Zurich" });
+  for (const route of ["today", "week"]) {
+    for (const scale of [1, 1.5]) {
+      test(`now line tracks time in ${route} at ${scale}x scale`, async ({ page }, testInfo) => {
+        await page.setViewportSize({ width: 1600, height: 1100 });
+        await page.emulateMedia({ colorScheme: scale === 1 ? "light" : "dark" });
+        await page.clock.install({ time: new Date("2026-11-02T09:30:00+01:00") });
+        await openCalendar(page, route);
+        await page.evaluate((scale) => {
+          document.documentElement.style.zoom = String(scale);
+        }, scale);
+        const calendar = page.getByRole("main", { name: "Calendar", exact: true });
+        const line = calendar.locator(".planner-now-line");
+        const label = calendar.getByLabel(/^Current time/);
+        await expect(line).toHaveCount(1);
+        const lineWidth = (await line.boundingBox())!;
+        const days = calendar.locator(".planner-time-day");
+        const firstDay = (await days.first().boundingBox())!,
+          lastDay = (await days.last().boundingBox())!;
+        expect(Math.abs(lineWidth.x - firstDay.x)).toBeLessThanOrEqual(1);
+        expect(Math.abs(lineWidth.x + lineWidth.width - lastDay.x - lastDay.width)).toBeLessThanOrEqual(1);
+        await expect(label).toContainText("9:30");
+        const expected = await line.evaluate((el) => {
+          const day = el.parentElement!;
+          const hourHeight = parseFloat(
+            (day.closest(".planner-week-wrap") as HTMLElement).style.getPropertyValue("--planner-hour-height"),
+          );
+          return hourHeight * 4.5;
+        });
+        await expect
+          .poll(() => line.evaluate((el) => parseFloat((el as HTMLElement).style.top)))
+          .toBeCloseTo(expected, 1);
+        await page.clock.runFor(60000);
+        await expect(label).toContainText("9:31");
+        const top = await line.evaluate((el) => parseFloat((el as HTMLElement).style.top));
+        expect(top).toBeGreaterThan(expected);
+        const labelTop = await label.evaluate((el) => parseFloat((el as HTMLElement).style.top));
+        expect(top).toBe(labelTop);
+        await calendar.screenshot({ path: testInfo.outputPath("now-line.png") });
+        // The marker overlays the event visually, but the card still receives clicks.
+        const event = calendar.locator(".planner-timed-item.event", { hasText: "Calendar demo" });
+        const cardBox = (await event.boundingBox())!;
+        const lineBox = (await line.boundingBox())!;
+        await page.mouse.click(cardBox.x + cardBox.width / 2, lineBox.y + lineBox.height / 2);
+        await expect(page.getByRole("complementary", { name: "Edit Calendar demo", exact: true })).toBeVisible();
+        await page.getByRole("button", { name: "Close event editor", exact: true }).click();
+        await calendar.getByRole("button", { name: "Next period", exact: true }).click();
+        await expect(line).toHaveCount(0);
+        await expect(label).toHaveCount(0);
+        await calendar.getByRole("button", { name: "Today", exact: true }).click();
+        await expect(line).toHaveCount(1);
+      });
+    }
+  }
 });

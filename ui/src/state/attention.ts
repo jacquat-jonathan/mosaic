@@ -4,7 +4,6 @@ import { vaultPrefs } from "./vaultPreferences";
 import { type Agent, type TesseraStatus, errorMessage } from "../ipc/types";
 
 interface Attention {
-  count: number;
   disconnected: boolean;
   status: TesseraStatus | null;
   agents: Agent[];
@@ -15,7 +14,6 @@ let generation = 0;
 let initialized = false;
 let seenFailures = new Set<number>();
 export const useAttention = create<Attention>((set) => ({
-  count: 0,
   disconnected: false,
   status: null,
   agents: [],
@@ -36,15 +34,9 @@ export const useAttention = create<Attention>((set) => ({
             if (!(await win.isFocused())) await win.requestUserAttention(UserAttentionType.Informational);
           })
           .catch(() => {});
-      const latest = new Map<string, string>();
-      for (const r of status.runs) if (!latest.has(r.agent)) latest.set(r.agent, r.status);
-      const count =
-        [...latest.values()].filter((s) => s === "failed" || s === "skipped").length +
-        status.agents.filter((a) => a.error).length +
-        (claude.path ? 0 : 1);
-      set({ status, agents, count, disconnected: !claude.path, error: null });
+      set({ status, agents, disconnected: !claude.path, error: null });
     } catch (e) {
-      if (generation === current) set({ error: errorMessage(e), count: 1 });
+      if (generation === current) set({ error: errorMessage(e) });
     }
   },
 }));
@@ -52,7 +44,7 @@ export function startAttention() {
   generation++;
   initialized = false;
   seenFailures = new Set();
-  useAttention.setState({ status: null, agents: [], count: 0, error: null });
+  useAttention.setState({ status: null, agents: [], error: null });
   const refresh = () => void useAttention.getState().refresh();
   refresh();
   let live = true;

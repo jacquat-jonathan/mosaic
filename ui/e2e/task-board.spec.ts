@@ -280,3 +280,74 @@ test("epic dialog shares themes and fits scaled narrow windows", async ({ page }
   await expect.poll(() => dialog.evaluate((el) => el.getBoundingClientRect().right)).toBeLessThanOrEqual(321);
   await page.screenshot({ path: testInfo.outputPath("epic-editor-narrow.png") });
 });
+
+test("task details keep the parent selected while adding and persist subtask ordering", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1800, height: 1200 });
+  await page.emulateMedia({ colorScheme: "dark" });
+  await board(page);
+  const card = page.getByRole("article", { name: "Ship release", exact: true });
+  await card.press("Enter");
+  const parentEditor = page.getByRole("complementary", { name: "Edit Ship release", exact: true });
+  const addChild = async (editor: ReturnType<Page["getByRole"]>, title: string) => {
+    const add = editor.getByRole("button", { name: "Add subtask", exact: true });
+    await add.click();
+    const prompt = page.getByRole("dialog", { name: "New subtask", exact: true });
+    await prompt.getByRole("textbox").fill(title);
+    await prompt.getByRole("button", { name: "OK", exact: true }).click();
+    await expect(editor).toBeVisible();
+    await expect(add).toBeFocused();
+  };
+  await addChild(parentEditor, "Sign builds");
+  await addChild(parentEditor, "Verify update");
+  const rootRows = () =>
+    parentEditor
+      .getByRole("list", { name: "Subtasks of Ship release", exact: true })
+      .locator(":scope > li > .task-editor-subtask-row");
+  const titles = () => rootRows().locator(".task-editor-subtask-title span");
+  await expect(titles()).toHaveText(["Write notes", "Sign builds", "Verify update"]);
+  await parentEditor.getByRole("button", { name: "Write notes", exact: true }).click();
+  const childEditor = page.getByRole("complementary", { name: "Edit Write notes", exact: true });
+  await addChild(childEditor, "Check links");
+  await card.press("Enter");
+  await expect(parentEditor.getByRole("list", { name: "Subtasks of Write notes", exact: true })).toContainText(
+    "Check links",
+  );
+  // Reordering also works for a completed subtask without reopening it.
+  await card.getByRole("checkbox", { name: "Mark Verify update done", exact: true }).check();
+  await card.press("Enter");
+  await parentEditor.getByRole("button", { name: "Move Verify update earlier", exact: true }).click();
+  await expect(titles()).toHaveText(["Write notes", "Verify update", "Sign builds"]);
+  await expect(parentEditor).toBeVisible();
+  const firstRow = rootRows().first();
+  await parentEditor
+    .getByRole("button", { name: "Drag Sign builds to reorder", exact: true })
+    .dragTo(firstRow, { targetPosition: { x: 25, y: 3 } });
+  await expect(titles()).toHaveText(["Sign builds", "Write notes", "Verify update"]);
+  await expect(card.getByRole("checkbox", { name: "Mark Verify update not done", exact: true })).toBeChecked();
+  const saved = await page.evaluate(async () => {
+    const mock = (
+      window as unknown as {
+        __mosaic: {
+          mockInvoke(
+            command: string,
+            args: object,
+          ): Promise<{ id: string; title: string; parent_id: string | null; position: number; status: string }[]>;
+        };
+      }
+    ).__mosaic;
+    const tasks = await mock.mockInvoke("planner_tasks", { includeArchived: false, includeTrashed: false });
+    const parent = tasks.find((task) => task.title === "Ship release")!;
+    return tasks
+      .filter((task) => task.parent_id === parent.id)
+      .sort((a, b) => a.position - b.position)
+      .map((task) => task.title);
+  });
+  expect(saved).toEqual(["Sign builds", "Write notes", "Verify update"]);
+  await parentEditor.screenshot({ path: testInfo.outputPath("task-details-subtasks.png") });
+  await parentEditor.getByRole("button", { name: "Close task editor", exact: true }).click();
+  await card.press("Enter");
+  await expect(titles()).toHaveText(saved);
+  await expect(parentEditor.getByRole("list", { name: "Subtasks of Write notes", exact: true })).toContainText(
+    "Check links",
+  );
+});

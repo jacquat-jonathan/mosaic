@@ -759,6 +759,7 @@ export function BoardView() {
           task={selected}
           epics={epics}
           tasks={tasks}
+          onSelect={setSelectedId}
           onClose={() => {
             setSelectedId(null);
             focusTask(selected.id);

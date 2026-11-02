@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
+import { forceParsing, syntaxTreeAvailable } from "@codemirror/language";
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { afterEach, expect, test, vi } from "vitest";
@@ -27,40 +28,42 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-test("live preview decorates rich Markdown and reveals syntax around the selection", async () => {
-  vi.stubGlobal(
-    "ResizeObserver",
-    class {
-      observe() {}
-      disconnect() {}
-    },
-  );
-  vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
-    callback(0);
-    return 1;
-  });
-  vi.stubGlobal("cancelAnimationFrame", vi.fn());
-  vi.stubGlobal("matchMedia", () => ({
-    matches: false,
-    addEventListener: vi.fn(),
-    removeEventListener: vi.fn(),
-  }));
-  const context: EditorContext = {
-    path: "Notes/Rich.md",
-    resolve: vi.fn((target) => {
-      if (target === "Missing") return null;
-      if (/\.(png|pdf|canvas)$/i.test(target)) return `Assets/${target}`;
-      return `Notes/${target}.md`;
-    }),
-    openLink: vi.fn(),
-    openExternal: vi.fn(),
-    openTag: vi.fn(),
-    fileUrl: vi.fn(async (path) => `blob:${path}`),
-    readText: vi.fn(async (path) => (path.endsWith(".canvas") ? '{"nodes":[],"edges":[]}' : "# Embedded note")),
-    importDrop: vi.fn(() => null),
-    linkCandidates: vi.fn(() => []),
-  };
-  const doc = `---
+test.each(["initial", "incremental"])(
+  "live preview decorates rich Markdown and reveals syntax around the selection (%s parse)",
+  async (parsing) => {
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        observe() {}
+        disconnect() {}
+      },
+    );
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      callback(0);
+      return 1;
+    });
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+    vi.stubGlobal("matchMedia", () => ({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }));
+    const context: EditorContext = {
+      path: "Notes/Rich.md",
+      resolve: vi.fn((target) => {
+        if (target === "Missing") return null;
+        if (/\.(png|pdf|canvas)$/i.test(target)) return `Assets/${target}`;
+        return `Notes/${target}.md`;
+      }),
+      openLink: vi.fn(),
+      openExternal: vi.fn(),
+      openTag: vi.fn(),
+      fileUrl: vi.fn(async (path) => `blob:${path}`),
+      readText: vi.fn(async (path) => (path.endsWith(".canvas") ? '{"nodes":[],"edges":[]}' : "# Embedded note")),
+      importDrop: vi.fn(() => null),
+      linkCandidates: vi.fn(() => []),
+    };
+    const doc = `---
 title: Rich
 ---
 # Heading
@@ -95,42 +98,57 @@ plain code
 
 <div>html block</div>
 `;
-  const parent = document.body.appendChild(document.createElement("div"));
-  const view = new EditorView({
-    parent,
-    state: EditorState.create({
-      doc,
-      selection: { anchor: doc.length },
-      extensions: [editorContext.of(context), markdown({ base: markdownLanguage }), livePreview()],
-    }),
-  });
+    const parent = document.body.appendChild(document.createElement("div"));
+    // CodeMirror's initial parse is time-sliced. Model the partial tree seen on
+    // slower, coverage-instrumented CI runners rather than relying on CPU speed.
+    let clock = Date.now();
+    const parseClock = parsing === "incremental" ? vi.spyOn(Date, "now").mockImplementation(() => (clock += 25)) : null;
+    let initialState: EditorState;
+    try {
+      initialState = EditorState.create({
+        doc,
+        selection: { anchor: doc.length },
+        extensions: [editorContext.of(context), markdown({ base: markdownLanguage }), livePreview()],
+      });
+      if (parsing === "incremental") expect(syntaxTreeAvailable(initialState, doc.length)).toBe(false);
+    } finally {
+      parseClock?.mockRestore();
+    }
+    const view = new EditorView({ parent, state: initialState });
+    try {
+      expect(forceParsing(view, doc.length, 1000)).toBe(true);
 
-  expect(parent.querySelector(".cm-h1")).toBeTruthy();
-  expect(parent.querySelector(".cm-em")).toBeTruthy();
-  expect(parent.querySelector(".cm-strong")).toBeTruthy();
-  expect(parent.querySelector(".cm-strike")).toBeTruthy();
-  expect(parent.querySelector(".cm-highlight")).toBeTruthy();
-  expect(parent.querySelector(".cm-tag")?.getAttribute("data-tag")).toBe("tag/nested");
-  expect(parent.querySelector(".cm-math")).toBeTruthy();
-  expect(parent.querySelector(".cm-task")).toBeTruthy();
-  expect(parent.querySelector(".cm-table-wrap")).toBeTruthy();
-  expect(parent.querySelector(".cm-wikilink")).toBeTruthy();
-  expect(parent.querySelector(".cm-embed-image, .cm-embed-note, .cm-embed-canvas")).toBeTruthy();
+      expect(parent.querySelector(".cm-h1")).toBeTruthy();
+      expect(parent.querySelector(".cm-em")).toBeTruthy();
+      expect(parent.querySelector(".cm-strong")).toBeTruthy();
+      expect(parent.querySelector(".cm-strike")).toBeTruthy();
+      expect(parent.querySelector(".cm-highlight")).toBeTruthy();
+      expect(parent.querySelector(".cm-tag")?.getAttribute("data-tag")).toBe("tag/nested");
+      expect(parent.querySelector(".cm-math")).toBeTruthy();
+      expect(parent.querySelector(".cm-task")).toBeTruthy();
+      expect(parent.querySelector(".cm-table-wrap")).toBeTruthy();
+      expect(parent.querySelector(".cm-wikilink")).toBeTruthy();
+      expect(parent.querySelector(".cm-embed-image, .cm-embed-note, .cm-embed-canvas")).toBeTruthy();
 
-  const renderedWiki = parent.querySelector<HTMLElement>(".cm-wikilink");
-  renderedWiki?.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
-  expect(context.openLink).toHaveBeenCalled();
-  const tag = parent.querySelector<HTMLElement>(".cm-tag");
-  tag?.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
-  expect(context.openTag).toHaveBeenCalledWith("tag/nested");
+      const renderedWiki = parent.querySelector<HTMLElement>(".cm-wikilink");
+      renderedWiki?.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+      expect(context.openLink).toHaveBeenCalled();
+      const tag = parent.querySelector<HTMLElement>(".cm-tag");
+      tag?.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+      expect(context.openTag).toHaveBeenCalledWith("tag/nested");
 
-  const emphasis = doc.indexOf("*emphasis*") + 2;
-  view.dispatch({ selection: { anchor: emphasis }, effects: refreshPreview.of(null) });
-  expect(parent.textContent).toContain("*emphasis*");
-  view.dispatch({ selection: { anchor: 2 } });
-  expect(parent.textContent).toContain("title: Rich");
-  view.dispatch({ selection: { anchor: doc.indexOf("plain code") } });
-  expect(parent.textContent).toContain("plain code");
-  window.dispatchEvent(new Event("mosaic-theme"));
-  view.destroy();
-});
+      const emphasis = doc.indexOf("*emphasis*") + 2;
+      view.dispatch({ selection: { anchor: emphasis }, effects: refreshPreview.of(null) });
+      expect(parent.textContent).toContain("*emphasis*");
+      view.dispatch({ selection: { anchor: 2 } });
+      expect(parent.textContent).toContain("title: Rich");
+      view.dispatch({ selection: { anchor: doc.indexOf("plain code") } });
+      expect(parent.textContent).toContain("plain code");
+      window.dispatchEvent(new Event("mosaic-theme"));
+    } finally {
+      view.destroy();
+      // React-backed widgets defer unmounting; finish that cleanup before jsdom exits.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+  },
+);

@@ -98,9 +98,12 @@
 .mosaic-ds.calendar-design .unscheduled-tray .panel-meta {
   font-size: var(--mds-text-hint);
 }
-.mosaic-ds.calendar-design .unscheduled-tray li > .mds-button {
+.mosaic-ds.calendar-design .unscheduled-task-card > .mds-button {
   display: grid;
   min-width: 0;
+  justify-content: stretch;
+  justify-items: start;
+  text-align: left;
   white-space: normal;
 }
 .mosaic-ds.calendar-design .planner-session-menu {

@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import type { PlannerEpic, PlannerTask } from "../../ipc/types";
-import { descendants, reorderEpics, subtaskProgress, swimlanes, taskLifecycles } from "./plannerModel";
+import { descendants, reorderEpics, reorderTasks, subtaskProgress, swimlanes, taskLifecycles } from "./plannerModel";
 
 const epic = (id: string, position: number): PlannerEpic => ({
   id,
@@ -90,4 +90,19 @@ test("tasks inherit archive and trash lifecycle from their parent or epic", () =
     "trash-child": "trash",
     active: "active",
   });
+});
+
+test("task sibling reordering uses a gap or normalizes dense positions without changing hierarchy or status", () => {
+  const siblings = ["a", "b", "c"].map((id, i) => ({
+    ...task(id, "epic", "parent", i === 0 ? "done" : "new"),
+    position: i + 1,
+  }));
+  const reordered = reorderTasks(siblings, "c", "b");
+  expect(reordered.map((item) => item.id)).toEqual(["a", "c", "b"]);
+  expect(reordered.map((item) => item.position)).toEqual([1024, 2048, 3072]);
+  expect(reordered.every((item) => item.parent_id === "parent" && item.epic_id === "epic")).toBe(true);
+  expect(reordered[0].status).toBe("done");
+  const spaced = siblings.map((item, i) => ({ ...item, position: (i + 1) * 1024 }));
+  expect(reorderTasks(spaced, "c", "b").map((item) => item.position)).toEqual([1024, 1536, 2048]);
+  expect(reorderTasks(spaced, "a", null).map((item) => item.id)).toEqual(["b", "c", "a"]);
 });

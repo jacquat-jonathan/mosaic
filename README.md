@@ -274,12 +274,11 @@ Layout:
 | `docs/AGENTS.md` | Guide for AI agents, also served by the MCP server |
 | `docs/PLAN.md` | Implementation plan and milestones |
 
-**Releasing.** Describe changes under `## Unreleased` in `CHANGELOG.md`. On a clean tree,
-`scripts/release.sh <new-version>` bumps the shared version, dates the notes, commits and tags it.
-Push with `git push --follow-tags`. The release workflow needs the protected
-`MOSAIC_RELEASE_PRIVATE_KEY` Actions secret and publishes the complete signed assets after tests.
-A Git tag alone is not a downloadable release and will not appear in binary **Check for updates**.
-See [publishing from your personal computer](docs/PUBLISHING.md) for the 0.18.0 handoff.
+**Releasing.** Follow the [release runbook](docs/RELEASING.md) for normal releases and failed-release
+recovery. `scripts/release.sh <new-version>` creates the version bump, dated notes, `Release <version>`
+commit, and local annotated tag. Push the release branch without tags, merge its PR after checks pass,
+then publish the tag on that exact release commit. The protected `release` environment signs and
+publishes the complete assets after approval. A tag alone is not a downloadable release.
 
 The search index lives in `~/Library/Caches/mosaic/` and is rebuilt automatically. Undo history and
 pending AI proposals live in `~/Library/Application Support/dev.jona.mosaic/vaults/<vault-id>/`, keyed

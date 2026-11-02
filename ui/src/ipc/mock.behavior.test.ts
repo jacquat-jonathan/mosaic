@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   IcalImportPreview,
   PlannerEpic,
@@ -11,14 +11,22 @@ import type {
 import { mockCommands, mockInvoke, mockPropose } from "./mock";
 
 // Seed the mock's relative daily notes before import so fixed-format fixtures stay deterministic.
-vi.hoisted(() => {
+const fixtureTime = vi.hoisted(() => {
+  const time = "2026-10-28T12:00:00Z";
   vi.useFakeTimers({ toFake: ["Date"] });
-  vi.setSystemTime(new Date("2026-10-28T12:00:00Z"));
+  vi.setSystemTime(new Date(time));
+  return time;
 });
 
 const invoke = <T>(cmd: string, args: Record<string, unknown> = {}) => mockInvoke(cmd, args) as Promise<T>;
 const rejects = (cmd: string, args: Record<string, unknown>, code: string) =>
   expect(mockInvoke(cmd, args)).rejects.toMatchObject({ code });
+
+// Queries must use the same day as the seeded notes after the previous test restores real timers.
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date(fixtureTime));
+});
 
 afterEach(() => {
   vi.useRealTimers();

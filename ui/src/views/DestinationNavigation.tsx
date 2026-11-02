@@ -4,6 +4,7 @@ import { Badge, IconButton } from "../design-system/components";
 import { useUi, type Destination } from "../state/ui";
 import { useWorkspace } from "../state/workspace";
 import { useReview } from "../state/review";
+import { useAttention } from "../state/attention";
 import { shortcutOf } from "../commands";
 import { DesignSystemScope } from "./DesignSystemScope";
 import "./destinationNavigation.css";
@@ -19,6 +20,14 @@ export function DestinationNavigation() {
   const sidebar = useUi((state) => state.leftSidebar);
   const active = useWorkspace((state) => state.panes.find((pane) => pane.id === state.focused)?.active);
   const pending = useReview((state) => state.pending.length);
+  const failed = useAttention((state) => state.unseenFailureIds.length);
+  const count = pending + failed;
+  const attentionDescription = [
+    pending ? `${pending} pending ${pending === 1 ? "review" : "reviews"}` : "",
+    failed ? `${failed} new failed ${failed === 1 ? "run" : "runs"}` : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
   const description = `${useId()}-attention`;
   const buttons = useRef(new Map<Destination, HTMLButtonElement>());
   const [focusTarget, setFocusTarget] = useState<Destination | null>(null);
@@ -55,7 +64,7 @@ export function DestinationNavigation() {
             role="tab"
             aria-selected={selected === destination.id}
             tabIndex={selected === destination.id ? 0 : -1}
-            aria-describedby={destination.id === "ai" && pending > 0 ? description : undefined}
+            aria-describedby={destination.id === "ai" && count > 0 ? description : undefined}
             data-section={destination.section}
             data-section-start={
               index > 0 && destinations[index - 1].section !== destination.section ? "true" : undefined
@@ -80,17 +89,13 @@ export function DestinationNavigation() {
             }}
           >
             <destination.icon aria-hidden="true" />
-            {destination.id === "ai" && pending > 0 && (
+            {destination.id === "ai" && count > 0 && (
               <>
-                <Badge
-                  className="destination-attention"
-                  title={`${pending} pending ${pending === 1 ? "review" : "reviews"}`}
-                  aria-hidden="true"
-                >
-                  {pending > 99 ? "99+" : pending}
+                <Badge className="destination-attention" title={attentionDescription} aria-hidden="true">
+                  {count > 99 ? "99+" : count}
                 </Badge>
                 <span id={description} className="destination-description">
-                  {pending} pending {pending === 1 ? "review" : "reviews"}
+                  {attentionDescription}
                 </span>
               </>
             )}

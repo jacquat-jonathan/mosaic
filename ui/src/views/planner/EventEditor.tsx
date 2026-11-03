@@ -134,6 +134,7 @@ export function EventEditor({
     setEndTime(nextEnd.time);
   }, [initialStartValue, initialEndValue, allDay]);
   const [repeat, setRepeat] = useState<Repeat>(repeatFrom(series?.recurrence_rule ?? null)),
+    [recurrenceChanged, setRecurrenceChanged] = useState(false),
     [interval, setInterval] = useState(intervalFrom(series?.recurrence_rule ?? null)),
     [until, setUntil] = useState(untilFrom(series?.recurrence_rule ?? null)),
     [scope, setScope] = useState<"occurrence" | "series">(occurrence?.recurring ? "occurrence" : "series"),
@@ -159,7 +160,12 @@ export function EventEditor({
       start_value: allDay ? startDay : localInstant(startDay, startTime),
       end_value: allDay ? endDay : localInstant(endDay, endTime),
       timezone,
-      recurrence_rule: scope === "occurrence" ? null : recurrence(repeat, interval, until),
+      recurrence_rule:
+        scope === "occurrence"
+          ? null
+          : !recurrenceChanged && series?.recurrence_rule
+            ? series.recurrence_rule
+            : recurrence(repeat, interval, until),
     }),
     [
       title,
@@ -177,6 +183,8 @@ export function EventEditor({
       timezone,
       scope,
       repeat,
+      recurrenceChanged,
+      series?.recurrence_rule,
       interval,
       until,
     ],
@@ -306,7 +314,10 @@ export function EventEditor({
                 <select
                   className="mds-input"
                   value={repeat}
-                  onChange={(event) => setRepeat(event.target.value as Repeat)}
+                  onChange={(event) => {
+                    setRecurrenceChanged(true);
+                    setRepeat(event.target.value as Repeat);
+                  }}
                 >
                   <option value="none">Does not repeat</option>
                   <option value="daily">Daily</option>
@@ -324,7 +335,10 @@ export function EventEditor({
                     min="1"
                     max="366"
                     value={interval}
-                    onChange={(event) => setInterval(Number(event.target.value))}
+                    onChange={(event) => {
+                      setRecurrenceChanged(true);
+                      setInterval(Number(event.target.value));
+                    }}
                   />
                 </label>
               )}
@@ -336,7 +350,10 @@ export function EventEditor({
                   className="mds-input"
                   type="date"
                   value={until}
-                  onChange={(event) => setUntil(event.target.value)}
+                  onChange={(event) => {
+                    setRecurrenceChanged(true);
+                    setUntil(event.target.value);
+                  }}
                 />
               </label>
             )}

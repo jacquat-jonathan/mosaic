@@ -360,7 +360,12 @@ fn parse(content: &str, fallback_timezone: &str) -> Result<Vec<ParsedEvent>> {
 }
 
 pub fn validate_ical(content: &str, fallback_timezone: &str) -> Result<usize> {
-    parse(content, fallback_timezone).map(|events| events.len())
+    let events = parse(content, fallback_timezone)?;
+    // Validate recurrence before a subscription replaces its last working cache.
+    for event in events.iter().filter(|event| !event.cancelled) {
+        super::recurrence::normalize_rule(event.event.recurrence_rule.clone())?;
+    }
+    Ok(events.len())
 }
 
 fn candidate_key(uid: &str, recurrence_id: &str) -> String {

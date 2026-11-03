@@ -95,6 +95,122 @@ test("day calendar retains period navigation, layer filters and keyboard event c
   await expect(page.getByRole("complementary", { name: "New event", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Close event editor", exact: true }).click();
 });
+
+for (const scale of [1, 1.5]) {
+  test(`compact local and imported event titles fit their cards at ${scale}x scale`, async ({ page }, info) => {
+    await page.setViewportSize({ width: 1280 * scale, height: 900 * scale });
+    await openCalendar(page);
+    await page.evaluate(async (scale) => {
+      document.documentElement.style.zoom = String(scale);
+      const source = "/src/ipc/api.ts";
+      const { api } = await import(/* @vite-ignore */ source);
+      const start = new Date();
+      start.setHours(11, 0, 0, 0);
+      const end = new Date(start.getTime() + 15 * 60000);
+      await api.createPlannerEvent({
+        title: "Quick sync",
+        description: "",
+        location: "",
+        meeting_url: null,
+        participants: [],
+        epic_id: null,
+        color: null,
+        all_day: false,
+        start_value: start.toISOString(),
+        end_value: end.toISOString(),
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        recurrence_rule: null,
+      });
+      const original = api.calendarOverlayRange;
+      api.calendarOverlayRange = async (...args: unknown[]) => {
+        const range = await original(...args);
+        return {
+          ...range,
+          occurrences: range.occurrences.map((item: object) => ({
+            ...item,
+            title: "Feed sync",
+            start_value: start.toISOString(),
+            end_value: end.toISOString(),
+          })),
+        };
+      };
+    }, scale);
+    await page.getByRole("button", { name: "Refresh calendar", exact: true }).click();
+    const normal = page.locator(".planner-timed-item.event", { hasText: "Calendar demo" }).locator("strong");
+    const normalSize = await normal.evaluate((element) => parseFloat(getComputedStyle(element).fontSize));
+    for (const title of ["Quick sync", "Feed sync"]) {
+      const card = page.locator(".planner-timed-item", { hasText: title });
+      await expect(card).toBeVisible();
+      const label = card.locator("strong");
+      await expect
+        .poll(() => label.evaluate((element) => parseFloat(getComputedStyle(element).fontSize)))
+        .toBeLessThan(normalSize);
+      await expect
+        .poll(() =>
+          label.evaluate((element) => {
+            const parent = element.parentElement!,
+              style = getComputedStyle(parent);
+            return (
+              element.scrollHeight -
+              (parent.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom))
+            );
+          }),
+        )
+        .toBeLessThanOrEqual(1);
+      await expect
+        .poll(() => label.evaluate((element) => element.scrollWidth - element.clientWidth))
+        .toBeLessThanOrEqual(1);
+      await expect(card).toHaveAttribute("title", new RegExp(title));
+    }
+    await page.screenshot({ path: info.outputPath(`compact-event-titles-${scale}.png`) });
+  });
+}
+
+test("failed imported calendars keep working events and the calendar list available", async ({ page }) => {
+  await openCalendar(page);
+  const working = page.locator(".planner-timed-item.overlay", { hasText: "Design sync" });
+  await expect(working).toBeVisible();
+  await page.evaluate(async () => {
+    const source = "/src/ipc/api.ts";
+    const { api } = await import(/* @vite-ignore */ source);
+    const original = api.calendarOverlayRange;
+    document.documentElement.dataset.testOverlayFailure = "true";
+    api.calendarOverlayRange = async (...args: unknown[]) => {
+      if (document.documentElement.dataset.testOverlayFailure === "true")
+        throw new Error("Imported calendar unavailable");
+      return original(...args);
+    };
+  });
+  await page.getByRole("button", { name: "Refresh calendar", exact: true }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "Imported calendar unavailable" })).toBeVisible();
+  await expect(working).toBeVisible();
+  await expect(page.locator(".planner-timed-item.event", { hasText: "Calendar demo" })).toBeVisible();
+  await page.locator(".calendar-chooser summary").click();
+  await expect(page.getByRole("checkbox", { name: "Team calendar 🔒", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Manage subscriptions…", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Calendar subscriptions", exact: true });
+  await expect(dialog.getByRole("checkbox", { name: "Team calendar", exact: true })).toBeVisible();
+  await dialog.getByRole("button", { name: "Close calendar subscriptions", exact: true }).click();
+  await page.evaluate(() => {
+    document.documentElement.dataset.testOverlayFailure = "false";
+  });
+  await page.getByRole("button", { name: "Retry calendar", exact: true }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "Imported calendar unavailable" })).toHaveCount(0);
+  await expect(working).toBeVisible();
+  await page.evaluate(async () => {
+    const source = "/src/ipc/api.ts";
+    const { api } = await import(/* @vite-ignore */ source);
+    api.previewPlannerIcal = async () => {
+      throw new Error("Invalid iCalendar file");
+    };
+  });
+  await page
+    .locator('input[type="file"]')
+    .setInputFiles({ name: "broken.ics", mimeType: "text/calendar", buffer: Buffer.from("invalid calendar") });
+  await expect(page.getByRole("alert").filter({ hasText: "Invalid iCalendar file" })).toBeVisible();
+  await expect(working).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: "Team calendar 🔒", exact: true })).toBeVisible();
+});
 for (const [route, label] of [
   ["today", "Today"],
   ["week", "My week"],
@@ -311,6 +427,21 @@ test("calendar subscriptions retain visibility, removal and modal focus", async 
   await dialog.getByRole("button", { name: "Add calendar", exact: true }).click();
   await expect(dialog.getByLabel("Name", { exact: true })).toHaveValue("");
   await expect(dialog.getByLabel("Name", { exact: true })).toBeFocused();
+  await dialog.getByRole("button", { name: "Edit Migration calendar", exact: true }).click();
+  await expect(dialog.getByLabel("Name", { exact: true })).toHaveValue("Migration calendar");
+  await dialog.getByLabel("Name", { exact: true }).fill("Edited calendar");
+  await dialog.getByLabel("Replacement URL (optional)", { exact: true }).fill("webcal://example.com/new.ics");
+  await dialog.getByLabel("Refresh", { exact: true }).selectOption("60");
+  await dialog.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect(dialog.getByRole("checkbox", { name: "Edited calendar", exact: true })).toBeChecked();
+  await dialog.getByRole("button", { name: "Edit Edited calendar", exact: true }).click();
+  await expect(dialog.getByLabel("Refresh", { exact: true })).toHaveValue("60");
+  await expect(dialog.getByLabel("Replacement URL (optional)", { exact: true })).toHaveValue("");
+  await dialog.getByRole("button", { name: "Cancel editing", exact: true }).click();
+  await expect(dialog.getByLabel("Subscription URL", { exact: true })).toHaveValue("");
+  await dialog.getByRole("button", { name: "Edit Edited calendar", exact: true }).click();
+  await dialog.getByLabel("Name", { exact: true }).fill("Migration calendar");
+  await dialog.getByRole("button", { name: "Save changes", exact: true }).click();
   await dialog.getByRole("checkbox", { name: "Migration calendar", exact: true }).uncheck();
   await expect(dialog.getByRole("checkbox", { name: "Migration calendar", exact: true })).not.toBeChecked();
   await dialog.getByRole("button", { name: "Remove Migration calendar", exact: true }).click();

@@ -1843,17 +1843,24 @@ export const mockCommands: typeof commands = {
       return structuredClone(item);
     }
   },
-  updateCalendarSubscription: async (id, name, color, visible, refreshMinutes) => {
-    const a: Record<string, unknown> = { id, name, color, visible, refreshMinutes };
+  updateCalendarSubscription: async (id, name, color, visible, refreshMinutes, url) => {
+    const a: Record<string, unknown> = { id, name, color, visible, refreshMinutes, url };
     {
       const item = mockCalendarSubscriptions.find((value) => value.id === a.id);
       if (!item) throw err("not_found", "Calendar subscription not found");
+      if (
+        !String(name).trim() ||
+        Number(refreshMinutes) < 5 ||
+        (url?.trim() && !/^(https|webcal):\/\//i.test(url.trim()))
+      )
+        throw err("invalid", "Invalid calendar subscription settings");
       Object.assign(item, {
         name: String(a.name),
         color: String(a.color),
         visible: Boolean(a.visible),
         refresh_minutes: Number(a.refreshMinutes),
       });
+      if (url?.trim()) Object.assign(item, { has_cache: false, last_success: null, last_error: null });
       return structuredClone(item);
     }
   },
@@ -2637,7 +2644,10 @@ const PARAMS: Record<string, [keyof typeof commands, string[]]> = {
   planner_restore_backup: ["plannerRestoreBackup", ["path"]],
   calendar_subscriptions: ["calendarSubscriptions", []],
   add_calendar_subscription: ["addCalendarSubscription", ["name", "url", "color", "refreshMinutes"]],
-  update_calendar_subscription: ["updateCalendarSubscription", ["id", "name", "color", "visible", "refreshMinutes"]],
+  update_calendar_subscription: [
+    "updateCalendarSubscription",
+    ["id", "name", "color", "visible", "refreshMinutes", "url"],
+  ],
   remove_calendar_subscription: ["removeCalendarSubscription", ["id"]],
   refresh_calendar_subscriptions: ["refreshCalendarSubscriptions", ["force"]],
   calendar_overlay_range: ["calendarOverlayRange", ["from", "to", "timezone"]],

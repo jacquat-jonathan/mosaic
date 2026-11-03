@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type CSSProperties, type RefObject } from "react";
-import { RefreshCw, Trash2 } from "lucide-react";
+import { Pencil, RefreshCw, Trash2 } from "lucide-react";
 import { Button, Dialog, IconButton, Notice, Select, TextField } from "../../design-system/components";
 import { api } from "../../ipc/api";
 import { errorMessage, type CalendarSubscription } from "../../ipc/types";
@@ -31,6 +31,7 @@ export function CalendarSourcesDialog({
     };
   }, []);
   const [name, setName] = useState(""),
+    [editing, setEditing] = useState<CalendarSubscription | null>(null),
     [url, setUrl] = useState(""),
     [color, setColor] = useState("#6477d4"),
     [interval, setIntervalValue] = useState(30),
@@ -67,13 +68,29 @@ export function CalendarSourcesDialog({
       }
     }
   };
-  const add = () =>
+  const reset = () => {
+    setEditing(null);
+    setName("");
+    setUrl("");
+    setColor("#6477d4");
+    setIntervalValue(30);
+    setError(null);
+  };
+  const save = () =>
     run(async () => {
-      await api.addCalendarSubscription(name, url, color, interval);
-      if (current()) {
-        setName("");
-        setUrl("");
+      if (editing) {
+        await api.updateCalendarSubscription(
+          editing.id,
+          name,
+          color,
+          subscriptions.find((item) => item.id === editing.id)?.visible ?? editing.visible,
+          interval,
+          url.trim() || null,
+        );
+      } else {
+        await api.addCalendarSubscription(name, url, color, interval);
       }
+      if (current()) reset();
     }, true);
   return (
     <DesignSystemScope className="calendar-dialog-scope">
@@ -94,8 +111,24 @@ export function CalendarSourcesDialog({
             <Button disabled={busy} onClick={() => void run(() => api.refreshCalendarSubscriptions(true))}>
               <RefreshCw size={16} /> Refresh all
             </Button>
-            <Button variant="secondary" type="submit" form={form} disabled={busy || !name.trim() || !url.trim()}>
-              {busy ? "Working…" : "Add calendar"}
+            {editing && (
+              <Button
+                disabled={busy}
+                onClick={() => {
+                  reset();
+                  first.current?.focus();
+                }}
+              >
+                Cancel editing
+              </Button>
+            )}
+            <Button
+              variant="secondary"
+              type="submit"
+              form={form}
+              disabled={busy || !name.trim() || (!editing && !url.trim())}
+            >
+              {busy ? "Working…" : editing ? "Save changes" : "Add calendar"}
             </Button>
           </>
         }
@@ -118,6 +151,7 @@ export function CalendarSourcesDialog({
                           item.color,
                           event.target.checked,
                           item.refresh_minutes,
+                          null,
                         ),
                       )
                     }
@@ -134,6 +168,21 @@ export function CalendarSourcesDialog({
                 {item.last_error && <Notice tone="warning">{item.last_error}</Notice>}
               </div>
               <IconButton
+                label={`Edit ${item.name}`}
+                disabled={busy}
+                onClick={() => {
+                  setEditing(item);
+                  setName(item.name);
+                  setUrl("");
+                  setColor(item.color);
+                  setIntervalValue(item.refresh_minutes);
+                  setError(null);
+                  first.current?.focus();
+                }}
+              >
+                <Pencil size={16} />
+              </IconButton>
+              <IconButton
                 label={`Remove ${item.name}`}
                 disabled={busy}
                 onClick={() => void run(() => api.removeCalendarSubscription(item.id), true)}
@@ -148,11 +197,11 @@ export function CalendarSourcesDialog({
           className="calendar-source-form"
           onSubmit={(event) => {
             event.preventDefault();
-            void add();
+            void save();
           }}
           aria-busy={busy}
         >
-          <h3>Add subscription</h3>
+          <h3>{editing ? `Edit ${editing.name}` : "Add subscription"}</h3>
           <TextField
             ref={first}
             label="Name"
@@ -163,14 +212,15 @@ export function CalendarSourcesDialog({
             placeholder="Team calendar"
           />
           <TextField
-            label="Subscription URL"
+            label={editing ? "Replacement URL (optional)" : "Subscription URL"}
             value={url}
-            required
+            required={!editing}
             type="url"
             disabled={busy}
             onChange={(event) => setUrl(event.target.value)}
             placeholder="https://… or webcal://…"
           />
+          {editing && <p className="mds-hint">Leave the URL blank to keep the current address.</p>}
           <div className="calendar-dialog-fields">
             <TextField
               label="Color"

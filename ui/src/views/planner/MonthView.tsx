@@ -212,6 +212,7 @@ export function MonthView({
               ) : entry.kind === "overlay" ? (
                 <button
                   className="planner-month-item read-only event-card"
+                  title={`${entry.label} · ${entry.overlay.source_name}`}
                   style={{ borderColor: entry.color }}
                   key={entry.key}
                   onClick={(click) => {

@@ -119,3 +119,57 @@ test("Editor follows the approved themes and stays scoped at maximum scale", asy
   await expect(page.locator(".sidebar .tree.mosaic-ds")).toHaveCount(0);
   await expect(page.locator(".sidebar")).toHaveCSS("font-size", "13px");
 });
+
+test("vault HTML internet defaults load listed sites, page overrides block them and scripts stay separate", async ({
+  page,
+}, info) => {
+  let scriptRequests = 0;
+  await page.route("https://mosaic-preview.example/**", async (route) => {
+    if (route.request().url().endsWith("script.js")) {
+      scriptRequests++;
+      await route.fulfill({ contentType: "application/javascript", body: "document.documentElement.dataset.executed = 'yes';" });
+    } else await route.fulfill({ contentType: "text/css", body: "#external { color: rgb(0, 128, 0); }" });
+  });
+  await openEditor(page);
+  const internet = page.getByRole("switch", { name: "Allow internet in HTML previews", exact: true });
+  await internet.click();
+  await expect(internet).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByRole("switch", { name: "Allow scripts in HTML previews", exact: true })).toHaveAttribute(
+    "aria-checked",
+    "false",
+  );
+  await page.evaluate(async () => {
+    const mock = (
+      window as unknown as {
+        __mosaic: {
+          mockInvoke(command: string, args: object): Promise<unknown>;
+          useVault: { getState(): { refresh(): Promise<void> } };
+          useWorkspace: { getState(): { open(path: string, options: object): Promise<void> } };
+        };
+      }
+    ).__mosaic;
+    await mock.mockInvoke("create_file", {
+      path: "Internet policy.html",
+      content:
+        '<!doctype html><link rel="stylesheet" href="https://mosaic-preview.example/theme.css"><script src="https://mosaic-preview.example/script.js"></script><p id="external">External resource</p>',
+      root: null,
+    });
+    await mock.useVault.getState().refresh();
+    await mock.useWorkspace.getState().open("Internet policy.html", { newTab: true });
+  });
+  const frame = page.frameLocator('iframe[title="Internet policy.html"]');
+  await expect(page.getByRole("alert", { name: "External resource permission" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Internet allowed by vault setting", exact: true })).toBeVisible();
+  await expect(frame.locator("#external")).toHaveCSS("color", "rgb(0, 128, 0)");
+  expect(scriptRequests).toBe(0);
+  await page.screenshot({ path: info.outputPath("html-internet-default.png") });
+  await page.getByRole("button", { name: "Internet allowed by vault setting", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Internet blocked for this page", exact: true })).toBeVisible();
+  await expect(frame.locator("#external")).not.toHaveCSS("color", "rgb(0, 128, 0)");
+  await page.getByRole("button", { name: "Scripts blocked by vault setting", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Scripts allowed for this page", exact: true })).toBeVisible();
+  expect(scriptRequests).toBe(0);
+  await page.getByRole("button", { name: "Internet blocked for this page", exact: true }).click();
+  await expect(frame.locator("html")).toHaveAttribute("data-executed", "yes");
+  await expect(frame.locator("#external")).toHaveCSS("color", "rgb(0, 128, 0)");
+});

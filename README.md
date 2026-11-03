@@ -38,8 +38,9 @@ Links you click open in your browser.
   widths are remembered in app storage.
 - **Visuals:** JSON Canvas boards (`.canvas`, Obsidian's format), Excalidraw drawings
   (`.excalidraw`), charts (`.vl.json`) and graphs (`.dot`).
-- **Other files:** sandboxed HTML preview and source editing, a PDF viewer, an editable CSV/TSV
-  table, and a syntax-highlighted editor for JSON, YAML, code and text.
+- **Other files:** sandboxed HTML preview and source editing, with separate per-vault script/internet
+  defaults and per-page session overrides; a PDF viewer, an editable CSV/TSV table, and a
+  syntax-highlighted editor for JSON, YAML, code and text.
 - **Navigation:** Notes, Find, Plan and AI destinations; full-text search (`tag:`, `path:`,
   `"phrases"`), bookmarks, tags, the ⌘O quick switcher and the ⌘P command palette. Notes and feature
   views share tabs and split panes; resizable context panels follow the active item.

@@ -984,9 +984,14 @@ export type VaultPreferences = {
 	show_attachments_in_tree?: boolean,
 	/**
 	 *  Allows scripts by default in sandboxed HTML previews. Individual previews may override this
-	 *  for the current app session; the preview CSP still denies network access.
+	 *  for the current app session. Internet access is configured separately.
 	 */
 	allow_html_scripts?: boolean,
+	/**
+	 *  Allows each HTML preview's listed external origins without a per-page prompt.
+	 *  Individual previews may block internet access for the current app session.
+	 */
+	allow_html_internet?: boolean,
 	link_style?: LinkStyle,
 	startup_note?: string,
 	folder_colors?: { [key in string]: string },

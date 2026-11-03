@@ -18,3 +18,11 @@
 .mosaic-ds.editor-files-settings[data-density="compact"] .mds-setting-row {
   padding-block: var(--mds-space-5);
 }
+
+.mosaic-ds.editor-files-settings .editor-settings-heading {
+  margin: var(--mds-space-6) 0 var(--mds-space-2);
+  font-size: 14px;
+}
+.mosaic-ds.editor-files-settings .editor-settings-heading:first-child {
+  margin-top: 0;
+}

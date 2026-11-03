@@ -127,7 +127,8 @@ export function Settings() {
 const SETTING_WORDS: Partial<Record<SettingsSection, string>> = {
   appearance:
     "theme system light dark note text size width font code font line spacing heading scale accent color interface scale density preview local fallback",
-  editor: "spellcheck source line numbers trash confirmation HTML preview scripts vault security",
+  editor:
+    "spellcheck source line numbers trash confirmation HTML preview scripts internet network external resources vault security",
   vault:
     "agents daily notes folder template new notes attachments folder colors creation discovery current root fixed missing create folder",
   templates: "templates defaults folder assignments rules starters preview",

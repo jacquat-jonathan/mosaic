@@ -37,8 +37,11 @@ fn vault_preferences_are_scoped_preserved_and_used_by_the_core() {
         )
         .unwrap();
     assert!(!wa.vault_preferences().unwrap().allow_html_scripts);
-    wa.set_vault_preferences(json!({"agents_folder":"People","daily_folder":"Journal","daily_format":"DD-MM-YYYY","allow_html_scripts":true,"future":{"keep":true},"folder_colors":{"People":"purple"}})).unwrap();
+    assert!(!wa.vault_preferences().unwrap().allow_html_internet);
+    wa.set_vault_preferences(json!({"agents_folder":"People","daily_folder":"Journal","daily_format":"DD-MM-YYYY","allow_html_scripts":true,"allow_html_internet":true,"future":{"keep":true},"folder_colors":{"People":"purple"}})).unwrap();
     assert!(wa.vault_preferences().unwrap().allow_html_scripts);
+    assert!(wa.vault_preferences().unwrap().allow_html_internet);
+    assert!(!wb.vault_preferences().unwrap().allow_html_internet);
     assert_eq!(wa.agents().unwrap().len(), 1);
     assert_eq!(wa.agents().unwrap()[0].name, "review");
     assert!(wa.files.read("Agents/Old.md").is_ok());

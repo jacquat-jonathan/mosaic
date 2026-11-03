@@ -19,6 +19,7 @@ export const DEFAULT_VAULT_PREFS: VaultPreferences = {
   attachment_folder: "",
   show_attachments_in_tree: false,
   allow_html_scripts: false,
+  allow_html_internet: false,
   link_style: "wiki",
   startup_note: "",
   folder_colors: {},

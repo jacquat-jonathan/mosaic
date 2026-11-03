@@ -21,8 +21,11 @@ pub struct VaultPreferences {
     pub attachment_folder: String,
     pub show_attachments_in_tree: bool,
     /// Allows scripts by default in sandboxed HTML previews. Individual previews may override this
-    /// for the current app session; the preview CSP still denies network access.
+    /// for the current app session. Internet access is configured separately.
     pub allow_html_scripts: bool,
+    /// Allows each HTML preview's listed external origins without a per-page prompt.
+    /// Individual previews may block internet access for the current app session.
+    pub allow_html_internet: bool,
     #[cfg_attr(feature = "specta", specta(type = choices::LinkStyle))]
     pub link_style: String,
     pub startup_note: String,
@@ -85,6 +88,7 @@ impl Default for VaultPreferences {
             attachment_folder: String::new(),
             show_attachments_in_tree: false,
             allow_html_scripts: false,
+            allow_html_internet: false,
             link_style: "wiki".into(),
             startup_note: String::new(),
             folder_colors: BTreeMap::new(),

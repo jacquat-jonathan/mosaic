@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { RotateCcw } from "lucide-react";
 import { Button, IconButton, Notice, SettingRow, Switch } from "../design-system/components";
 import { DEFAULT_PREFS, useSettings } from "../state/settings";
@@ -44,46 +44,59 @@ function EditorPreference({ name, label, hint }: (typeof EDITOR_PREFERENCES)[num
 function HtmlPreviewPreference() {
   const { root, value, error: loadError } = useVaultPreferences();
   const [busy, setBusy] = useState(false);
+  const pending = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const id = useId();
   const problem = error ?? loadError;
   const disabled = busy || !root || !!loadError;
-  const update = async (checked: boolean) => {
-    if (disabled) return;
+  const update = async (name: "allow_html_scripts" | "allow_html_internet", checked: boolean) => {
+    if (disabled || pending.current) return;
+    pending.current = true;
     setBusy(true);
     setError(null);
     try {
-      await saveVaultPreferences({ allow_html_scripts: checked });
+      await saveVaultPreferences({ [name]: checked });
     } catch (cause) {
       setError(errorMessage(cause));
     } finally {
+      pending.current = false;
       setBusy(false);
     }
   };
   return (
     <>
-      <SettingRow
-        label="Allow scripts in HTML previews"
-        hint="Allows scripts by default for HTML files in this vault. Each preview can override this for the current session. Internet access is requested separately and remains blocked by default."
-        controlId={id}
-        hintId={`${id}-hint`}
-      >
-        <Switch
-          id={id}
-          label="Allow scripts in HTML previews"
-          aria-describedby={`${id}-hint${problem ? ` ${id}-error` : ""}`}
-          checked={value.allow_html_scripts}
-          disabled={disabled}
-          onCheckedChange={(checked) => void update(checked)}
-        />
-        <IconButton
-          label="Reset Allow scripts in HTML previews"
-          disabled={disabled}
-          onClick={() => void update(DEFAULT_VAULT_PREFS.allow_html_scripts)}
-        >
-          <RotateCcw aria-hidden="true" />
-        </IconButton>
-      </SettingRow>
+      {(
+        [
+          {
+            name: "allow_html_scripts",
+            label: "Allow scripts in HTML previews",
+            hint: "Run scripts by default for HTML files in this vault. Internet access has its own setting below. Each preview can override scripts for the current session.",
+          },
+          {
+            name: "allow_html_internet",
+            label: "Allow internet in HTML previews",
+            hint: "Load each HTML page’s listed external sites without asking. Each preview can block internet access for the current session. Scripts have their own setting above.",
+          },
+        ] as const
+      ).map(({ name, label, hint }) => (
+        <SettingRow key={name} label={label} hint={hint} controlId={`${id}-${name}`} hintId={`${id}-${name}-hint`}>
+          <Switch
+            id={`${id}-${name}`}
+            label={label}
+            aria-describedby={`${id}-${name}-hint${problem ? ` ${id}-error` : ""}`}
+            checked={value[name]}
+            disabled={disabled}
+            onCheckedChange={(checked) => void update(name, checked)}
+          />
+          <IconButton
+            label={`Reset ${label}`}
+            disabled={disabled}
+            onClick={() => void update(name, DEFAULT_VAULT_PREFS[name])}
+          >
+            <RotateCcw aria-hidden="true" />
+          </IconButton>
+        </SettingRow>
+      ))}
       {busy && (
         <p className="mds-hint editor-settings-note" role="status">
           Saving HTML preview policy…
@@ -102,10 +115,12 @@ export function EditorFilesSettings() {
   const root = useVaultPreferences((s) => s.root);
   return (
     <DesignSystemScope className="editor-files-settings" role="group" aria-label="Editor & files preferences">
+      <h3 className="editor-settings-heading">Editing & files</h3>
       {EDITOR_PREFERENCES.map((preference) => (
         <EditorPreference key={preference.name} {...preference} />
       ))}
-      <p className="mds-hint editor-settings-note">HTML preview policy is stored for the open vault.</p>
+      <h3 className="editor-settings-heading">HTML previews</h3>
+      <p className="mds-hint">These defaults belong to the open vault. Both are off by default.</p>
       <HtmlPreviewPreference key={root} />
       <p className="mds-hint editor-settings-note">
         Daily notes, new note destinations and attachments are configured per vault in Vault folders. Connections and

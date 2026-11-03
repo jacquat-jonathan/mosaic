@@ -8,6 +8,7 @@ import "./editorControls.css";
 import { isDark } from "../theme";
 import type { EditorContext } from "./context";
 import { imageWithWidth } from "./imageResize";
+import { imageMenu } from "./imageMenu";
 
 import { blockRenderers, showRenderError as showError } from "./blocks";
 import { errorMessage } from "../ipc/types";
@@ -189,6 +190,7 @@ export class ImageWidget extends WidgetType {
   toDOM(view: EditorView) {
     const wrap = document.createElement("span");
     wrap.className = "cm-embed-image";
+    let resetSize: (() => void) | undefined;
     if (this.remote) {
       wrap.classList.add("cm-embed-missing");
       wrap.textContent = `Remote image not loaded (offline mode): ${this.remote}`;
@@ -227,6 +229,7 @@ export class ImageWidget extends WidgetType {
             );
           }
         };
+        if (this.width) resetSize = () => commit(null);
         handle.addEventListener("pointerdown", (event) => {
           if (event.button !== 0) return;
           event.preventDefault();
@@ -282,7 +285,7 @@ export class ImageWidget extends WidgetType {
         wrap.appendChild(handle);
       }
     }
-    revealOnClick(wrap, view, () => view.posAtDOM(wrap));
+    imageMenu(wrap, view, this.ctx, this.path, this.source, resetSize);
     return wrap;
   }
   ignoreEvent() {

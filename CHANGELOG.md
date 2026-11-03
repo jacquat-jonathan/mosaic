@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Image actions on right-click:** clicking an embedded image keeps it rendered. Open, copy, reset its size or edit its Markdown source from the context menu; keyboard users can open that menu with Shift+F10.
+
 - **Icons that match their purpose:** Templates, Calendar & links, Connections & safety, and Workspace settings have distinct icons. Workspace tabs match their destination, and runs awaiting review use an eye instead of the queued-status clock.
 
 ## 0.27.0 — 2026-10-30

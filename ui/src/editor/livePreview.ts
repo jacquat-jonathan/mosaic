@@ -493,7 +493,11 @@ function decorateImage(
   const alt = marks.length >= 2 ? doc.sliceString(marks[0].to, marks[1].from) : "";
   const src = url ? decodeURI(doc.sliceString(url.from, url.to).replace(/^<|>$/g, "")) : "";
   const widget = isExternal(src)
-    ? new ImageWidget(null, alt, null, ctx, src)
+    ? new ImageWidget(null, alt, null, ctx, src, {
+        from: node.from,
+        to: node.to,
+        text: doc.sliceString(node.from, node.to),
+      })
     : new ImageWidget(ctx.resolve(src, true), alt || src, embedWidth(alt.includes("|") ? alt : null), ctx, null, {
         from: node.from,
         to: node.to,

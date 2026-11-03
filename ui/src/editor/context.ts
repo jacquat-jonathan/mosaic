@@ -7,6 +7,8 @@ export interface EditorContext {
   resolve(target: string, markdown?: boolean): string | null;
   /** Opens a wikilink / markdown link target (creating the note if unresolved). */
   openLink(target: string, newTab: boolean): void;
+  /** Open an already resolved vault file in a new tab. */
+  openFile?(path: string): void;
   openExternal(url: string): void;
   openTag(tag: string): void;
   fileUrl(path: string): Promise<string>;

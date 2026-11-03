@@ -54,6 +54,10 @@ for (const [syntax, scale] of [
     const handle = page.getByRole("button", { name: /^Resize image / });
     await expect(image).toBeVisible();
     await expect(image).toHaveJSProperty("naturalWidth", 600);
+    const beforeClick = await readNote(page);
+    await image.click();
+    await expect(image).toBeVisible();
+    expect(await readNote(page)).toBe(beforeClick);
     await handle.focus();
     await handle.press("ArrowRight");
     await expect.poll(() => readNote(page)).toContain("|250");
@@ -90,5 +94,60 @@ for (const [syntax, scale] of [
     await page.mouse.up();
     await expect(image).toHaveAttribute("width", String(smaller));
     expect(await readNote(page)).toContain(`|${smaller}`);
+    await page.evaluate(() => {
+      const state = { text: "", pngBytes: 0, pngType: "", pngWidth: 0, fail: false };
+      (window as unknown as { imageClipboard: typeof state }).imageClipboard = state;
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: {
+          writeText: async (text: string) => {
+            state.text = text;
+          },
+          write: async (items: ClipboardItem[]) => {
+            if (state.fail) throw new Error("Clipboard denied");
+            const blob = await items[0].getType("image/png");
+            state.pngBytes = blob.size;
+            state.pngType = blob.type;
+            const url = URL.createObjectURL(blob);
+            try {
+              const img = new Image();
+              img.src = url;
+              await img.decode();
+              state.pngWidth = img.naturalWidth;
+            } finally {
+              URL.revokeObjectURL(url);
+            }
+          },
+        },
+      });
+    });
+    await image.click({ button: "right" });
+    const menu = page.getByRole("menu", { name: "Actions", exact: true });
+    await expect(menu).toBeVisible();
+    await page.screenshot({ path: info.outputPath(`image-actions-${syntax}.png`) });
+    await menu.getByRole("menuitem", { name: "Copy image reference", exact: true }).click();
+    await expect
+      .poll(() => page.evaluate(() => (window as unknown as { imageClipboard: { text: string } }).imageClipboard.text))
+      .toContain(`|${smaller}`);
+    await image.click({ button: "right" });
+    await menu.getByRole("menuitem", { name: "Copy image", exact: true }).click();
+    await expect
+      .poll(() =>
+        page.evaluate(() => (window as unknown as { imageClipboard: { pngWidth: number } }).imageClipboard.pngWidth),
+      )
+      .toBe(600);
+    expect(
+      await page.evaluate(() => (window as unknown as { imageClipboard: { pngType: string } }).imageClipboard.pngType),
+    ).toBe("image/png");
+    await image.click({ button: "right" });
+    await menu.getByRole("menuitem", { name: "Reset image size", exact: true }).click();
+    await expect(image).not.toHaveAttribute("width");
+    await image.click();
+    await page.getByRole("group", { name: "Image actions", exact: true }).press("Shift+F10");
+    await menu.getByRole("menuitem", { name: "Edit image source", exact: true }).click();
+    await expect(image).toHaveCount(0);
+    await expect(page.locator(".cm-content")).toContainText(
+      syntax === "wiki" ? "![[Resize.svg]]" : "![Diagram](Resize.svg)",
+    );
   });
 }

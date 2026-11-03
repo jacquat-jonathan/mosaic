@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
-import { MoreHorizontal } from "lucide-react";
+import { Ellipsis } from "lucide-react";
 import { Badge, Button, IconButton, Notice } from "../design-system/components";
 import { errorMessage } from "../ipc/types";
 import { useChat, chatGroup } from "../state/chat";
@@ -155,7 +155,7 @@ function ChatRows({ fallback }: { fallback?: RefObject<HTMLButtonElement | null>
                       ]);
                     }}
                   >
-                    <MoreHorizontal aria-hidden="true" />
+                    <Ellipsis aria-hidden="true" />
                   </IconButton>
                 </div>
               );

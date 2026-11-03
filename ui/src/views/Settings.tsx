@@ -1,5 +1,17 @@
 import { useRef, useState } from "react";
-import { ArrowRight, FolderOpen, Info, Keyboard, Palette, PenLine, X } from "lucide-react";
+import {
+  ArrowRight,
+  CalendarDays,
+  FileStack,
+  FolderOpen,
+  Info,
+  Keyboard,
+  Palette,
+  PanelsTopLeft,
+  PenLine,
+  Plug,
+  X,
+} from "lucide-react";
 import { Button, IconButton, TextField } from "../design-system/components";
 import { useUi, type SettingsSection } from "../state/ui";
 import { useWorkspace } from "../state/workspace";
@@ -18,10 +30,10 @@ const SECTIONS: { id: SettingsSection; label: string; icon: typeof Palette }[] =
   { id: "appearance", label: "Appearance", icon: Palette },
   { id: "editor", label: "Editor & files", icon: PenLine },
   { id: "vault", label: "Vault folders", icon: FolderOpen },
-  { id: "templates", label: "Templates", icon: PenLine },
-  { id: "calendar", label: "Calendar & links", icon: PenLine },
-  { id: "workspace", label: "Workspace", icon: FolderOpen },
-  { id: "ai", label: "Connections & safety", icon: PenLine },
+  { id: "templates", label: "Templates", icon: FileStack },
+  { id: "calendar", label: "Calendar & links", icon: CalendarDays },
+  { id: "workspace", label: "Workspace", icon: PanelsTopLeft },
+  { id: "ai", label: "Connections & safety", icon: Plug },
   { id: "shortcuts", label: "Shortcuts", icon: Keyboard },
   { id: "about", label: "About & updates", icon: Info },
 ];

@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useRef, useState, type DragEvent } from "react";
-import { CalendarDays, Columns2, PanelLeftOpen, PanelRight, MoreHorizontal, X } from "lucide-react";
+import { Columns2, PanelLeftOpen, PanelRight, Ellipsis, X } from "lucide-react";
+import { specialTabIcon } from "./specialTabIcon";
 import { isSpecialTab, specialTabName, parseView, contextKind } from "./specialTabs";
 import { useWorkspace, type Pane, type SplitDirection } from "../state/workspace";
 import { useVault } from "../state/vault";
@@ -236,7 +237,7 @@ function PaneView({ pane, topLeft, topRight }: { pane: Pane; topLeft: boolean; t
             );
           }}
         >
-          <MoreHorizontal size={16} />
+          <Ellipsis size={16} />
         </IconButton>
         {topRight && contextKind(pane.active) && (
           <IconButton
@@ -358,7 +359,7 @@ function Tab({
         ]);
       }}
     >
-      <span className="tab-icon">{special ? <CalendarDays size={13} /> : kindIcon(kind, 13)}</span>
+      <span className="tab-icon">{special ? specialTabIcon(path) : kindIcon(kind, 13)}</span>
       <span className="tab-name">{name}</span>
       <IconButton
         className={`tab-close ${dirty ? "dirty" : ""}`}

@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Icons that match their purpose:** Templates, Calendar & links, Connections & safety, and Workspace settings have distinct icons. Workspace tabs match their destination, and runs awaiting review use an eye instead of the queued-status clock.
+
 ## 0.27.0 — 2026-10-30
 
 - **A consistent interface throughout Mosaic:** refreshed navigation, settings, dialogs, notes, planning, AI tools, and file previews share larger, readable text and clearer controls. Narrow windows and interface scaling keep actions within reach.

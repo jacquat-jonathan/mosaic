@@ -127,7 +127,10 @@ test("vault HTML internet defaults load listed sites, page overrides block them 
   await page.route("https://mosaic-preview.example/**", async (route) => {
     if (route.request().url().endsWith("script.js")) {
       scriptRequests++;
-      await route.fulfill({ contentType: "application/javascript", body: "document.documentElement.dataset.executed = 'yes';" });
+      await route.fulfill({
+        contentType: "application/javascript",
+        body: "document.documentElement.dataset.executed = 'yes';",
+      });
     } else await route.fulfill({ contentType: "text/css", body: "#external { color: rgb(0, 128, 0); }" });
   });
   await openEditor(page);

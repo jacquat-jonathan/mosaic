@@ -94,7 +94,9 @@ bash scripts/check.sh
 
 The gate checks Rust formatting, Clippy and tests, TypeScript, Biome, Vitest, and
 Chrome/WebKit workflows. Browser workflows use the mock vault, not a packaged app.
-PR/main CI additionally enforces Rust/UI coverage through `MOSAIC_COVERAGE=1`.
+PR/main CI additionally enforces Rust coverage through `MOSAIC_COVERAGE=1`. UI checks
+and four E2E shards (two per browser) run in parallel; **UI coverage** merges their
+coverage maps and enforces the combined UI floors after every test job passes.
 Report failures and environmental limitations accurately; do not silently skip checks.
 The local Rust checks warm the Cargo cache needed by the script's offline lock update.
 
@@ -142,7 +144,9 @@ Write that PR body file first with the final release scope and actual validation
 If a PR already exists, update it rather than creating another one. The handoff must
 include the PR URL, release commit SHA, tag target, checks, and remaining steps.
 
-Wait for **Rust** and **UI** to pass. When merge is authorized, use **Create a merge
+Wait for **Rust**, **UI checks**, all four **E2E** shards and **UI coverage** to pass.
+If branch protection requires the former **UI** check, replace it with **UI coverage**,
+which also requires every UI test job to succeed. When merge is authorized, use **Create a merge
 commit** to preserve the tagged release commit; do not squash or rebase the release
 PR. Merging creates a separate merge commit on `main`; keep the tag on the original
 `Release X.Y.Z` commit. Do not recreate it at `HEAD` or `origin/main`.

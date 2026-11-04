@@ -264,6 +264,12 @@ watchers. Install the optional local test browser once with `pnpm --dir ui exec 
 Install coverage support with `cargo install cargo-llvm-cov --locked --version 0.9.1`; reports are
 written to `coverage/rust.lcov` and `ui/coverage/`.
 
+PR/main CI runs **UI checks** (TypeScript, Biome and unit/component tests) alongside four
+**E2E** jobs: two shards each for Chrome and WebKit. **UI coverage** waits for all of them,
+merges their Istanbul coverage maps and enforces the combined coverage floors. Each shard has
+its own status, duration and failure diagnostics in GitHub Actions. Local `pnpm --dir ui coverage`
+still runs the complete unit/browser suite and coverage gate in one command.
+
 Layout:
 
 | Path | What |

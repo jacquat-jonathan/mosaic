@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+## 0.28.0 — 2026-11-04
+
 - **Resize images in notes:** drag an image's resize handle or use its arrow-key controls, and reset its size with Home or a double-click. Widths are saved in Markdown and wiki-style image links so they survive reopening and travel with the note.
 - **More direct calendar planning:** resize either end of timed events and work sessions, move scheduled items without opening an editor, and see a preview while dragging an open task onto the calendar. Event titles stay readable in short cards and narrow columns.
 - **Subtasks where you work:** create, open, complete and reorder subtasks from a task's details, including with keyboard controls. The calendar's open-task list groups tasks by epic and status, keeps nested subtasks together and hides completed work.

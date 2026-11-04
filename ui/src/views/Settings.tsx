@@ -126,7 +126,7 @@ export function Settings() {
 }
 const SETTING_WORDS: Partial<Record<SettingsSection, string>> = {
   appearance:
-    "theme system light dark note text size width font code font line spacing heading scale accent color interface scale density preview local fallback",
+    "theme palette classic paper forest ocean dusk system light dark note text size width font code font line spacing heading scale accent color interface scale density preview local fallback",
   editor:
     "spellcheck source line numbers trash confirmation HTML preview scripts internet network external resources vault security",
   vault:

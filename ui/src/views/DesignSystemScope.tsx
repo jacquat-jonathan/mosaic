@@ -1,4 +1,5 @@
 import type { CSSProperties, HTMLAttributes } from "react";
+import { APP_THEME_TOKENS } from "../design-system/appTheme";
 import { useSettings } from "../state/settings";
 import "../design-system/tokens.css";
 import "../design-system/controls.css";
@@ -18,7 +19,7 @@ export function DesignSystemScope({
       className={["mosaic-ds", className].filter(Boolean).join(" ")}
       data-theme={theme}
       data-density={density}
-      style={{ "--mds-accent": "var(--accent)", ...style } as CSSProperties}
+      style={{ colorScheme: "inherit", ...APP_THEME_TOKENS, ...style } as CSSProperties}
     />
   );
 }

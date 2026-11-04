@@ -63,3 +63,99 @@
 .mosaic-ds.appearance-settings .appearance-preview input {
   accent-color: var(--mds-accent);
 }
+.color-theme-setting {
+  padding-block: var(--mds-space-8);
+  border-bottom: 1px solid var(--mds-border);
+  min-width: 0;
+}
+.color-theme-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.color-theme-heading h3 {
+  font-size: var(--mds-text-body);
+  margin: 0;
+}
+.color-theme-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(135px, 100%), 1fr));
+  gap: var(--mds-space-5);
+  margin-top: var(--mds-space-6);
+}
+.color-theme-option {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: var(--mds-space-6);
+  border: 1px solid var(--mds-border);
+  border-radius: var(--mds-radius-group);
+  background: var(--mds-surface);
+  cursor: pointer;
+  min-width: 0;
+}
+.color-theme-option[data-selected="true"] {
+  border-color: var(--mds-accent);
+  box-shadow: inset 0 0 0 1px var(--mds-accent);
+}
+.color-theme-option:focus-within {
+  outline: var(--mds-focus-width) solid var(--mds-accent);
+  outline-offset: var(--mds-focus-offset);
+}
+.color-theme-option input {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  accent-color: var(--mds-accent);
+  margin: 0;
+}
+.color-theme-option strong {
+  margin-top: var(--mds-space-5);
+}
+.color-theme-option small {
+  color: var(--mds-text-muted);
+  font-size: var(--mds-text-small);
+}
+.color-theme-swatches {
+  display: flex;
+  height: 58px;
+  margin-top: 10px;
+  gap: 3px;
+}
+.color-theme-swatch {
+  position: relative;
+  overflow: hidden;
+  background: var(--swatch-bg);
+  border: 1px solid var(--swatch-side);
+  border-radius: 4px;
+  flex: 1;
+}
+.color-theme-swatch > span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 25%;
+  background: var(--swatch-side);
+}
+.color-theme-swatch i {
+  position: absolute;
+  top: 30%;
+  left: 36%;
+  right: 12%;
+  height: 3px;
+  background: var(--swatch-text);
+  opacity: 0.65;
+}
+.color-theme-swatch i + i {
+  top: 45%;
+  right: 24%;
+  opacity: 0.35;
+}
+.color-theme-swatch b {
+  position: absolute;
+  bottom: 14%;
+  left: 36%;
+  width: 25%;
+  height: 7px;
+  border-radius: 2px;
+  background: var(--swatch-accent);
+}

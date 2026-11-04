@@ -73,8 +73,9 @@ Only the gallery stylesheet resets `body`; never import it into the application.
 
 `views/DesignSystemScope.tsx` adapts the existing app preferences to one opt-in surface.
 It imports only foundation tokens and control styles, sets an explicit local theme scope
-(needed when the app forces a theme different from the system), and maps `--mds-accent`
-to the user's existing accent. Interface scale continues to use the document's existing zoom,
+(needed when the app forces a theme different from the system), and maps app surfaces, text,
+borders, accents and semantic colors through `appTheme.ts`. `colorThemes.ts` supplies Classic, Paper,
+Forest, Ocean and Dusk with paired light/dark colors; editor DOM controls use the same bridge. Interface scale continues to use the document's existing zoom,
 so it is applied once. Comfortable rows use the approved 14px spacing; Compact uses the
 existing 10px spacing token within this screen. Other migrated sections own their scoped layouts.
 

@@ -1,3 +1,4 @@
+import { APP_THEME_TOKENS } from "../design-system/appTheme";
 import "../design-system/tokens.css";
 import "../design-system/controls.css";
 /** App-owned DOM chrome inside CodeMirror/static Markdown. CSS aliases follow live app
@@ -5,22 +6,7 @@ import "../design-system/controls.css";
 export function editorScope<T extends HTMLElement>(element: T): T {
   element.classList.add("mosaic-ds", "editor-controls");
   element.style.colorScheme = "inherit";
-  for (const [token, app] of Object.entries({
-    surface: "bg",
-    "surface-subtle": "bg-side",
-    "surface-hover": "bg-hover",
-    "surface-selected": "bg-active",
-    text: "fg",
-    "text-muted": "muted",
-    "text-faint": "faint",
-    border: "border",
-    accent: "accent",
-    danger: "danger",
-    "warning-surface": "warn-bg",
-    "error-surface": "err-bg",
-    "shadow-floating": "shadow",
-  }))
-    element.style.setProperty(`--mds-${token}`, `var(--${app})`);
+  for (const [token, value] of Object.entries(APP_THEME_TOKENS)) element.style.setProperty(token, value);
   return element;
 }
 export function editorButton<T extends HTMLButtonElement>(button: T): T {

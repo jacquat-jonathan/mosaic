@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **More color themes:** choose Classic, Paper, Forest, Ocean or Dusk in Appearance, with light/dark previews. Palettes follow System mode across notes and app controls; use the theme accent or choose your own color.
+
 - **HTML preview defaults per vault:** optionally allow listed external sites without approving each page. Script permission stays separate, and individual pages can still block internet access for the session.
 
 - **Image actions on right-click:** clicking an embedded image keeps it rendered. Open, copy, reset its size or edit its Markdown source from the context menu; keyboard users can open that menu with Shift+F10.

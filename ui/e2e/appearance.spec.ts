@@ -81,7 +81,8 @@ test("appearance resets respect cancellation and other settings", async ({ page 
     noteWidth: "medium",
     lineSpacing: 1.7,
     headingScale: 1,
-    accent: "blue",
+    colorTheme: "classic",
+    accent: "theme",
     uiScale: 1,
     density: "comfortable",
   });

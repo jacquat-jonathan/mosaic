@@ -1,13 +1,15 @@
-import { useId, type ReactNode } from "react";
+import { useId, type CSSProperties, type ReactNode } from "react";
 import { RotateCcw } from "lucide-react";
 import { Button, IconButton, SegmentedControl, SettingRow } from "../design-system/components";
 import { DEFAULT_PREFS, NOTE_SIZE_MAX, NOTE_SIZE_MIN, useSettings } from "../state/settings";
 import { useUi } from "../state/ui";
 import { DesignSystemScope } from "./DesignSystemScope";
+import { COLOR_THEMES } from "../colorThemes";
 import "./appearanceSettings.css";
 
 const APPEARANCE_KEYS = [
   "theme",
+  "colorTheme",
   "noteSize",
   "noteWidth",
   "noteFont",
@@ -86,6 +88,64 @@ function RangePreference({
   );
 }
 
+function ColorThemePicker() {
+  const selected = useSettings((state) => state.colorTheme);
+  const id = useId();
+  return (
+    <section className="color-theme-setting" aria-labelledby={`${id}-label`}>
+      <div className="color-theme-heading">
+        <h3 id={`${id}-label`}>Color theme</h3>
+        <IconButton
+          label="Reset Color theme"
+          onClick={() => useSettings.getState().set("colorTheme", DEFAULT_PREFS.colorTheme)}
+        >
+          <RotateCcw aria-hidden="true" />
+        </IconButton>
+      </div>
+      <p className="mds-hint" id={`${id}-hint`}>
+        Each palette has light and dark colors. System follows macOS.
+      </p>
+      <div className="color-theme-options" role="radiogroup" aria-label="Color theme" aria-describedby={`${id}-hint`}>
+        {COLOR_THEMES.map((palette) => (
+          <label key={palette.id} className="color-theme-option" data-selected={selected === palette.id}>
+            <input
+              type="radio"
+              name={id}
+              value={palette.id}
+              aria-label={palette.name}
+              checked={selected === palette.id}
+              onChange={() => useSettings.getState().set("colorTheme", palette.id)}
+            />
+            <span className="color-theme-swatches" aria-hidden="true">
+              {(["light", "dark"] as const).map((mode) => (
+                <span
+                  key={mode}
+                  className="color-theme-swatch"
+                  style={
+                    {
+                      "--swatch-bg": palette[mode].bg,
+                      "--swatch-side": palette[mode].side,
+                      "--swatch-text": palette[mode].text,
+                      "--swatch-accent": palette[mode].accent,
+                    } as CSSProperties
+                  }
+                >
+                  <span />
+                  <i />
+                  <i />
+                  <b />
+                </span>
+              ))}
+            </span>
+            <strong>{palette.name}</strong>
+            <small>{palette.description}</small>
+          </label>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export function AppearanceSettings() {
   const s = useSettings();
   return (
@@ -110,6 +170,7 @@ export function AppearanceSettings() {
           />
         )}
       </AppearanceRow>
+      <ColorThemePicker />
       <RangePreference
         name="noteSize"
         label="Note text size"
@@ -164,7 +225,11 @@ export function AppearanceSettings() {
       ))}
       <RangePreference name="lineSpacing" label="Line spacing" min={1.3} max={2.2} step={0.1} />
       <RangePreference name="headingScale" label="Heading scale" min={0.85} max={1.3} step={0.05} />
-      <AppearanceRow name="accent" label="Accent color">
+      <AppearanceRow
+        name="accent"
+        label="Accent color"
+        hint="Theme default follows the selected palette. Custom colors apply to every palette."
+      >
         {(control) => (
           <select
             {...control}
@@ -172,6 +237,7 @@ export function AppearanceSettings() {
             value={s.accent}
             onChange={(event) => s.set("accent", event.target.value as typeof s.accent)}
           >
+            <option value="theme">Theme default</option>
             <option value="blue">Blue</option>
             <option value="green">Green</option>
             <option value="violet">Violet</option>

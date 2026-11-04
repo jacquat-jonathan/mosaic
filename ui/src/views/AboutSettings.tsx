@@ -2,11 +2,13 @@ import { useEffect, useId, useRef, useState } from "react";
 import { Download, RefreshCw, X } from "lucide-react";
 import { Badge, Button, Notice, SettingRow } from "../design-system/components";
 import { api, openExternal } from "../ipc/api";
-import { errorMessage, type UpdateCheck, type UpdateStatus } from "../ipc/types";
+import { errorMessage, type UpdateStatus } from "../ipc/types";
 import { renderInlineMarkdown } from "../markdown";
 import { leaveAllDrafts } from "../state/drafts";
-import { useUpdateFlow } from "../state/updates";
+import { useUpdateFlow, checkForUpdates, downloadUpdate } from "../state/updates";
 import { useWorkspace } from "../state/workspace";
+import { useSettings } from "../state/settings";
+import { AppPreference } from "./PreferenceControls";
 import { DesignSystemScope } from "./DesignSystemScope";
 import "./aboutSettings.css";
 
@@ -21,23 +23,36 @@ async function saveAll(): Promise<boolean> {
 }
 
 export function AboutSettings() {
+  const autoCheck = useSettings((s) => s.autoCheckUpdates);
   return (
     <DesignSystemScope className="about-settings" role="group" aria-label="About and update preferences">
+      <AppPreference
+        name="autoCheckUpdates"
+        label="Automatically check for updates"
+        hint="App-wide · Check on launch and once a day while Mosaic is open."
+      />
+      {autoCheck && (
+        <AppPreference
+          name="autoDownloadUpdates"
+          label="Automatically download updates"
+          hint="App-wide · Download and verify signed updates in the background. You choose when to install and restart."
+        />
+      )}
       <Updates />
     </DesignSystemScope>
   );
 }
 function Updates() {
   const [status, setStatus] = useState<UpdateStatus | null>(null);
-  const [check, setCheck] = useState<UpdateCheck | null>(null);
-  const [checking, setChecking] = useState(false);
+  const check = useUpdateFlow((s) => s.check);
+  const checking = useUpdateFlow((s) => s.checking);
+  const checkError = useUpdateFlow((s) => s.checkError);
   const [reload, setReload] = useState(0);
   const [action, setAction] = useState<"cancel" | "restart" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const flow = useUpdateFlow();
   const logRef = useRef<HTMLPreElement>(null);
   const checkRef = useRef<HTMLButtonElement>(null);
-  const checkingRef = useRef(false);
   const acting = useRef(false);
   const returnFocus = useRef(false);
   const errorId = useId();
@@ -70,30 +85,14 @@ function Updates() {
     }
   }, [action, flow.phase]);
   const runCheck = async () => {
-    if (checkingRef.current || useUpdateFlow.getState().phase === "running") return;
-    checkingRef.current = true;
-    setChecking(true);
+    if (useUpdateFlow.getState().phase === "running") return;
     setError(null);
-    try {
-      setCheck(await api.checkUpdates());
-    } catch (cause) {
-      setCheck(null);
-      setError(errorMessage(cause));
-    } finally {
-      checkingRef.current = false;
-      setChecking(false);
-    }
+    await checkForUpdates();
   };
   const update = async () => {
-    if (!status?.app_path || !check?.update_available || ["running", "built"].includes(useUpdateFlow.getState().phase))
-      return;
+    if (!status?.app_path || !check?.update_available) return;
     setError(null);
-    useUpdateFlow.setState({ log: [], phase: "running", error: null });
-    try {
-      await api.startUpdate();
-    } catch (cause) {
-      useUpdateFlow.setState({ phase: "failed", error: errorMessage(cause) });
-    }
+    await downloadUpdate();
   };
   const cancel = async () => {
     if (acting.current || useUpdateFlow.getState().phase !== "running") return;
@@ -161,8 +160,9 @@ function Updates() {
       )}
       <div className="about-update-box">
         <p className="mds-hint">
-          Mosaic downloads signed universal packages from GitHub Releases. Checks and downloads use HTTPS only when you
-          click; there is no telemetry.
+          Mosaic downloads signed universal packages from GitHub Releases. Checks follow your automatic-check
+          preference; downloads are manual unless enabled above. Installation and restart happen when you choose. There
+          is no telemetry.
         </p>
         {dev && (
           <Notice tone="warning">
@@ -212,9 +212,9 @@ function Updates() {
             </Button>
           )}
         </div>
-        {error && (
+        {(error || checkError) && (
           <div id={errorId}>
-            <Notice tone="error">{error}</Notice>
+            <Notice tone="error">{error || checkError}</Notice>
           </div>
         )}
         {check && (

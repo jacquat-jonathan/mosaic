@@ -25,13 +25,14 @@ import { WorkspaceSettings } from "./WorkspaceSettings";
 import { CalendarLinksSettings } from "./CalendarLinksSettings";
 import { ShortcutsSettings } from "./ShortcutsSettings";
 import { AboutSettings } from "./AboutSettings";
+import { ConnectAiSection } from "./ConnectAi";
 
 const SECTIONS: { id: SettingsSection; label: string; icon: typeof Palette }[] = [
   { id: "appearance", label: "Appearance", icon: Palette },
   { id: "editor", label: "Editor & files", icon: PenLine },
   { id: "vault", label: "Vault folders", icon: FolderOpen },
   { id: "templates", label: "Templates", icon: FileStack },
-  { id: "calendar", label: "Calendar & links", icon: CalendarDays },
+  { id: "calendar", label: "Calendar & note links", icon: CalendarDays },
   { id: "workspace", label: "Workspace", icon: PanelsTopLeft },
   { id: "ai", label: "Connections & safety", icon: Plug },
   { id: "shortcuts", label: "Shortcuts", icon: Keyboard },
@@ -105,17 +106,7 @@ export function Settings() {
             {section === "templates" && <TemplatesSettings />}
             {section === "calendar" && <CalendarLinksSettings />}
             {section === "workspace" && <WorkspaceSettings />}
-            {section === "ai" && (
-              <DesignSystemScope className="connection-settings-entry">
-                <p className="mds-hint">
-                  Connection setup and agent permissions live together in the AI workspace. Folder review rules always
-                  take precedence over workflow allowances.
-                </p>
-                <Button variant="secondary" onClick={() => useUi.getState().openView("connections")}>
-                  Open Connections & safety
-                </Button>
-              </DesignSystemScope>
-            )}
+            {section === "ai" && <ConnectAiSection />}
             {section === "shortcuts" && <ShortcutsSettings />}
             {section === "about" && <AboutSettings />}
           </div>
@@ -130,12 +121,12 @@ const SETTING_WORDS: Partial<Record<SettingsSection, string>> = {
   editor:
     "spellcheck source line numbers trash confirmation HTML preview scripts internet network external resources vault security",
   vault:
-    "agents daily notes folder template new notes attachments folder colors creation discovery current root fixed missing create folder",
+    "agents daily notes enable disable file name format folder template new notes attachments folder colors creation discovery current root fixed missing create folder",
   templates: "templates defaults folder assignments rules starters preview",
-  calendar: "week starts monday sunday daily file name format new link syntax wiki markdown open note links new tab",
+  calendar: "week starts monday sunday new link syntax wiki markdown open note links new tab",
   workspace:
     "startup destination restore previous plan today specific note sidebar context panel visibility default width",
   shortcuts: "keyboard shortcuts bindings",
-  about: "version updates download installation CLI release source",
+  about: "version updates automatic check download installation CLI release source",
   ai: "connections permissions review safety Claude MCP",
 };

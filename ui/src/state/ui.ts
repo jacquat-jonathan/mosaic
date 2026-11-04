@@ -170,6 +170,7 @@ export const useUi = create<UiState>((set, get) => ({
   aiSection: prefs.aiSection,
   setAiSection: (aiSection) => set({ aiSection }),
   openView: (kind, id) => {
+    if (kind === "connections") return get().openSettings("ai");
     if (["chat", "chats"].includes(kind)) set({ aiSection: "chats" });
     else if (
       ["agents", "workflows", "workflow", "new-workflow", "runs", "run", "activity", "connections"].includes(kind)
@@ -187,9 +188,8 @@ export const useUi = create<UiState>((set, get) => ({
       settings: section,
       menu: null,
       picker: null,
-      ...(section === "ai" ? { destination: "ai" as const, leftSidebar: true } : {}),
     });
-    get().openView(section === "ai" ? "connections" : "settings");
+    get().openView("settings");
   },
   closeSettings: () => set({ settings: null }),
   history: null,

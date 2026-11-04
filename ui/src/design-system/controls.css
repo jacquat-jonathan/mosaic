@@ -395,3 +395,62 @@
   inset: auto;
   margin: 0;
 }
+
+.mosaic-ds .mds-settings-group {
+  min-width: 0;
+  margin-bottom: var(--mds-space-10);
+}
+.mosaic-ds .mds-settings-group > header {
+  padding-block: var(--mds-space-6);
+  border-bottom: 1px solid var(--mds-border);
+}
+.mosaic-ds .mds-settings-group > header h3 {
+  margin: 0;
+  font-size: var(--mds-text-body);
+  font-weight: var(--mds-weight-strong);
+}
+.mosaic-ds .mds-settings-group > header p {
+  margin: var(--mds-space-2) 0 0;
+}
+.mosaic-ds .mds-color-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--mds-space-2);
+  min-width: 0;
+}
+.mosaic-ds .mds-color-option {
+  display: inline-flex;
+  position: relative;
+  align-items: center;
+  gap: var(--mds-space-2);
+  padding: var(--mds-space-3);
+  border: 1px solid var(--mds-border);
+  border-radius: var(--mds-radius-control);
+  font-size: var(--mds-text-small);
+  cursor: pointer;
+}
+.mosaic-ds .mds-color-option:has(input:checked) {
+  border-color: var(--mds-text);
+  background: var(--mds-surface-selected);
+}
+.mosaic-ds .mds-color-option:has(input:focus-visible) {
+  outline: var(--mds-focus-width) solid var(--mds-accent);
+  outline-offset: var(--mds-focus-offset);
+}
+.mosaic-ds .mds-color-option:has(input:disabled) {
+  opacity: 0.5;
+  cursor: default;
+}
+.mosaic-ds .mds-color-option input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+}
+.mosaic-ds .mds-color-swatch {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  border: 1px solid var(--mds-border);
+  border-radius: 50%;
+}

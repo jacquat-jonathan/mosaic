@@ -5,12 +5,14 @@ import { errorMessage, type Days, type DayTask } from "../ipc/types";
 import { useVault } from "../state/vault";
 import { usePlanning } from "../state/planning";
 import { dayStamp } from "../daily";
+import { useVaultPreferences } from "../state/vaultPreferences";
 import { openDailyNote } from "../actions";
 import { CalendarTaskList } from "./CalendarTaskList";
 import { DesignSystemScope } from "./DesignSystemScope";
 import "./calendarContext.css";
 
 export function CalendarContext() {
+  const dailyNotes = useVaultPreferences((s) => s.value.daily_notes_enabled);
   const root = useVault((state) => state.vault?.root),
     day = usePlanning((state) => state.selectedDay),
     revision = useVault((state) => state.revision);
@@ -79,15 +81,17 @@ export function CalendarContext() {
   return (
     <DesignSystemScope className="calendar-context" role="group" aria-label="Calendar details">
       <h3>{day}</h3>
-      <Button
-        ref={first}
-        variant="secondary"
-        onClick={() => {
-          if (current()) void openDailyNote(new Date(`${day}T12:00`), { newTab: true });
-        }}
-      >
-        Open daily note
-      </Button>
+      {dailyNotes && (
+        <Button
+          ref={first}
+          variant="secondary"
+          onClick={() => {
+            if (current()) void openDailyNote(new Date(`${day}T12:00`), { newTab: true });
+          }}
+        >
+          Open daily note
+        </Button>
+      )}
       {error && (
         <Notice tone="error">
           {error}

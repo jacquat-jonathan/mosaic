@@ -736,3 +736,20 @@ ReactFlow geometry and diagram/SVG/HTML content keep their own rendering boundar
 remains a separate entry and does not import app state. The unresolved filled-primary/danger
 contrast decision documented above remains a restriction on future adoption; the app uses quiet, secondary
 and outlined danger actions in affected flows.
+
+## Settings groups and color choices
+
+`SettingsGroup` gives a settings subsection a heading and scope description (app-wide or
+vault-specific). Appearance uses Theme, Reading and Interface groups; daily-note destinations,
+template and filename format live together in Vault folders behind the daily-note switch.
+
+`ColorPicker` is a controlled, wrapping radio group with visible color names, swatches, keyboard
+navigation, focus rings and disabled states. Pass `FOLDER_COLOR_OPTIONS` for Mosaic's existing
+folder presets, including Default to clear an override. The gallery's Fields & selection examples
+include interactive and disabled versions. Vault folders uses it beside each searchable folder
+path, retaining acknowledged values on failed saves and serializing writes across the section.
+Folder colors initially shows only top-level folders. Shared disclosure buttons expand each
+level; search reveals matching descendants and their ancestors, then restores the browsing
+expansion state when cleared. Child labels use their folder name; full paths remain in accessible
+color labels and tooltips. Connections & safety has one home inside Settings; legacy Connections
+routes redirect there.

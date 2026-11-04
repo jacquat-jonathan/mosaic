@@ -316,16 +316,14 @@ test("exercise the bundled file viewers and settings surfaces", async ({ page })
     "Editor & files",
     "Vault folders",
     "Templates",
-    "Calendar & links",
+    "Calendar & note links",
     "Workspace",
     "Shortcuts",
     "About & updates",
     "Connections & safety",
   ]) {
     await page.getByRole("navigation", { name: "Settings sections" }).getByRole("button", { name: section }).click();
-    await expect(
-      page.getByRole("heading", { name: section === "Connections & safety" ? "Connections" : section }).last(),
-    ).toBeVisible();
+    await expect(page.getByRole("heading", { name: section }).last()).toBeVisible();
   }
 });
 
@@ -382,8 +380,13 @@ test("manage workflows and inspect every AI workspace", async ({ page }) => {
   if (!(await page.locator(".ai-manage").evaluate((el) => (el as HTMLDetailsElement).open))) {
     await page.locator(".ai-manage summary").click();
   }
-  await page.getByRole("button", { name: "Connections", exact: true }).click();
-  await expect(workspacePane.getByRole("heading", { name: "Connections", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Connections", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page
+    .getByRole("navigation", { name: "Settings sections" })
+    .getByRole("button", { name: "Connections & safety", exact: true })
+    .click();
+  await expect(workspacePane.getByRole("heading", { name: "Connections & safety", exact: true })).toBeVisible();
 });
 
 test("Ledger activity keeps reviews first and exposes history and undo beside each file", async ({ page }) => {

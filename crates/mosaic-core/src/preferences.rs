@@ -9,6 +9,8 @@ use std::collections::BTreeMap;
 pub struct VaultPreferences {
     pub version: u32,
     pub agents_folder: String,
+    /// Show daily-note creation controls in the app. Existing notes remain ordinary files.
+    pub daily_notes_enabled: bool,
     pub daily_folder: String,
     pub daily_template: String,
     #[cfg_attr(feature = "specta", specta(type = choices::DailyFormat))]
@@ -79,6 +81,7 @@ impl Default for VaultPreferences {
         Self {
             version: 1,
             agents_folder: "Agents".into(),
+            daily_notes_enabled: false,
             daily_folder: "Daily".into(),
             daily_template: String::new(),
             daily_format: "YYYY-MM-DD".into(),

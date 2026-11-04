@@ -18,7 +18,7 @@ const status: UpdateStatus = {
   last_install_error: null,
 };
 beforeEach(() => {
-  useUpdateFlow.setState({ log: [], phase: "idle", error: null });
+  useUpdateFlow.setState({ log: [], phase: "idle", error: null, check: null, checking: false, checkError: null });
   useWorkspace.setState({ buffers: {} });
   vi.spyOn(api, "updateStatus").mockResolvedValue(status);
 });

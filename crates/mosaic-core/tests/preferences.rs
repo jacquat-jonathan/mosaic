@@ -36,9 +36,12 @@ fn vault_preferences_are_scoped_preserved_and_used_by_the_core() {
             "---\nname: review\ncustom: preserved\n---\nReview notes\n",
         )
         .unwrap();
+    assert!(!wa.vault_preferences().unwrap().daily_notes_enabled);
     assert!(!wa.vault_preferences().unwrap().allow_html_scripts);
     assert!(!wa.vault_preferences().unwrap().allow_html_internet);
-    wa.set_vault_preferences(json!({"agents_folder":"People","daily_folder":"Journal","daily_format":"DD-MM-YYYY","allow_html_scripts":true,"allow_html_internet":true,"future":{"keep":true},"folder_colors":{"People":"purple"}})).unwrap();
+    wa.set_vault_preferences(json!({"daily_notes_enabled":true,"agents_folder":"People","daily_folder":"Journal","daily_format":"DD-MM-YYYY","allow_html_scripts":true,"allow_html_internet":true,"future":{"keep":true},"folder_colors":{"People":"purple"}})).unwrap();
+    assert!(wa.vault_preferences().unwrap().daily_notes_enabled);
+    assert!(!wb.vault_preferences().unwrap().daily_notes_enabled);
     assert!(wa.vault_preferences().unwrap().allow_html_scripts);
     assert!(wa.vault_preferences().unwrap().allow_html_internet);
     assert!(!wb.vault_preferences().unwrap().allow_html_internet);

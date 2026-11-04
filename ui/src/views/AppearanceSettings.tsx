@@ -1,6 +1,6 @@
 import { useId, type CSSProperties, type ReactNode } from "react";
 import { RotateCcw } from "lucide-react";
-import { Button, IconButton, SegmentedControl, SettingRow } from "../design-system/components";
+import { Button, IconButton, SegmentedControl, SettingRow, SettingsGroup } from "../design-system/components";
 import { DEFAULT_PREFS, NOTE_SIZE_MAX, NOTE_SIZE_MIN, useSettings } from "../state/settings";
 import { useUi } from "../state/ui";
 import { DesignSystemScope } from "./DesignSystemScope";
@@ -150,115 +150,121 @@ export function AppearanceSettings() {
   const s = useSettings();
   return (
     <DesignSystemScope className="appearance-settings" role="group" aria-label="Appearance preferences">
-      <AppearanceRow
-        name="theme"
-        label="Theme"
-        hint="System follows macOS. Open diagrams, canvases and drawings switch colours right away."
-        grouped
-      >
-        {(control) => (
-          <SegmentedControl
-            {...control}
-            label="Theme"
-            value={s.theme}
-            onChange={(value) => s.set("theme", value)}
-            options={[
-              { value: "system", label: "System" },
-              { value: "light", label: "Light" },
-              { value: "dark", label: "Dark" },
-            ]}
-          />
-        )}
-      </AppearanceRow>
-      <ColorThemePicker />
-      <RangePreference
-        name="noteSize"
-        label="Note text size"
-        hint="Text size in Markdown notes."
-        min={NOTE_SIZE_MIN}
-        max={NOTE_SIZE_MAX}
-      />
-      <AppearanceRow
-        name="noteWidth"
-        label="Note width"
-        hint="How wide the text of a note gets. Full uses the whole pane; the others keep lines comfortable to read."
-        grouped
-      >
-        {(control) => (
-          <SegmentedControl
-            {...control}
-            label="Note width"
-            value={s.noteWidth}
-            onChange={(value) => s.set("noteWidth", value)}
-            options={[
-              { value: "narrow", label: "Narrow" },
-              { value: "medium", label: "Medium" },
-              { value: "wide", label: "Wide" },
-              { value: "full", label: "Full" },
-            ]}
-          />
-        )}
-      </AppearanceRow>
-      <p className="mds-hint appearance-note">
-        App-wide · Fonts stay local. If a font is not installed, Mosaic uses the system fallback.
-      </p>
-      {(
-        [
-          ["noteFont", "Note font", "Use system or the name of a locally installed font, such as Georgia."],
-          [
-            "codeFont",
-            "Code font",
-            "Separate font for source and code blocks. Use system for the default monospace font.",
-          ],
-        ] as const
-      ).map(([name, label, hint]) => (
-        <AppearanceRow key={name} name={name} label={label} hint={hint}>
+      <SettingsGroup title="Theme" description="App-wide · Color mode, palette and accent">
+        <AppearanceRow
+          name="theme"
+          label="Theme"
+          hint="System follows macOS. Open diagrams, canvases and drawings switch colours right away."
+          grouped
+        >
           {(control) => (
-            <input
+            <SegmentedControl
               {...control}
-              className="mds-input"
-              value={s[name]}
-              onChange={(event) => s.set(name, event.target.value)}
+              label="Theme"
+              value={s.theme}
+              onChange={(value) => s.set("theme", value)}
+              options={[
+                { value: "system", label: "System" },
+                { value: "light", label: "Light" },
+                { value: "dark", label: "Dark" },
+              ]}
             />
           )}
         </AppearanceRow>
-      ))}
-      <RangePreference name="lineSpacing" label="Line spacing" min={1.3} max={2.2} step={0.1} />
-      <RangePreference name="headingScale" label="Heading scale" min={0.85} max={1.3} step={0.05} />
-      <AppearanceRow
-        name="accent"
-        label="Accent color"
-        hint="Theme default follows the selected palette. Custom colors apply to every palette."
-      >
-        {(control) => (
-          <select
-            {...control}
-            className="mds-input"
-            value={s.accent}
-            onChange={(event) => s.set("accent", event.target.value as typeof s.accent)}
-          >
-            <option value="theme">Theme default</option>
-            <option value="blue">Blue</option>
-            <option value="green">Green</option>
-            <option value="violet">Violet</option>
-            <option value="amber">Amber</option>
-          </select>
-        )}
-      </AppearanceRow>
-      <RangePreference name="uiScale" label="Interface scale" min={0.85} max={1.3} step={0.05} />
-      <AppearanceRow name="density" label="Interface density">
-        {(control) => (
-          <select
-            {...control}
-            className="mds-input"
-            value={s.density}
-            onChange={(event) => s.set("density", event.target.value as typeof s.density)}
-          >
-            <option value="comfortable">Comfortable</option>
-            <option value="compact">Compact</option>
-          </select>
-        )}
-      </AppearanceRow>
+        <ColorThemePicker />
+        <AppearanceRow
+          name="accent"
+          label="Accent color"
+          hint="Theme default follows the selected palette. Custom colors apply to every palette."
+        >
+          {(control) => (
+            <select
+              {...control}
+              className="mds-input"
+              value={s.accent}
+              onChange={(event) => s.set("accent", event.target.value as typeof s.accent)}
+            >
+              <option value="theme">Theme default</option>
+              <option value="blue">Blue</option>
+              <option value="green">Green</option>
+              <option value="violet">Violet</option>
+              <option value="amber">Amber</option>
+            </select>
+          )}
+        </AppearanceRow>
+      </SettingsGroup>
+      <SettingsGroup title="Reading" description="App-wide · Note typography and width">
+        <RangePreference
+          name="noteSize"
+          label="Note text size"
+          hint="Text size in Markdown notes."
+          min={NOTE_SIZE_MIN}
+          max={NOTE_SIZE_MAX}
+        />
+        <AppearanceRow
+          name="noteWidth"
+          label="Note width"
+          hint="How wide the text of a note gets. Full uses the whole pane; the others keep lines comfortable to read."
+          grouped
+        >
+          {(control) => (
+            <SegmentedControl
+              {...control}
+              label="Note width"
+              value={s.noteWidth}
+              onChange={(value) => s.set("noteWidth", value)}
+              options={[
+                { value: "narrow", label: "Narrow" },
+                { value: "medium", label: "Medium" },
+                { value: "wide", label: "Wide" },
+                { value: "full", label: "Full" },
+              ]}
+            />
+          )}
+        </AppearanceRow>
+        <p className="mds-hint appearance-note">
+          App-wide · Fonts stay local. If a font is not installed, Mosaic uses the system fallback.
+        </p>
+        {(
+          [
+            ["noteFont", "Note font", "Use system or the name of a locally installed font, such as Georgia."],
+            [
+              "codeFont",
+              "Code font",
+              "Separate font for source and code blocks. Use system for the default monospace font.",
+            ],
+          ] as const
+        ).map(([name, label, hint]) => (
+          <AppearanceRow key={name} name={name} label={label} hint={hint}>
+            {(control) => (
+              <input
+                {...control}
+                className="mds-input"
+                value={s[name]}
+                onChange={(event) => s.set(name, event.target.value)}
+              />
+            )}
+          </AppearanceRow>
+        ))}
+        <RangePreference name="lineSpacing" label="Line spacing" min={1.3} max={2.2} step={0.1} />
+        <RangePreference name="headingScale" label="Heading scale" min={0.85} max={1.3} step={0.05} />
+      </SettingsGroup>
+      <SettingsGroup title="Interface" description="App-wide · Control size and spacing">
+        <RangePreference name="uiScale" label="Interface scale" min={0.85} max={1.3} step={0.05} />
+        <AppearanceRow name="density" label="Interface density">
+          {(control) => (
+            <select
+              {...control}
+              className="mds-input"
+              value={s.density}
+              onChange={(event) => s.set("density", event.target.value as typeof s.density)}
+            >
+              <option value="comfortable">Comfortable</option>
+              <option value="compact">Compact</option>
+            </select>
+          )}
+        </AppearanceRow>
+      </SettingsGroup>
       <div className="appearance-preview" role="group" aria-label="Appearance preview">
         <h1>A clearer workspace</h1>
         <h2>Meeting notes</h2>

@@ -20,6 +20,7 @@ import {
 } from "./actions";
 import { isSpecialTab } from "./views/specialTabs";
 import { prefs } from "./state/settings";
+import { vaultPrefs } from "./state/vaultPreferences";
 
 /** A shortcut: `code` is `KeyboardEvent.code` (layout- and ⌥-independent), e.g. "KeyP" or "Backslash". */
 export interface Keys {
@@ -127,6 +128,7 @@ const buildCommands = (): Command[] => [
   {
     id: "daily-note",
     label: "Open today's daily note",
+    when: () => vaultPrefs().daily_notes_enabled,
     keys: { code: "KeyD", meta: true, shift: true },
     run: () => void openDailyNote(),
   },

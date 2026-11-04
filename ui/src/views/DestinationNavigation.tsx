@@ -5,6 +5,7 @@ import { useUi, type Destination } from "../state/ui";
 import { useWorkspace } from "../state/workspace";
 import { useAttention } from "../state/attention";
 import { useChat } from "../state/chat";
+import { useUpdateFlow } from "../state/updates";
 import { useReview } from "../state/review";
 import { shortcutOf } from "../commands";
 import { DesignSystemScope } from "./DesignSystemScope";
@@ -17,6 +18,8 @@ const destinations: { id: Destination; label: string; section: string; icon: typ
   { id: "ai", label: "AI", section: "AI", icon: Bot },
 ];
 export function DestinationNavigation() {
+  const updateReady = useUpdateFlow((s) => s.phase === "built");
+  const updateAvailable = useUpdateFlow((s) => !!s.check?.update_available);
   const selected = useUi((state) => state.destination);
   const sidebar = useUi((state) => state.leftSidebar);
   const active = useWorkspace((state) => state.panes.find((pane) => pane.id === state.focused)?.active);
@@ -108,11 +111,26 @@ export function DestinationNavigation() {
         data-section="Settings"
         data-section-start="true"
         aria-pressed={active === "mosaic:settings"}
-        title={`Settings (${shortcutOf("settings")})`}
+        title={`${updateReady ? "Update ready to install · " : updateAvailable ? "Update available · " : ""}Settings (${shortcutOf("settings")})`}
+        aria-describedby={updateReady || updateAvailable ? `${description}-update` : undefined}
         onClick={() => useUi.getState().openSettings()}
       >
         <Settings aria-hidden="true" />
+        {(updateReady || updateAvailable) && (
+          <Badge
+            aria-hidden="true"
+            className="destination-attention"
+            title={updateReady ? "Update ready to install" : "Update available"}
+          >
+            •
+          </Badge>
+        )}
       </IconButton>
+      {(updateReady || updateAvailable) && (
+        <span className="destination-description" id={`${description}-update`}>
+          {updateReady ? "Update ready to install" : "Update available"}
+        </span>
+      )}
     </DesignSystemScope>
   );
 }

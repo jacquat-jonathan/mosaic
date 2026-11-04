@@ -382,6 +382,13 @@ test("work session editor follows themes and fills narrow panes", async ({ page 
 
 test("calendar details retain overdue completion, focus and daily-note opening", async ({ page }) => {
   await openCalendar(page);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page
+    .getByRole("navigation", { name: "Settings sections" })
+    .getByRole("button", { name: "Vault folders", exact: true })
+    .click();
+  await page.getByRole("switch", { name: "Enable daily notes", exact: true }).click();
+  await page.getByRole("tab", { name: "Today Close tab", exact: true }).click();
   const details = page.getByRole("group", { name: "Calendar details", exact: true });
   await details.getByRole("checkbox", { name: /^Overdue review/ }).press("Space");
   await expect(details.getByText("No overdue tasks.")).toBeVisible();
@@ -394,6 +401,13 @@ test("calendar details follow themes and fit the scaled context drawer", async (
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
   await openCalendar(page);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page
+    .getByRole("navigation", { name: "Settings sections" })
+    .getByRole("button", { name: "Vault folders", exact: true })
+    .click();
+  await page.getByRole("switch", { name: "Enable daily notes", exact: true }).click();
+  await page.getByRole("tab", { name: "Today Close tab", exact: true }).click();
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const details = page.getByRole("group", { name: "Calendar details", exact: true });
   for (const theme of ["Light", "Dark", "System"] as const) {

@@ -94,6 +94,7 @@ let dragging: string[] = [];
 const OPEN_ON_HOVER_MS = 600;
 
 export function FileTreeToolbar() {
+  const dailyNotes = useVaultPreferences((s) => s.value.daily_notes_enabled);
   return (
     <DesignSystemScope className="tree-toolbar" role="toolbar" aria-label="Files actions">
       <IconButton
@@ -124,13 +125,15 @@ export function FileTreeToolbar() {
       >
         <FolderPlus aria-hidden="true" />
       </IconButton>
-      <IconButton
-        label="Today's note"
-        title={`Open today's daily note (${shortcutOf("daily-note")})`}
-        onClick={() => void openDailyNote()}
-      >
-        <CalendarDays aria-hidden="true" />
-      </IconButton>
+      {dailyNotes && (
+        <IconButton
+          label="Today's note"
+          title={`Open today's daily note (${shortcutOf("daily-note")})`}
+          onClick={() => void openDailyNote()}
+        >
+          <CalendarDays aria-hidden="true" />
+        </IconButton>
+      )}
       <span className="spacer" />
       <IconButton
         label="Collapse all folders"

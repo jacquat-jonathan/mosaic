@@ -36,17 +36,6 @@
   margin-top: var(--mds-space-4);
   overflow-wrap: anywhere;
 }
-.mosaic-ds.vault-folders-settings .vault-folder-colors {
-  margin-top: var(--mds-space-8);
-}
-.mosaic-ds.vault-folders-settings .vault-folder-colors summary {
-  color: var(--mds-text-muted);
-}
-.mosaic-ds.vault-folders-settings summary:focus-visible {
-  outline: var(--mds-focus-width) solid var(--mds-accent);
-  outline-offset: var(--mds-focus-offset);
-}
-.mosaic-ds.vault-folders-settings .vault-color-controls,
 .mosaic-ds.vault-folders-settings .vault-color-row {
   display: flex;
   flex-wrap: wrap;
@@ -54,14 +43,63 @@
   gap: var(--mds-space-4);
   margin-top: var(--mds-space-4);
 }
-.mosaic-ds.vault-folders-settings .vault-color-row > span:first-child {
-  flex: 1;
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
 .mosaic-ds.vault-folders-settings .vault-section-reset {
   margin-top: var(--mds-space-8);
 }
 .mosaic-ds.vault-folders-settings[data-density="compact"] .mds-setting-row {
   padding-block: var(--mds-space-5);
+}
+.mosaic-ds.vault-folders-settings .vault-color-list {
+  margin-top: var(--mds-space-4);
+  max-height: 480px;
+  overflow-y: auto;
+  padding: var(--mds-space-2);
+}
+.mosaic-ds.vault-folders-settings .vault-color-row {
+  align-items: flex-start;
+  padding-block: var(--mds-space-5);
+  border-bottom: 1px solid var(--mds-border);
+}
+.mosaic-ds.vault-folders-settings .vault-color-name {
+  display: flex;
+  gap: var(--mds-space-3);
+  flex: 1 1 180px;
+  min-width: 0;
+  padding-block: 0;
+  overflow-wrap: anywhere;
+}
+.mosaic-ds.vault-folders-settings .vault-color-name svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  color: var(--mds-text-muted);
+}
+.mosaic-ds.vault-folders-settings .vault-color-row .mds-color-picker {
+  flex: 0 1 auto;
+}
+.mosaic-ds.vault-folders-settings .vault-color-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.mosaic-ds.vault-folders-settings .vault-color-toggle,
+.mosaic-ds.vault-folders-settings .vault-color-leaf {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--mds-space-3);
+  padding: var(--mds-space-3);
+  min-width: 0;
+  max-width: 100%;
+  text-align: left;
+}
+.mosaic-ds.vault-folders-settings .vault-color-chevron {
+  display: inline-flex;
+  flex: none;
+  width: 16px;
+}
+.mosaic-ds.vault-folders-settings .vault-color-toggle > span:last-child,
+.mosaic-ds.vault-folders-settings .vault-color-leaf > span:last-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }

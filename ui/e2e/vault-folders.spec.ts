@@ -9,6 +9,7 @@ async function openVaultFolders(page: Page) {
     .getByRole("navigation", { name: "Settings sections", exact: true })
     .getByRole("button", { name: "Vault folders", exact: true })
     .click();
+  await page.getByRole("switch", { name: "Enable daily notes", exact: true }).click();
 }
 async function mock<T>(page: Page, command: string, args: object = {}) {
   return page.evaluate(
@@ -53,14 +54,11 @@ test("vault folder choices, note defaults, attachment visibility and colors pers
   await choose(page, "Attachments folder", "Attachments");
   await vault.getByRole("switch", { name: "Show attachments in file tree", exact: true }).focus();
   await page.keyboard.press("Space");
-  await vault.locator("summary").click();
-  const colors = vault.locator("details");
-  await colors.getByRole("button", { name: "Choose folder…", exact: true }).click();
-  await page
-    .getByRole("dialog", { name: "Choose a folder to color" })
-    .getByRole("option", { name: "Projects", exact: true })
-    .click();
-  await colors.getByLabel("Folder color", { exact: true }).selectOption("purple");
+  const colors = vault.getByRole("region", { name: "Folder colors", exact: true });
+  await colors
+    .getByRole("radiogroup", { name: "Color for Projects", exact: true })
+    .getByRole("radio", { name: "Purple", exact: true })
+    .check();
   await expect.poll(async () => (await preferences(page)).folder_colors.Projects).toBe("purple");
   expect(await preferences(page)).toMatchObject({
     daily_folder: "Projects",
@@ -70,7 +68,10 @@ test("vault folder choices, note defaults, attachment visibility and colors pers
     attachment_folder: "Attachments",
     show_attachments_in_tree: true,
   });
-  await colors.getByRole("button", { name: "Reset color for Projects", exact: true }).click();
+  await colors
+    .getByRole("radiogroup", { name: "Color for Projects", exact: true })
+    .getByRole("radio", { name: "Default", exact: true })
+    .check();
   await expect.poll(async () => (await preferences(page)).folder_colors).toEqual({});
 });
 
@@ -121,7 +122,7 @@ test("missing folders require explicit creation and section reset preserves unre
     folder_colors: {},
     allow_html_scripts: true,
     link_style: "markdown",
-    daily_format: "DD-MM-YYYY",
+    daily_format: "YYYY-MM-DD",
   });
   expect(await exists()).toBe(true);
   expect((await mock<{ content: string }>(page, "read_file", { path: "Welcome.md" })).content).toBe(original.content);
@@ -143,14 +144,11 @@ test("vault settings match both themes and fit narrow panes at maximum scale", a
       .check();
     await navigation.getByRole("button", { name: "Vault folders", exact: true }).click();
     await expect(vault).toHaveCSS("background-color", theme === "Light" ? "rgb(255, 255, 255)" : "rgb(30, 31, 36)");
-    await vault.locator("summary").click();
-    await vault.locator("details").getByRole("button", { name: "Choose folder…", exact: true }).click();
-    await page
-      .getByRole("dialog", { name: "Choose a folder to color" })
-      .getByRole("option", { name: "Projects", exact: true })
-      .click();
-    await vault.getByLabel("Folder color", { exact: true }).selectOption("purple");
-    await expect(vault.getByLabel("Folder color", { exact: true })).toBeEnabled();
+    const purple = vault
+      .getByRole("radiogroup", { name: "Color for Projects", exact: true })
+      .getByRole("radio", { name: "Purple", exact: true });
+    await purple.check();
+    await expect(purple).toBeEnabled();
     await page.locator(".settings-scroll").evaluate((element) => {
       element.scrollTop = 0;
     });
@@ -162,12 +160,6 @@ test("vault settings match both themes and fit narrow panes at maximum scale", a
   await page.getByRole("slider", { name: "Interface scale", exact: true }).press("End");
   await navigation.getByRole("button", { name: "Vault folders", exact: true }).click();
   await expect(vault).toHaveAttribute("data-density", "compact");
-  await vault.locator("summary").click();
-  await vault.locator("details").getByRole("button", { name: "Choose folder…", exact: true }).click();
-  await page
-    .getByRole("dialog", { name: "Choose a folder to color" })
-    .getByRole("option", { name: "Projects", exact: true })
-    .click();
   for (const width of [920, 720, 650]) {
     await page.setViewportSize({ width, height: 900 });
     await expect

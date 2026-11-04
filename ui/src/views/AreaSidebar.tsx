@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { Bot, CalendarClock, Inbox, ListChecks, MessagesSquare, Plug, Workflow } from "lucide-react";
+import { Bot, CalendarClock, Inbox, ListChecks, MessagesSquare, Workflow } from "lucide-react";
 import { useVault } from "../state/vault";
 import { useUi, type Destination } from "../state/ui";
 import { ChatList } from "./ChatHistory";
@@ -148,7 +148,6 @@ export function AiSidebar() {
       <details className="ai-manage" open={disconnected || undefined}>
         <summary>Manage</summary>
         {item("agents", "Agent library", Bot)}
-        {item("connections", `Connections${disconnected ? " · Disconnected" : ""}`, Plug)}
       </details>
     </DesignSystemScope>
   );

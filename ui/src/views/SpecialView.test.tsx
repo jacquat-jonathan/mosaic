@@ -52,7 +52,6 @@ test("routes every workspace kind to its surface", () => {
     ["mosaic:runs", "workflows::true:undefined"],
     ["mosaic:run/42", "run:42"],
     ["mosaic:activity", "Activity & review"],
-    ["mosaic:connections", "Connections"],
     ["mosaic:settings", "settings"],
     ["mosaic:search", "search"],
     ["mosaic:board", "task-board"],
@@ -116,4 +115,17 @@ test("covers saved, overdue, project, generic and empty task queries", async () 
   vi.spyOn(api, "query").mockRejectedValue(new Error("query failed"));
   render(<SpecialView path="mosaic:tasks" />);
   expect(await screen.findByText("query failed")).toBeTruthy();
+});
+
+test("legacy Connections tabs redirect to Settings and close the obsolete tab", async () => {
+  const { useUi } = await import("../state/ui");
+  useWorkspace.setState({
+    panes: [{ id: "old", tabs: ["mosaic:connections"], active: "mosaic:connections" }],
+    focused: "old",
+  });
+  const open = vi.spyOn(useWorkspace.getState(), "open").mockResolvedValue();
+  render(<SpecialView path="mosaic:connections" />);
+  expect(useUi.getState().settings).toBe("ai");
+  expect(open).toHaveBeenCalledWith("mosaic:settings", { newTab: true });
+  expect(useWorkspace.getState().panes[0].tabs).not.toContain("mosaic:connections");
 });

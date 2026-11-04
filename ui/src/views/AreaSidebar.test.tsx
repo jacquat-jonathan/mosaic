@@ -11,7 +11,7 @@ import { useWorkspace } from "../state/workspace";
 beforeEach(() => {
   useUi.setState({ aiSection: "chats" });
   useChat.setState({ chats: {}, root: null });
-  useAttention.setState({ agents: [], disconnected: false });
+  useAttention.setState({ agents: [], disconnected: false, unseenFailureIds: [] });
   useReview.setState({ pending: [] });
   useWorkspace.setState({ panes: [{ id: "test", tabs: [], active: null }], focused: "test" });
 });

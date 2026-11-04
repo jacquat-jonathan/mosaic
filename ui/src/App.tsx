@@ -111,7 +111,7 @@ function Main() {
   const rightWidth = useUi((s) => s.rightWidth);
   const indexing = useVault((s) => s.indexing);
   const active = useWorkspace((s) => s.panes.find((p) => p.id === s.focused)?.active ?? null);
-  useEffect(() => startAttention(), [vault.root]);
+  useEffect(() => startAttention(vault.root), [vault.root]);
   useEffect(() => {
     let current = true;
     void api.updateStatus().then(

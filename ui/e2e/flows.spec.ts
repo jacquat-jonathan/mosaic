@@ -223,7 +223,7 @@ test("create a planner task and move it through the workflow", async ({ page }) 
   await expect(page.locator('[aria-label="Unassigned: In progress"]')).toContainText("Verify the release journey");
 });
 
-test("calendar event cards only wrap titles when they have room for another line", async ({ page }) => {
+test("calendar event titles stay inside short cards and fit after the grid grows", async ({ page }) => {
   await openVault(page);
   await page.getByRole("tab", { name: "Plan" }).click();
   await page.getByRole("button", { name: "Calendar", exact: true }).click();
@@ -235,7 +235,15 @@ test("calendar event cards only wrap titles when they have room for another line
   await expect(card).toHaveText("Design sync");
   await expect(title).toHaveCSS("text-align", "left");
   await expect(card).toHaveCSS("height", "30px");
-  await expect(title).toHaveCSS("white-space", "nowrap");
+  const shortHeight = await card.evaluate((element) => element.clientHeight);
+  const titleFits = () =>
+    card.evaluate((element) => {
+      const title = element.querySelector<HTMLElement>(".planner-card-title")!;
+      const style = getComputedStyle(element);
+      const available = element.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
+      return title.scrollWidth <= title.clientWidth + 1 && title.scrollHeight <= available + 1;
+    });
+  await expect.poll(titleFits).toBe(true);
   const bounds = await card.evaluate((element) => {
     const cardBounds = element.getBoundingClientRect(),
       titleBounds = element.querySelector(".planner-card-title")?.getBoundingClientRect();
@@ -253,8 +261,8 @@ test("calendar event cards only wrap titles when they have room for another line
   expect(bounds!.titleRight).toBeLessThanOrEqual(bounds!.cardRight);
 
   await page.setViewportSize({ width: 1280, height: 1440 });
-  await expect(card).toHaveClass(/multiline-title/);
-  await expect(title).toHaveCSS("white-space", "normal");
+  await expect.poll(() => card.evaluate((element) => element.clientHeight)).toBeGreaterThan(shortHeight);
+  await expect.poll(titleFits).toBe(true);
 });
 
 test("exercise the bundled file viewers and settings surfaces", async ({ page }) => {

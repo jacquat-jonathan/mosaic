@@ -92,6 +92,7 @@ export function AiSidebar() {
   }, [active]);
   const agents = useAttention((s) => s.agents);
   const pending = useReview((s) => s.pending.length);
+  const failed = useAttention((s) => s.unseenFailureIds.length);
   const disconnected = useAttention((s) => s.disconnected);
   const item = (kind: string, label: string, Icon: typeof Workflow, id?: string) => (
     <Button
@@ -139,7 +140,7 @@ export function AiSidebar() {
               </div>
             )}
             <div className="ai-automation-nav">
-              {item("runs", "All runs", ListChecks)}
+              {item("runs", `All runs${failed ? ` · ${failed} new failed` : ""}`, ListChecks)}
               {item("activity", `Activity & review${pending ? ` · ${pending}` : ""}`, Inbox)}
             </div>
           </>

@@ -820,22 +820,27 @@ test.describe("current-time indicator", () => {
         expect(Math.abs(lineWidth.x - firstDay.x)).toBeLessThanOrEqual(1);
         expect(Math.abs(lineWidth.x + lineWidth.width - lastDay.x - lastDay.width)).toBeLessThanOrEqual(1);
         await expect(label).toContainText("9:30");
-        const expected = await line.evaluate((el) => {
-          const day = el.parentElement!;
-          const hourHeight = parseFloat(
-            (day.closest(".planner-week-wrap") as HTMLElement).style.getPropertyValue("--planner-hour-height"),
-          );
-          return hourHeight * 4.5;
-        });
-        await expect
-          .poll(() => line.evaluate((el) => parseFloat((el as HTMLElement).style.top)))
-          .toBeCloseTo(expected, 1);
+        // ResizeObserver may change the hour height after zoom. Compare both values from
+        // the same render, rather than retaining a pre-resize pixel coordinate.
+        const position = () =>
+          line.evaluate((el) => {
+            const hourHeight = parseFloat(
+              (el.closest(".planner-week-wrap") as HTMLElement).style.getPropertyValue("--planner-hour-height"),
+            );
+            return parseFloat((el as HTMLElement).style.top) / hourHeight;
+          });
+        await expect.poll(position).toBeCloseTo(4.5, 4);
         await page.clock.runFor(60000);
         await expect(label).toContainText("9:31");
-        const top = await line.evaluate((el) => parseFloat((el as HTMLElement).style.top));
-        expect(top).toBeGreaterThan(expected);
-        const labelTop = await label.evaluate((el) => parseFloat((el as HTMLElement).style.top));
-        expect(top).toBe(labelTop);
+        await expect.poll(position).toBeCloseTo(4 + 31 / 60, 4);
+        await expect
+          .poll(() =>
+            label.evaluate((el) => {
+              const line = el.closest(".planner-time-scroll")!.querySelector<HTMLElement>(".planner-now-line")!;
+              return parseFloat((el as HTMLElement).style.top) - parseFloat(line.style.top);
+            }),
+          )
+          .toBe(0);
         await calendar.screenshot({ path: testInfo.outputPath("now-line.png") });
         // The marker overlays the event visually, but the card still receives clicks.
         const event = calendar.locator(".planner-timed-item.event", { hasText: "Calendar demo" });

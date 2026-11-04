@@ -43,6 +43,7 @@ test("destination rail preserves keyboard activation sidebar toggling and access
   const find = nav.getByRole("tab", { name: "Find", exact: true });
   const plan = nav.getByRole("tab", { name: "Plan", exact: true });
   const ai = nav.getByRole("tab", { name: "AI", exact: true });
+  await expect(ai.locator(".destination-attention")).toHaveCount(0);
   await files.press("End");
   await expect(ai).toBeFocused();
   await expect(ai).toHaveAttribute("aria-selected", "true");
@@ -64,7 +65,7 @@ test("destination rail preserves keyboard activation sidebar toggling and access
       "Proposed update",
     ),
   );
-  await expect(ai).toHaveAccessibleDescription("1 need attention");
+  await expect(ai).toHaveAccessibleDescription("1 pending review");
   await expect(ai.locator(".destination-attention")).toHaveText("1");
   const settings = nav.getByRole("button", { name: "Settings", exact: true });
   await expect(settings).toHaveAttribute("title", /Settings \(.+\)/);

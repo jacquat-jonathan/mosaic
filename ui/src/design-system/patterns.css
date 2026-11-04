@@ -215,6 +215,16 @@
 .mosaic-ds .mds-runs-table tr[data-selected] td {
   background: var(--mds-surface-selected);
 }
+.mosaic-ds .mds-runs-table tr[data-new-failure] td {
+  background: var(--mds-surface-selected);
+}
+.mosaic-ds .mds-new-failure {
+  display: inline-block;
+  margin-left: var(--mds-space-3);
+  color: var(--mds-danger);
+  font-size: var(--mds-text-caption);
+  font-weight: 700;
+}
 .mosaic-ds .mds-runs-table small,
 .mosaic-ds .mds-run-mobile {
   display: block;

@@ -133,6 +133,7 @@ export type RunSummary = {
   id: string;
   title: string;
   state: RunState;
+  newFailure?: boolean;
   trigger: string;
   model: string;
   started: string;
@@ -169,7 +170,11 @@ export function RunsTable({
         </thead>
         <tbody>
           {runs.map((run) => (
-            <tr key={run.id} data-selected={run.id === selectedId || undefined}>
+            <tr
+              key={run.id}
+              data-selected={run.id === selectedId || undefined}
+              data-new-failure={run.newFailure || undefined}
+            >
               <td>
                 <Button
                   className="mds-text-action"
@@ -187,6 +192,7 @@ export function RunsTable({
               </td>
               <td>
                 <StatusLabel state={run.state} />
+                {run.newFailure && <span className="mds-new-failure">New</span>}
                 {run.note && <small>{run.note}</small>}
                 <small className="mds-run-mobile">{run.duration}</small>
               </td>

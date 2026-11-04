@@ -149,7 +149,7 @@ function Main() {
       !isSpecialTab(active) &&
       useVault.getState().entries.some((entry) => entry.path === active && !entry.is_dir)
     )
-      revealInTree(active);
+      revealInTree(active, { showSidebar: false });
     if (window.matchMedia("(max-width: 800px)").matches) useUi.setState({ leftSidebar: false });
   }, [active]);
   // Agents' proposals arrive from another process: check for them while this vault is open.

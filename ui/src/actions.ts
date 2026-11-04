@@ -168,12 +168,12 @@ export async function copyText(text: string) {
   }
 }
 
-/** Expands the folders above `path`, selects it and scrolls it into view in the file tree. */
-export function revealInTree(path: string) {
+/** Selects and reveals `path`. Automatic tracking preserves the sidebar's visibility and destination. */
+export function revealInTree(path: string, { showSidebar = true }: { showSidebar?: boolean } = {}) {
   const vault = useVault.getState();
   vault.revealParents(path);
   vault.setSelection([path]);
-  useUi.getState().setSidebarTab("files");
+  if (showSidebar) useUi.getState().setSidebarTab("files");
   requestAnimationFrame(() =>
     requestAnimationFrame(() =>
       document.querySelector(`[data-path="${CSS.escape(path)}"]`)?.scrollIntoView({ block: "nearest" }),

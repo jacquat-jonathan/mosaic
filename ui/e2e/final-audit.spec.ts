@@ -359,6 +359,10 @@ test("note completion remains keyboard operated and fits scaled narrow windows",
   const list = page.getByRole("listbox");
   await expect(list).toBeVisible();
   await expect(list).toHaveCSS("font-size", "14px");
+  // CodeMirror guards keyboard acceptance for 75 ms after opening a completion.
+  // Advance that guard explicitly instead of relying on screenshot/runner speed.
+  await page.clock.install();
+  await page.clock.runFor(100);
   await expect.poll(() => list.evaluate((el) => el.getBoundingClientRect().right)).toBeLessThanOrEqual(320);
   await page.screenshot({ path: info.outputPath("editor-completion-narrow.png") });
   await page.keyboard.press("Enter");

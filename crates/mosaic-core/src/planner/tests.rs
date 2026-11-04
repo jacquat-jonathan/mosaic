@@ -409,6 +409,55 @@ fn ical_overlay_accepts_week_start_rules() {
 }
 
 #[test]
+fn ical_month_days_import_export_and_overlay_keep_wall_clock_and_exclusions() {
+    let content = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:monthly@example.test\r\nDTSTART;TZID=Europe/Zurich:20260131T090000\r\nDTEND;TZID=Europe/Zurich:20260131T100000\r\nRRULE:FREQ=MONTHLY;BYMONTHDAY=-1\r\nEXDATE;TZID=Europe/Zurich:20260228T090000\r\nSUMMARY:Month end\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+    let overlay = overlay_occurrences(
+        content,
+        "subscription",
+        "Team",
+        None,
+        "2026-01-01",
+        "2026-04-30",
+        "Europe/Zurich",
+    )
+    .unwrap();
+    assert_eq!(
+        overlay
+            .iter()
+            .map(|item| item.occurrence_key.as_str())
+            .collect::<Vec<_>>(),
+        vec!["2026-01-31", "2026-03-31", "2026-04-30"]
+    );
+    assert_eq!(overlay[0].start_value, "2026-01-31T08:00:00.000Z");
+    assert_eq!(overlay[1].start_value, "2026-03-31T07:00:00.000Z");
+    let mut store = in_memory();
+    let preview = store
+        .preview_ical_import("monthly", content, "Europe/Zurich")
+        .unwrap();
+    store
+        .import_ical(&preview, &[preview.candidates[0].key.clone()], false)
+        .unwrap();
+    let range = store.calendar_range("2026-03-01", "2026-04-30").unwrap();
+    assert_eq!(range.events.len(), 2);
+    let exported = store.export_ical().unwrap();
+    assert!(exported.contains("RRULE:FREQ=MONTHLY;BYMONTHDAY=-1"));
+    assert_eq!(
+        overlay_occurrences(
+            &exported,
+            "roundtrip",
+            "Team",
+            None,
+            "2026-03-01",
+            "2026-04-30",
+            "Europe/Zurich"
+        )
+        .unwrap()
+        .len(),
+        2
+    );
+}
+
+#[test]
 fn ical_overlay_replaces_recurring_exceptions_and_hides_cancellations() {
     let content = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:series@example.test\r\nSEQUENCE:1\r\nDTSTART;TZID=Europe/Zurich:20260325T090000\r\nDTEND;TZID=Europe/Zurich:20260325T100000\r\nRRULE:FREQ=DAILY;UNTIL=20260328\r\nEXDATE;TZID=Europe/Zurich:20260328T090000\r\nSUMMARY:Daily sync\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nUID:series@example.test\r\nSEQUENCE:1\r\nRECURRENCE-ID;TZID=Europe/Zurich:20260326T090000\r\nDTSTART;TZID=Europe/Zurich:20260326T100000\r\nDTEND;TZID=Europe/Zurich:20260326T110000\r\nSUMMARY:Old sync time\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nUID:series@example.test\r\nSEQUENCE:2\r\nRECURRENCE-ID;TZID=Europe/Zurich:20260326T090000\r\nDTSTART;TZID=Europe/Zurich:20260326T110000\r\nDTEND;TZID=Europe/Zurich:20260326T120000\r\nSUMMARY:Updated sync time\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nUID:series@example.test\r\nSEQUENCE:2\r\nRECURRENCE-ID;TZID=Europe/Zurich:20260327T090000\r\nDTSTART;TZID=Europe/Zurich:20260327T090000\r\nDTEND;TZID=Europe/Zurich:20260327T100000\r\nSTATUS:CONFIRMED\r\nSUMMARY:Canceled: Daily sync\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
 

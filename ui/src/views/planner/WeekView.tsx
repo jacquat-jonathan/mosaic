@@ -27,6 +27,7 @@ import {
   type ResizeEdge,
 } from "./calendarModel";
 import { TASK_DRAG, type TaskDragPreview } from "./UnscheduledTray";
+import { CalendarEventTitle } from "./CalendarEventTitle";
 
 const MIN_HOUR_HEIGHT = 40;
 const MIN_MULTILINE_TITLE_HEIGHT = 34;
@@ -322,6 +323,7 @@ export function WeekView({
               {external.map((item) => (
                 <button
                   className="planner-event-chip read-only"
+                  title={`${item.title} · ${item.source_name}`}
                   style={{ borderColor: item.color ?? "var(--muted)" }}
                   key={`${item.source_id}:${item.uid}:${item.occurrence_key}`}
                   onClick={() => onOverlay(item)}
@@ -562,6 +564,7 @@ function TimedItem({
       left: `calc(${(item.column / item.columns) * 100}% + 2px)`,
       width: `calc(${100 / item.columns}% - 4px)`,
       height,
+      "--event-padding-y": height < 24 ? "0px" : "4px",
       "--item-color": item.event?.color ?? item.overlay?.color ?? item.session?.color ?? "var(--accent)",
     } as CSSProperties;
   const clampDelta = (delta: number, edge: ResizeEdge) =>
@@ -643,6 +646,7 @@ function TimedItem({
         role="button"
         tabIndex={0}
         className={`planner-timed-item event${height >= (designSystem ? 40 : MIN_MULTILINE_TITLE_HEIGHT) ? " multiline-title" : ""}`}
+        title={event.title}
         draggable={!resize}
         style={style}
         onDragStart={(drag) => {
@@ -674,7 +678,7 @@ function TimedItem({
           }
         }}
       >
-        <strong className="planner-card-title">{event.title}</strong>
+        <CalendarEventTitle>{event.title}</CalendarEventTitle>
         {handle}
       </div>
     );
@@ -684,10 +688,11 @@ function TimedItem({
     return (
       <button
         className={`planner-timed-item overlay${height >= (designSystem ? 40 : MIN_MULTILINE_TITLE_HEIGHT) ? " multiline-title" : ""}`}
+        title={`${overlay.title} · ${overlay.source_name}`}
         style={style}
         onClick={() => onOverlay(overlay)}
       >
-        <strong className="planner-card-title">{overlay.title}</strong>
+        <CalendarEventTitle>{overlay.title}</CalendarEventTitle>
       </button>
     );
   }

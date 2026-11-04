@@ -137,29 +137,55 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
     from = isoDay(days[0]),
     to = isoDay(days.at(-1)!);
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  const loadedRoot = useRef(root);
   const load = useCallback(async () => {
     if (!root || !current()) return;
     const version = ++loadVersion.current;
     const valid = () => current() && version === loadVersion.current;
+    if (loadedRoot.current !== root) {
+      loadedRoot.current = root;
+      setData(null);
+      setOverlay(emptyOverlay);
+      setEpics([]);
+      setEvents([]);
+    }
     setLoading(true);
     try {
-      const [range, nextOverlay, nextEpics, nextEvents] = await Promise.all([
+      const results = await Promise.allSettled([
         api.plannerCalendarRange(from, to),
         api.calendarOverlayRange(from, to, timezone),
         api.plannerEpics(false, false),
         api.plannerEvents(false, false),
       ]);
       if (!valid()) return;
-      setData(range);
-      setOverlay(nextOverlay);
-      setEpics(nextEpics);
-      setEvents(nextEvents);
-      setError(null);
+      const [range, nextOverlay, nextEpics, nextEvents] = results;
+      if (range.status === "fulfilled") setData(range.value);
+      if (nextEpics.status === "fulfilled") setEpics(nextEpics.value);
+      if (nextEvents.status === "fulfilled") setEvents(nextEvents.value);
+      if (nextOverlay.status === "fulfilled") {
+        setOverlay(nextOverlay.value);
+      } else {
+        // Feed rendering and the subscription list are independent: even on the first
+        // load, an invalid cache must not hide calendars the person can edit or remove.
+        try {
+          const subscriptions = await api.calendarSubscriptions();
+          if (!valid()) return;
+          setOverlay((previous) => ({
+            subscriptions,
+            occurrences: previous.occurrences.filter((event) =>
+              subscriptions.some((item) => item.id === event.source_id && item.visible),
+            ),
+          }));
+        } catch {
+          // Keep the last successful list and occurrences when metadata is unavailable too.
+        }
+      }
+      if (!valid()) return;
+      const failures = results.filter((result) => result.status === "rejected");
+      setError(failures.length ? failures.map((result) => errorMessage(result.reason)).join("; ") : null);
     } catch (reason) {
       if (valid()) {
         setError(errorMessage(reason));
-        setData(emptyRange(from, to));
-        setOverlay(emptyOverlay);
       }
     } finally {
       if (valid()) setLoading(false);
@@ -627,6 +653,14 @@ export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
             </Button>
           </Notice>
         )}
+        {overlay.subscriptions
+          .filter((item) => item.visible && item.last_error)
+          .map((item) => (
+            <Notice key={item.id} tone="warning">
+              {item.name}: {item.last_error}
+              <Button onClick={() => setSourcesOpen(true)}>Manage calendars</Button>
+            </Notice>
+          ))}
         {loading && !data && (
           <p className="mds-hint calendar-loading" role="status">
             Loading planner calendar…

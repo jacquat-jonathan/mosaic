@@ -7,6 +7,7 @@ import { editorScope, editorButton } from "./designSystemDom";
 import "./editorControls.css";
 import { isDark } from "../theme";
 import type { EditorContext } from "./context";
+import { imageWithWidth } from "./imageResize";
 
 import { blockRenderers, showRenderError as showError } from "./blocks";
 import { errorMessage } from "../ipc/types";
@@ -170,11 +171,20 @@ export class ImageWidget extends WidgetType {
     readonly width: number | null,
     readonly ctx: EditorContext,
     readonly remote: string | null = null,
+    readonly source?: { from: number; to: number; text: string },
   ) {
     super();
   }
   eq(o: ImageWidget) {
-    return o.path === this.path && o.alt === this.alt && o.width === this.width && o.remote === this.remote;
+    return (
+      o.path === this.path &&
+      o.alt === this.alt &&
+      o.width === this.width &&
+      o.remote === this.remote &&
+      o.source?.from === this.source?.from &&
+      o.source?.to === this.source?.to &&
+      o.source?.text === this.source?.text
+    );
   }
   toDOM(view: EditorView) {
     const wrap = document.createElement("span");
@@ -191,6 +201,86 @@ export class ImageWidget extends WidgetType {
       if (this.width) img.width = this.width;
       void this.ctx.fileUrl(this.path).then((u) => (img.src = u));
       wrap.appendChild(img);
+      if (this.source && !view.state.readOnly) {
+        const source = this.source;
+        wrap.dataset.imageFrom = String(source.from);
+        const handle = document.createElement("button");
+        handle.type = "button";
+        handle.className = "image-resize";
+        handle.setAttribute("aria-label", `Resize image ${this.alt}`);
+        handle.title = "Drag to resize · Arrow keys adjust · Home or double-click resets size";
+        let drag: { x: number; width: number; next: number; scale: number; doc: typeof view.state.doc } | null = null;
+        const renderedWidth = () => img.offsetWidth || this.width || img.naturalWidth || 300;
+        const clamp = (width: number) => Math.round(Math.max(48, Math.min(width, view.contentDOM.clientWidth || 2000)));
+        const restore = () => {
+          if (this.width) img.width = this.width;
+          else img.removeAttribute("width");
+          wrap.classList.remove("resizing");
+        };
+        const commit = (width: number | null) => {
+          if (view.state.readOnly || view.state.doc.sliceString(source.from, source.to) !== source.text) return;
+          const insert = imageWithWidth(source.text, width);
+          if (insert !== source.text) {
+            view.dispatch({ changes: { from: source.from, to: source.to, insert }, userEvent: "input.resize" });
+            queueMicrotask(() =>
+              view.dom.querySelector<HTMLElement>(`[data-image-from="${source.from}"] .image-resize`)?.focus(),
+            );
+          }
+        };
+        handle.addEventListener("pointerdown", (event) => {
+          if (event.button !== 0) return;
+          event.preventDefault();
+          event.stopPropagation();
+          handle.focus();
+          const width = renderedWidth();
+          const scale = view.contentDOM.getBoundingClientRect().width / view.contentDOM.offsetWidth || 1;
+          drag = { x: event.clientX, width, next: width, scale, doc: view.state.doc };
+          wrap.classList.add("resizing");
+          handle.setPointerCapture(event.pointerId);
+        });
+        handle.addEventListener("pointermove", (event) => {
+          if (!drag) return;
+          drag.next = clamp(drag.width + (event.clientX - drag.x) / drag.scale);
+          img.width = drag.next;
+          handle.title = `${drag.next} px`;
+          view.requestMeasure();
+        });
+        handle.addEventListener("pointerup", () => {
+          const finished = drag;
+          drag = null;
+          restore();
+          if (finished && finished.doc === view.state.doc && Math.abs(finished.next - finished.width) >= 1)
+            commit(finished.next);
+        });
+        const cancel = () => {
+          drag = null;
+          restore();
+        };
+        handle.addEventListener("pointercancel", cancel);
+        handle.addEventListener("lostpointercapture", cancel);
+        handle.addEventListener("mousedown", (event) => event.stopPropagation());
+        handle.addEventListener("dblclick", (event) => {
+          event.preventDefault();
+          commit(null);
+        });
+        handle.addEventListener("keydown", (event) => {
+          if (event.key === "Escape") {
+            event.preventDefault();
+            cancel();
+            view.focus();
+            return;
+          }
+          if (!["ArrowLeft", "ArrowRight", "Home"].includes(event.key)) return;
+          event.preventDefault();
+          event.stopPropagation();
+          commit(
+            event.key === "Home"
+              ? null
+              : clamp(renderedWidth() + (event.key === "ArrowRight" ? 1 : -1) * (event.shiftKey ? 40 : 10)),
+          );
+        });
+        wrap.appendChild(handle);
+      }
     }
     revealOnClick(wrap, view, () => view.posAtDOM(wrap));
     return wrap;

@@ -1,8 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
+import { openMockVault } from "./mock-vault";
 
 async function openEditor(page: Page) {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open folder…", exact: true }).click();
+  await openMockVault(page);
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page
     .getByRole("navigation", { name: "Settings sections", exact: true })

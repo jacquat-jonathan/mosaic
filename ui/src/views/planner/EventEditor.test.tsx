@@ -5,6 +5,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { api } from "../../ipc/api";
 import { useVault } from "../../state/vault";
 import { EventEditor } from "./EventEditor";
+import type { PlannerEvent } from "../../ipc/types";
 const props = {
   occurrence: null,
   series: null,
@@ -16,6 +17,41 @@ const props = {
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+});
+test("editing an imported series title preserves its month-day recurrence rule", async () => {
+  const series: PlannerEvent = {
+    id: "monthly",
+    series_id: null,
+    title: "Month end",
+    description: "",
+    location: "",
+    meeting_url: null,
+    participants: [],
+    epic_id: null,
+    color: null,
+    all_day: false,
+    start_value: "2026-01-31T08:00:00Z",
+    end_value: "2026-01-31T09:00:00Z",
+    timezone: "Europe/Zurich",
+    recurrence_rule: "FREQ=MONTHLY;BYMONTHDAY=-1",
+    revision: 1,
+    created_at: "",
+    updated_at: "",
+    archived_at: null,
+    trashed_at: null,
+  };
+  const update = vi.spyOn(api, "updatePlannerEvent").mockResolvedValue(series);
+  render(<EventEditor {...props} series={series} onDone={vi.fn()} />);
+  await userEvent.type(screen.getByLabelText("Title"), " review");
+  await userEvent.click(screen.getByRole("button", { name: "Save" }));
+  expect(update).toHaveBeenCalledWith(
+    "monthly",
+    expect.objectContaining({
+      expected_revision: 1,
+      title: "Month end review",
+      recurrence_rule: "FREQ=MONTHLY;BYMONTHDAY=-1",
+    }),
+  );
 });
 test("event fields retain recurrence and date parsing while failed saves keep the draft", async () => {
   let reject!: (reason: Error) => void;

@@ -158,8 +158,14 @@ export const api = {
   calendarSubscriptions: () => cmd.calendarSubscriptions(),
   addCalendarSubscription: (name: string, url: string, color: string, refreshMinutes: number) =>
     cmd.addCalendarSubscription(name, url, color, refreshMinutes),
-  updateCalendarSubscription: (id: string, name: string, color: string, visible: boolean, refreshMinutes: number) =>
-    cmd.updateCalendarSubscription(id, name, color, visible, refreshMinutes),
+  updateCalendarSubscription: (
+    id: string,
+    name: string,
+    color: string,
+    visible: boolean,
+    refreshMinutes: number,
+    url: string | null = null,
+  ) => cmd.updateCalendarSubscription(id, name, color, visible, refreshMinutes, url),
   removeCalendarSubscription: (id: string) => cmd.removeCalendarSubscription(id),
   refreshCalendarSubscriptions: (force = false) => cmd.refreshCalendarSubscriptions(force),
   calendarOverlayRange: (

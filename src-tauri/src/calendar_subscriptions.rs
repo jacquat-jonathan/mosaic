@@ -362,6 +362,8 @@ pub(crate) async fn add_calendar_subscription(
 
 #[tauri::command(async)]
 #[specta::specta]
+// Tauri injects app/state alongside the flat arguments shared with the generated UI bindings.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn update_calendar_subscription(
     app: AppHandle,
     state: State<AppState>,

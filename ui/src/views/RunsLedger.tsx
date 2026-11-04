@@ -8,7 +8,15 @@ import { pendingForRun, workflowRunState, runDuration } from "./workflowPresenta
 import "../design-system/patterns.css";
 import "./workflowStatus.css";
 
-export function RunsLedger({ runs, pending }: { runs: AgentRun[]; pending: Proposal[] }) {
+export function RunsLedger({
+  runs,
+  pending,
+  newFailures,
+}: {
+  runs: AgentRun[];
+  pending: Proposal[];
+  newFailures?: ReadonlySet<number>;
+}) {
   const rows: RunSummary[] = [...runs]
     .sort((a, b) => b.started - a.started || b.id - a.id)
     .map((run) => {
@@ -25,6 +33,7 @@ export function RunsLedger({ runs, pending }: { runs: AgentRun[]; pending: Propo
       return {
         id: String(run.id),
         title: run.title,
+        newFailure: run.status === "failed" && newFailures?.has(run.id),
         state: workflowRunState(run, reviews > 0),
         trigger: run.trigger || "Manual",
         model: run.model || "Default model",

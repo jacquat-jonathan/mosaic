@@ -4,30 +4,43 @@ import { vaultPrefs } from "./vaultPreferences";
 import { type Agent, type TesseraStatus, errorMessage } from "../ipc/types";
 
 interface Attention {
-  count: number;
   disconnected: boolean;
   status: TesseraStatus | null;
   agents: Agent[];
   error: string | null;
+  root: string | null;
+  unseenFailureIds: number[];
   refresh(): Promise<void>;
+  markFailuresSeen(ids: number[]): void;
 }
 let generation = 0;
 let initialized = false;
+let knownFailures = new Set<number>();
 let seenFailures = new Set<number>();
+const seenKey = (root: string) => `mosaic:seen-failed-runs:${root}`;
+function loadSeen(root: string): Set<number> {
+  try {
+    const saved: unknown = JSON.parse(localStorage.getItem(seenKey(root)) ?? "[]");
+    return new Set(Array.isArray(saved) ? saved.filter((id): id is number => Number.isSafeInteger(id) && id > 0) : []);
+  } catch {
+    return new Set();
+  }
+}
 export const useAttention = create<Attention>((set) => ({
-  count: 0,
   disconnected: false,
   status: null,
   agents: [],
   error: null,
+  root: null,
+  unseenFailureIds: [],
   async refresh() {
     const current = generation;
     try {
       const [status, agents, claude] = await Promise.all([api.tesseraStatus(), api.agents(), api.chatCheck()]);
       if (generation !== current) return;
-      const failures = status.runs.filter((r) => r.status === "failed" || r.status === "skipped").map((r) => r.id);
-      const arrived = initialized && failures.some((id) => !seenFailures.has(id));
-      seenFailures = new Set(failures);
+      const failures = status.runs.filter((r) => r.status === "failed").map((r) => r.id);
+      const arrived = initialized && failures.some((id) => !knownFailures.has(id));
+      knownFailures = new Set(failures);
       initialized = true;
       if (arrived && inTauri)
         void import("@tauri-apps/api/window")
@@ -36,23 +49,38 @@ export const useAttention = create<Attention>((set) => ({
             if (!(await win.isFocused())) await win.requestUserAttention(UserAttentionType.Informational);
           })
           .catch(() => {});
-      const latest = new Map<string, string>();
-      for (const r of status.runs) if (!latest.has(r.agent)) latest.set(r.agent, r.status);
-      const count =
-        [...latest.values()].filter((s) => s === "failed" || s === "skipped").length +
-        status.agents.filter((a) => a.error).length +
-        (claude.path ? 0 : 1);
-      set({ status, agents, count, disconnected: !claude.path, error: null });
+      set({
+        status,
+        agents,
+        disconnected: !claude.path,
+        error: null,
+        unseenFailureIds: failures.filter((id) => !seenFailures.has(id)),
+      });
     } catch (e) {
-      if (generation === current) set({ error: errorMessage(e), count: 1 });
+      if (generation === current) set({ error: errorMessage(e) });
     }
   },
+  markFailuresSeen(ids) {
+    const state = useAttention.getState();
+    if (!state.root || !state.status) return;
+    const failed = new Set(state.status.runs.filter((run) => run.status === "failed").map((run) => run.id));
+    const newlySeen = ids.filter((id) => failed.has(id) && !seenFailures.has(id));
+    if (!newlySeen.length) return;
+    for (const id of newlySeen) seenFailures.add(id);
+    try {
+      localStorage.setItem(seenKey(state.root), JSON.stringify([...seenFailures]));
+    } catch {
+      // The badge still clears for this session when app storage is unavailable.
+    }
+    set({ unseenFailureIds: state.unseenFailureIds.filter((id) => !seenFailures.has(id)) });
+  },
 }));
-export function startAttention() {
+export function startAttention(root: string) {
   generation++;
   initialized = false;
-  seenFailures = new Set();
-  useAttention.setState({ status: null, agents: [], count: 0, error: null });
+  knownFailures = new Set();
+  seenFailures = loadSeen(root);
+  useAttention.setState({ root, status: null, agents: [], unseenFailureIds: [], error: null });
   const refresh = () => void useAttention.getState().refresh();
   refresh();
   let live = true;

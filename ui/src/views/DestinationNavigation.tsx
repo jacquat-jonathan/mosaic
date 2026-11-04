@@ -3,9 +3,8 @@ import { Bot, CalendarDays, Files, Search, Settings } from "lucide-react";
 import { Badge, IconButton } from "../design-system/components";
 import { useUi, type Destination } from "../state/ui";
 import { useWorkspace } from "../state/workspace";
-import { useAttention } from "../state/attention";
-import { useChat } from "../state/chat";
 import { useReview } from "../state/review";
+import { useAttention } from "../state/attention";
 import { shortcutOf } from "../commands";
 import { DesignSystemScope } from "./DesignSystemScope";
 import "./destinationNavigation.css";
@@ -21,14 +20,14 @@ export function DestinationNavigation() {
   const sidebar = useUi((state) => state.leftSidebar);
   const active = useWorkspace((state) => state.panes.find((pane) => pane.id === state.focused)?.active);
   const pending = useReview((state) => state.pending.length);
-  const attention = useAttention((state) => state.count);
-  const chatAttention = useChat(
-    (state) =>
-      Object.values(state.chats).filter(
-        (chat) => chat.run === null && (chat.items.at(-1)?.kind === "error" || chat.noMosaic),
-      ).length,
-  );
-  const count = pending + attention + chatAttention;
+  const failed = useAttention((state) => state.unseenFailureIds.length);
+  const count = pending + failed;
+  const attentionDescription = [
+    pending ? `${pending} pending ${pending === 1 ? "review" : "reviews"}` : "",
+    failed ? `${failed} new failed ${failed === 1 ? "run" : "runs"}` : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
   const description = `${useId()}-attention`;
   const buttons = useRef(new Map<Destination, HTMLButtonElement>());
   const [focusTarget, setFocusTarget] = useState<Destination | null>(null);
@@ -92,11 +91,11 @@ export function DestinationNavigation() {
             <destination.icon aria-hidden="true" />
             {destination.id === "ai" && count > 0 && (
               <>
-                <Badge className="destination-attention" title={`${count} need attention`} aria-hidden="true">
+                <Badge className="destination-attention" title={attentionDescription} aria-hidden="true">
                   {count > 99 ? "99+" : count}
                 </Badge>
                 <span id={description} className="destination-description">
-                  {count} need attention
+                  {attentionDescription}
                 </span>
               </>
             )}

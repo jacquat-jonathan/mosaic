@@ -91,6 +91,9 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      # Video recording needs FFmpeg even when Chrome comes preinstalled on the runner.
+      - name: Install Playwright video encoder
+        run: pnpm --dir ui exec playwright install ffmpeg
       - name: Install WebKit test browser
         if: matrix.browser == 'webkit'
         run: pnpm --dir ui exec playwright install webkit

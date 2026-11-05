@@ -30,7 +30,7 @@ export function parse(text: string): OutlineHeading[] {
       continue;
     }
     if (fence) continue;
-    const h = /^(#{1,6})[ \t]+(.+?)[ \t#]*$/.exec(l);
+    const h = /^(#{1,6})[ \t]+(.+?)(?:[ \t]+#+)?[ \t]*$/.exec(l);
     if (h) out.push({ level: h[1].length, text: h[2], line: i + 1, offset: offsets[i] });
   }
   return out;

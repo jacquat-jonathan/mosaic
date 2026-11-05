@@ -96,3 +96,14 @@ describe("Markdown note sections", () => {
     expect(changed.text.slice(changed.select!.anchor, changed.select!.head)).toBe("New section");
   });
 });
+
+describe("heading closing sequence", () => {
+  const texts = (src: string) => parse(src).map((h) => h.text);
+  it("only strips a # run preceded by whitespace (CommonMark)", () => {
+    expect(texts("# Learning C#\n")).toEqual(["Learning C#"]);
+    expect(texts("# Foo ##\n")).toEqual(["Foo"]);
+    expect(texts("# Foo #  \n")).toEqual(["Foo"]);
+    expect(texts("# C# #\n")).toEqual(["C#"]);
+    expect(texts("# Foo#bar\n")).toEqual(["Foo#bar"]);
+  });
+});

@@ -246,6 +246,8 @@ function mockIcalPreview(content: string, sourceKind: string): IcalImportPreview
       recurrence_rule: event.recurrence_rule ?? null,
       duplicate: importedIcal.has(`${sourceKind}:${key}`),
       event,
+      excluded_occurrences: [],
+      recurrence_key: null,
     };
   });
   return {

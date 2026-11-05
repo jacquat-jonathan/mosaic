@@ -503,6 +503,10 @@ export type IcalImportCandidate = {
 	recurrence_rule: string | null,
 	duplicate: boolean,
 	event: CreateEvent,
+	/**  Occurrence keys of this series that EXDATE or a cancelled override removed. */
+	excluded_occurrences: string[],
+	/**  Occurrence this candidate overrides (RECURRENCE-ID), if it is an override. */
+	recurrence_key: string | null,
 };
 
 export type IcalImportPreview = {

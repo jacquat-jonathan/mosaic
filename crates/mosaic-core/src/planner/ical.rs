@@ -24,6 +24,12 @@ pub struct IcalImportCandidate {
     pub recurrence_rule: Option<String>,
     pub duplicate: bool,
     pub event: CreateEvent,
+    /// Occurrence keys of this series that EXDATE or a cancelled override removed.
+    #[serde(default)]
+    pub excluded_occurrences: Vec<String>,
+    /// Occurrence this candidate overrides (RECURRENCE-ID), if it is an override.
+    #[serde(default)]
+    pub recurrence_key: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -380,8 +386,27 @@ impl PlannerStore {
         fallback_timezone: &str,
     ) -> Result<IcalImportPreview> {
         let parsed = parse(content, fallback_timezone)?;
+        let mut cancelled_overrides = HashMap::<String, Vec<String>>::new();
+        for event in parsed.iter().filter(|event| event.cancelled) {
+            if let Some(key) = &event.recurrence_key {
+                cancelled_overrides
+                    .entry(event.uid.clone())
+                    .or_default()
+                    .push(key.clone());
+            }
+        }
         let mut candidates = Vec::with_capacity(parsed.len());
         for parsed in parsed.into_iter().filter(|event| !event.cancelled) {
+            let mut excluded_occurrences = parsed.excluded_occurrences;
+            if parsed.recurrence_key.is_none() {
+                excluded_occurrences.extend(
+                    cancelled_overrides
+                        .get(&parsed.uid)
+                        .into_iter()
+                        .flatten()
+                        .cloned(),
+                );
+            }
             let duplicate: bool = self
                 .conn
                 .query_row(
@@ -403,6 +428,8 @@ impl PlannerStore {
                 recurrence_rule: parsed.event.recurrence_rule.clone(),
                 duplicate,
                 event: parsed.event,
+                excluded_occurrences,
+                recurrence_key: parsed.recurrence_key,
             });
         }
         let duplicates = candidates.iter().filter(|item| item.duplicate).count();
@@ -435,11 +462,15 @@ impl PlannerStore {
         let at = now();
         let mut imported_event_ids = Vec::new();
         let mut skipped_duplicates = Vec::new();
-        for candidate in preview
+        let mut series_ids = HashMap::<String, String>::new();
+        // Series first, so their overrides can link to them whatever the file order.
+        let mut ordered = preview
             .candidates
             .iter()
             .filter(|candidate| selected.contains(&candidate.key))
-        {
+            .collect::<Vec<_>>();
+        ordered.sort_by_key(|candidate| candidate.recurrence_key.is_some());
+        for candidate in ordered {
             let duplicate: bool = tx
                 .query_row(
                     "SELECT EXISTS(SELECT 1 FROM event_imports WHERE source_kind = ?1
@@ -456,7 +487,48 @@ impl PlannerStore {
                 skipped_duplicates.push(candidate.key.clone());
                 continue;
             }
-            let event = super::calendar::insert_event(&tx, candidate.event.clone(), None, &at)?;
+            let mut input = candidate.event.clone();
+            let mut series_id = None;
+            if candidate.recurrence_key.is_some() {
+                // An override replaces one occurrence of its imported series; without
+                // the series it stays a standalone event.
+                series_id = match series_ids.get(&candidate.source_uid) {
+                    Some(id) => Some(id.clone()),
+                    None => tx
+                        .query_row(
+                            "SELECT imported_event_id FROM event_imports WHERE source_kind = ?1
+                             AND source_uid = ?2 AND recurrence_id = '' ORDER BY imported_at DESC LIMIT 1",
+                            params![preview.source_kind, candidate.source_uid],
+                            |row| row.get(0),
+                        )
+                        .optional()
+                        .map_err(sql_error)?,
+                };
+                if series_id.is_some() {
+                    input.recurrence_rule = None;
+                }
+            }
+            let event = super::calendar::insert_event(&tx, input, series_id.as_deref(), &at)?;
+            if let Some(series_id) = &series_id {
+                tx.execute(
+                    "INSERT INTO event_exceptions(series_id, occurrence_key, action, replacement_event_id)
+                     VALUES (?1, ?2, 'replaced', ?3)
+                     ON CONFLICT(series_id, occurrence_key) DO UPDATE SET action = 'replaced', replacement_event_id = ?3",
+                    params![series_id, candidate.recurrence_key, event.id],
+                )
+                .map_err(sql_error)?;
+            } else if candidate.recurrence_key.is_none() {
+                series_ids.insert(candidate.source_uid.clone(), event.id.clone());
+                for key in &candidate.excluded_occurrences {
+                    tx.execute(
+                        "INSERT INTO event_exceptions(series_id, occurrence_key, action, replacement_event_id)
+                         VALUES (?1, ?2, 'cancelled', NULL)
+                         ON CONFLICT(series_id, occurrence_key) DO NOTHING",
+                        params![event.id, key],
+                    )
+                    .map_err(sql_error)?;
+                }
+            }
             tx.execute(
                 "INSERT INTO event_imports(source_kind, source_uid, recurrence_id, imported_event_id, imported_at)
                  VALUES (?1, ?2, ?3, ?4, ?5)",

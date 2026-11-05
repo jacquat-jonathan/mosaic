@@ -789,3 +789,43 @@ fn ten_thousand_tasks_and_a_busy_month_load_within_the_acceptance_budget() {
         "large planner month loaded in {elapsed:?}, over the five-second acceptance budget"
     );
 }
+
+#[test]
+fn ical_import_keeps_exdates_and_links_recurrence_id_overrides_to_the_series() {
+    let content = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\n\
+        BEGIN:VEVENT\r\nUID:s1\r\nDTSTART:20260401T090000Z\r\nDTEND:20260401T100000Z\r\n\
+        SUMMARY:Daily\r\nRRULE:FREQ=DAILY\r\nEXDATE:20260402T090000Z\r\nEND:VEVENT\r\n\
+        BEGIN:VEVENT\r\nUID:s1\r\nRECURRENCE-ID:20260403T090000Z\r\nDTSTART:20260403T110000Z\r\n\
+        DTEND:20260403T120000Z\r\nSUMMARY:Moved\r\nEND:VEVENT\r\n\
+        BEGIN:VEVENT\r\nUID:s1\r\nRECURRENCE-ID:20260404T090000Z\r\nDTSTART:20260404T090000Z\r\n\
+        DTEND:20260404T100000Z\r\nSUMMARY:Dropped\r\nSTATUS:CANCELLED\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+    let mut store = in_memory();
+    let preview = store.preview_ical_import("file", content, "UTC").unwrap();
+    let keys = preview
+        .candidates
+        .iter()
+        .map(|candidate| candidate.key.clone())
+        .collect::<Vec<_>>();
+    store.import_ical(&preview, &keys, false).unwrap();
+
+    let range = store.calendar_range("2026-04-01", "2026-04-05").unwrap();
+    let mut seen = range
+        .events
+        .iter()
+        .map(|item| {
+            (
+                item.start_value[..10].to_string(),
+                item.title.clone(),
+                item.start_value[11..16].to_string(),
+            )
+        })
+        .collect::<Vec<_>>();
+    seen.sort();
+    let expected = [
+        ("2026-04-01", "Daily", "09:00"),
+        ("2026-04-03", "Moved", "11:00"),
+        ("2026-04-05", "Daily", "09:00"),
+    ]
+    .map(|(a, b, c)| (a.to_string(), b.to_string(), c.to_string()));
+    assert_eq!(seen, expected);
+}

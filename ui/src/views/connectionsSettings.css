@@ -1,6 +1,6 @@
 .mosaic-ds.connections-settings {
   min-width: 0;
-  padding: var(--mds-space-10);
+  padding: 0;
 }
 .mosaic-ds.connections-settings h1 {
   font-size: var(--mds-text-heading);

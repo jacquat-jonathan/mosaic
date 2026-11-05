@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { MoreHorizontal } from "lucide-react";
+import { Ellipsis } from "lucide-react";
 import { Button, IconButton, Notice } from "../design-system/components";
 import { WorkflowCard, type RunState } from "../design-system/patterns";
 import { api } from "../ipc/api";
@@ -373,7 +373,7 @@ function WorkflowCatalog({
                           ]);
                         }}
                       >
-                        <MoreHorizontal aria-hidden="true" />
+                        <Ellipsis aria-hidden="true" />
                       </IconButton>
                     </>
                   }

@@ -319,6 +319,7 @@ describe("workspace and system actions", () => {
 
 describe("daily notes, diagrams and imports", () => {
   it("opens existing daily notes and creates missing notes with templates and carry-over errors", async () => {
+    useVaultPreferences.setState({ value: { ...DEFAULT_VAULT_PREFS, daily_notes_enabled: true } });
     const open = vi.fn().mockResolvedValue(undefined);
     const setError = vi.fn();
     useWorkspace.setState({ open });
@@ -344,6 +345,7 @@ describe("daily notes, diagrams and imports", () => {
     useVaultPreferences.setState({
       value: {
         ...DEFAULT_VAULT_PREFS,
+        daily_notes_enabled: true,
         daily_folder: "Daily",
         daily_template: "Templates/Daily",
         daily_format: "YYYY-MM-DD",
@@ -444,4 +446,15 @@ describe("daily notes, diagrams and imports", () => {
     expect(await importDropped([file], "")).toEqual([]);
     expect(setError).toHaveBeenCalledWith("import failed");
   });
+});
+
+it("disabled daily notes do not read, create or carry over notes", async () => {
+  useVaultPreferences.setState({ value: { ...DEFAULT_VAULT_PREFS, daily_notes_enabled: false } });
+  const days = vi.spyOn(api, "days");
+  const create = vi.spyOn(api, "create");
+  const carry = vi.spyOn(api, "carryOver");
+  await openDailyNote();
+  expect(days).not.toHaveBeenCalled();
+  expect(create).not.toHaveBeenCalled();
+  expect(carry).not.toHaveBeenCalled();
 });

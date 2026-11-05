@@ -246,6 +246,7 @@ export function HtmlViewer({ buffer }: { buffer: Buffer }) {
   const [hashedContent, setHashedContent] = useState<{ content: string; hash: string } | null>(null);
   const vaultRoot = useVaultPreferences((state) => state.root);
   const vaultScripts = useVaultPreferences((state) => state.value.allow_html_scripts);
+  const vaultInternet = useVaultPreferences((state) => state.value.allow_html_internet);
   const overrideKey = `${vaultRoot ?? ""}\0${buffer.path}`;
   const permission = htmlScriptPermission(vaultScripts, scriptOverrides.get(overrideKey));
   const scripts = permission.allowed;
@@ -254,7 +255,7 @@ export function HtmlViewer({ buffer }: { buffer: Buffer }) {
   const contentHash = hashedContent?.content === content ? hashedContent.hash : null;
   const networkKey = contentHash === null ? null : `${overrideKey}\0${contentHash}`;
   const networkChoice = networkKey === null ? undefined : networkPermissions.get(networkKey);
-  const internetAllowed = networkChoice === true;
+  const internetAllowed = networkChoice ?? vaultInternet;
   const [zoom, setZoom] = useState(1);
   // Each built document gets a fresh iframe: swapping srcdoc on a live sandboxed frame can leave it blank.
   const [previewError, setPreviewError] = useState<string | null>(null);
@@ -357,7 +358,7 @@ export function HtmlViewer({ buffer }: { buffer: Buffer }) {
               {scripts ? <ShieldAlert size={14} /> : <ShieldCheck size={14} />}
               {permission.label}
             </Button>
-            {networkChoice !== undefined && (
+            {contentHash !== null && requestedOrigins.length > 0 && (networkChoice !== undefined || vaultInternet) && (
               <Button
                 className={internetAllowed ? "warn-toggle on" : "warn-toggle"}
                 onClick={() => chooseInternet(!internetAllowed)}
@@ -365,34 +366,42 @@ export function HtmlViewer({ buffer }: { buffer: Buffer }) {
                 title={`${internetAllowed ? "Block" : "Allow"} the listed internet origins for this page content until Mosaic quits: ${requestedOrigins.join(", ")}`}
               >
                 {internetAllowed ? <Globe2 size={14} /> : <WifiOff size={14} />}
-                {internetAllowed ? "Internet allowed for this page" : "Internet blocked for this page"}
+                {networkChoice === undefined
+                  ? "Internet allowed by vault setting"
+                  : internetAllowed
+                    ? "Internet allowed for this page"
+                    : "Internet blocked for this page"}
               </Button>
             )}
           </>
         )}
       </DocumentToolbar>
-      {mode === "preview" && contentHash !== null && requestedOrigins.length > 0 && networkChoice === undefined && (
-        <DesignSystemScope className="html-permission">
-          <div
-            className="mds-notice mds-notice--warning html-network-prompt"
-            role="alert"
-            aria-label="External resource permission"
-          >
-            <div className="html-permission-details">
-              <Globe2 size={16} aria-hidden="true" />
-              <span>
-                <strong>Allow this page to access the internet?</strong> Requested origins:{" "}
-                <code>{requestedOrigins.join(", ")}</code>. Only these origins are granted for this exact page content;
-                scripts remain controlled separately.
-              </span>
+      {mode === "preview" &&
+        contentHash !== null &&
+        requestedOrigins.length > 0 &&
+        !vaultInternet &&
+        networkChoice === undefined && (
+          <DesignSystemScope className="html-permission">
+            <div
+              className="mds-notice mds-notice--warning html-network-prompt"
+              role="alert"
+              aria-label="External resource permission"
+            >
+              <div className="html-permission-details">
+                <Globe2 size={16} aria-hidden="true" />
+                <span>
+                  <strong>Allow this page to access the internet?</strong> Requested origins:{" "}
+                  <code>{requestedOrigins.join(", ")}</code>. Only these origins are granted for this exact page
+                  content; scripts remain controlled separately.
+                </span>
+              </div>
+              <div className="button-row">
+                <Button onClick={() => chooseInternet(false)}>Keep blocked</Button>
+                <Button onClick={() => chooseInternet(true)}>Allow for this session</Button>
+              </div>
             </div>
-            <div className="button-row">
-              <Button onClick={() => chooseInternet(false)}>Keep blocked</Button>
-              <Button onClick={() => chooseInternet(true)}>Allow for this session</Button>
-            </div>
-          </div>
-        </DesignSystemScope>
-      )}
+          </DesignSystemScope>
+        )}
       {mode === "preview" && loading && (
         <DesignSystemScope className="document-state">
           <Notice>Loading HTML preview…</Notice>

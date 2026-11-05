@@ -2,6 +2,7 @@
 // immediately.
 
 import { create } from "zustand";
+import { applyColorTheme, isColorTheme, type ColorTheme, type Accent } from "../colorThemes";
 import { inTauri } from "../ipc/api";
 
 export type Theme = "system" | "light" | "dark";
@@ -20,7 +21,8 @@ export interface Prefs {
   codeFont: string;
   lineSpacing: number;
   headingScale: number;
-  accent: "blue" | "green" | "violet" | "amber";
+  colorTheme: ColorTheme;
+  accent: Accent;
   uiScale: number;
   density: "comfortable" | "compact";
   sourceLineNumbers: boolean;
@@ -41,6 +43,8 @@ export interface Prefs {
   newNoteLocation: "root" | "current";
   /** Ask before moving files to the Trash. */
   confirmTrash: boolean;
+  autoCheckUpdates: boolean;
+  autoDownloadUpdates: boolean;
   /** Folder for daily notes (vault-relative, "" = root). */
   dailyFolder: string;
   /** Note copied into each new daily note, with {{date}}, {{title}}, {{weekday}}, {{time}} filled in. */
@@ -67,7 +71,8 @@ export const DEFAULT_PREFS: Prefs = {
   codeFont: "system",
   lineSpacing: 1.7,
   headingScale: 1,
-  accent: "blue",
+  colorTheme: "classic",
+  accent: "theme",
   uiScale: 1,
   density: "comfortable",
   sourceLineNumbers: false,
@@ -84,6 +89,8 @@ export const DEFAULT_PREFS: Prefs = {
   spellcheck: true,
   newNoteLocation: "current",
   confirmTrash: true,
+  autoCheckUpdates: true,
+  autoDownloadUpdates: false,
   dailyFolder: "Daily",
   dailyTemplate: "",
   chatModel: "",
@@ -108,7 +115,8 @@ export function sanitize(raw: unknown): Prefs {
     codeFont: pick("codeFont", (v) => typeof v === "string" && v.length > 0 && v.length <= 100),
     lineSpacing: pick("lineSpacing", (v) => typeof v === "number" && v >= 1.3 && v <= 2.2),
     headingScale: pick("headingScale", (v) => typeof v === "number" && v >= 0.85 && v <= 1.3),
-    accent: pick("accent", (v) => ["blue", "green", "violet", "amber"].includes(String(v))),
+    colorTheme: pick("colorTheme", isColorTheme),
+    accent: pick("accent", (v) => ["theme", "blue", "green", "violet", "amber"].includes(String(v))),
     uiScale: pick("uiScale", (v) => typeof v === "number" && v >= 0.85 && v <= 1.3),
     density: pick("density", (v) => v === "comfortable" || v === "compact"),
     sourceLineNumbers: pick("sourceLineNumbers", (v) => typeof v === "boolean"),
@@ -131,6 +139,8 @@ export function sanitize(raw: unknown): Prefs {
     spellcheck: pick("spellcheck", (v) => typeof v === "boolean"),
     newNoteLocation: pick("newNoteLocation", (v) => v === "root" || v === "current"),
     confirmTrash: pick("confirmTrash", (v) => typeof v === "boolean"),
+    autoCheckUpdates: pick("autoCheckUpdates", (v) => typeof v === "boolean"),
+    autoDownloadUpdates: pick("autoDownloadUpdates", (v) => typeof v === "boolean"),
     dailyFolder: pick("dailyFolder", (v) => typeof v === "string"),
     dailyTemplate: pick("dailyTemplate", (v) => typeof v === "string"),
     chatModel: pick("chatModel", (v) => v === "" || v === "sonnet" || v === "opus" || v === "haiku"),
@@ -186,6 +196,10 @@ export function applyPrefs(p: Prefs) {
   const root = document.documentElement;
   if (p.theme === "system") delete root.dataset.theme;
   else root.dataset.theme = p.theme;
+  const dark =
+    p.theme === "dark" ||
+    (p.theme === "system" && (window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false));
+  applyColorTheme(root, p.colorTheme, dark, p.accent);
   root.style.setProperty("--note-size", `${p.noteSize}px`);
   root.style.setProperty("--note-width", NOTE_WIDTHS[p.noteWidth]);
   root.style.setProperty(
@@ -231,3 +245,10 @@ useSettings.subscribe((s, previous) => {
     // Storage unavailable: preferences last until the app quits.
   }
 });
+
+// Paired palettes follow macOS without requiring another preference change.
+if (typeof window !== "undefined") {
+  window.matchMedia?.("(prefers-color-scheme: dark)").addEventListener?.("change", () => {
+    if (prefs().theme === "system") applyPrefs(prefs());
+  });
+}

@@ -550,3 +550,71 @@ export function MenuButton({ label, items }: { label: string; items: readonly Me
     </div>
   );
 }
+
+/** A labelled settings subsection. The consumer supplies the preference scope in its description. */
+export function SettingsGroup({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description?: string;
+  children: ReactNode;
+}) {
+  const id = useId();
+  return (
+    <section className="mds-settings-group" aria-labelledby={id}>
+      <header>
+        <h3 id={id}>{title}</h3>
+        {description && <p className="mds-hint">{description}</p>}
+      </header>
+      {children}
+    </section>
+  );
+}
+
+export const FOLDER_COLOR_OPTIONS = [
+  { value: "", label: "Default", color: "transparent" },
+  { value: "red", label: "Red", color: "#d65a5a" },
+  { value: "orange", label: "Orange", color: "#dc923b" },
+  { value: "green", label: "Green", color: "#52a77a" },
+  { value: "blue", label: "Blue", color: "#5d91dd" },
+  { value: "purple", label: "Purple", color: "#ab78d2" },
+] as const;
+
+/** Visible names and native radios make swatches usable without relying on color alone. */
+export function ColorPicker({
+  label,
+  value,
+  options,
+  disabled,
+  onChange,
+  "aria-describedby": describedBy,
+}: {
+  label: string;
+  value: string;
+  options: readonly { value: string; label: string; color: string }[];
+  disabled?: boolean;
+  onChange(value: string): void;
+  "aria-describedby"?: string;
+}) {
+  const name = useId();
+  return (
+    <div className="mds-color-picker" role="radiogroup" aria-label={label} aria-describedby={describedBy}>
+      {options.map((option) => (
+        <label key={option.value} className="mds-color-option">
+          <input
+            type="radio"
+            name={name}
+            value={option.value}
+            checked={value === option.value}
+            disabled={disabled}
+            onChange={() => onChange(option.value)}
+          />
+          <span className="mds-color-swatch" style={{ backgroundColor: option.color }} aria-hidden="true" />
+          <span>{option.label}</span>
+        </label>
+      ))}
+    </div>
+  );
+}

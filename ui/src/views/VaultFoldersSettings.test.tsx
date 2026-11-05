@@ -12,6 +12,7 @@ let saved: VaultPreferences;
 beforeEach(() => {
   saved = {
     ...DEFAULT_VAULT_PREFS,
+    daily_notes_enabled: true,
     allow_html_scripts: true,
     link_style: "markdown",
     daily_format: "DD-MM-YYYY",
@@ -143,8 +144,10 @@ test("section reset preserves other vault preferences and supports cancellation"
   expect(Object.keys(patch).sort()).toEqual(
     [
       "agents_folder",
+      "daily_notes_enabled",
       "daily_folder",
       "daily_template",
+      "daily_format",
       "new_note_location",
       "new_note_folder",
       "attachment_location",
@@ -156,7 +159,7 @@ test("section reset preserves other vault preferences and supports cancellation"
   expect(saved).toMatchObject({
     allow_html_scripts: true,
     link_style: "markdown",
-    daily_format: "DD-MM-YYYY",
+    daily_format: "YYYY-MM-DD",
     folder_colors: {},
   });
   await waitFor(() =>
@@ -178,4 +181,73 @@ test("repair retains the unreadable state when the backend refuses a newer versi
   );
   expect(useVaultPreferences.getState().error).toBe("Cannot read vault preferences");
   expect(screen.getByRole("button", { name: "Daily notes folder" })).toHaveProperty("disabled", true);
+});
+
+test("daily-note controls hide when disabled, preserve paths, and include the filename format when enabled", async () => {
+  const user = userEvent.setup();
+  render(<VaultFoldersSettings />);
+  expect(screen.getByLabelText("Daily file name")).toHaveProperty("value", "DD-MM-YYYY");
+  await user.click(screen.getByRole("switch", { name: "Enable daily notes" }));
+  await waitFor(() => expect(saved.daily_notes_enabled).toBe(false));
+  expect(screen.queryByRole("button", { name: "Daily notes folder" })).toBeNull();
+  expect(screen.queryByLabelText("Daily file name")).toBeNull();
+  expect(saved.daily_folder).toBe("Daily");
+  expect(saved.daily_format).toBe("DD-MM-YYYY");
+  await user.click(screen.getByRole("switch", { name: "Enable daily notes" }));
+  await user.selectOptions(await screen.findByLabelText("Daily file name"), "YYYYMMDD");
+  await waitFor(() => expect(saved.daily_format).toBe("YYYYMMDD"));
+});
+
+test("folder colors filter by path, persist swatches, and keep the saved color on failure", async () => {
+  const user = userEvent.setup();
+  render(<VaultFoldersSettings />);
+  await user.type(screen.getByRole("textbox", { name: "Filter folders" }), "Projects");
+  expect(screen.queryByRole("radiogroup", { name: "Color for Agents" })).toBeNull();
+  const group = screen.getByRole("radiogroup", { name: "Color for Projects" });
+  const purple = group.querySelector<HTMLInputElement>('input[value="purple"]')!;
+  await user.click(purple);
+  await waitFor(() => expect(saved.folder_colors).toEqual({ Projects: "purple" }));
+  vi.mocked(api.setVaultPreferences).mockRejectedValueOnce(new Error("Save refused"));
+  await user.click(group.querySelector<HTMLInputElement>('input[value="red"]')!);
+  expect(await screen.findByRole("alert")).toHaveProperty("textContent", "Save refused");
+  expect(purple.checked).toBe(true);
+  await user.click(group.querySelector<HTMLInputElement>('input[value=""]')!);
+  await waitFor(() => expect(saved.folder_colors).toEqual({}));
+});
+
+test("folder colors start collapsed, expand each level, and reveal filtered descendants", async () => {
+  const user = userEvent.setup();
+  useVault.setState({
+    entries: ["Projects", "Projects/Mosaic", "Projects/Mosaic/Design"].map((path) => ({
+      path,
+      name: path.split("/").pop()!,
+      is_dir: true,
+      kind: null,
+      size: 0,
+      mtime: 0,
+    })),
+  });
+  saved = { ...saved, folder_colors: { "Projects/Mosaic/Design": "purple" } };
+  useVaultPreferences.setState({ value: saved });
+  render(<VaultFoldersSettings />);
+  expect(screen.queryByRole("radiogroup", { name: "Color for Projects/Mosaic" })).toBeNull();
+  await user.click(screen.getByRole("button", { name: "Expand Projects" }));
+  expect(screen.getByRole("radiogroup", { name: "Color for Projects/Mosaic" })).toBeTruthy();
+  expect(screen.queryByRole("radiogroup", { name: "Color for Projects/Mosaic/Design" })).toBeNull();
+  await user.click(screen.getByRole("button", { name: "Expand Projects/Mosaic" }));
+  expect(
+    screen
+      .getByRole("radiogroup", { name: "Color for Projects/Mosaic/Design" })
+      .querySelector<HTMLInputElement>('input[value="purple"]')!.checked,
+  ).toBe(true);
+  await user.click(screen.getByRole("button", { name: "Collapse Projects" }));
+  const search = screen.getByRole("textbox", { name: "Filter folders" });
+  await user.type(search, "Design");
+  expect(screen.getByRole("radiogroup", { name: "Color for Projects/Mosaic/Design" })).toBeTruthy();
+  await user.click(screen.getByRole("button", { name: "Collapse Projects/Mosaic" }));
+  expect(screen.queryByRole("radiogroup", { name: "Color for Projects/Mosaic/Design" })).toBeNull();
+  await user.clear(search);
+  expect(screen.getByRole("button", { name: "Expand Projects" }).getAttribute("aria-expanded")).toBe("false");
+  expect(saved.folder_colors).toEqual({ "Projects/Mosaic/Design": "purple" });
+  expect(api.setVaultPreferences).not.toHaveBeenCalled();
 });

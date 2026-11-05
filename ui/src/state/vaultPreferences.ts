@@ -10,6 +10,7 @@ export type VaultPreferences = Required<B.VaultPreferences>;
 export const DEFAULT_VAULT_PREFS: VaultPreferences = {
   version: 1,
   agents_folder: "Agents",
+  daily_notes_enabled: false,
   daily_folder: "Daily",
   daily_template: "",
   daily_format: "YYYY-MM-DD",
@@ -19,6 +20,7 @@ export const DEFAULT_VAULT_PREFS: VaultPreferences = {
   attachment_folder: "",
   show_attachments_in_tree: false,
   allow_html_scripts: false,
+  allow_html_internet: false,
   link_style: "wiki",
   startup_note: "",
   folder_colors: {},

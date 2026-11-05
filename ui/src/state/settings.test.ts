@@ -33,4 +33,17 @@ describe("settings", () => {
     expect(sanitize({ readableWidth: true }).noteWidth).toBe("medium");
     expect(sanitize({ noteWidth: "huge" }).noteWidth).toBe("medium");
   });
+
+  it("keeps existing accent overrides and falls back safely for unknown palettes", () => {
+    expect(sanitize({ theme: "dark", accent: "green" })).toMatchObject({
+      theme: "dark",
+      colorTheme: "classic",
+      accent: "green",
+    });
+    expect(sanitize({ colorTheme: "forest", accent: "theme" }).colorTheme).toBe("forest");
+    expect(sanitize({ colorTheme: "unknown", accent: "unknown" })).toMatchObject({
+      colorTheme: "classic",
+      accent: "theme",
+    });
+  });
 });

@@ -16,7 +16,7 @@ import { RIGHT_DEFAULT, SIDEBAR_DEFAULT, useUi } from "./state/ui";
 import { RightPanel } from "./views/RightPanel";
 import { QuickSwitcher } from "./views/QuickSwitcher";
 import { startBookmarkSync, startVaultSync } from "./sync";
-import { startUpdateListeners } from "./state/updates";
+import { startAutomaticUpdates, startUpdateListeners } from "./state/updates";
 import "./state/settings";
 import { Picker } from "./views/Picker";
 import { NewNoteDialog } from "./views/NewNoteDialog";
@@ -69,7 +69,16 @@ export function App() {
     );
     keep(startVaultSync());
     keep(startBookmarkSync());
-    keep(startUpdateListeners());
+    keep(
+      startUpdateListeners().then((off) => {
+        if (cancelled) return off;
+        const stop = startAutomaticUpdates();
+        return () => {
+          stop();
+          off();
+        };
+      }),
+    );
     return () => {
       cancelled = true;
       offs.forEach((off) => off());
@@ -140,7 +149,7 @@ function Main() {
       !isSpecialTab(active) &&
       useVault.getState().entries.some((entry) => entry.path === active && !entry.is_dir)
     )
-      revealInTree(active);
+      revealInTree(active, { showSidebar: false });
     if (window.matchMedia("(max-width: 800px)").matches) useUi.setState({ leftSidebar: false });
   }, [active]);
   // Agents' proposals arrive from another process: check for them while this vault is open.

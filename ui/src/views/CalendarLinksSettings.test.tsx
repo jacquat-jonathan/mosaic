@@ -26,15 +26,15 @@ test("vault choices serialize writes and keep the saved value after a failure", 
       }),
   );
   render(<CalendarLinksSettings />);
-  const format = screen.getByLabelText("Daily file name");
-  await user.selectOptions(format, "YYYYMMDD");
-  expect(save).toHaveBeenCalledWith("/vault", { daily_format: "YYYYMMDD" });
+  const format = screen.getByLabelText("New link syntax");
+  await user.selectOptions(format, "markdown");
+  expect(save).toHaveBeenCalledWith("/vault", { link_style: "markdown" });
   expect(format).toHaveProperty("disabled", true);
   expect(screen.getByLabelText("New link syntax")).toHaveProperty("disabled", true);
-  expect(screen.getByRole("button", { name: "Reset Daily file name" })).toHaveProperty("disabled", true);
+  expect(screen.getByRole("button", { name: "Reset New link syntax" })).toHaveProperty("disabled", true);
   await act(async () => fail(new Error("Save failed")));
   expect(await screen.findByRole("alert")).toHaveProperty("textContent", "Save failed");
-  expect(format).toHaveProperty("value", "YYYY-MM-DD");
+  expect(format).toHaveProperty("value", "wiki");
   expect(format).toHaveProperty("disabled", false);
   expect(
     format
@@ -47,7 +47,7 @@ test("vault choices serialize writes and keep the saved value after a failure", 
 test("unavailable vault preferences disable edits while app controls remain available", () => {
   useVaultPreferences.setState({ error: "Cannot read vault settings" });
   render(<CalendarLinksSettings />);
-  expect(screen.getByLabelText("Daily file name")).toHaveProperty("disabled", true);
+  expect(screen.queryByLabelText("Daily file name")).toBeNull();
   expect(screen.getByLabelText("New link syntax")).toHaveProperty("disabled", true);
   expect(screen.getByLabelText("Week starts on")).toHaveProperty("disabled", false);
   expect(screen.getByRole("switch", { name: "Open note links in a new tab" })).toHaveProperty("disabled", false);

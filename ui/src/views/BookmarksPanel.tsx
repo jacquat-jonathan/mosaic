@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type DragEvent } from "react";
-import { Folder, ListFilter, MoreHorizontal, Plus, Search } from "lucide-react";
+import { Folder, ListFilter, Ellipsis, Plus, Search } from "lucide-react";
 import { baseName, parentOf, useVault } from "../state/vault";
 import { useWorkspace } from "../state/workspace";
 import { useUi, type MenuItem } from "../state/ui";
@@ -238,7 +238,7 @@ export function BookmarksPanel() {
                   useUi.getState().showMenu(bounds.left, bounds.bottom + 4, items());
                 }}
               >
-                <MoreHorizontal aria-hidden="true" />
+                <Ellipsis aria-hidden="true" />
               </IconButton>
             </div>
           );

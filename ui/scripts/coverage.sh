@@ -1,21 +1,42 @@
 #!/usr/bin/env bash
-# Run unit and browser tests through one Istanbul instrumentation pipeline, then
-# merge their compatible coverage maps before applying the project-wide gate.
+# Run the complete local coverage gate, or one stage for parallel CI jobs.
+# Usage: coverage.sh [all|unit|e2e|report] [test-runner arguments...]
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-rm -rf coverage .nyc_output
-mkdir -p .nyc_output
+stage="${1:-all}"
+if [[ "$#" -gt 0 ]]; then shift; fi
+case "$stage" in
+  all|unit|e2e)
+    rm -rf coverage .nyc_output
+    mkdir -p .nyc_output
+    ;;
+  report) rm -rf coverage ;;
+  *) echo "Usage: coverage.sh [all|unit|e2e|report] [test-runner arguments...]" >&2; exit 2 ;;
+esac
 
 # Canonical Babel instrumentation is CPU-heavy. A single worker avoids fork-startup starvation on
 # smaller CI runners; relaxed coverage-only timeouts account for instrumented module evaluation.
-VITE_COVERAGE=true pnpm exec vitest run \
-  --maxWorkers=1 \
-  --no-file-parallelism \
-  --testTimeout=120000 \
-  --hookTimeout=120000 \
-  --teardownTimeout=120000
-VITE_COVERAGE=true pnpm e2e
+if [[ "$stage" == "all" || "$stage" == "unit" ]]; then
+  VITE_COVERAGE=true pnpm exec vitest run \
+    --maxWorkers=1 \
+    --no-file-parallelism \
+    --testTimeout=120000 \
+    --hookTimeout=120000 \
+    --teardownTimeout=120000 \
+    "$@"
+fi
+if [[ "$stage" == "all" || "$stage" == "e2e" ]]; then
+  VITE_COVERAGE=true pnpm e2e "$@"
+fi
+if [[ "$stage" == "unit" || "$stage" == "e2e" ]]; then exit 0; fi
+
+for layer in unit e2e; do
+  if ! compgen -G ".nyc_output/$layer-*.json" >/dev/null; then
+    echo "Missing $layer coverage maps in .nyc_output; both test layers are required" >&2
+    exit 1
+  fi
+done
 
 pnpm exec nyc report \
   --temp-dir .nyc_output \

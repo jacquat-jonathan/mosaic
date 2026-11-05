@@ -1,7 +1,6 @@
 import { useId, useRef, useState } from "react";
 import { RotateCcw } from "lucide-react";
-import { Button, IconButton, Notice, SettingRow } from "../design-system/components";
-import { dailyPath } from "../daily";
+import { Button, IconButton, Notice, SettingRow, SettingsGroup } from "../design-system/components";
 import { errorMessage } from "../ipc/types";
 import { useVault } from "../state/vault";
 import {
@@ -15,16 +14,6 @@ import { AppPreference, SectionReset } from "./PreferenceControls";
 import "./preferenceSettings.css";
 
 const VAULT_CHOICES = [
-  {
-    name: "daily_format",
-    label: "Daily file name",
-    hint: "Unambiguous patterns only. Existing ISO notes still work; duplicate dates require repair. No files are renamed.",
-    options: [
-      ["YYYY-MM-DD", "YYYY-MM-DD"],
-      ["DD-MM-YYYY", "DD-MM-YYYY"],
-      ["YYYYMMDD", "YYYYMMDD"],
-    ],
-  },
   {
     name: "link_style",
     label: "New link syntax",
@@ -46,13 +35,13 @@ function VaultChoices({ root }: { root: string | null }) {
   const current = () =>
     !!root && useVault.getState().vault?.root === root && useVaultPreferences.getState().root === root;
   const disabled = busy || !current() || !!loadError;
-  const update = async (name: "daily_format" | "link_style", next: string) => {
+  const update = async (name: "link_style", next: string) => {
     if (pending.current || !current() || useVaultPreferences.getState().error) return;
     pending.current = true;
     setBusy(true);
     setError(null);
     try {
-      await saveVaultPreferences({ [name]: next });
+      await saveVaultPreferences({ [name]: next as "wiki" | "markdown" });
     } catch (cause) {
       setError(errorMessage(cause));
     } finally {
@@ -87,11 +76,6 @@ function VaultChoices({ root }: { root: string | null }) {
               <RotateCcw aria-hidden="true" />
             </IconButton>
           </SettingRow>
-          {name === "daily_format" && (
-            <p className="mds-hint preference-note">
-              Preview: <code>{dailyPath(value.daily_folder, new Date(2026, 9, 8), value.daily_format)}</code>
-            </p>
-          )}
         </div>
       ))}
       {busy && (
@@ -114,7 +98,7 @@ function VaultChoices({ root }: { root: string | null }) {
           </Notice>
         </div>
       )}
-      {!root && <Notice>Open a vault to configure daily file names and link syntax.</Notice>}
+      {!root && <Notice>Open a vault to configure link syntax.</Notice>}
     </>
   );
 }
@@ -122,24 +106,28 @@ function VaultChoices({ root }: { root: string | null }) {
 export function CalendarLinksSettings() {
   const root = useVault((state) => state.vault?.root ?? null);
   return (
-    <DesignSystemScope className="preference-settings" role="group" aria-label="Calendar & links preferences">
+    <DesignSystemScope className="preference-settings" role="group" aria-label="Calendar & note links preferences">
       <p className="mds-hint preference-note">
-        Week start and link opening apply app-wide. File names and generated syntax belong to the open vault.
+        Week start and link opening apply app-wide. Generated link syntax belongs to the open vault.
       </p>
-      <AppPreference
-        name="weekStart"
-        label="Week starts on"
-        options={[
-          ["monday", "Monday"],
-          ["sunday", "Sunday"],
-        ]}
-      />
-      <VaultChoices key={root} root={root} />
-      <AppPreference
-        name="openLinksNewTab"
-        label="Open note links in a new tab"
-        hint="Explicit new-tab modifiers and commands take precedence. External links still open in your browser."
-      />
+      <SettingsGroup title="Calendar" description="App-wide">
+        <AppPreference
+          name="weekStart"
+          label="Week starts on"
+          options={[
+            ["monday", "Monday"],
+            ["sunday", "Sunday"],
+          ]}
+        />
+      </SettingsGroup>
+      <SettingsGroup title="Note links" description="Generated syntax is vault-specific; link opening is app-wide.">
+        <VaultChoices key={root} root={root} />
+        <AppPreference
+          name="openLinksNewTab"
+          label="Open note links in a new tab"
+          hint="Explicit new-tab modifiers and commands take precedence. External links still open in your browser."
+        />
+      </SettingsGroup>
       <SectionReset keys={["weekStart", "openLinksNewTab"]} label="Calendar app preferences" />
     </DesignSystemScope>
   );

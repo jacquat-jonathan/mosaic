@@ -4,6 +4,8 @@ import { ArrowUpRight, Check, Copy, FileText, Layers, Plus, Search, Settings, X 
 import {
   Badge,
   Button,
+  ColorPicker,
+  FOLDER_COLOR_OPTIONS,
   Dialog,
   IconButton,
   MenuButton,
@@ -127,6 +129,7 @@ function Gallery() {
   );
   const [tokens, setTokens] = useState<Record<string, string>>({});
   const root = useRef<HTMLDivElement>(null);
+  const [folderColor, setFolderColor] = useState("blue");
   const [showHidden, setShowHidden] = useState(false);
   const [dialog, setDialog] = useState<"create" | "delete" | null>(null);
   const dialogTrigger = useRef<HTMLElement | null>(null);
@@ -494,6 +497,19 @@ function Gallery() {
                       onChange={setTheme}
                     />
                   </div>
+                  <ColorPicker
+                    label="Example folder color"
+                    value={folderColor}
+                    options={FOLDER_COLOR_OPTIONS}
+                    onChange={setFolderColor}
+                  />
+                  <ColorPicker
+                    label="Unavailable folder color"
+                    value="purple"
+                    options={FOLDER_COLOR_OPTIONS}
+                    disabled
+                    onChange={() => {}}
+                  />
                   <div className="ds-switch-row">
                     <span>Show hidden files</span>
                     <Switch label="Show hidden files" checked={showHidden} onCheckedChange={setShowHidden} />

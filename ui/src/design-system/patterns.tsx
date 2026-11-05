@@ -25,7 +25,7 @@ const states = {
   running: { label: "Running", icon: LoaderCircle },
   paused: { label: "Paused", icon: Pause },
   completed: { label: "Completed", icon: CheckCircle2 },
-  "needs-review": { label: "Needs review", icon: Clock3 },
+  "needs-review": { label: "Needs review", icon: Eye },
   failed: { label: "Failed", icon: CircleAlert },
   skipped: { label: "Skipped", icon: SkipForward },
 };

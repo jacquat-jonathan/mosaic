@@ -4,6 +4,14 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **More color themes:** choose Classic, Paper, Forest, Ocean or Dusk in Appearance, with light/dark previews. Palettes follow System mode across notes and app controls; use the theme accent or choose your own color.
+
+- **HTML preview defaults per vault:** optionally allow listed external sites without approving each page. Script permission stays separate, and individual pages can still block internet access for the session.
+
+- **Image actions on right-click:** clicking an embedded image keeps it rendered. Open, copy, reset its size or edit its Markdown source from the context menu; keyboard users can open that menu with Shift+F10.
+
+- **Icons that match their purpose:** Templates, Calendar & links, Connections & safety, and Workspace settings have distinct icons. Workspace tabs match their destination, and runs awaiting review use an eye instead of the queued-status clock.
+
 ## 0.28.0 — 2026-11-04
 
 - **Resize images in notes:** drag an image's resize handle or use its arrow-key controls, and reset its size with Home or a double-click. Widths are saved in Markdown and wiki-style image links so they survive reopening and travel with the note.

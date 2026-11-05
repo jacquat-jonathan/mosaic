@@ -55,6 +55,12 @@ export function editorContextFor(path: string): EditorContext {
       const created = await newFileOfKind("", name, /\.[a-z0-9]+$/i.test(name) ? "" : "md", "");
       if (!created) useVault.getState().setError(`Couldn't create “${name}”.`);
     },
+    openFile: (file) => {
+      void useWorkspace
+        .getState()
+        .open(file, { newTab: true })
+        .catch((cause) => useVault.getState().setError(`Couldn't open image: ${errorMessage(cause)}`));
+    },
     openExternal: (url) => void openExternal(url),
     openTag: (tag) => useUi.getState().showSearch(`tag:${tag}`),
     fileUrl,

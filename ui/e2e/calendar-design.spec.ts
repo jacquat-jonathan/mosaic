@@ -233,6 +233,20 @@ for (const [route, label] of [
         "background-color",
         theme === "Light" ? "rgb(255, 255, 255)" : "rgb(30, 31, 36)",
       );
+      await expect(calendar.locator(".viewer-toolbar")).toHaveCSS(
+        "background-color",
+        theme === "Light" ? "rgb(246, 246, 248)" : "rgb(24, 25, 29)",
+      );
+      if (route !== "calendar") {
+        await expect(calendar.locator(".planner-week-head")).toHaveCSS(
+          "border-bottom-color",
+          theme === "Light" ? "rgb(228, 229, 234)" : "rgb(45, 47, 54)",
+        );
+        await expect(calendar.locator(".planner-timed-item.event").filter({ hasText: "Calendar demo" })).not.toHaveCSS(
+          "background-color",
+          "rgba(0, 0, 0, 0)",
+        );
+      }
       await expect(calendar.getByRole("radiogroup", { name: "Calendar view", exact: true })).toBeVisible();
       if (theme !== "System")
         await page.screenshot({ path: testInfo.outputPath(`${route}-${theme.toLowerCase()}.png`) });
@@ -274,6 +288,7 @@ test("month retains its grid, keyboard event opening and day navigation", async 
   await expect(page.getByRole("complementary", { name: "Edit Calendar demo", exact: true })).toBeVisible();
   await expect(calendar.getByRole("radio", { name: "Month", exact: true })).toBeChecked();
   await page.getByRole("button", { name: "Close event editor", exact: true }).click();
+  await expect(calendar.getByRole("button", { name: "Calendar demo", exact: true })).toBeFocused();
   await calendar.getByRole("gridcell").first().press("Enter");
   await expect(calendar.getByRole("radio", { name: "Day", exact: true })).toBeChecked();
   await expect(calendar.getByRole("radio", { name: "Day", exact: true })).toBeFocused();
@@ -382,6 +397,13 @@ test("work session editor follows themes and fills narrow panes", async ({ page 
 
 test("calendar details retain overdue completion, focus and daily-note opening", async ({ page }) => {
   await openCalendar(page);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page
+    .getByRole("navigation", { name: "Settings sections" })
+    .getByRole("button", { name: "Vault folders", exact: true })
+    .click();
+  await page.getByRole("switch", { name: "Enable daily notes", exact: true }).click();
+  await page.getByRole("tab", { name: "Today Close tab", exact: true }).click();
   const details = page.getByRole("group", { name: "Calendar details", exact: true });
   await details.getByRole("checkbox", { name: /^Overdue review/ }).press("Space");
   await expect(details.getByText("No overdue tasks.")).toBeVisible();
@@ -394,6 +416,13 @@ test("calendar details follow themes and fit the scaled context drawer", async (
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
   await openCalendar(page);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page
+    .getByRole("navigation", { name: "Settings sections" })
+    .getByRole("button", { name: "Vault folders", exact: true })
+    .click();
+  await page.getByRole("switch", { name: "Enable daily notes", exact: true }).click();
+  await page.getByRole("tab", { name: "Today Close tab", exact: true }).click();
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const details = page.getByRole("group", { name: "Calendar details", exact: true });
   for (const theme of ["Light", "Dark", "System"] as const) {

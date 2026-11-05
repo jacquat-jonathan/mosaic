@@ -98,8 +98,14 @@ function MenuList({
       });
     };
     position();
+    // WebKit can settle scaled menu dimensions after its initial layout.
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(position);
+    if (ref.current) observer?.observe(ref.current);
     window.addEventListener("resize", position);
-    return () => window.removeEventListener("resize", position);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", position);
+    };
   }, [x, y, flipFrom]);
   useEffect(() => {
     if (focusOnOpen) buttons()[0]?.focus({ preventScroll: true });

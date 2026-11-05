@@ -142,7 +142,7 @@ export const commands = {
 	/**  Symlinks the bundled CLI into ~/.local/bin (no admin rights needed). */
 	installCli: () => __TAURI_INVOKE<CliInfo>("install_cli"),
 	updateStatus: () => __TAURI_INVOKE<UpdateStatus>("update_status"),
-	/**  Asks GitHub for the newest signed release (only when the person clicks Check). */
+	/**  Asks GitHub for the newest signed release, manually or according to the app update preference. */
 	checkUpdates: () => __TAURI_INVOKE<UpdateCheck>("check_updates"),
 	/**
 	 *  Downloads and verifies the newest release in the background, streaming progress as
@@ -974,6 +974,8 @@ export type VaultInfo_Serialize = {
 export type VaultPreferences = {
 	version?: number,
 	agents_folder?: string,
+	/**  Show daily-note creation controls in the app. Existing notes remain ordinary files. */
+	daily_notes_enabled?: boolean,
 	daily_folder?: string,
 	daily_template?: string,
 	daily_format?: DailyFormat,
@@ -984,9 +986,14 @@ export type VaultPreferences = {
 	show_attachments_in_tree?: boolean,
 	/**
 	 *  Allows scripts by default in sandboxed HTML previews. Individual previews may override this
-	 *  for the current app session; the preview CSP still denies network access.
+	 *  for the current app session. Internet access is configured separately.
 	 */
 	allow_html_scripts?: boolean,
+	/**
+	 *  Allows each HTML preview's listed external origins without a per-page prompt.
+	 *  Individual previews may block internet access for the current app session.
+	 */
+	allow_html_internet?: boolean,
 	link_style?: LinkStyle,
 	startup_note?: string,
 	folder_colors?: { [key in string]: string },

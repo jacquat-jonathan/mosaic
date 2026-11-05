@@ -4,6 +4,7 @@ import { useUi } from "../state/ui";
 import { useVault } from "../state/vault";
 import { linkTextFor } from "../links";
 import { editorContext } from "./context";
+import { APP_THEME_TOKENS } from "../design-system/appTheme";
 import { useSettings } from "../state/settings";
 import "../design-system/tokens.css";
 import "../design-system/controls.css";
@@ -142,7 +143,8 @@ function button(label: string, title: string, action: () => void, className = ""
 function toolbar(view: EditorView) {
   const dom = document.createElement("div");
   dom.className = "mosaic-ds cm-selection-toolbar";
-  dom.style.setProperty("--mds-accent", "var(--accent)");
+  dom.style.colorScheme = "inherit";
+  for (const [token, value] of Object.entries(APP_THEME_TOKENS)) dom.style.setProperty(token, value);
   const syncTheme = () => {
     const settings = useSettings.getState();
     dom.dataset.theme = settings.theme;

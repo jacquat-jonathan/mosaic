@@ -168,12 +168,12 @@ export async function copyText(text: string) {
   }
 }
 
-/** Expands the folders above `path`, selects it and scrolls it into view in the file tree. */
-export function revealInTree(path: string) {
+/** Selects and reveals `path`. Automatic tracking preserves the sidebar's visibility and destination. */
+export function revealInTree(path: string, { showSidebar = true }: { showSidebar?: boolean } = {}) {
   const vault = useVault.getState();
   vault.revealParents(path);
   vault.setSelection([path]);
-  useUi.getState().setSidebarTab("files");
+  if (showSidebar) useUi.getState().setSidebarTab("files");
   requestAnimationFrame(() =>
     requestAnimationFrame(() =>
       document.querySelector(`[data-path="${CSS.escape(path)}"]`)?.scrollIntoView({ block: "nearest" }),
@@ -298,6 +298,7 @@ export async function newOfKind(dir: string, kind: (typeof NEW_KINDS)[number]) {
  * the unfinished tasks of the last daily note move into it first (carry-over, crates/mosaic-core/src/days.rs).
  */
 export async function openDailyNote(d = new Date(), opts: { newTab?: boolean } = {}) {
+  if (!vaultPrefs().daily_notes_enabled) return;
   const { daily_folder: dailyFolder, daily_template: dailyTemplate, daily_format } = vaultPrefs();
   const existing = (await api.days(dayStamp(d), dayStamp(d), dayStamp())).days[0]?.note;
   const path = existing ?? dailyPath(dailyFolder, d, daily_format);

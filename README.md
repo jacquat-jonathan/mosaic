@@ -38,8 +38,9 @@ Links you click open in your browser.
   widths are remembered in app storage.
 - **Visuals:** JSON Canvas boards (`.canvas`, Obsidian's format), Excalidraw drawings
   (`.excalidraw`), charts (`.vl.json`) and graphs (`.dot`).
-- **Other files:** sandboxed HTML preview and source editing, a PDF viewer, an editable CSV/TSV
-  table, and a syntax-highlighted editor for JSON, YAML, code and text.
+- **Other files:** sandboxed HTML preview and source editing, with separate per-vault script/internet
+  defaults and per-page session overrides; a PDF viewer, an editable CSV/TSV table, and a
+  syntax-highlighted editor for JSON, YAML, code and text.
 - **Navigation:** Notes, Find, Plan and AI destinations; full-text search (`tag:`, `path:`,
   `"phrases"`), bookmarks, tags, the ⌘O quick switcher and the ⌘P command palette. Notes and feature
   views share tabs and split panes; resizable context panels follow the active item.
@@ -262,6 +263,12 @@ packaged Tauri process or real disk. Rust integration tests cover the core, CLI/
 watchers. Install the optional local test browser once with `pnpm --dir ui exec playwright install webkit`.
 Install coverage support with `cargo install cargo-llvm-cov --locked --version 0.9.1`; reports are
 written to `coverage/rust.lcov` and `ui/coverage/`.
+
+PR/main CI runs **UI checks** (TypeScript, Biome and unit/component tests) alongside four
+**E2E** jobs: two shards each for Chrome and WebKit. **UI coverage** waits for all of them,
+merges their Istanbul coverage maps and enforces the combined coverage floors. Each shard has
+its own status, duration and failure diagnostics in GitHub Actions. Local `pnpm --dir ui coverage`
+still runs the complete unit/browser suite and coverage gate in one command.
 
 Layout:
 

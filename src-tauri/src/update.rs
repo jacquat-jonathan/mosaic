@@ -113,7 +113,7 @@ fn install_log_file() -> PathBuf {
     PathBuf::from(home).join("Library/Logs/Mosaic/update.log")
 }
 
-/// Asks GitHub for the newest signed release (only when the person clicks Check).
+/// Asks GitHub for the newest signed release, manually or according to the app update preference.
 #[tauri::command]
 #[specta::specta]
 pub async fn check_updates() -> CmdResult<UpdateCheck> {

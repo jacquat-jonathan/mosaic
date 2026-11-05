@@ -93,7 +93,7 @@ button:hover {
 }
 button.primary {
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent, #fff);
   padding: 7px 14px;
 }
 button.primary:hover {
@@ -817,11 +817,16 @@ button.secondary {
   margin: 6px 0;
 }
 .cm-embed-image {
-  cursor: text;
+  cursor: default;
   display: inline-block;
   position: relative;
   max-width: 100%;
   vertical-align: top;
+}
+.cm-embed-image:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 6px;
 }
 .image-resize {
   position: absolute;
@@ -2454,7 +2459,7 @@ svg path.flow-on {
 .calendar-cell.today .calendar-date,
 .calendar-day.today .calendar-date {
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent, #fff);
   border-radius: 10px;
   padding: 0 6px;
   align-self: flex-start;
@@ -4048,18 +4053,6 @@ pre.template-preview {
     right: 0;
   }
 }
-:root[data-accent="blue"] {
-  --accent: #2563eb;
-}
-:root[data-accent="green"] {
-  --accent: #15803d;
-}
-:root[data-accent="violet"] {
-  --accent: #7c3aed;
-}
-:root[data-accent="amber"] {
-  --accent: #b45309;
-}
 [data-density="comfortable"] .tree-row {
   height: 26px;
   min-height: 26px;
@@ -4169,7 +4162,7 @@ pre.template-preview {
 .table-insert:hover {
   opacity: 1;
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent, #fff);
 }
 @media (hover: none) {
   .table-axis,

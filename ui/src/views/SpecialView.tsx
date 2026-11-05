@@ -7,7 +7,9 @@ import { ChatPanel } from "./ChatPanel";
 import { ChatHistoryPage } from "./ChatHistory";
 import { Workflows, WorkflowForm, RunDetail } from "./Workflows";
 import { ActivityPanel } from "./ActivityPanel";
-import { ConnectAiSection } from "./ConnectAi";
+import { useEffect } from "react";
+import { useUi } from "../state/ui";
+import { useWorkspace } from "../state/workspace";
 import { Settings } from "./Settings";
 import { SearchPanel } from "./SearchPanel";
 import { TaskBoard } from "./TaskBoard";
@@ -42,7 +44,7 @@ export function SpecialView({ path }: { path: string }) {
     case "activity":
       return <ActivityPanel />;
     case "connections":
-      return <ConnectAiSection />;
+      return <LegacyConnections />;
     case "settings":
       return <Settings />;
     case "search":
@@ -62,4 +64,15 @@ export function SpecialView({ path }: { path: string }) {
         </DesignSystemScope>
       );
   }
+}
+
+function LegacyConnections() {
+  useEffect(() => {
+    const workspace = useWorkspace.getState();
+    const pane = workspace.panes.find((item) => item.active === "mosaic:connections");
+    if (pane) useWorkspace.setState({ focused: pane.id });
+    useUi.getState().openSettings("ai");
+    if (pane) workspace.closeTab(pane.id, "mosaic:connections");
+  }, []);
+  return null;
 }

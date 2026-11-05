@@ -149,8 +149,7 @@ function useVaultValue<T>(root: string, source: { read(): Promise<T>; write(next
 export function ConnectAiSection() {
   const vault = useVault((state) => state.vault);
   return (
-    <DesignSystemScope className="workspace-page connections-settings" role="group" aria-label="Connections and safety">
-      <h1>Connections</h1>
+    <DesignSystemScope className="connections-settings" role="group" aria-label="Connections and safety">
       {vault ? (
         <ConnectionDetails key={vault.root} root={vault.root} name={vault.name} />
       ) : (

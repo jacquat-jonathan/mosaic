@@ -1,4 +1,58 @@
 import { expect, test } from "@playwright/test";
+import { openMockVault } from "./mock-vault";
+
+test("switching files keeps the sidebar collapsed until explicitly revealed", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/");
+  await openMockVault(page);
+  await page.getByRole("treeitem", { name: /^Welcome/ }).click({ modifiers: ["Alt"] });
+  await page.getByRole("treeitem", { name: /^Ideas/ }).click({ modifiers: ["Alt"] });
+  await page.getByRole("button", { name: "Hide sidebar", exact: true }).click();
+
+  const welcome = page.getByRole("tab", { name: "Welcome Close tab", exact: true });
+  await welcome.click();
+  await expect(welcome).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("button", { name: "Show sidebar", exact: true })).toBeVisible();
+  await expect(page.locator(".sidebar")).toHaveCount(0);
+
+  await page.keyboard.press("Meta+o");
+  const switcher = page.getByRole("combobox", { name: "Find or create a note", exact: true });
+  await switcher.fill("Ideas");
+  await switcher.press("Enter");
+  await expect(page.getByRole("tab", { name: "Ideas Close tab", exact: true })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await expect(page.locator(".sidebar")).toHaveCount(0);
+
+  await page.keyboard.press("Meta+p");
+  await page.getByPlaceholder("Type a command…").fill("Reveal current file in the file tree");
+  await page.getByRole("option", { name: "Reveal current file in the file tree", exact: true }).click();
+  await expect(page.getByRole("treeitem", { name: /^Ideas/ })).toHaveAttribute("aria-selected", "true");
+});
+
+test("switching files preserves the selected Find sidebar view", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/");
+  await openMockVault(page);
+  await page.getByRole("treeitem", { name: /^Welcome/ }).click({ modifiers: ["Alt"] });
+  await page.getByRole("treeitem", { name: /^Ideas/ }).click({ modifiers: ["Alt"] });
+  const find = page.getByRole("tab", { name: "Find", exact: true });
+  await find.click();
+  const tags = page
+    .getByRole("navigation", { name: "Find views", exact: true })
+    .getByRole("button", { name: "Tags", exact: true });
+  await tags.click();
+
+  await page.getByRole("tab", { name: "Welcome Close tab", exact: true }).click();
+  await expect(find).toHaveAttribute("aria-selected", "true");
+  await expect(tags).toHaveAttribute("aria-pressed", "true");
+
+  await page.getByRole("button", { name: "Hide sidebar", exact: true }).click();
+  await page.getByRole("tab", { name: "Ideas Close tab", exact: true }).click();
+  await expect(find).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator(".sidebar")).toHaveCount(0);
+});
 
 test("window strip follows themes, retains native drag regions and fits narrow windows", async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1280, height: 900 });

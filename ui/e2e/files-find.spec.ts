@@ -23,7 +23,7 @@ test("search preserves results, bookmarks, empty queries and maximum-scale layou
   await expect(panel.getByRole("listitem").first()).toContainText("Welcome");
   await input.press("Enter");
   await expect(page.locator(".cm-content")).toContainText("Welcome");
-  await page.getByRole("tab", { name: "Find", exact: true }).click();
+  await expect(panel).toBeVisible();
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   for (const theme of ["Light", "Dark", "System"] as const) {
     await page
@@ -113,11 +113,7 @@ test("bookmarks support keyboard opening, saved queries, reordering and menu foc
   await expect(actions).toBeFocused();
   await panel.getByTitle("Welcome.md", { exact: true }).press("Enter");
   await expect(page.locator(".cm-content")).toContainText("Welcome");
-  await page.getByRole("tab", { name: "Find", exact: true }).click();
-  await page
-    .getByRole("navigation", { name: "Find views", exact: true })
-    .getByRole("button", { name: "Bookmarks", exact: true })
-    .click();
+  await expect(panel).toBeVisible();
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   for (const theme of ["Light", "Dark", "System"] as const) {
     await page

@@ -61,3 +61,17 @@ test("missing or unreadable vault preferences disable policy edits", async () =>
   expect(policy()).toHaveProperty("disabled", true);
   expect(reset()).toHaveProperty("disabled", true);
 });
+
+test("internet defaults save and reset independently of scripts", async () => {
+  const user = userEvent.setup();
+  const save = vi.spyOn(api, "setVaultPreferences").mockResolvedValue(null);
+  vi.spyOn(api, "vaultPreferences").mockResolvedValue({ ...DEFAULT_VAULT_PREFS, allow_html_internet: true });
+  render(<EditorFilesSettings />);
+  const internet = screen.getByRole("switch", { name: "Allow internet in HTML previews" });
+  await user.click(internet);
+  expect(save).toHaveBeenCalledWith("/vault", { allow_html_internet: true });
+  await waitFor(() => expect(internet.getAttribute("aria-checked")).toBe("true"));
+  expect(policy().getAttribute("aria-checked")).toBe("false");
+  await user.click(screen.getByRole("button", { name: "Reset Allow internet in HTML previews" }));
+  expect(save).toHaveBeenLastCalledWith("/vault", { allow_html_internet: false });
+});

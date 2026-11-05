@@ -563,10 +563,24 @@ impl Vault {
             return Err(Error::InvalidPath("cannot delete the vault root".into()));
         }
         let abs = self.resolve(&norm)?;
-        if fs::symlink_metadata(&abs).is_err() {
+        // An iCloud file that isn't downloaded is only a `.<name>.icloud` stub next to where the
+        // file would be, so the real path doesn't exist. Trash the stub too, never read it.
+        let stub = icloud_placeholder(&abs);
+        let has_real = fs::symlink_metadata(&abs).is_ok();
+        let has_stub = stub
+            .as_ref()
+            .is_some_and(|s| fs::symlink_metadata(s).is_ok());
+        let targets: Vec<&Path> = [
+            has_real.then_some(abs.as_path()),
+            stub.as_deref().filter(|_| has_stub),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
+        if targets.is_empty() {
             return Err(Error::NotFound(norm));
         }
-        trash::delete(&abs).map_err(|e| Error::Io {
+        trash::delete_all(targets).map_err(|e| Error::Io {
             path: norm,
             source: std::io::Error::other(e.to_string()),
         })
@@ -600,6 +614,12 @@ impl Vault {
         }
         Ok(abs)
     }
+}
+
+/// Where macOS leaves the stub for an evicted iCloud Drive file: `dir/.<name>.icloud`.
+fn icloud_placeholder(abs: &Path) -> Option<PathBuf> {
+    let name = abs.file_name()?.to_str()?;
+    Some(abs.with_file_name(format!(".{name}.icloud")))
 }
 
 /// Types that run code, install software or point Finder at another file when opened.
@@ -644,6 +664,32 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let v = Vault::open(dir.path()).unwrap();
         (dir, v)
+    }
+
+    #[test]
+    fn delete_removes_icloud_placeholder_without_the_file() {
+        let (dir, v) = vault();
+        fs::create_dir(dir.path().join("notes")).unwrap();
+        let stub = dir.path().join("notes/.evicted.md.icloud");
+        fs::write(&stub, b"bplist00").unwrap();
+        v.delete("notes/evicted.md").unwrap();
+        assert!(fs::symlink_metadata(&stub).is_err());
+        // Nothing real and no stub is still not found.
+        assert!(matches!(
+            v.delete("notes/evicted.md"),
+            Err(Error::NotFound(_))
+        ));
+    }
+
+    #[test]
+    fn delete_removes_file_and_stale_placeholder() {
+        let (dir, v) = vault();
+        let file = dir.path().join("a.md");
+        let stub = dir.path().join(".a.md.icloud");
+        fs::write(&file, b"x").unwrap();
+        fs::write(&stub, b"bplist00").unwrap();
+        v.delete("a.md").unwrap();
+        assert!(!file.exists() && fs::symlink_metadata(&stub).is_err());
     }
 
     #[test]

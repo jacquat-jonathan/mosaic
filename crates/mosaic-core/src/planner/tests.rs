@@ -825,7 +825,10 @@ fn assert_folded(exported: &str) {
     assert!(exported.ends_with("\r\n"));
     for line in exported.split("\r\n") {
         assert!(line.len() <= 75, "line over 75 octets: {line:?}");
-        assert!(!line.contains('\r') && !line.contains('\n'), "bare CR/LF: {line:?}");
+        assert!(
+            !line.contains('\r') && !line.contains('\n'),
+            "bare CR/LF: {line:?}"
+        );
     }
 }
 
@@ -863,7 +866,10 @@ fn ical_export_cannot_inject_lines_through_url_or_attendee() {
         "Title",
         "",
         Some("https://example.test/\r\nATTENDEE:mailto:evil@example.test"),
-        &["a@example.test\r\nDESCRIPTION:injected", "b@example.test\nX-EVIL:1"],
+        &[
+            "a@example.test\r\nDESCRIPTION:injected",
+            "b@example.test\nX-EVIL:1",
+        ],
     );
     assert_folded(&exported);
     let unfolded = rfc_unfold(&exported);
@@ -878,7 +884,11 @@ fn ical_export_cannot_inject_lines_through_url_or_attendee() {
 
 #[test]
 fn ical_export_roundtrips_folded_text_through_import() {
-    let title = "Quarterly planning,review;alignment ".repeat(4).trim().to_string() + "é日😀end";
+    let title = "Quarterly planning,review;alignment "
+        .repeat(4)
+        .trim()
+        .to_string()
+        + "é日😀end";
     let description = "x".repeat(200) + "\nsecond line";
     let exported = export_with_event(&title, &description, None, &[]);
     assert_folded(&exported);

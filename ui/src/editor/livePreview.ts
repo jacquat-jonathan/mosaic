@@ -43,7 +43,7 @@ const hide = Decoration.replace({});
 const mark = (cls: string, attrs?: Record<string, string>) => Decoration.mark({ class: cls, attributes: attrs });
 const line = (cls: string) => Decoration.line({ class: cls });
 
-export const FRONTMATTER_RE = /^---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?=\r?\n|$)/;
+export const FRONTMATTER_RE = /^---[ \t]*\r?\n(?:([\s\S]*?)\r?\n)??---[ \t]*(?=\r?\n|$)/;
 const WIKI_RE = /(!?)\[\[([^[\]\n]+?)\]\]/g;
 const TAG_RE = /(^|[\s(,])#([\p{L}\p{N}_\-/]*[\p{L}_\-/][\p{L}\p{N}_\-/]*)/gu;
 const HIGHLIGHT_RE = /==(?!\s)([^=\n]+?)(?<!\s)==/g;

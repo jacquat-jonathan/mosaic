@@ -14,6 +14,7 @@ import {
 } from "../editor/noteViews";
 import { PropertiesEditor } from "../editor/PropertiesEditor";
 import { FRONTMATTER_RE } from "../editor/livePreview";
+import { withProperties } from "../editor/properties";
 import { noteAttachments } from "../attachments";
 import { saveVaultPreferences, useVaultPreferences } from "../state/vaultPreferences";
 import { Badge, Button, IconButton, Notice } from "../design-system/components";
@@ -136,11 +137,7 @@ export function NoteDetails({ path }: { path: string }) {
             key={content.match(FRONTMATTER_RE)?.[1] ?? ""}
             yaml={content.match(FRONTMATTER_RE)?.[1] ?? ""}
             onChange={(yaml) => {
-              const fm = FRONTMATTER_RE.exec(content);
-              const next = `---\n${yaml.trimEnd()}\n---`;
-              useWorkspace
-                .getState()
-                .replaceContent(path, fm ? next + content.slice(fm[0].length) : `${next}\n\n${content}`);
+              useWorkspace.getState().replaceContent(path, withProperties(content, yaml));
             }}
             onEditSource={() => revealNotePosition(path, 1)}
           />

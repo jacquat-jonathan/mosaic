@@ -550,18 +550,34 @@ impl PlannerStore {
 /// Fold one content line at 75 octets (RFC 5545 3.1) on char boundaries. Every entry in the
 /// export is exactly one logical line, so any CR/LF left in an unescaped value (URL, ATTENDEE,
 /// RRULE...) is dropped here instead of being allowed to inject extra properties.
+/// A fold may split an escape sequence (folding is lexical), but never lands before a space or
+/// tab, so importers that trim all leading whitespace of a continuation still unfold losslessly.
 fn folded(line: &str) -> String {
-    let line: String = line.chars().filter(|c| !matches!(c, '\r' | '\n')).collect();
-    let mut result = String::with_capacity(line.len() + line.len() / 70 * 3);
-    let mut octets = 0;
-    for ch in line.chars() {
-        // A continuation line starts with one space that counts toward the 75 octets.
-        if octets + ch.len_utf8() > 75 {
-            result.push_str("\r\n ");
-            octets = 1;
+    let chars: Vec<char> = line.chars().filter(|c| !matches!(c, '\r' | '\n')).collect();
+    let mut result = String::with_capacity(chars.len() + chars.len() / 70 * 3);
+    let (mut start, mut budget) = (0, 75);
+    while start < chars.len() {
+        let (mut end, mut used) = (start, 0);
+        while end < chars.len() && used + chars[end].len_utf8() <= budget {
+            used += chars[end].len_utf8();
+            end += 1;
         }
-        result.push(ch);
-        octets += ch.len_utf8();
+        if end < chars.len() {
+            let mut back = end;
+            while back > start && matches!(chars[back], ' ' | '\t') {
+                back -= 1;
+            }
+            if back > start {
+                end = back;
+            }
+        }
+        result.extend(&chars[start..end]);
+        if end < chars.len() {
+            result.push_str("\r\n ");
+        }
+        start = end;
+        // A continuation line starts with one space that counts toward the 75 octets.
+        budget = 74;
     }
     result
 }

@@ -879,6 +879,9 @@ fn ical_export_cannot_inject_lines_through_url_or_attendee() {
             "injected line: {line:?}"
         );
     }
+    assert!(
+        unfolded.contains("\r\nURL:https://example.test/ATTENDEE:mailto:evil@example.test\r\n")
+    );
     assert_eq!(unfolded.matches("\r\nATTENDEE:").count(), 2);
 }
 
@@ -898,4 +901,20 @@ fn ical_export_roundtrips_folded_text_through_import() {
     assert_eq!(preview.candidates.len(), 1);
     assert_eq!(preview.candidates[0].title, title);
     assert_eq!(preview.candidates[0].event.description, description);
+}
+
+#[test]
+fn ical_export_never_folds_before_whitespace_and_roundtrips_through_import() {
+    // "SUMMARY:" is 8 octets, so 67 chars fill the first line exactly before the space.
+    for gap in ["  ", " ", "\t"] {
+        let title = format!("{}{gap}b{gap}{}", "a".repeat(67), "c".repeat(70));
+        let exported = export_with_event(&title, "", None, &[]);
+        assert_folded(&exported);
+        assert!(!exported.contains("\r\n  ") && !exported.contains("\r\n \t"));
+        assert!(rfc_unfold(&exported).contains(&format!("SUMMARY:{title}\r\n")));
+        let preview = in_memory()
+            .preview_ical_import("roundtrip", &exported, "UTC")
+            .unwrap();
+        assert_eq!(preview.candidates[0].title, title.trim());
+    }
 }

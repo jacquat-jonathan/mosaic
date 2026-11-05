@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { openMockVault } from "./mock-vault";
 
 test("a finished workflow raises a notification that can be read and dismissed", async ({ page }) => {
+  await page.goto("/");
   await openMockVault(page);
   const bell = page.getByRole("button", { name: /^Notifications/ });
   await expect(bell).toBeVisible();

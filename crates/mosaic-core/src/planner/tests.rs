@@ -789,3 +789,27 @@ fn ten_thousand_tasks_and_a_busy_month_load_within_the_acceptance_budget() {
         "large planner month loaded in {elapsed:?}, over the five-second acceptance budget"
     );
 }
+
+#[test]
+fn ical_unfolding_removes_exactly_one_fold_character() {
+    let cases = [
+        ("\r\n", "\r\n  world and more", "Hello world and more"),
+        ("\n", "\n  world and more", "Hello world and more"),
+        ("\r\n", "\r\n\t world and more", "Hello world and more"),
+        ("\n", "\n\t world and more", "Hello world and more"),
+        ("\r\n", "\r\n world and more", "Helloworld and more"),
+        ("\n", "\n\tworld and more", "Helloworld and more"),
+    ];
+    for (eol, fold, expected) in cases {
+        let content = format!(
+            "BEGIN:VCALENDAR{eol}VERSION:2.0{eol}BEGIN:VEVENT{eol}UID:fold@example.test{eol}DTSTART;VALUE=DATE:20261014{eol}DTEND;VALUE=DATE:20261015{eol}SUMMARY:Fold{eol}DESCRIPTION:Hello{fold}{eol}END:VEVENT{eol}END:VCALENDAR{eol}"
+        );
+        let preview = in_memory()
+            .preview_ical_import("file:fold.ics", &content, "Europe/Zurich")
+            .unwrap();
+        assert_eq!(
+            preview.candidates[0].event.description, expected,
+            "fold {fold:?} with eol {eol:?}"
+        );
+    }
+}

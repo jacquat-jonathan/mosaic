@@ -297,8 +297,16 @@ impl Workspace {
 
     /// Who changes files through this workspace (recorded in the history). The app is the default.
     pub fn with_source(self, source: Source) -> Self {
+        self.planner.set_actor_context(Some(source.as_str()), None);
         *self.source.lock().unwrap_or_else(|p| p.into_inner()) = source;
         self
+    }
+
+    /// The agent's name, shown in the AI activity log and on planner activity entries (e.g. the
+    /// MCP client "claude-code").
+    pub fn set_actor(&self, name: &str) {
+        self.ctx.set_actor(name);
+        self.planner.set_actor_context(None, Some(name));
     }
 }
 

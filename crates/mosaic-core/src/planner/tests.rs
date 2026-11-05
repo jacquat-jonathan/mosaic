@@ -789,3 +789,70 @@ fn ten_thousand_tasks_and_a_busy_month_load_within_the_acceptance_budget() {
         "large planner month loaded in {elapsed:?}, over the five-second acceptance budget"
     );
 }
+
+#[test]
+fn dst_gap_recurring_event_does_not_fail_the_calendar_range() {
+    let mut store = PlannerStore::in_memory().unwrap();
+    let make = |title: &str, start: &str, end: &str, rule: Option<&str>| CreateEvent {
+        title: title.into(),
+        description: String::new(),
+        location: String::new(),
+        meeting_url: None,
+        participants: vec![],
+        epic_id: None,
+        color: None,
+        all_day: false,
+        start_value: start.into(),
+        end_value: end.into(),
+        timezone: "Europe/Zurich".into(),
+        recurrence_rule: rule.map(Into::into),
+    };
+    store
+        .create_event(make(
+            "Gap",
+            "2026-03-27T01:30:00.000Z",
+            "2026-03-27T02:00:00.000Z",
+            Some("FREQ=DAILY"),
+        ))
+        .unwrap();
+    store
+        .create_event(make(
+            "Other",
+            "2026-03-27T08:00:00.000Z",
+            "2026-03-27T09:00:00.000Z",
+            Some("FREQ=DAILY"),
+        ))
+        .unwrap();
+    let range = store.calendar_range("2026-03-23", "2026-04-02").unwrap();
+    let count = |title: &str| {
+        range
+            .events
+            .iter()
+            .filter(|event| event.title == title)
+            .count()
+    };
+    assert_eq!(count("Gap"), 7);
+    assert_eq!(count("Other"), 7);
+    let gap_day = range
+        .events
+        .iter()
+        .find(|event| event.title == "Gap" && event.start_value.starts_with("2026-03-29"))
+        .unwrap();
+    assert_eq!(gap_day.start_value, "2026-03-29T01:30:00.000Z");
+    assert_eq!(gap_day.end_value, "2026-03-29T02:00:00.000Z");
+
+    // A corrupt stored event is skipped; the other events are still returned.
+    store
+        .conn
+        .execute(
+            "UPDATE events SET timezone = 'Not/AZone' WHERE title = 'Gap'",
+            [],
+        )
+        .unwrap();
+    let range = store.calendar_range("2026-03-23", "2026-04-02").unwrap();
+    assert_eq!(range.events.iter().filter(|e| e.title == "Gap").count(), 0);
+    assert_eq!(
+        range.events.iter().filter(|e| e.title == "Other").count(),
+        7
+    );
+}

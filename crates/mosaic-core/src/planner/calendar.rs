@@ -686,7 +686,11 @@ impl PlannerStore {
                 let (key, action, replacement) = row.map_err(sql_error)?;
                 exceptions.insert(key, (action, replacement));
             }
-            for (key, start, end) in super::recurrence::expand(&event, from_date, to_date)? {
+            // One event that cannot be expanded must not fail the whole range.
+            let Ok(expanded_keys) = super::recurrence::expand(&event, from_date, to_date) else {
+                continue;
+            };
+            for (key, start, end) in expanded_keys {
                 if let Some((action, replacement_id)) = exceptions.get(&key) {
                     if action == "cancelled" {
                         continue;
@@ -700,8 +704,11 @@ impl PlannerStore {
                                 row_to_event,
                             )
                             .map_err(sql_error)?;
+                        let replacement_occurrences =
+                            super::recurrence::expand(&replacement, from_date, to_date)
+                                .unwrap_or_default();
                         for (replacement_key, replacement_start, replacement_end) in
-                            super::recurrence::expand(&replacement, from_date, to_date)?
+                            replacement_occurrences
                         {
                             let mut expanded = occurrence(
                                 &replacement,

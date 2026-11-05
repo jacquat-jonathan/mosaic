@@ -8,6 +8,7 @@ enum Frequency {
     Daily,
     Weekly,
     Monthly,
+    Yearly,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -18,6 +19,7 @@ struct Rule {
     month_days: Vec<i32>,
     week_start: Option<Weekday>,
     until: Option<NaiveDate>,
+    count: Option<u32>,
 }
 
 fn parse_weekday(value: &str) -> Option<Weekday> {
@@ -41,6 +43,7 @@ fn parse_rule(value: &str) -> Result<Rule> {
     let mut month_days = Vec::new();
     let mut week_start = None;
     let mut until = None;
+    let mut count = None;
     for part in value.split(';') {
         let (key, value) = part
             .split_once('=')
@@ -51,9 +54,10 @@ fn parse_rule(value: &str) -> Result<Rule> {
                     "DAILY" => Frequency::Daily,
                     "WEEKLY" => Frequency::Weekly,
                     "MONTHLY" => Frequency::Monthly,
+                    "YEARLY" => Frequency::Yearly,
                     _ => {
                         return Err(Error::Invalid(
-                            "recurrence frequency must be DAILY, WEEKLY or MONTHLY".into(),
+                            "recurrence frequency must be DAILY, WEEKLY, MONTHLY or YEARLY".into(),
                         ));
                     }
                 });
@@ -100,6 +104,17 @@ fn parse_rule(value: &str) -> Result<Rule> {
                     Error::Invalid("recurrence UNTIL must start with YYYYMMDD".into())
                 })?);
             }
+            "COUNT" => {
+                count = Some(
+                    value
+                        .parse::<u32>()
+                        .ok()
+                        .filter(|value| *value > 0 && *value <= 100_000)
+                        .ok_or_else(|| {
+                            Error::Invalid("recurrence COUNT must be 1–100000".into())
+                        })?,
+                );
+            }
             other => {
                 return Err(Error::Invalid(format!(
                     "unsupported recurrence field {other:?}"
@@ -113,6 +128,16 @@ fn parse_rule(value: &str) -> Result<Rule> {
             "BYMONTHDAY cannot be used with WEEKLY recurrence".into(),
         ));
     }
+    if count.is_some() && until.is_some() {
+        return Err(Error::Invalid(
+            "recurrence rule cannot have both COUNT and UNTIL".into(),
+        ));
+    }
+    if frequency == Frequency::Yearly && (!month_days.is_empty() || !weekdays.is_empty()) {
+        return Err(Error::Invalid(
+            "BYDAY and BYMONTHDAY are not supported with YEARLY recurrence".into(),
+        ));
+    }
     Ok(Rule {
         frequency,
         interval,
@@ -120,6 +145,7 @@ fn parse_rule(value: &str) -> Result<Rule> {
         month_days,
         week_start,
         until,
+        count,
     })
 }
 
@@ -133,6 +159,7 @@ pub(super) fn normalize_rule(value: Option<String>) -> Result<Option<String>> {
         Frequency::Daily => "DAILY",
         Frequency::Weekly => "WEEKLY",
         Frequency::Monthly => "MONTHLY",
+        Frequency::Yearly => "YEARLY",
     };
     let mut parts = vec![format!("FREQ={frequency}")];
     if rule.interval != 1 {
@@ -171,6 +198,9 @@ pub(super) fn normalize_rule(value: Option<String>) -> Result<Option<String>> {
     if let Some(until) = rule.until {
         parts.push(format!("UNTIL={}", until.format("%Y%m%d")));
     }
+    if let Some(count) = rule.count {
+        parts.push(format!("COUNT={count}"));
+    }
     Ok(Some(parts.join(";")))
 }
 
@@ -193,6 +223,27 @@ fn start_of_week(date: NaiveDate, week_start: Weekday) -> NaiveDate {
 }
 
 fn occurs(rule: &Rule, base: NaiveDate, date: NaiveDate) -> bool {
+    if !matches_pattern(rule, base, date) {
+        return false;
+    }
+    let Some(count) = rule.count else { return true };
+    // COUNT limits the number of occurrences, so `date` must be among the first `count` matches.
+    let mut seen = 0;
+    let mut day = base;
+    while day <= date {
+        if matches_pattern(rule, base, day) {
+            seen += 1;
+            if seen > count {
+                return false;
+            }
+        }
+        let Some(next) = day.succ_opt() else { break };
+        day = next;
+    }
+    true
+}
+
+fn matches_pattern(rule: &Rule, base: NaiveDate, date: NaiveDate) -> bool {
     if date < base || rule.until.is_some_and(|until| date > until) {
         return false;
     }
@@ -241,6 +292,12 @@ fn occurs(rule: &Rule, base: NaiveDate, date: NaiveDate) -> bool {
                 && (!rule.month_days.is_empty()
                     || !rule.weekdays.is_empty()
                     || date.day() == base.day())
+        }
+        Frequency::Yearly => {
+            let years = date.year() - base.year();
+            years % i32::try_from(rule.interval).unwrap_or(1) == 0
+                && date.month() == base.month()
+                && date.day() == base.day()
         }
     }
 }
@@ -408,8 +465,24 @@ mod tests {
             .unwrap(),
             Some("FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,WE;WKST=SU".into())
         );
-        assert!(normalize_rule(Some("FREQ=YEARLY".into())).is_err());
-        assert!(normalize_rule(Some("FREQ=DAILY;COUNT=3".into())).is_err());
+        assert_eq!(
+            normalize_rule(Some("FREQ=YEARLY".into())).unwrap(),
+            Some("FREQ=YEARLY".into())
+        );
+        assert_eq!(
+            normalize_rule(Some("FREQ=WEEKLY;COUNT=3".into())).unwrap(),
+            Some("FREQ=WEEKLY;COUNT=3".into())
+        );
+        for rule in [
+            "FREQ=DAILY;COUNT=0",
+            "FREQ=DAILY;COUNT=x",
+            "FREQ=DAILY;COUNT=3;UNTIL=20260401",
+            "FREQ=YEARLY;BYDAY=MO",
+            "FREQ=YEARLY;BYMONTHDAY=1",
+            "FREQ=DAILY;BYSETPOS=1",
+        ] {
+            assert!(normalize_rule(Some(rule.into())).is_err(), "{rule}");
+        }
         assert!(normalize_rule(Some("FREQ=WEEKLY;WKST=NO".into())).is_err());
         assert_eq!(
             normalize_rule(Some("FREQ=MONTHLY;BYMONTHDAY=1,15,-1;INTERVAL=2".into())).unwrap(),
@@ -424,6 +497,38 @@ mod tests {
         ] {
             assert!(normalize_rule(Some(rule.into())).is_err(), "{rule}");
         }
+    }
+
+    #[test]
+    fn yearly_and_count_rules_expand() {
+        let mut event = event();
+        event.all_day = true;
+        event.start_value = "2024-02-29".into();
+        event.end_value = "2024-03-01".into();
+        event.recurrence_rule = Some("FREQ=YEARLY".into());
+        let days = |event: &PlannerEvent| {
+            expand(
+                event,
+                NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(),
+                NaiveDate::from_ymd_opt(2033, 1, 1).unwrap(),
+            )
+            .unwrap()
+            .into_iter()
+            .map(|occurrence| occurrence.0)
+            .collect::<Vec<_>>()
+        };
+        assert_eq!(days(&event), vec!["2024-02-29", "2028-02-29", "2032-02-29"]);
+        event.start_value = "2026-11-03".into();
+        event.end_value = "2026-11-04".into();
+        event.recurrence_rule = Some("FREQ=YEARLY;INTERVAL=2".into());
+        assert_eq!(
+            days(&event),
+            vec!["2026-11-03", "2028-11-03", "2030-11-03", "2032-11-03"]
+        );
+        event.recurrence_rule = Some("FREQ=DAILY;INTERVAL=2;COUNT=3".into());
+        assert_eq!(days(&event), vec!["2026-11-03", "2026-11-05", "2026-11-07"]);
+        event.recurrence_rule = Some("FREQ=WEEKLY;COUNT=2".into());
+        assert_eq!(days(&event), vec!["2026-11-03", "2026-11-10"]);
     }
 
     #[test]

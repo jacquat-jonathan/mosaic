@@ -577,7 +577,7 @@ mod tests {
         fs::write(directory.path().join("good.ics"), good).unwrap();
         let bad = good.replace(
             "SUMMARY:Working event",
-            "RRULE:FREQ=DAILY;COUNT=3\r\nSUMMARY:Unsupported recurrence",
+            "RRULE:FREQ=DAILY;BYSETPOS=1\r\nSUMMARY:Unsupported recurrence",
         );
         fs::write(directory.path().join("bad.ics"), &bad).unwrap();
         fs::write(directory.path().join("corrupt.ics"), [0xff, 0xfe]).unwrap();
@@ -602,9 +602,10 @@ mod tests {
             items[0].last_error.as_deref(),
             Some("Refresh unavailable; using cache")
         );
-        assert!(items[1].last_error.as_deref().unwrap().contains("COUNT"));
+        // An unsupported recurrence is skipped instead of failing the feed.
+        assert!(items[1].last_error.is_none());
         assert!(items[2].last_error.is_some());
-        assert!(validate_ical(&bad, "UTC").is_err());
+        assert_eq!(validate_ical(&bad, "UTC").unwrap(), 0);
         assert_eq!(validate_ical(good, "UTC").unwrap(), 1);
     }
 

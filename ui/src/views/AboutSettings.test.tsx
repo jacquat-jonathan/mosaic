@@ -44,6 +44,26 @@ test("status and check failures are announced and can be retried", async () => {
   expect(screen.queryByRole("alert")).toBeNull();
 });
 
+test("an update across several versions lists every skipped version, newest first", async () => {
+  const user = userEvent.setup();
+  vi.spyOn(api, "checkUpdates").mockResolvedValue({
+    latest_version: "0.4.0",
+    update_available: true,
+    releases: [
+      { version: "0.4.0", date: "2026-10-04", notes: ["Four note"] },
+      { version: "0.3.0", date: "2026-10-03", notes: ["Three note"] },
+      { version: "0.2.0", date: "2026-10-02", notes: ["Two note"] },
+    ],
+  });
+  render(<AboutSettings />);
+  await user.click(await screen.findByRole("button", { name: "Check for updates" }));
+  await screen.findByText("Four note");
+  expect(screen.getByText("Three note")).toBeTruthy();
+  expect(screen.getByText("Two note")).toBeTruthy();
+  const headings = screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent?.split(" ")[0]);
+  expect(headings).toEqual(["0.4.0", "0.3.0", "0.2.0"]);
+});
+
 test("restart waits for draft decisions and cannot be started twice", async () => {
   const user = userEvent.setup();
   vi.mocked(api.updateStatus).mockResolvedValue({ ...status, ready_to_install: true });

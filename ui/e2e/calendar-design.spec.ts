@@ -288,6 +288,7 @@ test("month retains its grid, keyboard event opening and day navigation", async 
   await expect(page.getByRole("complementary", { name: "Edit Calendar demo", exact: true })).toBeVisible();
   await expect(calendar.getByRole("radio", { name: "Month", exact: true })).toBeChecked();
   await page.getByRole("button", { name: "Close event editor", exact: true }).click();
+  await expect(calendar.getByRole("button", { name: "Calendar demo", exact: true })).toBeFocused();
   await calendar.getByRole("gridcell").first().press("Enter");
   await expect(calendar.getByRole("radio", { name: "Day", exact: true })).toBeChecked();
   await expect(calendar.getByRole("radio", { name: "Day", exact: true })).toBeFocused();

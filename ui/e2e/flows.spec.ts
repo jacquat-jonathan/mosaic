@@ -183,6 +183,7 @@ test("accept an agent's proposal from review", async ({ page }) => {
   await page.getByRole("button", { name: /Activity & review · 1/ }).click();
   await page.getByRole("region", { name: "Waiting for your review" }).getByRole("button", { name: "Review" }).click();
   await page.getByRole("button", { name: "Accept", exact: true }).click();
+  await page.getByRole("tab", { name: "Files", exact: true }).click();
   await page.getByRole("treeitem", { name: /^Welcome/ }).click();
   await expect(page.locator(".cm-content")).toContainText("Rewritten by an agent.");
 });
@@ -444,7 +445,7 @@ test("chat with the assistant and manage the saved conversation", async ({ page 
   await page.getByRole("button", { name: "Open Ideas.md", exact: true }).click();
   await expect(page.locator(".cm-content")).toContainText("Ideas");
 
-  await page.getByRole("tab", { name: "AI", exact: true }).click();
+  await expect(page.getByRole("tab", { name: "AI", exact: true })).toHaveAttribute("aria-selected", "true");
   await page.getByRole("button", { name: "+ New chat", exact: true }).click();
   await page.getByRole("button", { name: "Rename" }).click();
   await page.getByRole("dialog").getByRole("textbox").fill("Coverage conversation");
@@ -558,7 +559,7 @@ test("release notes wrap inside a narrow settings pane", async ({ page }) => {
     .getByRole("navigation", { name: "Settings sections" })
     .getByRole("button", { name: "About & updates" })
     .click();
-  await page.getByRole("button", { name: "Check for updates" }).click();
+  await page.getByRole("button", { name: "Check for updates", exact: true }).click();
   const note = page.locator(".about-release li").first();
   await expect(note).toContainText("release notes");
   await expect(note).toHaveCSS("white-space", "normal");

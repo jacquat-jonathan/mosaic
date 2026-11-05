@@ -9,6 +9,7 @@ async function openAbout(page: Page) {
     .click();
 }
 test("update checks, cancellation and ready progress survive Settings navigation", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("mosaic:settings", JSON.stringify({ autoCheckUpdates: false })));
   await openAbout(page);
   const about = page.getByRole("group", { name: "About and update preferences", exact: true });
   const check = about.getByRole("button", { name: "Check for updates", exact: true });
@@ -30,6 +31,17 @@ test("update checks, cancellation and ready progress survive Settings navigation
   await about.locator("summary").click();
   await expect(about.getByRole("log", { name: "Update log", exact: true })).toContainText("BUILT_APP=");
   await expect(about.getByRole("button", { name: "Download update", exact: true })).toHaveCount(0);
+});
+
+test("automatic checks make an update available without starting a download", async ({ page }) => {
+  await openAbout(page);
+  const about = page.getByRole("group", { name: "About and update preferences", exact: true });
+  await expect(about.getByRole("switch", { name: "Automatically check for updates", exact: true })).toBeChecked();
+  await expect(about.getByRole("switch", { name: "Automatically download updates", exact: true })).not.toBeChecked();
+  await expect(about.getByRole("region", { name: "Available releases", exact: true })).toBeVisible();
+  await expect(about.getByRole("button", { name: "Download update", exact: true })).toBeEnabled();
+  await expect(about.getByRole("button", { name: "Cancel", exact: true })).toHaveCount(0);
+  await expect(about.getByRole("button", { name: "Restart to finish", exact: true })).toHaveCount(0);
 });
 
 test("update controls follow themes and fit narrow panes", async ({ page }, testInfo) => {

@@ -789,3 +789,10 @@ fn ten_thousand_tasks_and_a_busy_month_load_within_the_acceptance_budget() {
         "large planner month loaded in {elapsed:?}, over the five-second acceptance budget"
     );
 }
+
+#[test]
+fn validate_ical_accepts_feeds_with_and_without_a_utf8_bom() {
+    let ics = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:bom\r\nDTSTART:20261103T090000Z\r\nDTEND:20261103T100000Z\r\nSUMMARY:Working event\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+    assert_eq!(validate_ical(ics, "UTC").unwrap(), 1);
+    assert_eq!(validate_ical(&format!("\u{feff}{ics}"), "UTC").unwrap(), 1);
+}

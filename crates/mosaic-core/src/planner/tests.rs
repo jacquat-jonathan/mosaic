@@ -793,7 +793,7 @@ fn ten_thousand_tasks_and_a_busy_month_load_within_the_acceptance_budget() {
 #[test]
 fn nested_valarm_properties_do_not_override_event_properties() {
     let content = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:alarm@example.com\r\nDTSTART:20261013T090000Z\r\nSUMMARY:S\r\nDESCRIPTION:Real description\r\nBEGIN:VALARM\r\nACTION:DISPLAY\r\nSUMMARY:Alarm summary\r\nDESCRIPTION:Reminder\r\nTRIGGER:-PT15M\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
-    let mut store = in_memory();
+    let store = in_memory();
     let preview = store
         .preview_ical_import("file:alarm.ics", content, "UTC")
         .unwrap();

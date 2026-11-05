@@ -233,6 +233,20 @@ for (const [route, label] of [
         "background-color",
         theme === "Light" ? "rgb(255, 255, 255)" : "rgb(30, 31, 36)",
       );
+      await expect(calendar.locator(".viewer-toolbar")).toHaveCSS(
+        "background-color",
+        theme === "Light" ? "rgb(246, 246, 248)" : "rgb(24, 25, 29)",
+      );
+      if (route !== "calendar") {
+        await expect(calendar.locator(".planner-week-head")).toHaveCSS(
+          "border-bottom-color",
+          theme === "Light" ? "rgb(228, 229, 234)" : "rgb(45, 47, 54)",
+        );
+        await expect(calendar.locator(".planner-timed-item.event").filter({ hasText: "Calendar demo" })).not.toHaveCSS(
+          "background-color",
+          "rgba(0, 0, 0, 0)",
+        );
+      }
       await expect(calendar.getByRole("radiogroup", { name: "Calendar view", exact: true })).toBeVisible();
       if (theme !== "System")
         await page.screenshot({ path: testInfo.outputPath(`${route}-${theme.toLowerCase()}.png`) });

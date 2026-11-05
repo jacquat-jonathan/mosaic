@@ -1,9 +1,4 @@
 .mosaic-ds.calendar-design {
-  --bg: var(--mds-surface);
-  --bg-side: var(--mds-surface-subtle);
-  --fg: var(--mds-text);
-  --muted: var(--mds-text-muted);
-  --border: var(--mds-border);
   background: var(--mds-surface);
 }
 .mosaic-ds.calendar-design .viewer-toolbar {

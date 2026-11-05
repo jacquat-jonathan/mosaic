@@ -12,6 +12,15 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 - **Icons that match their purpose:** Templates, Calendar & links, Connections & safety, and Workspace settings have distinct icons. Workspace tabs match their destination, and runs awaiting review use an eye instead of the queued-status clock.
 
+## 0.28.0 — 2026-11-04
+
+- **Resize images in notes:** drag an image's resize handle or use its arrow-key controls, and reset its size with Home or a double-click. Widths are saved in Markdown and wiki-style image links so they survive reopening and travel with the note.
+- **More direct calendar planning:** resize either end of timed events and work sessions, move scheduled items without opening an editor, and see a preview while dragging an open task onto the calendar. Event titles stay readable in short cards and narrow columns.
+- **Subtasks where you work:** create, open, complete and reorder subtasks from a task's details, including with keyboard controls. The calendar's open-task list groups tasks by epic and status, keeps nested subtasks together and hides completed work.
+- **Resilient calendar subscriptions:** edit a subscription's name, color, refresh interval or feed address. Invalid or unavailable feeds show their own errors while working calendars, cached events and subscription controls remain available; replacement addresses are checked before replacing the saved feed.
+- **More monthly recurrence options:** recurring events support specific month days, including counting back from the end of a month, and skip dates that do not exist instead of shifting them.
+- **Clearer AI attention:** the main AI badge counts pending reviews. Failed workflow runs stay marked in Automations until viewed in Runs or run details, and that acknowledgement is remembered for each vault.
+
 ## 0.27.0 — 2026-10-30
 
 - **A consistent interface throughout Mosaic:** refreshed navigation, settings, dialogs, notes, planning, AI tools, and file previews share larger, readable text and clearer controls. Narrow windows and interface scaling keep actions within reach.

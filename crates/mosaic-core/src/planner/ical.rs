@@ -550,8 +550,8 @@ impl PlannerStore {
 /// Fold one content line at 75 octets (RFC 5545 3.1) on char boundaries. Every entry in the
 /// export is exactly one logical line, so any CR/LF left in an unescaped value (URL, ATTENDEE,
 /// RRULE...) is dropped here instead of being allowed to inject extra properties.
-/// A fold may split an escape sequence (folding is lexical), but never lands before a space or
-/// tab, so importers that trim all leading whitespace of a continuation still unfold losslessly.
+/// A fold may split an escape sequence (folding is lexical), but avoids landing before a space
+/// or tab when the segment has any other char, so importers that trim all leading whitespace of a continuation still unfold losslessly.
 fn folded(line: &str) -> String {
     let chars: Vec<char> = line.chars().filter(|c| !matches!(c, '\r' | '\n')).collect();
     let mut result = String::with_capacity(chars.len() + chars.len() / 70 * 3);

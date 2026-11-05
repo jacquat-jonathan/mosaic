@@ -15,6 +15,7 @@ struct Rule {
     frequency: Frequency,
     interval: u32,
     weekdays: Vec<Weekday>,
+    month_days: Vec<i32>,
     week_start: Option<Weekday>,
     until: Option<NaiveDate>,
 }
@@ -37,6 +38,7 @@ fn parse_rule(value: &str) -> Result<Rule> {
     let mut frequency = None;
     let mut interval = 1;
     let mut weekdays = Vec::new();
+    let mut month_days = Vec::new();
     let mut week_start = None;
     let mut until = None;
     for part in value.split(';') {
@@ -73,6 +75,19 @@ fn parse_rule(value: &str) -> Result<Rule> {
                     })
                     .collect::<Result<Vec<_>>>()?;
             }
+            "BYMONTHDAY" => {
+                month_days = value
+                    .split(',')
+                    .map(|day| {
+                        day.parse::<i32>()
+                            .ok()
+                            .filter(|day| *day != 0 && (-31..=31).contains(day))
+                            .ok_or_else(|| {
+                                Error::Invalid("BYMONTHDAY must contain days 1–31 or -31–-1".into())
+                            })
+                    })
+                    .collect::<Result<Vec<_>>>()?;
+            }
             "WKST" => {
                 week_start = Some(parse_weekday(&value.to_ascii_uppercase()).ok_or_else(|| {
                     Error::Invalid(format!("unsupported recurrence week start {value:?}"))
@@ -92,10 +107,17 @@ fn parse_rule(value: &str) -> Result<Rule> {
             }
         }
     }
+    let frequency = frequency.ok_or_else(|| Error::Invalid("recurrence rule needs FREQ".into()))?;
+    if frequency == Frequency::Weekly && !month_days.is_empty() {
+        return Err(Error::Invalid(
+            "BYMONTHDAY cannot be used with WEEKLY recurrence".into(),
+        ));
+    }
     Ok(Rule {
-        frequency: frequency.ok_or_else(|| Error::Invalid("recurrence rule needs FREQ".into()))?,
+        frequency,
         interval,
         weekdays,
+        month_days,
         week_start,
         until,
     })
@@ -133,6 +155,16 @@ pub(super) fn normalize_rule(value: Option<String>) -> Result<Option<String>> {
             .join(",");
         parts.push(format!("BYDAY={weekdays}"));
     }
+    if !rule.month_days.is_empty() {
+        parts.push(format!(
+            "BYMONTHDAY={}",
+            rule.month_days
+                .iter()
+                .map(i32::to_string)
+                .collect::<Vec<_>>()
+                .join(",")
+        ));
+    }
     if let Some(week_start) = rule.week_start {
         parts.push(format!("WKST={}", weekday_name(week_start)));
     }
@@ -164,6 +196,24 @@ fn occurs(rule: &Rule, base: NaiveDate, date: NaiveDate) -> bool {
     if date < base || rule.until.is_some_and(|until| date > until) {
         return false;
     }
+    // RFC 5545: negative days count back from the end of the month. Testing real dates
+    // naturally skips impossible instances such as February 30 without shifting them.
+    if !rule.month_days.is_empty() {
+        let last_day = (28..=31)
+            .rev()
+            .find(|day| date.with_day(*day).is_some())
+            .unwrap();
+        if !rule.month_days.iter().any(|day| {
+            let wanted = if *day > 0 {
+                *day
+            } else {
+                last_day as i32 + day + 1
+            };
+            date.day() as i32 == wanted
+        }) {
+            return false;
+        }
+    }
     match rule.frequency {
         Frequency::Daily => {
             let days = (date - base).num_days();
@@ -187,7 +237,10 @@ fn occurs(rule: &Rule, base: NaiveDate, date: NaiveDate) -> bool {
                 - i32::try_from(base.month()).unwrap_or(0);
             months >= 0
                 && months % i32::try_from(rule.interval).unwrap_or(1) == 0
-                && date.day() == base.day()
+                && (rule.weekdays.is_empty() || rule.weekdays.contains(&date.weekday()))
+                && (!rule.month_days.is_empty()
+                    || !rule.weekdays.is_empty()
+                    || date.day() == base.day())
         }
     }
 }
@@ -358,6 +411,86 @@ mod tests {
         assert!(normalize_rule(Some("FREQ=YEARLY".into())).is_err());
         assert!(normalize_rule(Some("FREQ=DAILY;COUNT=3".into())).is_err());
         assert!(normalize_rule(Some("FREQ=WEEKLY;WKST=NO".into())).is_err());
+        assert_eq!(
+            normalize_rule(Some("FREQ=MONTHLY;BYMONTHDAY=1,15,-1;INTERVAL=2".into())).unwrap(),
+            Some("FREQ=MONTHLY;INTERVAL=2;BYMONTHDAY=1,15,-1".into())
+        );
+        for rule in [
+            "FREQ=MONTHLY;BYMONTHDAY=0",
+            "FREQ=MONTHLY;BYMONTHDAY=32",
+            "FREQ=MONTHLY;BYMONTHDAY=-32",
+            "FREQ=MONTHLY;BYMONTHDAY=",
+            "FREQ=WEEKLY;BYMONTHDAY=1",
+        ] {
+            assert!(normalize_rule(Some(rule.into())).is_err(), "{rule}");
+        }
+    }
+
+    #[test]
+    fn month_days_skip_invalid_dates_and_support_negative_days_and_leap_years() {
+        let mut event = event();
+        event.all_day = true;
+        event.start_value = "2028-01-31".into();
+        event.end_value = "2028-02-01".into();
+        event.recurrence_rule = Some("FREQ=MONTHLY;BYMONTHDAY=31,-1;UNTIL=20280430".into());
+        let occurrences = expand(
+            &event,
+            NaiveDate::from_ymd_opt(2028, 1, 1).unwrap(),
+            NaiveDate::from_ymd_opt(2028, 5, 31).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            occurrences
+                .iter()
+                .map(|occurrence| occurrence.0.as_str())
+                .collect::<Vec<_>>(),
+            vec!["2028-01-31", "2028-02-29", "2028-03-31", "2028-04-30"]
+        );
+        event.recurrence_rule = Some("FREQ=MONTHLY;BYMONTHDAY=31".into());
+        assert_eq!(
+            expand(
+                &event,
+                NaiveDate::from_ymd_opt(2028, 2, 1).unwrap(),
+                NaiveDate::from_ymd_opt(2028, 4, 30).unwrap()
+            )
+            .unwrap()
+            .iter()
+            .map(|occurrence| occurrence.0.as_str())
+            .collect::<Vec<_>>(),
+            vec!["2028-03-31"]
+        );
+    }
+
+    #[test]
+    fn month_days_combine_with_weekdays_and_intervals() {
+        let base = NaiveDate::from_ymd_opt(2026, 1, 1).unwrap();
+        let rule = parse_rule("FREQ=MONTHLY;INTERVAL=2;BYMONTHDAY=1,2,3,4,5,6,7;BYDAY=MO").unwrap();
+        assert!(occurs(
+            &rule,
+            base,
+            NaiveDate::from_ymd_opt(2026, 3, 2).unwrap()
+        ));
+        assert!(!occurs(
+            &rule,
+            base,
+            NaiveDate::from_ymd_opt(2026, 2, 2).unwrap()
+        ));
+        assert!(!occurs(
+            &rule,
+            base,
+            NaiveDate::from_ymd_opt(2026, 3, 3).unwrap()
+        ));
+        let daily = parse_rule("FREQ=DAILY;BYMONTHDAY=-1").unwrap();
+        assert!(occurs(
+            &daily,
+            base,
+            NaiveDate::from_ymd_opt(2026, 2, 28).unwrap()
+        ));
+        assert!(!occurs(
+            &daily,
+            base,
+            NaiveDate::from_ymd_opt(2026, 2, 27).unwrap()
+        ));
     }
 
     #[test]

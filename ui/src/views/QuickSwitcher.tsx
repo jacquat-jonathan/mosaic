@@ -1,8 +1,11 @@
-import { useMemo, useRef, useState, useEffect } from "react";
+import { useMemo, useRef, useState, useEffect, useId } from "react";
 import { useUi } from "../state/ui";
 import { useVault, parentOf, baseName } from "../state/vault";
 import { useWorkspace } from "../state/workspace";
 import { displayName, kindIcon } from "./FileTree";
+import { Button, Dialog, TextField } from "../design-system/components";
+import { DesignSystemScope } from "./DesignSystemScope";
+import "./searchOverlay.css";
 import { newNote } from "../actions";
 
 /** Subsequence match score: consecutive and word-start matches rank higher; -1 if no match. */
@@ -36,7 +39,8 @@ function SwitcherDialog() {
   const [q, setQ] = useState("");
   const [sel, setSel] = useState(0);
   const input = useRef<HTMLInputElement>(null);
-  useEffect(() => input.current?.focus(), []);
+  const list = useRef<HTMLDivElement>(null);
+  const listId = useId();
 
   const results = useMemo(() => {
     const files = entries.filter((e) => !e.is_dir);
@@ -53,6 +57,10 @@ function SwitcherDialog() {
       .map((r) => r.e);
   }, [entries, q]);
 
+  useEffect(() => {
+    list.current?.children[sel]?.scrollIntoView({ block: "nearest" });
+  }, [sel, results]);
+
   const choose = async (i: number, newTab: boolean) => {
     const target = results[i];
     close();
@@ -61,9 +69,21 @@ function SwitcherDialog() {
   };
 
   return (
-    <div className="modal-backdrop top" onMouseDown={close}>
-      <div className="switcher" onMouseDown={(e) => e.stopPropagation()}>
-        <input
+    <DesignSystemScope className="search-overlay-scope">
+      <Dialog
+        open
+        title="Quick switcher"
+        initialFocusRef={input}
+        onClose={close}
+        actions={<Button onClick={close}>Cancel</Button>}
+      >
+        <TextField
+          label="Find or create a note"
+          role="combobox"
+          aria-autocomplete="list"
+          aria-expanded="true"
+          aria-controls={listId}
+          aria-activedescendant={results[sel] ? `${listId}-${sel}` : q.trim() ? `${listId}-create` : undefined}
           ref={input}
           value={q}
           placeholder="Find or create a note…"
@@ -75,7 +95,7 @@ function SwitcherDialog() {
             if (e.key === "Escape") close();
             else if (e.key === "ArrowDown") {
               e.preventDefault();
-              setSel((s) => Math.min(s + 1, results.length - 1));
+              setSel((s) => Math.max(0, Math.min(s + 1, results.length - 1)));
             } else if (e.key === "ArrowUp") {
               e.preventDefault();
               setSel((s) => Math.max(s - 1, 0));
@@ -85,29 +105,49 @@ function SwitcherDialog() {
             }
           }}
         />
-        <div className="switcher-results">
+        <div id={listId} ref={list} className="search-overlay-results" role="listbox" aria-label="Notes">
           {results.map((e, i) => (
             <button
               key={e.path}
+              type="button"
+              role="option"
+              id={`${listId}-${i}`}
+              aria-selected={i === sel}
+              tabIndex={-1}
+              onMouseDown={(ev) => ev.preventDefault()}
               className={i === sel ? "selected" : ""}
               onMouseEnter={() => setSel(i)}
               onClick={(ev) => void choose(i, ev.metaKey)}
             >
               {kindIcon(e.kind, 14)}
-              <span className="switcher-name">{displayName(e)}</span>
-              <span className="switcher-path">
-                {e.path.includes("/") ? e.path.slice(0, e.path.lastIndexOf("/")) : ""}
+              <span className="search-overlay-main">
+                <span className="search-overlay-name">{displayName(e)}</span>
+                <span className="search-overlay-detail">
+                  {e.path.includes("/") ? e.path.slice(0, e.path.lastIndexOf("/")) : ""}
+                </span>
               </span>
             </button>
           ))}
           {results.length === 0 && q.trim() && (
-            <button className="selected" onClick={() => void choose(-1, false)}>
+            <button
+              type="button"
+              role="option"
+              id={`${listId}-create`}
+              aria-selected="true"
+              tabIndex={-1}
+              onMouseDown={(e) => e.preventDefault()}
+              className="selected"
+              onClick={() => void choose(-1, false)}
+            >
               Create “{q.trim()}”
             </button>
           )}
+          {results.length === 0 && !q.trim() && (
+            <p className="search-overlay-empty">No notes yet. Type a name to create one.</p>
+          )}
         </div>
-        <div className="switcher-hint">↵ open · ⌘↵ new tab · ⇧↵ create · esc close</div>
-      </div>
-    </div>
+        <div className="mds-hint">↵ open · ⌘↵ new tab · ⇧↵ create · esc close</div>
+      </Dialog>
+    </DesignSystemScope>
   );
 }

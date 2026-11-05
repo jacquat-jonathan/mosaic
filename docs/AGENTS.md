@@ -88,7 +88,7 @@ still apply. Unknown placeholders are preserved; supported ones are `{{title}}`,
 | Chart | `.vl.json` | A Vega-Lite spec. |
 | Graph | `.dot` | Graphviz DOT source. |
 | Data | `.csv`, `.json`, `.yaml` | Shown as tables / highlighted source. |
-| Web page | `.html` | Shown in a sandbox with scripts and network disabled. |
+| Web page | `.html` | Sandboxed preview. Scripts and internet are off by default; the person can set vault defaults or override a page for the current session. |
 | Other | images, `.pdf`, code | Images/PDFs can be embedded in notes. |
 
 ## Markdown notes

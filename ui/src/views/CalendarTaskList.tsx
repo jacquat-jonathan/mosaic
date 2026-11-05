@@ -1,17 +1,18 @@
+import { Button } from "../design-system/components";
 import { useMemo } from "react";
 import type { DayTask } from "../ipc/types";
 import { useWorkspace } from "../state/workspace";
 import { progress } from "./calendar";
 
 const noteName = (path: string) => (path.split("/").pop() ?? path).replace(/\.md$/i, "");
-export function TaskList({
+export function CalendarTaskList({
   tasks,
   onTick,
-  showNote = false,
+  pending = false,
 }: {
   tasks: DayTask[];
   onTick(task: DayTask, done: boolean): void;
-  showNote?: boolean;
+  pending?: boolean;
 }) {
   const values = useMemo(() => progress(tasks), [tasks]);
   return (
@@ -23,12 +24,12 @@ export function TaskList({
           <li
             key={`${task.path}:${task.line}`}
             className={`calendar-task status-${task.status}`}
-            style={{ paddingLeft: task.depth * 16 }}
+            style={{ paddingLeft: Math.min(task.depth, 4) * 12 }}
           >
             <input
               type="checkbox"
               checked={task.status === "done"}
-              disabled={!tickable}
+              disabled={pending || !tickable}
               aria-label={task.text || "Task"}
               onChange={(event) => onTick(task, event.target.checked)}
             />
@@ -41,14 +42,12 @@ export function TaskList({
                   {item.done}/{item.total}
                 </span>
               )}
-              {showNote && (
-                <button
-                  className="calendar-note-link"
-                  onClick={() => void useWorkspace.getState().open(task.path, { newTab: true })}
-                >
-                  {noteName(task.path)}
-                </button>
-              )}
+              <Button
+                className="calendar-note-link"
+                onClick={() => void useWorkspace.getState().open(task.path, { newTab: true })}
+              >
+                {noteName(task.path)}
+              </Button>
             </span>
           </li>
         );

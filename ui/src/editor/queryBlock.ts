@@ -3,6 +3,9 @@
 // `query` tool. Task queries (`task:open`) list checkbox tasks instead, which can be ticked here.
 
 import { api, onVaultChanged } from "../ipc/api";
+import { editorScope } from "./designSystemDom";
+import { useVault } from "../state/vault";
+import "./queryControls.css";
 import { errorMessage, type QueryResult, type QueryRow } from "../ipc/types";
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -39,7 +42,7 @@ export const isTaskQuery = (query: string) => /(^|\s)-?task:/.test(query);
 
 // Same link markup as wikilinks, so clicks open the note in the editor and in canvas cards.
 const noteLink = (row: QueryRow) =>
-  `<span class="cm-wikilink md-wikilink" data-target="${esc(row.path.replace(/\.md$/i, ""))}" title="${esc(row.path)}">${esc(row.title)}</span>`;
+  `<button type="button" class="mds-button mds-button--quiet cm-wikilink md-wikilink query-note-link" data-target="${esc(row.path.replace(/\.md$/i, ""))}" title="${esc(row.path)}">${esc(row.title)}</button>`;
 
 function taskCell(row: QueryRow): string {
   const t = row.task!;
@@ -91,7 +94,7 @@ const sortHead = (label: string, column: string, sort: QuerySort | null) => {
   const active = sort?.column === column;
   const arrow = active ? (sort.descending ? " ↓" : " ↑") : "";
   const next = !active ? "ascending" : sort.descending ? "source order" : "descending";
-  return `<th><button class="query-sort${active ? " active" : ""}" data-query-sort="${esc(column)}" aria-label="Sort by ${esc(label)}, ${next}">${esc(label)}${arrow}</button></th>`;
+  return `<th><button type="button" class="mds-button mds-button--quiet query-sort${active ? " active" : ""}" data-query-sort="${esc(column)}" aria-label="Sort by ${esc(label)}, ${next}">${esc(label)}${arrow}</button></th>`;
 };
 
 export function queryTable(
@@ -99,7 +102,8 @@ export function queryTable(
   tasks = r.rows.some((row) => row.task),
   sort: QuerySort | null = null,
 ): string {
-  if (!r.rows.length) return `<div class="query-empty">${tasks ? "No matching tasks." : "No matching notes."}</div>`;
+  if (!r.rows.length)
+    return `<div class="query-empty" role="status">${tasks ? "No matching tasks." : "No matching notes."}</div>`;
   const head = tasks
     ? `<tr>${sortHead("Task", "text", sort)}${sortHead("Note", "title", sort)}${r.columns.map((c) => sortHead(c, c, sort)).join("")}</tr>`
     : `<tr>${sortHead("Note", "title", sort)}${r.columns.map((c) => sortHead(c, c, sort)).join("")}</tr>`;
@@ -118,58 +122,193 @@ export function queryTable(
   return `<table class="query-table"><thead>${head}</thead><tbody>${body}</tbody></table>${more}`;
 }
 
-/** Renders the query into `el`, and again whenever files change while `el` is on screen. */
+const sortFocus = new WeakMap<HTMLElement, { index: number; source: string; column: string }>();
+
+/** Renders query results with readable controls and scoped read/write state. */
 export async function renderQuery(
   source: string,
   el: HTMLElement,
   replaceSource?: (source: string) => void,
 ): Promise<void> {
-  let current = source;
+  editorScope(el);
+  el.classList.add("editor-query");
+  const root = useVault.getState().vault?.root;
+  let current = source,
+    request = 0,
+    disposed = false,
+    reading = false;
+  let readError: string | null = null,
+    writeError: string | null = null;
+  let off: (() => void) | undefined,
+    pending: ReturnType<typeof setTimeout> | undefined,
+    observer: MutationObserver | undefined;
+  const saving = new Set<string>();
   const queryText = () =>
     current
       .split("\n")
-      .map((l) => l.trim())
-      .filter((l) => l && !l.startsWith("//"))
+      .map((line) => line.trim())
+      .filter((line) => line && !line.startsWith("//"))
       .join(" ");
-  const tasks = isTaskQuery(queryText());
-  const draw = (r: QueryResult) => (el.innerHTML = queryTable(r, tasks, querySort(current)));
-  draw(await api.query(queryText()));
-  el.addEventListener("click", (e) => {
-    const button = (e.target as HTMLElement).closest<HTMLElement>("[data-query-sort]");
-    if (!button) return;
-    e.preventDefault();
-    e.stopPropagation();
+  const active = () => !disposed && el.isConnected && useVault.getState().vault?.root === root;
+  const key = (box: HTMLInputElement) => JSON.stringify([box.dataset.path, box.dataset.line, box.dataset.text]);
+  const feedback = document.createElement("div"),
+    results = document.createElement("div");
+  feedback.className = "query-feedback";
+  results.className = "query-results";
+  el.replaceChildren(feedback, results);
+  const status = () => {
+    feedback.replaceChildren();
+    el.setAttribute("aria-busy", String(reading || saving.size > 0));
+    const notice = (text: string, error = false) => {
+      const node = document.createElement("div");
+      node.className = `mds-notice mds-notice--${error ? "error" : "neutral"}`;
+      node.setAttribute("role", error ? "alert" : "status");
+      node.textContent = text;
+      feedback.append(node);
+    };
+    if (reading) notice("Loading query results…");
+    if (saving.size) notice("Updating task…");
+    if (readError) notice(`Couldn't load query results: ${readError}`, true);
+    if (writeError) notice(writeError, true);
+    if (readError || writeError) {
+      const retry = document.createElement("button");
+      retry.type = "button";
+      retry.className = "mds-button mds-button--secondary";
+      retry.textContent = "Reload results";
+      retry.disabled = reading;
+      retry.addEventListener("click", () => {
+        writeError = null;
+        void refresh();
+      });
+      feedback.append(retry);
+    }
+    for (const button of results.querySelectorAll<HTMLButtonElement>("[data-query-sort]")) button.disabled = reading;
+    for (const box of results.querySelectorAll<HTMLInputElement>(".query-task-box")) {
+      const busy = saving.has(key(box));
+      box.disabled = busy || box.closest(".status-moved,.status-cancelled") !== null;
+      box.setAttribute("aria-busy", String(busy));
+    }
+  };
+  const draw = (result: QueryResult) => {
+    const focused = document.activeElement as HTMLElement | null;
+    const inside = !!focused && results.contains(focused);
+    const checkbox = focused?.matches(".query-task-box") ? key(focused as HTMLInputElement) : null;
+    const sort = focused?.dataset.querySort;
+    results.innerHTML = queryTable(result, isTaskQuery(queryText()), querySort(current));
+    status();
+    const host = el.closest<HTMLElement>(".cm-content"),
+      intent = host && sortFocus.get(host);
+    const index = host ? [...host.querySelectorAll(".editor-query")].indexOf(el) : -1;
+    if (intent && intent.index === index && intent.source === queryText()) {
+      sortFocus.delete(host!);
+      if (document.activeElement === document.body || host!.contains(document.activeElement))
+        [...results.querySelectorAll<HTMLButtonElement>("[data-query-sort]")]
+          .find((button) => button.dataset.querySort === intent.column)
+          ?.focus();
+    } else if (inside) {
+      const target = checkbox
+        ? [...results.querySelectorAll<HTMLInputElement>(".query-task-box")].find((box) => key(box) === checkbox)
+        : [...results.querySelectorAll<HTMLButtonElement>("[data-query-sort]")].find(
+            (button) => button.dataset.querySort === sort,
+          );
+      (target ?? results.querySelector<HTMLElement>(".query-task-box:not(:disabled),[data-query-sort]"))?.focus();
+    }
+  };
+  async function refresh(initial = false) {
+    const ticket = ++request;
+    reading = true;
+    readError = null;
+    status();
+    try {
+      const result = await api.query(queryText());
+      if (!disposed && ticket === request && useVault.getState().vault?.root === root && (initial || el.isConnected)) {
+        reading = false;
+        draw(result);
+      }
+    } catch (cause) {
+      if (!disposed && ticket === request && useVault.getState().vault?.root === root && (initial || el.isConnected)) {
+        reading = false;
+        readError = errorMessage(cause);
+        status();
+      }
+    }
+  }
+  const sort = (event: Event) => {
+    const button = (event.target as HTMLElement).closest<HTMLElement>("[data-query-sort]");
+    if (!button || !active() || reading) return;
+    event.preventDefault();
+    event.stopPropagation();
     current = sortQuery(current, button.dataset.querySort!);
+    const host = el.closest<HTMLElement>(".cm-content");
+    if (replaceSource && host && document.activeElement === button)
+      sortFocus.set(host, {
+        index: [...host.querySelectorAll(".editor-query")].indexOf(el),
+        source: queryText(),
+        column: button.dataset.querySort!,
+      });
     replaceSource?.(current);
-    void api.query(queryText()).then((r) => el.isConnected && draw(r));
+    if (active()) void refresh();
+  };
+  const change = async (event: Event) => {
+    const box = event.target as HTMLInputElement;
+    if (!box.classList.contains("query-task-box") || !active() || saving.has(key(box))) return;
+    const id = key(box),
+      wanted = box.checked,
+      restoreFocus = document.activeElement === box;
+    saving.add(id);
+    writeError = null;
+    status();
+    try {
+      await api.setTask(box.dataset.path!, Number(box.dataset.line), box.dataset.text!, wanted);
+      if (active()) await refresh();
+    } catch (cause) {
+      if (active()) {
+        box.checked = !wanted;
+        box.title =
+          (cause as { code?: string }).code === "conflict"
+            ? "The note changed: this task isn't on that line any more. Reload the results."
+            : errorMessage(cause);
+        writeError = `Couldn't update this task: ${box.title}`;
+        await refresh();
+      }
+    } finally {
+      saving.delete(id);
+      if (active()) {
+        status();
+        if (restoreFocus && (document.activeElement === document.body || el.contains(document.activeElement)))
+          (
+            [...results.querySelectorAll<HTMLInputElement>(".query-task-box:not(:disabled)")].find(
+              (next) => key(next) === id,
+            ) ?? results.querySelector<HTMLElement>(".query-task-box:not(:disabled),[data-query-sort]")
+          )?.focus();
+      }
+    }
+  };
+  const dispose = () => {
+    disposed = true;
+    request++;
+    clearTimeout(pending);
+    off?.();
+    observer?.disconnect();
+    el.removeEventListener("click", sort);
+    el.removeEventListener("change", change);
+  };
+  await refresh(true);
+  if (!active()) return;
+  el.addEventListener("click", sort);
+  el.addEventListener("change", change);
+  observer = new MutationObserver(() => {
+    if (!active()) dispose();
   });
-  // Ticking a task writes its note; the vault change then redraws the table.
-  el.addEventListener("change", (e) => {
-    const box = e.target as HTMLInputElement;
-    if (!box.classList.contains("query-task-box")) return;
-    const { path, line, text } = box.dataset;
-    api.setTask(path!, Number(line), text!, box.checked).catch((err) => {
-      box.checked = !box.checked;
-      const conflict = (err as { code?: string }).code === "conflict";
-      box.title = conflict
-        ? "The note changed: this task isn't on that line any more. The table refreshes in a moment."
-        : errorMessage(err);
-      void api.query(queryText()).then(
-        (r) => el.isConnected && draw(r),
-        () => {},
-      );
-    });
-  });
-  let off: (() => void) | undefined;
-  let pending: ReturnType<typeof setTimeout> | undefined;
+  observer.observe(document.body, { childList: true, subtree: true });
   void onVaultChanged(() => {
-    if (!el.isConnected) return off?.();
+    if (!active()) return dispose();
     clearTimeout(pending);
     pending = setTimeout(() => {
-      api.query(queryText()).then(
-        (r) => el.isConnected && draw(r),
-        () => {},
-      );
+      if (active()) void refresh();
     }, 300);
-  }).then((f) => (off = f));
+  }).then((unsubscribe) => {
+    if (!active()) unsubscribe();
+    else off = unsubscribe;
+  });
 }

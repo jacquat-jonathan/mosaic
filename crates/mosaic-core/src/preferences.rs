@@ -9,6 +9,8 @@ use std::collections::BTreeMap;
 pub struct VaultPreferences {
     pub version: u32,
     pub agents_folder: String,
+    /// Show daily-note creation controls in the app. Existing notes remain ordinary files.
+    pub daily_notes_enabled: bool,
     pub daily_folder: String,
     pub daily_template: String,
     #[cfg_attr(feature = "specta", specta(type = choices::DailyFormat))]
@@ -21,8 +23,11 @@ pub struct VaultPreferences {
     pub attachment_folder: String,
     pub show_attachments_in_tree: bool,
     /// Allows scripts by default in sandboxed HTML previews. Individual previews may override this
-    /// for the current app session; the preview CSP still denies network access.
+    /// for the current app session. Internet access is configured separately.
     pub allow_html_scripts: bool,
+    /// Allows each HTML preview's listed external origins without a per-page prompt.
+    /// Individual previews may block internet access for the current app session.
+    pub allow_html_internet: bool,
     #[cfg_attr(feature = "specta", specta(type = choices::LinkStyle))]
     pub link_style: String,
     pub startup_note: String,
@@ -76,6 +81,7 @@ impl Default for VaultPreferences {
         Self {
             version: 1,
             agents_folder: "Agents".into(),
+            daily_notes_enabled: false,
             daily_folder: "Daily".into(),
             daily_template: String::new(),
             daily_format: "YYYY-MM-DD".into(),
@@ -85,6 +91,7 @@ impl Default for VaultPreferences {
             attachment_folder: String::new(),
             show_attachments_in_tree: false,
             allow_html_scripts: false,
+            allow_html_internet: false,
             link_style: "wiki".into(),
             startup_note: String::new(),
             folder_colors: BTreeMap::new(),

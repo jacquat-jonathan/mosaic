@@ -9,6 +9,9 @@ import {
 } from "@codemirror/view";
 import { moveSectionTo, parse } from "../views/outline";
 
+import { editorScope, editorButton } from "./designSystemDom";
+import "./editorControls.css";
+
 const SECTION_MIME = "application/x-mosaic-section";
 
 class LineActionsWidget extends WidgetType {
@@ -26,18 +29,19 @@ class LineActionsWidget extends WidgetType {
   toDOM() {
     const actions = document.createElement("span");
     actions.className = "cm-section-actions";
-    const add = document.createElement("button");
+    editorScope(actions);
+    const add = editorButton(document.createElement("button"));
     add.type = "button";
-    add.className = "cm-section-add";
+    add.classList.add("cm-section-add");
     add.dataset.sectionLine = String(this.line);
     add.title = "Add a line below";
     add.setAttribute("aria-label", `Add a line after line ${this.line}`);
     add.textContent = "+";
     actions.append(add);
     if (this.headingTitle === null) return actions;
-    const button = document.createElement("button");
+    const button = editorButton(document.createElement("button"));
     button.type = "button";
-    button.className = "cm-section-handle";
+    button.classList.add("cm-section-handle");
     button.draggable = true;
     button.tabIndex = -1;
     button.dataset.sectionLine = String(this.line);

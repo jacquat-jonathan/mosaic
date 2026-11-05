@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 import { ADD_PROPERTY_EVENT } from "./noteViews";
@@ -52,6 +52,8 @@ test("adds properties, handles clashes and opens invalid YAML as source", async 
   const view = render(<PropertiesEditor yaml="title: Test\n" onChange={change} onEditSource={edit} />);
   await user.click(screen.getByRole("button", { name: /Add property/ }));
   await user.type(screen.getByLabelText("New property name"), "title");
+  expect(screen.getByLabelText("New property name").getAttribute("aria-invalid")).toBe("true");
+  expect(screen.getByRole("status").textContent).toContain("already exists");
   expect(screen.getByRole("button", { name: "Name taken" })).toHaveProperty("disabled", true);
   await user.clear(screen.getByLabelText("New property name"));
   await user.type(screen.getByLabelText("New property name"), "priority");
@@ -62,6 +64,7 @@ test("adds properties, handles clashes and opens invalid YAML as source", async 
   fireEvent(window, new Event(ADD_PROPERTY_EVENT));
   expect(await screen.findByLabelText("New property name")).toBeTruthy();
   await user.keyboard("{Escape}");
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "Add property" })));
   view.unmount();
 
   render(<PropertiesEditor yaml="broken: [" onChange={change} onEditSource={edit} />);

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Cuts a release: bumps the version, turns CHANGELOG.md's "Unreleased" section into this release,
-# commits and tags it. Nothing is pushed; the script prints the command to do it.
+# commits and tags it. Nothing is pushed; the script points to the publication procedure.
+# Follow docs/RELEASING.md for the PR-first publication and recovery procedure.
 # Usage: scripts/release.sh 0.2.0
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -30,4 +31,5 @@ cargo update --workspace --offline --quiet # refreshes Cargo.lock with the new v
 git add CHANGELOG.md Cargo.toml Cargo.lock src-tauri/tauri.conf.json
 git commit -q -m "Release $version"
 git tag -a "v$version" -m "Mosaic $version"$'\n\n'"$notes"
-echo "Released $version (was $current). Publish it with: git push --follow-tags"
+echo "Prepared $version (was $current); its annotated tag is local."
+echo "Follow docs/RELEASING.md: push the branch without tags, merge its PR, then publish this tag."

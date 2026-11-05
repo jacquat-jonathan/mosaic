@@ -24,8 +24,10 @@ import {
   isoDay,
   timedLayout,
   visibleCalendarHours,
+  type ResizeEdge,
 } from "./calendarModel";
-import { TASK_DRAG } from "./UnscheduledTray";
+import { TASK_DRAG, type TaskDragPreview } from "./UnscheduledTray";
+import { CalendarEventTitle } from "./CalendarEventTitle";
 
 const MIN_HOUR_HEIGHT = 40;
 const MIN_MULTILINE_TITLE_HEIGHT = 34;
@@ -48,15 +50,17 @@ type DropPreview = {
   label: string;
   color: string;
   durationHours: number;
+  grabOffsetHours?: number;
 };
 
 export function WeekView({
   days,
   data,
   overlays,
-  today,
   show,
   selectedRange,
+  taskDragPreview,
+  designSystem = false,
   onEvent,
   onSession,
   onOverlay,
@@ -64,9 +68,7 @@ export function WeekView({
   onTaskDrop,
   onSessionMove,
   onEventMove,
-  onEventResizePreview,
   onEventResize,
-  onSessionResizeStart,
   onSessionResize,
   onEventDelete,
   onSessionCancel,
@@ -74,9 +76,10 @@ export function WeekView({
   days: Date[];
   data: PlannerCalendarRange;
   overlays: CalendarOverlayOccurrence[];
-  today: string;
   show: { events: boolean; sessions: boolean; due: boolean };
   selectedRange: SelectedRange | null;
+  taskDragPreview?: TaskDragPreview | null;
+  designSystem?: boolean;
   onEvent(id: string, key: string): void;
   onSession(session: PlannerWorkSession): void;
   onOverlay(item: CalendarOverlayOccurrence): void;
@@ -84,21 +87,41 @@ export function WeekView({
   onTaskDrop(taskId: string, day: string, hour: number | null): void;
   onSessionMove(session: PlannerWorkSession, day: string, hour: number | null): void;
   onEventMove(event: EventOccurrence, day: string, hour: number | null): void;
-  onEventResizePreview(event: EventOccurrence, minutes: number): void;
-  onEventResize(event: EventOccurrence, minutes: number): void;
-  onSessionResizeStart(): void;
-  onSessionResize(session: PlannerWorkSession, minutes: number): void;
+  onEventResize(event: EventOccurrence, minutes: number, edge?: ResizeEdge): void;
+  onSessionResize(session: PlannerWorkSession, minutes: number, edge?: ResizeEdge): void;
   onEventDelete(event: EventOccurrence): void;
   onSessionCancel(session: PlannerWorkSession): void;
 }) {
   const [selecting, setSelecting] = useState<{ day: string; startHour: number; currentHour: number } | null>(null),
     [displayRange, setDisplayRange] = useState(selectedRange),
+    [now, setNow] = useState(() => new Date()),
     [hourHeight, setHourHeight] = useState(MIN_HOUR_HEIGHT),
     [contextTarget, setContextTarget] = useState<ContextTarget | null>(null),
     [dropPreview, setDropPreview] = useState<DropPreview | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null),
     headRef = useRef<HTMLDivElement>(null),
-    allDayRef = useRef<HTMLDivElement>(null);
+    allDayRef = useRef<HTMLDivElement>(null),
+    dragPreview = useRef<DropPreview | null>(null);
+  useEffect(() => {
+    let timer: number;
+    const update = () => {
+      const current = new Date();
+      setNow(current);
+      window.clearTimeout(timer);
+      timer = window.setTimeout(update, 60000 - (current.getTime() % 60000));
+    };
+    const visible = () => {
+      if (document.visibilityState === "visible") update();
+    };
+    update();
+    window.addEventListener("focus", update);
+    document.addEventListener("visibilitychange", visible);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("focus", update);
+      document.removeEventListener("visibilitychange", visible);
+    };
+  }, []);
   useEffect(() => {
     const cancel = () => setSelecting(null);
     window.addEventListener("mouseup", cancel);
@@ -129,7 +152,10 @@ export function WeekView({
     };
   }, [contextTarget]);
   useEffect(() => {
-    const clear = () => setDropPreview(null);
+    const clear = () => {
+      dragPreview.current = null;
+      setDropPreview(null);
+    };
     window.addEventListener("dragend", clear);
     window.addEventListener("drop", clear);
     return () => {
@@ -177,21 +203,42 @@ export function WeekView({
         /* Ignore invalid external drag data. */
       }
     }
+    dragPreview.current = null;
     setDropPreview(null);
   };
   const previewDrop = (event: DragEvent, day: string, hour: number | null) => {
     event.preventDefault();
     setDropPreview((current) => ({
-      ...(current ?? { label: "New work session", color: "var(--accent)", durationHours: 1 }),
+      ...(taskDragPreview
+        ? { label: taskDragPreview.label, color: taskDragPreview.color, durationHours: 1 }
+        : (current ?? { label: "New work session", color: "var(--accent)", durationHours: 1 })),
       targetDay: day,
       targetHour: hour,
     }));
   };
   const hourAtPointer = (event: DragEvent<HTMLDivElement>) => {
     const rect = event.currentTarget.getBoundingClientRect(),
-      raw = CALENDAR_START_HOUR + (event.clientY - rect.top) / hourHeight;
-    return Math.max(CALENDAR_START_HOUR, Math.min(CALENDAR_END_HOUR - 0.25, Math.round(raw * 4) / 4));
+      renderedHourHeight = rect.height / HOURS.length || hourHeight,
+      raw =
+        CALENDAR_START_HOUR +
+        (event.clientY - rect.top) / renderedHourHeight -
+        (taskDragPreview
+          ? taskDragPreview.grabOffsetPx / renderedHourHeight
+          : (dragPreview.current?.grabOffsetHours ?? 0)),
+      duration = dragPreview.current?.durationHours ?? 1;
+    return Math.max(
+      CALENDAR_START_HOUR,
+      Math.min(CALENDAR_END_HOUR - Math.min(duration, HOURS.length), Math.round(raw * 4) / 4),
+    );
   };
+  const currentDay = isoDay(now),
+    currentHour = now.getHours() + now.getMinutes() / 60,
+    showNow =
+      days.some((day) => isoDay(day) === currentDay) &&
+      currentHour >= CALENDAR_START_HOUR &&
+      currentHour < CALENDAR_END_HOUR,
+    nowTop = (currentHour - CALENDAR_START_HOUR) * hourHeight,
+    currentTime = now.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
   const gridStyle = {
     "--planner-hour-height": `${hourHeight}px`,
     "--planner-grid-height": `${HOURS.length * hourHeight}px`,
@@ -203,7 +250,7 @@ export function WeekView({
         {days.map((date) => {
           const day = isoDay(date);
           return (
-            <div className={day === today ? "today" : ""} key={day}>
+            <div className={day === currentDay ? "today" : ""} key={day}>
               <strong>{date.toLocaleDateString(undefined, { weekday: "short" })}</strong>
               <span>{date.getDate()}</span>
             </div>
@@ -276,6 +323,7 @@ export function WeekView({
               {external.map((item) => (
                 <button
                   className="planner-event-chip read-only"
+                  title={`${item.title} · ${item.source_name}`}
                   style={{ borderColor: item.color ?? "var(--muted)" }}
                   key={`${item.source_id}:${item.uid}:${item.occurrence_key}`}
                   onClick={() => onOverlay(item)}
@@ -307,7 +355,18 @@ export function WeekView({
         })}
       </div>
       <div className="planner-time-scroll">
+        {showNow && <div className="planner-now-line" aria-hidden="true" style={{ top: nowTop }} />}
         <div className="planner-hours">
+          {showNow && (
+            <time
+              className="planner-now-label"
+              dateTime={now.toISOString()}
+              aria-label={`Current time ${currentTime}`}
+              style={{ top: nowTop }}
+            >
+              {currentTime}
+            </time>
+          )}
           {HOURS.map((hour) => (
             <div key={hour}>{hour === CALENDAR_START_HOUR ? "" : hourLabel(hour)}</div>
           ))}
@@ -339,6 +398,9 @@ export function WeekView({
               {HOURS.map((hour) => (
                 <button
                   className="planner-hour-cell"
+                  onClick={(event) => {
+                    if (event.detail === 0) onEmptyRange(day, hour, hour + 1);
+                  }}
                   aria-label={`Create event ${day} ${hourLabel(hour)}`}
                   key={hour}
                   data-selecting={active && hour >= active.start && hour < active.end ? "true" : undefined}
@@ -380,15 +442,15 @@ export function WeekView({
                   key={item.id}
                   item={item}
                   hourHeight={hourHeight}
+                  designSystem={designSystem}
                   onEvent={onEvent}
                   onSession={onSession}
                   onOverlay={onOverlay}
-                  onDragPreviewStart={(preview) =>
-                    setDropPreview({ ...preview, targetDay: day, targetHour: item.start })
-                  }
-                  onEventResizePreview={onEventResizePreview}
+                  onDragPreviewStart={(preview) => {
+                    dragPreview.current = { ...preview, targetDay: day, targetHour: item.start };
+                    setDropPreview(dragPreview.current);
+                  }}
                   onEventResize={onEventResize}
-                  onSessionResizeStart={onSessionResizeStart}
                   onSessionResize={onSessionResize}
                   onEventMenu={(event, item) =>
                     setContextTarget({ kind: "event", event: item, x: event.clientX, y: event.clientY })
@@ -467,111 +529,131 @@ function SessionChip({
 
 function TimedItem({
   item,
+  designSystem,
   hourHeight,
   onEvent,
   onSession,
   onOverlay,
   onDragPreviewStart,
-  onEventResizePreview,
   onEventResize,
-  onSessionResizeStart,
   onSessionResize,
   onEventMenu,
   onSessionMenu,
 }: {
   item: ReturnType<typeof timedLayout>[number];
+  designSystem: boolean;
   hourHeight: number;
   onEvent(id: string, key: string): void;
   onSession(session: PlannerWorkSession): void;
   onOverlay(item: CalendarOverlayOccurrence): void;
   onDragPreviewStart(preview: Omit<DropPreview, "targetDay" | "targetHour">): void;
-  onEventResizePreview(event: EventOccurrence, minutes: number): void;
-  onEventResize(event: EventOccurrence, minutes: number): void;
-  onSessionResizeStart(): void;
-  onSessionResize(session: PlannerWorkSession, minutes: number): void;
+  onEventResize(event: EventOccurrence, minutes: number, edge?: ResizeEdge): void;
+  onSessionResize(session: PlannerWorkSession, minutes: number, edge?: ResizeEdge): void;
   onEventMenu(event: MouseEvent, item: EventOccurrence): void;
   onSessionMenu(event: MouseEvent, session: PlannerWorkSession): void;
 }) {
-  const [resizeDelta, setResizeDelta] = useState(0),
-    resizeStart = useRef<number | null>(null);
-  const visibleStart = Math.max(item.start, CALENDAR_START_HOUR),
-    visibleEnd = Math.min(item.end, CALENDAR_END_HOUR),
-    top = (visibleStart - CALENDAR_START_HOUR) * hourHeight,
-    baseHeight = Math.max(hourHeight / 2, (visibleEnd - visibleStart) * hourHeight),
-    height = Math.max(hourHeight / 4, baseHeight + (resizeDelta / CALENDAR_MINUTES_PER_STEP) * (hourHeight / 4)),
+  const [resize, setResize] = useState<{ edge: ResizeEdge; delta: number } | null>(null),
+    resizeStart = useRef<{ y: number; pixelsPerHour: number; edge: ResizeEdge } | null>(null);
+  const start = item.start + (resize?.edge === "start" ? resize.delta / 60 : 0),
+    end = item.end + (resize?.edge === "end" ? resize.delta / 60 : 0),
+    visibleStart = Math.max(start, CALENDAR_START_HOUR),
+    visibleEnd = Math.min(end, CALENDAR_END_HOUR),
+    height = Math.max(hourHeight / 4, (visibleEnd - visibleStart) * hourHeight),
     style = {
-      top,
+      top: (visibleStart - CALENDAR_START_HOUR) * hourHeight,
       left: `calc(${(item.column / item.columns) * 100}% + 2px)`,
       width: `calc(${100 / item.columns}% - 4px)`,
       height,
+      "--event-padding-y": height < 24 ? "0px" : "4px",
       "--item-color": item.event?.color ?? item.overlay?.color ?? item.session?.color ?? "var(--accent)",
     } as CSSProperties;
-  const commitResize = (delta: number) => {
-    if (delta && item.event) onEventResize(item.event, delta);
-    else if (delta && item.session) {
-      onSessionResizeStart();
-      onSessionResize(item.session.session, delta);
-    }
+  const clampDelta = (delta: number, edge: ResizeEdge) =>
+    edge === "start"
+      ? Math.min((item.end - item.start) * 60 - 15, Math.max((CALENDAR_START_HOUR - item.start) * 60, delta))
+      : Math.max(15 - (item.end - item.start) * 60, Math.min((CALENDAR_END_HOUR - item.end) * 60, delta));
+  const commitResize = (delta: number, edge: ResizeEdge) => {
+    delta = clampDelta(delta, edge);
+    if (delta && item.event) onEventResize(item.event, delta, edge);
+    else if (delta && item.session) onSessionResize(item.session.session, delta, edge);
   };
-  const resizeProps = {
-    onPointerDown: (event: PointerEvent<HTMLSpanElement>) => {
-      event.preventDefault();
-      event.stopPropagation();
-      resizeStart.current = event.clientY;
-      event.currentTarget.setPointerCapture(event.pointerId);
-      if (item.event) onEventResizePreview(item.event, 0);
-      else if (item.session) onSessionResizeStart();
-    },
-    onPointerMove: (event: PointerEvent<HTMLSpanElement>) => {
-      if (resizeStart.current === null) return;
-      const pixelsPerStep = hourHeight / 4,
-        delta = Math.round((event.clientY - resizeStart.current) / pixelsPerStep) * CALENDAR_MINUTES_PER_STEP;
-      setResizeDelta(delta);
-      if (item.event) onEventResizePreview(item.event, delta);
-    },
-    onPointerUp: (event: PointerEvent<HTMLSpanElement>) => {
-      event.preventDefault();
-      event.stopPropagation();
-      if (resizeStart.current === null) return;
-      const pixelsPerStep = hourHeight / 4,
-        delta = Math.round((event.clientY - resizeStart.current) / pixelsPerStep) * CALENDAR_MINUTES_PER_STEP;
-      resizeStart.current = null;
-      setResizeDelta(0);
-      commitResize(delta);
-    },
-    onPointerCancel: () => {
-      resizeStart.current = null;
-      setResizeDelta(0);
-      if (item.event) onEventResizePreview(item.event, 0);
-    },
-    onClick: (event: MouseEvent<HTMLSpanElement>) => event.stopPropagation(),
-    onKeyDown: (event: KeyboardEvent<HTMLSpanElement>) => {
-      if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
-      event.preventDefault();
-      event.stopPropagation();
-      commitResize(event.key === "ArrowUp" ? -CALENDAR_MINUTES_PER_STEP : CALENDAR_MINUTES_PER_STEP);
-    },
+  const pointerDelta = (y: number) => {
+    const origin = resizeStart.current!;
+    return clampDelta(Math.round((y - origin.y) / (origin.pixelsPerHour / 4)) * CALENDAR_MINUTES_PER_STEP, origin.edge);
   };
   const handle =
-    item.kind !== "overlay" ? (
-      <span
-        className="planner-resize-handle"
-        role="button"
-        tabIndex={0}
-        aria-label={`Resize ${item.event?.title ?? item.session?.task_title ?? "calendar item"} in 15 minute steps`}
-        {...resizeProps}
-      />
-    ) : null;
+    item.kind !== "overlay"
+      ? (["start", "end"] as const).map((edge) => (
+          <span
+            key={edge}
+            className={`planner-resize-handle resize-${edge}`}
+            role="button"
+            tabIndex={0}
+            draggable={false}
+            aria-label={`Resize ${item.event?.title ?? item.session?.task_title ?? "calendar item"} ${edge} in 15 minute steps`}
+            onPointerDown={(event: PointerEvent<HTMLSpanElement>) => {
+              if (event.button !== 0) return;
+              event.preventDefault();
+              event.stopPropagation();
+              const day = event.currentTarget.closest(".planner-time-day")!;
+              resizeStart.current = {
+                y: event.clientY,
+                edge,
+                pixelsPerHour: day.getBoundingClientRect().height / HOURS.length || hourHeight,
+              };
+              setResize({ edge, delta: 0 });
+              event.currentTarget.setPointerCapture(event.pointerId);
+            }}
+            onPointerMove={(event: PointerEvent<HTMLSpanElement>) => {
+              if (resizeStart.current) setResize({ edge, delta: pointerDelta(event.clientY) });
+            }}
+            onPointerUp={(event: PointerEvent<HTMLSpanElement>) => {
+              event.preventDefault();
+              event.stopPropagation();
+              if (!resizeStart.current) return;
+              const delta = pointerDelta(event.clientY);
+              resizeStart.current = null;
+              setResize(null);
+              commitResize(delta, edge);
+            }}
+            onPointerCancel={() => {
+              resizeStart.current = null;
+              setResize(null);
+            }}
+            onLostPointerCapture={() => {
+              resizeStart.current = null;
+              setResize(null);
+            }}
+            onClick={(event: MouseEvent<HTMLSpanElement>) => event.stopPropagation()}
+            onKeyDown={(event: KeyboardEvent<HTMLSpanElement>) => {
+              if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+              event.preventDefault();
+              event.stopPropagation();
+              commitResize(event.key === "ArrowUp" ? -CALENDAR_MINUTES_PER_STEP : CALENDAR_MINUTES_PER_STEP, edge);
+            }}
+          />
+        ))
+      : null;
+  const grabOffsetHours = (drag: DragEvent<HTMLDivElement>) => {
+    const rect = drag.currentTarget.getBoundingClientRect(),
+      day = drag.currentTarget.closest(".planner-time-day")!,
+      pixelsPerHour = day.getBoundingClientRect().height / HOURS.length || hourHeight;
+    return Math.max(0, drag.clientY - rect.top) / pixelsPerHour + Math.max(0, CALENDAR_START_HOUR - item.start);
+  };
   if (item.kind === "event") {
     const event = item.event as EventOccurrence;
     return (
       <div
         role="button"
         tabIndex={0}
-        className={`planner-timed-item event${height >= MIN_MULTILINE_TITLE_HEIGHT ? " multiline-title" : ""}`}
-        draggable
+        className={`planner-timed-item event${height >= (designSystem ? 40 : MIN_MULTILINE_TITLE_HEIGHT) ? " multiline-title" : ""}`}
+        title={event.title}
+        draggable={!resize}
         style={style}
         onDragStart={(drag) => {
+          if (resizeStart.current || (drag.target as Element).closest(".planner-resize-handle")) {
+            drag.preventDefault();
+            return;
+          }
           drag.dataTransfer.setData(
             EVENT_DRAG,
             JSON.stringify({ seriesId: event.series_id, occurrenceKey: event.occurrence_key }),
@@ -581,6 +663,7 @@ function TimedItem({
             label: event.title,
             color: event.color ?? "var(--accent)",
             durationHours: Math.max(0.25, item.end - item.start),
+            grabOffsetHours: grabOffsetHours(drag),
           });
         }}
         onContextMenu={(menu) => {
@@ -589,13 +672,13 @@ function TimedItem({
         }}
         onClick={() => onEvent(event.series_id, event.occurrence_key)}
         onKeyDown={(key) => {
-          if (key.key === "Enter" || key.key === " ") {
+          if (key.target === key.currentTarget && (key.key === "Enter" || key.key === " ")) {
             key.preventDefault();
             onEvent(event.series_id, event.occurrence_key);
           }
         }}
       >
-        <strong className="planner-card-title">{event.title}</strong>
+        <CalendarEventTitle>{event.title}</CalendarEventTitle>
         {handle}
       </div>
     );
@@ -604,11 +687,12 @@ function TimedItem({
     const overlay = item.overlay as CalendarOverlayOccurrence;
     return (
       <button
-        className={`planner-timed-item overlay${height >= MIN_MULTILINE_TITLE_HEIGHT ? " multiline-title" : ""}`}
+        className={`planner-timed-item overlay${height >= (designSystem ? 40 : MIN_MULTILINE_TITLE_HEIGHT) ? " multiline-title" : ""}`}
+        title={`${overlay.title} · ${overlay.source_name}`}
         style={style}
         onClick={() => onOverlay(overlay)}
       >
-        <strong className="planner-card-title">{overlay.title}</strong>
+        <CalendarEventTitle>{overlay.title}</CalendarEventTitle>
       </button>
     );
   }
@@ -618,14 +702,19 @@ function TimedItem({
       className={`planner-timed-item session status-${session.task_status}`}
       role="button"
       tabIndex={0}
-      draggable
+      draggable={!resize}
       onDragStart={(event) => {
+        if (resizeStart.current || (event.target as Element).closest(".planner-resize-handle")) {
+          event.preventDefault();
+          return;
+        }
         event.dataTransfer.setData(SESSION_DRAG, session.session.id);
         event.dataTransfer.effectAllowed = "move";
         onDragPreviewStart({
           label: `◷ ${session.task_title}`,
           color: session.color ?? "var(--accent)",
           durationHours: Math.max(0.25, item.end - item.start),
+          grabOffsetHours: grabOffsetHours(event),
         });
       }}
       onContextMenu={(event) => {
@@ -634,7 +723,7 @@ function TimedItem({
       }}
       onClick={() => onSession(session.session)}
       onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
+        if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) {
           event.preventDefault();
           onSession(session.session);
         }

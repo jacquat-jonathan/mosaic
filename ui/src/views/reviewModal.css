@@ -1,0 +1,29 @@
+.mosaic-ds.review-dialog-scope {
+  display: contents;
+}
+.mosaic-ds.review-dialog-scope .mds-dialog {
+  overflow-wrap: anywhere;
+}
+.mosaic-ds.review-dialog-scope .mds-dialog-body {
+  min-width: 0;
+}
+.mosaic-ds.review-dialog-scope .mds-button {
+  white-space: normal;
+}
+.mosaic-ds.review-dialog-scope .mds-diff {
+  max-height: 48vh;
+}
+.mosaic-ds.review-dialog-scope .review-hunk {
+  accent-color: var(--mds-accent);
+  margin-right: var(--mds-space-4);
+}
+.mosaic-ds.review-dialog-scope .review-hunk:focus-visible {
+  outline: var(--mds-focus-width) solid var(--mds-accent);
+  outline-offset: var(--mds-focus-offset);
+}
+.mosaic-ds.review-dialog-scope .mds-segmented {
+  margin-top: var(--mds-space-6);
+}
+.mosaic-ds.review-dialog-scope .mds-dialog-header > div {
+  overflow-wrap: anywhere;
+}

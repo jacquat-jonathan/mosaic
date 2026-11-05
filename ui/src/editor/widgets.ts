@@ -3,9 +3,12 @@ import { createElement, type ReactElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { renderMath } from "./render";
 import { sanitizeSvg } from "../sanitizeSvg";
-import { PropertiesEditor } from "./PropertiesEditor";
+import { editorScope, editorButton } from "./designSystemDom";
+import "./editorControls.css";
 import { isDark } from "../theme";
 import type { EditorContext } from "./context";
+import { imageWithWidth } from "./imageResize";
+import { imageMenu } from "./imageMenu";
 
 import { blockRenderers, showRenderError as showError } from "./blocks";
 import { errorMessage } from "../ipc/types";
@@ -95,15 +98,18 @@ export class RenderedBlockWidget extends WidgetType {
   /** "Open as diagram" on a rendered Mermaid flowchart, state or class diagram. */
   private addOpenAsDiagram(el: HTMLElement) {
     if (this.lang !== "mermaid" || !this.ctx.openAsDiagram || !diagramKind(this.source)) return;
-    const open = document.createElement("button");
-    open.className = "block-action";
+    const actions = editorScope(document.createElement("span"));
+    actions.classList.add("editor-block-actions");
+    const open = editorButton(document.createElement("button"));
+    open.classList.add("block-action");
     open.textContent = "Open as diagram";
     open.title = "Make an editable canvas from this diagram, next to the note";
     open.addEventListener("click", (e) => {
       e.stopPropagation();
       this.ctx.openAsDiagram!(this.source);
     });
-    el.appendChild(open);
+    actions.append(open);
+    el.appendChild(actions);
   }
   get estimatedHeight() {
     return 120;
@@ -166,15 +172,25 @@ export class ImageWidget extends WidgetType {
     readonly width: number | null,
     readonly ctx: EditorContext,
     readonly remote: string | null = null,
+    readonly source?: { from: number; to: number; text: string },
   ) {
     super();
   }
   eq(o: ImageWidget) {
-    return o.path === this.path && o.alt === this.alt && o.width === this.width && o.remote === this.remote;
+    return (
+      o.path === this.path &&
+      o.alt === this.alt &&
+      o.width === this.width &&
+      o.remote === this.remote &&
+      o.source?.from === this.source?.from &&
+      o.source?.to === this.source?.to &&
+      o.source?.text === this.source?.text
+    );
   }
   toDOM(view: EditorView) {
     const wrap = document.createElement("span");
     wrap.className = "cm-embed-image";
+    let resetSize: (() => void) | undefined;
     if (this.remote) {
       wrap.classList.add("cm-embed-missing");
       wrap.textContent = `Remote image not loaded (offline mode): ${this.remote}`;
@@ -187,8 +203,89 @@ export class ImageWidget extends WidgetType {
       if (this.width) img.width = this.width;
       void this.ctx.fileUrl(this.path).then((u) => (img.src = u));
       wrap.appendChild(img);
+      if (this.source && !view.state.readOnly) {
+        const source = this.source;
+        wrap.dataset.imageFrom = String(source.from);
+        const handle = document.createElement("button");
+        handle.type = "button";
+        handle.className = "image-resize";
+        handle.setAttribute("aria-label", `Resize image ${this.alt}`);
+        handle.title = "Drag to resize · Arrow keys adjust · Home or double-click resets size";
+        let drag: { x: number; width: number; next: number; scale: number; doc: typeof view.state.doc } | null = null;
+        const renderedWidth = () => img.offsetWidth || this.width || img.naturalWidth || 300;
+        const clamp = (width: number) => Math.round(Math.max(48, Math.min(width, view.contentDOM.clientWidth || 2000)));
+        const restore = () => {
+          if (this.width) img.width = this.width;
+          else img.removeAttribute("width");
+          wrap.classList.remove("resizing");
+        };
+        const commit = (width: number | null) => {
+          if (view.state.readOnly || view.state.doc.sliceString(source.from, source.to) !== source.text) return;
+          const insert = imageWithWidth(source.text, width);
+          if (insert !== source.text) {
+            view.dispatch({ changes: { from: source.from, to: source.to, insert }, userEvent: "input.resize" });
+            queueMicrotask(() =>
+              view.dom.querySelector<HTMLElement>(`[data-image-from="${source.from}"] .image-resize`)?.focus(),
+            );
+          }
+        };
+        if (this.width) resetSize = () => commit(null);
+        handle.addEventListener("pointerdown", (event) => {
+          if (event.button !== 0) return;
+          event.preventDefault();
+          event.stopPropagation();
+          handle.focus();
+          const width = renderedWidth();
+          const scale = view.contentDOM.getBoundingClientRect().width / view.contentDOM.offsetWidth || 1;
+          drag = { x: event.clientX, width, next: width, scale, doc: view.state.doc };
+          wrap.classList.add("resizing");
+          handle.setPointerCapture(event.pointerId);
+        });
+        handle.addEventListener("pointermove", (event) => {
+          if (!drag) return;
+          drag.next = clamp(drag.width + (event.clientX - drag.x) / drag.scale);
+          img.width = drag.next;
+          handle.title = `${drag.next} px`;
+          view.requestMeasure();
+        });
+        handle.addEventListener("pointerup", () => {
+          const finished = drag;
+          drag = null;
+          restore();
+          if (finished && finished.doc === view.state.doc && Math.abs(finished.next - finished.width) >= 1)
+            commit(finished.next);
+        });
+        const cancel = () => {
+          drag = null;
+          restore();
+        };
+        handle.addEventListener("pointercancel", cancel);
+        handle.addEventListener("lostpointercapture", cancel);
+        handle.addEventListener("mousedown", (event) => event.stopPropagation());
+        handle.addEventListener("dblclick", (event) => {
+          event.preventDefault();
+          commit(null);
+        });
+        handle.addEventListener("keydown", (event) => {
+          if (event.key === "Escape") {
+            event.preventDefault();
+            cancel();
+            view.focus();
+            return;
+          }
+          if (!["ArrowLeft", "ArrowRight", "Home"].includes(event.key)) return;
+          event.preventDefault();
+          event.stopPropagation();
+          commit(
+            event.key === "Home"
+              ? null
+              : clamp(renderedWidth() + (event.key === "ArrowRight" ? 1 : -1) * (event.shiftKey ? 40 : 10)),
+          );
+        });
+        wrap.appendChild(handle);
+      }
     }
-    revealOnClick(wrap, view, () => view.posAtDOM(wrap));
+    imageMenu(wrap, view, this.ctx, this.path, this.source, resetSize);
     return wrap;
   }
   ignoreEvent() {
@@ -279,44 +376,6 @@ export class CanvasEmbedWidget extends WidgetType {
 export function stripFrontmatter(text: string): string {
   const m = /^---\r?\n[\s\S]*?\r?\n---[ \t]*(\r?\n|$)/.exec(text);
   return m ? text.slice(m[0].length) : text;
-}
-
-/** The note's frontmatter as an editable form (PropertiesEditor); "Edit as YAML" shows the source. */
-export class PropertiesWidget extends WidgetType {
-  private roots = new WeakMap<HTMLElement, Root>();
-  constructor(
-    readonly yaml: string,
-    /** Where the frontmatter block ends (it starts at 0, and the closing --- has no line break). */
-    readonly end: number,
-  ) {
-    super();
-  }
-  eq(o: PropertiesWidget) {
-    return o.yaml === this.yaml && o.end === this.end;
-  }
-  toDOM(view: EditorView) {
-    const el = document.createElement("div");
-    const root = createRoot(el);
-    this.roots.set(el, root);
-    const onChange = (yaml: string) => {
-      const block = yaml.trim() ? `---\n${yaml.endsWith("\n") ? yaml : `${yaml}\n`}---` : "";
-      view.dispatch({ changes: { from: 0, to: this.end, insert: block } });
-    };
-    const onEditSource = () => {
-      view.dispatch({ selection: { anchor: 4 } });
-      view.focus();
-    };
-    root.render(createElement(PropertiesEditor, { yaml: this.yaml, onChange, onEditSource }));
-    return el;
-  }
-  destroy(dom: HTMLElement) {
-    const root = this.roots.get(dom);
-    // Unmount after the current render, as React requires.
-    if (root) queueMicrotask(() => root.unmount());
-  }
-  ignoreEvent() {
-    return true;
-  }
 }
 
 /** A nested ordered list's number shown as an outline number ("2.1."); the Markdown keeps "1.". */

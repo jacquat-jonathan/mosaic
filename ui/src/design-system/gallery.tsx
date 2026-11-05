@@ -4,6 +4,8 @@ import { ArrowUpRight, Check, Copy, FileText, Layers, Plus, Search, Settings, X 
 import {
   Badge,
   Button,
+  ColorPicker,
+  FOLDER_COLOR_OPTIONS,
   Dialog,
   IconButton,
   MenuButton,
@@ -19,8 +21,10 @@ import {
 } from "./index";
 import "./gallery.css";
 import { ActivityExample, ChatExample, RunExamples, WorkflowExamples } from "./ProductExamples";
+import { BoardExample, CalendarExample } from "./PlanningExamples";
 
-const IconCatalog = lazy(() => import("./IconCatalog"));
+const loadIconCatalog = () => import("./IconCatalog");
+const IconCatalog = lazy(loadIconCatalog);
 
 type Theme = "light" | "dark" | "system";
 const themeOptions = [
@@ -55,6 +59,8 @@ const navigation = [
       ["runs", "Runs & logs"],
       ["chat", "Chat"],
       ["activity", "Activity & review"],
+      ["board", "Board"],
+      ["calendar", "Calendar"],
     ],
   },
   { title: "Review", links: [["decisions", "Sources & decisions"]] },
@@ -123,6 +129,7 @@ function Gallery() {
   );
   const [tokens, setTokens] = useState<Record<string, string>>({});
   const root = useRef<HTMLDivElement>(null);
+  const [folderColor, setFolderColor] = useState("blue");
   const [showHidden, setShowHidden] = useState(false);
   const [dialog, setDialog] = useState<"create" | "delete" | null>(null);
   const dialogTrigger = useRef<HTMLElement | null>(null);
@@ -130,6 +137,23 @@ function Gallery() {
   const [name, setName] = useState("Untitled note");
   const [message, setMessage] = useState("Try a control. Changes stay in this preview.");
   const [validation, setValidation] = useState(false);
+
+  useEffect(() => {
+    if (!window.location.hash) return;
+    let cancelled = false;
+    let frame = 0;
+    // React creates the anchor targets after the initial browser navigation. Wait for
+    // the icon section too, so its lazy content cannot shift the requested section.
+    void loadIconCatalog().then(() => {
+      frame = requestAnimationFrame(() => {
+        if (!cancelled) document.getElementById(window.location.hash.slice(1))?.scrollIntoView();
+      });
+    });
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(frame);
+    };
+  }, []);
 
   useEffect(() => {
     const read = () => {
@@ -196,7 +220,7 @@ function Gallery() {
         <div className="ds-sidebar-footer">
           Extracted from Mosaic
           <br />
-          <span>Approved design · Migration pending</span>
+          <span>Shared foundations · Product patterns</span>
         </div>
       </aside>
 
@@ -473,6 +497,19 @@ function Gallery() {
                       onChange={setTheme}
                     />
                   </div>
+                  <ColorPicker
+                    label="Example folder color"
+                    value={folderColor}
+                    options={FOLDER_COLOR_OPTIONS}
+                    onChange={setFolderColor}
+                  />
+                  <ColorPicker
+                    label="Unavailable folder color"
+                    value="purple"
+                    options={FOLDER_COLOR_OPTIONS}
+                    disabled
+                    onChange={() => {}}
+                  />
                   <div className="ds-switch-row">
                     <span>Show hidden files</span>
                     <Switch label="Show hidden files" checked={showHidden} onCheckedChange={setShowHidden} />
@@ -703,8 +740,25 @@ function Gallery() {
           </Section>
 
           <Section
-            id="decisions"
+            id="board"
             number="14"
+            title="Board"
+            description="Task cards, status columns, epic headers and planning actions. Explore selection, filtering, reordering, compact density and empty/drop states."
+          >
+            <BoardExample onAnnounce={announce} />
+          </Section>
+          <Section
+            id="calendar"
+            number="15"
+            title="Calendar"
+            description="Calendar layers, day cells, event and work-session chips, session actions and open tasks. Review month, week and day compositions using local sample data."
+          >
+            <CalendarExample onAnnounce={announce} />
+          </Section>
+
+          <Section
+            id="decisions"
+            number="16"
             title="Sources & decisions"
             description="The foundations, typography, and product patterns are approved. Adopting them in the application remains a separate step."
           >
@@ -764,7 +818,7 @@ function Gallery() {
           </Section>
           <footer className="ds-footer">
             <Layers size={14} />
-            <span>Mosaic design system · Approved design · No components migrated</span>
+            <span>Mosaic design system · Shared foundations · Board & Calendar patterns available for review</span>
           </footer>
         </main>
         <div className="ds-preview-status" role="status">

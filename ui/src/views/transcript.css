@@ -1,0 +1,29 @@
+/* Shared application transcript treatments. */
+.mosaic-ds.workflow-status-scope .mds-tool--failed > summary {
+  color: var(--mds-text);
+}
+.mosaic-ds.workflow-status-scope .mds-tool-detail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--mds-space-4);
+}
+.mosaic-ds.workflow-status-scope .mds-tool-detail .mds-notice {
+  flex-basis: 100%;
+}
+.mosaic-ds.workflow-status-scope .mds-transcript .md-render {
+  min-width: 0;
+}
+.mosaic-ds.workflow-status-scope .mds-transcript .md-render pre {
+  max-width: 100%;
+  overflow: auto;
+}
+
+.mosaic-ds.workflow-status-scope .mds-message .md-render p {
+  margin: 0.4em 0;
+}
+.mosaic-ds.workflow-status-scope .mds-message .md-render > :first-child {
+  margin-top: 0;
+}
+.mosaic-ds.workflow-status-scope .mds-message .md-render > :last-child {
+  margin-bottom: 0;
+}

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 import { api } from "../../ipc/api";
@@ -219,4 +219,144 @@ test("shows revision conflicts and handles archived, deleted, and reopened tasks
   await user.selectOptions(screen.getByLabelText("Status"), "in-qa");
   await waitFor(() => expect(reopen).toHaveBeenCalledWith("task-1", 3));
   expect(move).toHaveBeenCalledWith("task-1", expect.objectContaining({ expected_revision: 4, status: "in-qa" }));
+});
+
+test("failed archive retains the task and failed saves preserve the draft while serializing controls", async () => {
+  const changed = vi.fn();
+  vi.spyOn(useUi.getState(), "ask").mockResolvedValue(true);
+  vi.spyOn(api, "archivePlannerTask").mockRejectedValue(new Error("archive failed"));
+  let reject!: (reason: Error) => void;
+  const update = vi.spyOn(api, "updatePlannerTask").mockImplementation(
+    () =>
+      new Promise((_resolve, fail) => {
+        reject = fail;
+      }),
+  );
+  render(<TaskEditor task={task()} epics={[]} tasks={[]} onChanged={changed} onClose={vi.fn()} onReload={vi.fn()} />);
+  await userEvent.click(screen.getByRole("button", { name: "Archive" }));
+  expect(await screen.findByText("archive failed")).toBeTruthy();
+  expect(changed).not.toHaveBeenCalled();
+  await userEvent.clear(screen.getByLabelText("Title"));
+  await userEvent.type(screen.getByLabelText("Title"), "Saved draft");
+  await userEvent.click(screen.getByRole("button", { name: "Save changes" }));
+  expect(screen.getByLabelText("Title")).toHaveProperty("disabled", true);
+  await userEvent.click(screen.getByRole("button", { name: "Saving…" }));
+  expect(update).toHaveBeenCalledTimes(1);
+  reject(new Error("save failed"));
+  expect(await screen.findByText("save failed")).toBeTruthy();
+  expect(screen.getByLabelText("Title")).toHaveProperty("value", "Saved draft");
+  expect(screen.getByLabelText("Title")).toHaveProperty("disabled", false);
+});
+test("a late subtask prompt cannot change a newly selected task", async () => {
+  let finish!: (value: string | null) => void;
+  vi.spyOn(useUi.getState(), "askText").mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  const create = vi.spyOn(api, "createPlannerTask");
+  const props = { epics: [], tasks: [], onChanged: vi.fn(), onClose: vi.fn(), onReload: vi.fn() };
+  const view = render(<TaskEditor task={task()} {...props} />);
+  await userEvent.click(screen.getByRole("button", { name: "Add subtask" }));
+  view.rerender(<TaskEditor task={task({ id: "other", title: "Other task" })} {...props} />);
+  finish("Late subtask");
+  await waitFor(() => expect(create).not.toHaveBeenCalled());
+});
+
+test("adding repeated subtasks keeps the parent selected and restores the add button's focus", async () => {
+  const user = userEvent.setup();
+  vi.spyOn(useUi.getState(), "askText").mockResolvedValueOnce("First child").mockResolvedValueOnce("Second child");
+  const create = vi.spyOn(api, "createPlannerTask").mockResolvedValue(task({ id: "new-child", parent_id: "task-1" }));
+  const changed = vi.fn();
+  render(
+    <TaskEditor
+      task={task()}
+      epics={[epic()]}
+      tasks={[task()]}
+      onChanged={changed}
+      onClose={vi.fn()}
+      onReload={vi.fn()}
+    />,
+  );
+  const add = screen.getByRole("button", { name: "Add subtask" });
+  await user.click(add);
+  await waitFor(() => expect(changed).toHaveBeenLastCalledWith(task()));
+  await waitFor(() => expect(document.activeElement).toBe(add));
+  await user.click(add);
+  await waitFor(() => expect(create).toHaveBeenCalledTimes(2));
+  expect(create.mock.calls.every(([input]) => input.parent_id === "task-1")).toBe(true);
+  expect(changed.mock.calls.every(([selected]) => selected.id === "task-1")).toBe(true);
+});
+
+test("task details render nested subtasks and reorder only siblings while retaining the parent's draft", async () => {
+  const user = userEvent.setup(),
+    parent = task();
+  const first = task({ id: "first", title: "First", parent_id: parent.id, position: 1024, status: "done" });
+  const second = task({ id: "second", title: "Second", parent_id: parent.id, position: 2048 });
+  const nested = task({ id: "nested", title: "Nested", parent_id: first.id });
+  const move = vi.spyOn(api, "movePlannerTask").mockResolvedValue({ ...second, revision: 4 });
+  const changed = vi.fn(),
+    select = vi.fn();
+  render(
+    <TaskEditor
+      task={parent}
+      epics={[epic()]}
+      tasks={[parent, second, first, nested]}
+      onChanged={changed}
+      onSelect={select}
+      onClose={vi.fn()}
+      onReload={vi.fn()}
+    />,
+  );
+  expect(
+    within(screen.getByRole("list", { name: "Subtasks of First" })).getByRole("button", {
+      name: "Nested",
+    }),
+  ).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Move First earlier" })).toHaveProperty("disabled", true);
+  await user.type(screen.getByLabelText("Description"), " draft");
+  await user.click(screen.getByRole("button", { name: "Move Second earlier" }));
+  await waitFor(() =>
+    expect(move).toHaveBeenCalledExactlyOnceWith(
+      "second",
+      expect.objectContaining({
+        parent_id: parent.id,
+        status: second.status,
+        position: 0,
+        expected_revision: second.revision,
+      }),
+    ),
+  );
+  expect(changed).toHaveBeenCalledWith(parent);
+  expect(screen.getByLabelText("Description")).toHaveProperty("value", `${parent.description} draft`);
+  await user.click(screen.getByRole("button", { name: "First" }));
+  expect(select).toHaveBeenCalledWith("first");
+});
+
+test("subtask reorder conflicts keep the parent selected and offer reload", async () => {
+  const user = userEvent.setup(),
+    parent = task();
+  const children = [
+    task({ id: "a", title: "A", parent_id: parent.id, position: 1024 }),
+    task({ id: "b", title: "B", parent_id: parent.id, position: 2048 }),
+  ];
+  vi.spyOn(api, "movePlannerTask").mockRejectedValue({ code: "conflict", message: "Subtask changed elsewhere" });
+  const changed = vi.fn(),
+    reload = vi.fn();
+  render(
+    <TaskEditor
+      task={parent}
+      epics={[]}
+      tasks={[parent, ...children]}
+      onChanged={changed}
+      onClose={vi.fn()}
+      onReload={reload}
+    />,
+  );
+  await user.click(screen.getByRole("button", { name: "Move B earlier" }));
+  expect(await screen.findByText("Subtask changed elsewhere")).toBeTruthy();
+  expect(changed).not.toHaveBeenCalled();
+  await user.click(screen.getByRole("button", { name: "Reload" }));
+  expect(reload).toHaveBeenCalled();
 });

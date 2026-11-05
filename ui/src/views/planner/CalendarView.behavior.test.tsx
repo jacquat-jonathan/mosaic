@@ -325,13 +325,19 @@ describe("planner calendar container", () => {
     act(() => invoke(childProps.week, "onEvent", timed.series_id, timed.occurrence_key));
     expect(screen.getByTestId("event-editor")).toBeTruthy();
     act(() => invoke(childProps.week, "onEmptyRange", "2026-10-29", 8.5, 10));
-    act(() => invoke(childProps.week, "onEventResizePreview", timed, 30));
-    act(() => invoke(childProps.week, "onEventResizePreview", allDay, 30));
     await act(async () => invoke(childProps.week, "onEventResize", timed, 30));
     await waitFor(() => expect(api.updatePlannerEvent).toHaveBeenCalled());
     await act(async () => invoke(childProps.week, "onEventResize", recurring, -30));
     await waitFor(() => expect(api.replacePlannerEventOccurrence).toHaveBeenCalled());
     act(() => invoke(childProps.week, "onEventResize", timed, 0));
+    await act(async () => invoke(childProps.week, "onEventResize", timed, -30, "start"));
+    expect(api.updatePlannerEvent).toHaveBeenLastCalledWith(
+      timed.series_id,
+      expect.objectContaining({
+        start_value: new Date(Date.parse(timed.start_value) - 30 * 60000).toISOString(),
+        end_value: timed.end_value,
+      }),
+    );
 
     await act(async () => invoke(childProps.week, "onEventMove", timed, "2026-10-30", 14));
     await act(async () => invoke(childProps.week, "onEventMove", recurring, "2026-10-30", null));
@@ -344,8 +350,16 @@ describe("planner calendar container", () => {
     act(() => invoke(childProps.sessionEditor, "onClose"));
     act(() => invoke(childProps.week, "onSession", timedSession));
     act(() => invoke(childProps.sessionEditor, "onDone"));
-    act(() => invoke(childProps.week, "onSessionResizeStart"));
     act(() => invoke(childProps.week, "onSessionResize", timedSession, -1000));
+    act(() => invoke(childProps.week, "onSessionResize", timedSession, -30, "start"));
+    expect(api.updatePlannerWorkSession).toHaveBeenLastCalledWith(
+      timedSession.id,
+      expect.objectContaining({
+        start_value: new Date(Date.parse(timedSession.start_value) - 30 * 60000).toISOString(),
+        end_value: timedSession.end_value,
+      }),
+    );
+
     act(() => invoke(childProps.week, "onSessionResize", allDaySession, 30));
     act(() => invoke(childProps.week, "onSessionMove", timedSession, "2026-10-30", 11));
     act(() => invoke(childProps.week, "onSessionMove", allDaySession, "2026-10-30", null));
@@ -362,7 +376,7 @@ describe("planner calendar container", () => {
     expect(screen.getByTestId("overlay-details")).toBeTruthy();
     act(() => invoke(childProps.overlay, "onClose"));
     act(() => invoke(childProps.week, "onOverlay", external));
-    act(() => invoke(childProps.overlay, "onImport"));
+    await act(async () => invoke(childProps.overlay, "onImport"));
     await waitFor(() => expect(api.createPlannerEvent).toHaveBeenCalled());
 
     act(() => invoke(childProps.week, "onEventDelete", recurring));
@@ -396,5 +410,121 @@ describe("planner calendar container", () => {
     vi.mocked(api.refreshCalendarSubscriptions).mockRejectedValueOnce(new Error("refresh failed"));
     fireEvent.click(screen.getByRole("button", { name: "Refresh calendar" }));
     expect(await screen.findByText("refresh failed")).toBeTruthy();
+  });
+  it("day failures remain explicit and can be retried", async () => {
+    vi.mocked(api.plannerCalendarRange).mockRejectedValue(new Error("calendar offline"));
+    render(<CalendarView initialMode="day" />);
+    expect(await screen.findByText("calendar offline")).toBeTruthy();
+    vi.mocked(api.plannerCalendarRange).mockResolvedValue(calendarRange);
+    fireEvent.click(screen.getByRole("button", { name: "Retry calendar" }));
+    await waitFor(() => expect(screen.queryByText("calendar offline")).toBeNull());
+  });
+  it("an overlay error keeps working events and the subscription list, then recovers on retry", async () => {
+    const subscriptions = [
+      {
+        id: "source-1",
+        name: "Working calendar",
+        color: "#6477d4",
+        visible: true,
+        refresh_minutes: 30,
+        last_success: null,
+        last_error: null,
+        has_cache: true,
+      },
+      {
+        id: "broken",
+        name: "Broken calendar",
+        color: "#6477d4",
+        visible: true,
+        refresh_minutes: 30,
+        last_success: null,
+        last_error: "unsupported recurrence",
+        has_cache: true,
+      },
+    ];
+    vi.mocked(api.calendarOverlayRange).mockResolvedValue({ subscriptions, occurrences: [external] });
+    vi.spyOn(api, "calendarSubscriptions").mockResolvedValue(subscriptions);
+    render(<CalendarView initialMode="day" />);
+    await waitFor(() => expect((childProps.week as { overlays: unknown[] })?.overlays).toEqual([external]));
+    vi.mocked(api.calendarOverlayRange).mockRejectedValue(new Error("overlay unavailable"));
+    fireEvent.click(screen.getByRole("button", { name: "Refresh calendar" }));
+    expect(await screen.findByText("overlay unavailable")).toBeTruthy();
+    expect((childProps.week as { data: PlannerCalendarRange }).data.events).toEqual(calendarRange.events);
+    expect((childProps.week as { overlays: unknown[] }).overlays).toEqual([external]);
+    fireEvent.click(screen.getByRole("button", { name: "Manage subscriptions…" }));
+    expect((childProps.sources as { subscriptions: unknown[] }).subscriptions).toEqual(subscriptions);
+    vi.mocked(api.calendarOverlayRange).mockResolvedValue({ subscriptions, occurrences: [external] });
+    fireEvent.click(screen.getByRole("button", { name: "Retry calendar" }));
+    await waitFor(() => expect(screen.queryByText("overlay unavailable")).toBeNull());
+  });
+  it("a first-load overlay error still loads calendar metadata and local events", async () => {
+    vi.mocked(api.calendarOverlayRange).mockRejectedValue(new Error("invalid imported calendar"));
+    const subscriptions = [
+      {
+        id: "source-1",
+        name: "Existing calendar",
+        color: "#6477d4",
+        visible: true,
+        refresh_minutes: 30,
+        last_success: null,
+        last_error: null,
+        has_cache: true,
+      },
+    ];
+    vi.spyOn(api, "calendarSubscriptions").mockResolvedValue(subscriptions);
+    render(<CalendarView initialMode="day" />);
+    expect(await screen.findByText("invalid imported calendar")).toBeTruthy();
+    expect((childProps.week as { data: PlannerCalendarRange }).data.events).toEqual(calendarRange.events);
+    fireEvent.click(screen.getByRole("button", { name: "Manage subscriptions…" }));
+    expect((childProps.sources as { subscriptions: unknown[] }).subscriptions).toEqual(subscriptions);
+  });
+  it("keeps the last working overlay when both rendering and metadata are unavailable", async () => {
+    render(<CalendarView initialMode="day" />);
+    await waitFor(() => expect((childProps.week as { overlays: unknown[] })?.overlays).toEqual([external]));
+    vi.mocked(api.calendarOverlayRange).mockRejectedValue(new Error("cache unavailable"));
+    vi.spyOn(api, "calendarSubscriptions").mockRejectedValue(new Error("metadata unavailable"));
+    fireEvent.click(screen.getByRole("button", { name: "Refresh calendar" }));
+    expect(await screen.findByText("cache unavailable")).toBeTruthy();
+    expect((childProps.week as { overlays: unknown[] }).overlays).toEqual([external]);
+    fireEvent.click(screen.getByRole("button", { name: "Manage subscriptions…" }));
+    expect((childProps.sources as { subscriptions: { name: string }[] }).subscriptions[0].name).toBe("Team");
+  });
+  it("never retains another vault's cached calendar data after a failed load", async () => {
+    render(<CalendarView initialMode="day" />);
+    await waitFor(() => expect((childProps.week as { overlays: unknown[] })?.overlays).toEqual([external]));
+    vi.mocked(api.plannerCalendarRange).mockRejectedValue(new Error("new vault unavailable"));
+    vi.mocked(api.calendarOverlayRange).mockRejectedValue(new Error("new overlay unavailable"));
+    vi.spyOn(api, "calendarSubscriptions").mockRejectedValue(new Error("metadata unavailable"));
+    act(() => useVault.setState({ vault: { root: "/other-vault", name: "Other vault" } }));
+    await screen.findByText(/new vault unavailable/);
+    expect((childProps.week as { overlays: unknown[] }).overlays).toEqual([]);
+    expect((childProps.week as { data: PlannerCalendarRange }).data.events).toEqual([]);
+    fireEvent.click(screen.getByRole("button", { name: "Manage subscriptions…" }));
+    expect((childProps.sources as { subscriptions: unknown[] }).subscriptions).toEqual([]);
+  });
+  it("a late iCalendar preview cannot replace the newer selected file", async () => {
+    let finish!: (value: IcalImportPreview) => void;
+    vi.mocked(api.previewPlannerIcal)
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finish = resolve;
+          }),
+      )
+      .mockResolvedValue(icalPreview);
+    render(<CalendarView initialMode="day" />);
+    await screen.findByTestId("week-view");
+    const input = document.querySelector<HTMLInputElement>('input[type="file"]')!;
+    const a = new File(["A"], "A.ics"),
+      b = new File(["B"], "B.ics");
+    Object.defineProperty(a, "text", { value: async () => "A" });
+    Object.defineProperty(b, "text", { value: async () => "B" });
+    fireEvent.change(input, { target: { files: [a] } });
+    await waitFor(() => expect(api.previewPlannerIcal).toHaveBeenCalledTimes(1));
+    fireEvent.change(input, { target: { files: [b] } });
+    await screen.findByTestId("import-wizard");
+    expect((childProps.importWizard as { fileName: string }).fileName).toBe("B.ics");
+    await act(async () => finish(icalPreview));
+    expect((childProps.importWizard as { fileName: string }).fileName).toBe("B.ics");
   });
 });

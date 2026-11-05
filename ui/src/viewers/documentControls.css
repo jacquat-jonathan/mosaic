@@ -1,0 +1,32 @@
+.mosaic-ds.document-toolbar {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--mds-space-5);
+  min-width: 0;
+  padding: var(--mds-space-5) var(--mds-space-6);
+  border-bottom: 1px solid var(--mds-border);
+  background: var(--mds-surface-subtle);
+  color: var(--mds-text);
+}
+.mosaic-ds.document-toolbar > .mds-notice {
+  flex-basis: 100%;
+  overflow-wrap: anywhere;
+}
+.mosaic-ds.document-toolbar .mds-segmented {
+  flex-wrap: wrap;
+}
+.mosaic-ds.document-toolbar .toolbar-meta {
+  font-size: var(--mds-text-small);
+  color: var(--mds-text-muted);
+  overflow-wrap: anywhere;
+}
+.mosaic-ds.document-toolbar .mds-button {
+  white-space: normal;
+}
+
+.mosaic-ds.document-toolbar .document-toolbar-tools {
+  min-width: 0;
+  max-width: 100%;
+}

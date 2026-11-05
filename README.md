@@ -38,15 +38,16 @@ Links you click open in your browser.
   widths are remembered in app storage.
 - **Visuals:** JSON Canvas boards (`.canvas`, Obsidian's format), Excalidraw drawings
   (`.excalidraw`), charts (`.vl.json`) and graphs (`.dot`).
-- **Other files:** sandboxed HTML preview and source editing, a PDF viewer, an editable CSV/TSV
-  table, and a syntax-highlighted editor for JSON, YAML, code and text.
+- **Other files:** sandboxed HTML preview and source editing, with separate per-vault script/internet
+  defaults and per-page session overrides; a PDF viewer, an editable CSV/TSV table, and a
+  syntax-highlighted editor for JSON, YAML, code and text.
 - **Navigation:** Notes, Find, Plan and AI destinations; full-text search (`tag:`, `path:`,
   `"phrases"`), bookmarks, tags, the ⌘O quick switcher and the ⌘P command palette. Notes and feature
   views share tabs and split panes; resizable context panels follow the active item.
 - **Plan:** an independent epic-swimlane Board and month/week/day Calendar. Drag planner cards between
   New, Blocked, In progress, In QA and Done; schedule multiple work sessions, create recurring local
   events, import/export `.ics`, and add read-only iCalendar overlays. Existing Markdown checkboxes stay
-  separate and can be copied into the planner only through a previewed, duplicate-safe import.
+  separate from planner tasks.
 - **AI workspace:** automatically saved chats per vault, model choices and attachments; manual,
   scheduled or note-created-event workflows with a guided setup, per-workflow models, allowed
   folders, pause controls, safe event chains and run details.
@@ -263,6 +264,12 @@ watchers. Install the optional local test browser once with `pnpm --dir ui exec 
 Install coverage support with `cargo install cargo-llvm-cov --locked --version 0.9.1`; reports are
 written to `coverage/rust.lcov` and `ui/coverage/`.
 
+PR/main CI runs **UI checks** (TypeScript, Biome and unit/component tests) alongside four
+**E2E** jobs: two shards each for Chrome and WebKit. **UI coverage** waits for all of them,
+merges their Istanbul coverage maps and enforces the combined coverage floors. Each shard has
+its own status, duration and failure diagnostics in GitHub Actions. Local `pnpm --dir ui coverage`
+still runs the complete unit/browser suite and coverage gate in one command.
+
 Layout:
 
 | Path | What |
@@ -274,12 +281,11 @@ Layout:
 | `docs/AGENTS.md` | Guide for AI agents, also served by the MCP server |
 | `docs/PLAN.md` | Implementation plan and milestones |
 
-**Releasing.** Describe changes under `## Unreleased` in `CHANGELOG.md`. On a clean tree,
-`scripts/release.sh <new-version>` bumps the shared version, dates the notes, commits and tags it.
-Push with `git push --follow-tags`. The release workflow needs the protected
-`MOSAIC_RELEASE_PRIVATE_KEY` Actions secret and publishes the complete signed assets after tests.
-A Git tag alone is not a downloadable release and will not appear in binary **Check for updates**.
-See [publishing from your personal computer](docs/PUBLISHING.md) for the 0.18.0 handoff.
+**Releasing.** Follow the [release runbook](docs/RELEASING.md) for normal releases and failed-release
+recovery. `scripts/release.sh <new-version>` creates the version bump, dated notes, `Release <version>`
+commit, and local annotated tag. Push the release branch without tags, merge its PR after checks pass,
+then publish the tag on that exact release commit. The protected `release` environment signs and
+publishes the complete assets after approval. A tag alone is not a downloadable release.
 
 The search index lives in `~/Library/Caches/mosaic/` and is rebuilt automatically. Undo history and
 pending AI proposals live in `~/Library/Application Support/dev.jona.mosaic/vaults/<vault-id>/`, keyed

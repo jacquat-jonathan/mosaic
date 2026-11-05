@@ -1,0 +1,69 @@
+.mosaic-ds .mds-context-menu {
+  position: fixed;
+  z-index: 50;
+  min-width: min(190px, 90vw);
+  width: max-content;
+  padding: var(--mds-space-2);
+  overflow: auto;
+  background: var(--mds-surface);
+  border-radius: var(--mds-radius-menu);
+  box-shadow: var(--mds-shadow-floating);
+  color: var(--mds-text);
+  font-size: var(--mds-text-body);
+}
+.mosaic-ds .mds-context-menu > button {
+  display: flex;
+  align-items: center;
+  gap: var(--mds-space-4);
+  width: 100%;
+  padding: var(--mds-space-5) var(--mds-space-6) var(--mds-space-5) var(--mds-space-3);
+  border: 0;
+  border-radius: var(--mds-radius-control);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  font: inherit;
+}
+.mosaic-ds .mds-context-menu > button:is(:hover, .open):not(:disabled) {
+  background: var(--mds-surface-hover);
+}
+.mosaic-ds .mds-context-menu > button:focus-visible {
+  outline: var(--mds-focus-width) solid var(--mds-accent);
+  outline-offset: -2px;
+  background: var(--mds-surface-selected);
+}
+.mosaic-ds .mds-context-menu > button.danger {
+  color: var(--mds-danger);
+}
+.mosaic-ds .mds-context-menu > button:disabled {
+  color: var(--mds-text-muted);
+  opacity: 0.65;
+}
+.mosaic-ds .mds-context-check {
+  width: 14px;
+  flex: none;
+  display: flex;
+}
+.mosaic-ds .mds-context-label {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.mosaic-ds .mds-context-label small {
+  display: block;
+  color: var(--mds-text-muted);
+  font-size: var(--mds-text-small);
+}
+.mosaic-ds .mds-context-menu kbd {
+  flex: none;
+  color: var(--mds-text-muted);
+  font: var(--mds-text-caption) var(--font-mono);
+}
+.mosaic-ds .mds-context-menu svg {
+  flex: none;
+}
+.mosaic-ds .mds-context-separator {
+  height: 1px;
+  margin: var(--mds-space-3) var(--mds-space-4);
+  background: var(--mds-border);
+}

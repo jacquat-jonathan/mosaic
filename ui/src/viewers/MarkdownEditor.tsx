@@ -15,6 +15,10 @@ import { parentOf, baseName } from "../state/vault";
 import { useUi } from "../state/ui";
 import { prefs } from "../state/settings";
 import { vaultPrefs } from "../state/vaultPreferences";
+import { Notice } from "../design-system/components";
+import { DesignSystemScope } from "../views/DesignSystemScope";
+import "./sourceControls.css";
+import "../editor/editorControls.css";
 
 /** "Pasted image 2026-10-02 143005.png" (a second image in one paste gets " 2"). */
 export function pastedName(file: { type: string }, index: number, now = new Date()): string {
@@ -50,6 +54,12 @@ export function editorContextFor(path: string): EditorContext {
       }
       const created = await newFileOfKind("", name, /\.[a-z0-9]+$/i.test(name) ? "" : "md", "");
       if (!created) useVault.getState().setError(`Couldn't create “${name}”.`);
+    },
+    openFile: (file) => {
+      void useWorkspace
+        .getState()
+        .open(file, { newTab: true })
+        .catch((cause) => useVault.getState().setError(`Couldn't open image: ${errorMessage(cause)}`));
     },
     openExternal: (url) => void openExternal(url),
     openTag: (tag) => useUi.getState().showSearch(`tag:${tag}`),
@@ -136,11 +146,11 @@ export function MarkdownEditor({ buffer }: { buffer: Buffer }) {
   }, [entries]);
 
   return (
-    <div className="md-scroll">
+    <DesignSystemScope className="md-scroll note-editor-controls source-editor-controls">
       {readOnly && (
-        <div className="notice warn">
-          <span>This file is larger than 5 MB and opened read-only.</span>
-        </div>
+        <DesignSystemScope className="note-readonly">
+          <Notice tone="warning">This file is larger than 5 MB and opened read-only.</Notice>
+        </DesignSystemScope>
       )}
       <CodeMirror
         className="md-editor"
@@ -156,6 +166,6 @@ export function MarkdownEditor({ buffer }: { buffer: Buffer }) {
         }}
         autoFocus
       />
-    </div>
+    </DesignSystemScope>
   );
 }

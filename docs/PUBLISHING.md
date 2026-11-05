@@ -1,5 +1,11 @@
 # Publish Mosaic 0.18.0 from your personal computer
 
+> **Historical bootstrap guide.** For every new release or failed-release recovery, follow
+> [the current release runbook](RELEASING.md). The 0.18.0 handoff below contains obsolete
+> version numbers, private-key locations, account assumptions, and one-time setup state.
+> The key it originally used was later lost; see [key rotation](#rotating-the-release-key)
+> for that history. Use `src-tauri/release-public-key.hex` as the current trust list.
+
 The implementation and annotated `v0.18.0` tag are already pushed to
 [jacquat-jonathan/mosaic](https://github.com/jacquat-jonathan/mosaic).
 You do **not** need to push again, create another version, or join the Apple Developer Program.

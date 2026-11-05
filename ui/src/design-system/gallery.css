@@ -2,6 +2,61 @@
 body {
   margin: 0;
 }
+.ds-planning-example,
+.mds-planning-preview,
+.ds-calendar-preview-main {
+  min-width: 0;
+}
+.ds-planning-demo-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--mds-space-4);
+  margin-bottom: var(--mds-space-6);
+}
+.mds-planning-preview {
+  display: grid;
+  gap: var(--mds-space-6);
+}
+.mds-planning-preview .mds-toolbar {
+  flex-wrap: wrap;
+  align-items: end;
+}
+.mds-planning-preview .mds-toolbar > .mds-field {
+  flex: 1 1 160px;
+}
+.ds-planning-check {
+  display: flex;
+  align-items: center;
+  gap: var(--mds-space-3);
+  font-size: var(--mds-text-small);
+}
+.ds-planning-check input {
+  accent-color: var(--mds-accent);
+}
+.ds-calendar-preview-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 230px;
+  align-items: start;
+  gap: var(--mds-space-6);
+}
+.ds-calendar-selection {
+  display: grid;
+  justify-items: start;
+  gap: var(--mds-space-4);
+  margin-top: var(--mds-space-6);
+}
+.ds-planning-specimens {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--mds-space-5);
+  margin-top: var(--mds-space-8);
+}
+@media (max-width: 1000px) {
+  .ds-calendar-preview-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
 .ds-gallery {
   display: grid;
   grid-template-columns: 212px minmax(0, 1fr);

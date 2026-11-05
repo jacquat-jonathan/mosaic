@@ -1,0 +1,24 @@
+.mosaic-ds.panel-resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 7px;
+  z-index: 6;
+  cursor: col-resize;
+  background: transparent;
+}
+.mosaic-ds.panel-resizer.right {
+  right: -4px;
+}
+.mosaic-ds.panel-resizer.left {
+  left: -3px;
+}
+.mosaic-ds.panel-resizer:hover,
+.mosaic-ds.panel-resizer:focus-visible,
+body.resizing .mosaic-ds.panel-resizer {
+  background: linear-gradient(to right, transparent 3px, var(--mds-accent) 3px, var(--mds-accent) 4px, transparent 4px);
+}
+.mosaic-ds.panel-resizer:focus-visible {
+  outline: var(--mds-focus-width) solid var(--mds-accent);
+  outline-offset: -2px;
+}

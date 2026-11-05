@@ -4,11 +4,36 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
-- **Focused AI workspace:** switch between Chats and Automations, keep older conversations collapsed, and find workflows, runs and reviews together. Run status and metadata use a compact header with expandable details and separate tool warnings.
+- **More color themes:** choose Classic, Paper, Forest, Ocean or Dusk in Appearance, with light/dark previews. Palettes follow System mode across notes and app controls; use the theme accent or choose your own color.
 
-- **Workflow run logs:** follow answers and tool calls as a workflow runs, open the notes it reads or changes, and revisit its saved log afterward. Markdown formatting and review links match chat; older runs still show their recorded result.
-- **Visual table editing:** cells keep their formatting while you type and save immediately. Use row/column handles, insertion buttons, drag or keyboard reordering, rectangular selection, formatting controls and spreadsheet paste. Markdown source editing is an explicit option; undo/redo and existing links, formulas and alignment are preserved.
-- **Readable update notes:** release descriptions wrap within the settings pane, including long links, instead of being clipped horizontally.
+- **HTML preview defaults per vault:** optionally allow listed external sites without approving each page. Script permission stays separate, and individual pages can still block internet access for the session.
+
+- **Image actions on right-click:** clicking an embedded image keeps it rendered. Open, copy, reset its size or edit its Markdown source from the context menu; keyboard users can open that menu with Shift+F10.
+
+- **Icons that match their purpose:** Templates, Calendar & links, Connections & safety, and Workspace settings have distinct icons. Workspace tabs match their destination, and runs awaiting review use an eye instead of the queued-status clock.
+
+## 0.28.0 — 2026-11-04
+
+- **Resize images in notes:** drag an image's resize handle or use its arrow-key controls, and reset its size with Home or a double-click. Widths are saved in Markdown and wiki-style image links so they survive reopening and travel with the note.
+- **More direct calendar planning:** resize either end of timed events and work sessions, move scheduled items without opening an editor, and see a preview while dragging an open task onto the calendar. Event titles stay readable in short cards and narrow columns.
+- **Subtasks where you work:** create, open, complete and reorder subtasks from a task's details, including with keyboard controls. The calendar's open-task list groups tasks by epic and status, keeps nested subtasks together and hides completed work.
+- **Resilient calendar subscriptions:** edit a subscription's name, color, refresh interval or feed address. Invalid or unavailable feeds show their own errors while working calendars, cached events and subscription controls remain available; replacement addresses are checked before replacing the saved feed.
+- **More monthly recurrence options:** recurring events support specific month days, including counting back from the end of a month, and skip dates that do not exist instead of shifting them.
+- **Clearer AI attention:** the main AI badge counts pending reviews. Failed workflow runs stay marked in Automations until viewed in Runs or run details, and that acknowledgement is remembered for each vault.
+
+## 0.27.0 — 2026-10-30
+
+- **A consistent interface throughout Mosaic:** refreshed navigation, settings, dialogs, notes, planning, AI tools, and file previews share larger, readable text and clearer controls. Narrow windows and interface scaling keep actions within reach.
+- **Better keyboard access:** navigate context menus and pickers, reorder bookmarks, resize split panes and sidebars, and create calendar events without a mouse. Dialogs keep keyboard focus inside them and return it when closed; canvas fit animations respect reduced motion.
+- **Visual table editing:** edit formatted cells with immediate saving, insert and reorder rows or columns, select rectangles, apply formatting, and paste spreadsheet data. Undo/redo, links, formulas, alignment, and explicit Markdown source editing remain available.
+- **A focused AI workspace:** switch between Chats and Automations, keep older conversations collapsed, and find workflows, runs, and reviews together. Workflow forms keep drafts after failed saves, and manual-only workflows can be created reliably.
+- **Live workflow logs:** follow answers and tool calls as a workflow runs, open the notes it reads or changes, and revisit its saved log afterward. Expand tool details to inspect errors and review actions; run history makes review counts and tool warnings easier to find.
+- **Clearer file history and conflict review:** compare versions and external changes in readable diffs, retry failed reads, accept selected agent changes, and see rejection feedback. Discarding a deleted file clears its in-memory draft without saving it; reconnecting a vault preserves unsaved work before reconciling disk changes.
+- **More usable Board and Calendar:** clearer task cards, filters, lifecycle actions, event details, subscription controls, and import/archive dialogs. Failed saves preserve drafts, pending actions prevent duplicates, and work-session refreshes retain edited minutes.
+- **Markdown task import removed:** Board tasks remain independent of Markdown checkboxes. Existing planner tasks and note checkboxes remain available; the preview-and-copy import into the Board is no longer offered.
+- **Clearer notes, search, and files:** improved properties, backlinks, attachments, query results, tags, bookmarks, and quick switching include readable metadata, explicit empty states, and retries. Cancelled link and note prompts restore focus, and late actions stay tied to their original vault.
+- **More reliable previews:** HTML, images, PDFs, CSV tables, charts, drawings, and diagrams use clearer loading and error notices with retries where supported. PDFs fit resized panes, CSV cells support keyboard context menus, and drawings refresh after source edits while invalid JSON stays editable.
+- **Safer pending actions and clearer updates:** repeated launches, saves, and decisions are disabled while running, and late results cannot replace a newer file or vault selection. Long release notes wrap within Settings, update failures can be retried, and error notices remain visible while read or focused.
 
 ## 0.26.0 — 2026-10-27
 

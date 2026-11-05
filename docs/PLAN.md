@@ -341,6 +341,7 @@ then the release is cut before the next batch starts. The planner stays core (no
       `FileService` and `LinkService`
 
 ## Working rules
+- Follow [the release runbook](RELEASING.md) for preparation, tagging, publication, and recovery.
 - `scripts/check.sh` green before each milestone commit.
 - Core logic gets Rust tests; UI logic gets Vitest; don't test third-party renderers beyond a smoke test.
 - Keep the Tauri layer thin: no business logic outside `mosaic-core`.

@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { useVault } from "../state/vault";
+import { Button, TextField } from "../design-system/components";
+import { X } from "lucide-react";
 
 /** Searchable multi-select; selected missing paths remain visible and removable. */
 export function FolderChoices({
@@ -7,11 +9,15 @@ export function FolderChoices({
   value,
   onChange,
   root = false,
+  disabled = false,
+  error,
 }: {
   label: string;
   value: string[];
   onChange(value: string[]): void;
   root?: boolean;
+  disabled?: boolean;
+  error?: string;
 }) {
   const [query, setQuery] = useState("");
   const folders = useVault((s) => s.entries)
@@ -21,35 +27,37 @@ export function FolderChoices({
     (path) => !value.includes(path) && (path || "Vault root").toLowerCase().includes(query.toLowerCase()),
   );
   return (
-    <fieldset className="folder-picker">
+    <fieldset className="workflow-folder-picker" disabled={disabled}>
       <legend>{label}</legend>
-      <div className="folder-chips">
+      <div className="workflow-folder-chips">
         {value.map((path) => (
-          <button
+          <Button
+            variant="secondary"
             type="button"
             key={path}
             aria-label={`Remove ${path || "Vault root"}`}
             onClick={() => onChange(value.filter((p) => p !== path))}
           >
             {path || "Vault root"}
-            {path && !folders.includes(path) ? " · missing" : ""} ×
-          </button>
+            {path && !folders.includes(path) ? " · missing" : ""} <X aria-hidden="true" />
+          </Button>
         ))}
       </div>
-      <input
-        aria-label={`Search ${label.toLowerCase()}`}
+      <TextField
+        label={`Search ${label.toLowerCase()}`}
+        error={error}
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         placeholder="Search folders…"
       />
-      <div className="folder-results">
+      <div className="workflow-folder-results">
         {choices.slice(0, 30).map((path) => (
-          <button type="button" key={path} onClick={() => onChange([...value, path])}>
+          <Button variant="secondary" key={path} onClick={() => onChange([...value, path])}>
             + {path || "Vault root"}
-          </button>
+          </Button>
         ))}
-        {choices.length > 30 && <p>Keep typing to narrow {choices.length} folders.</p>}
-        {!choices.length && <p>No matching folders.</p>}
+        {choices.length > 30 && <p className="mds-hint">Keep typing to narrow {choices.length} folders.</p>}
+        {!choices.length && <p className="mds-hint">No matching folders.</p>}
       </div>
     </fieldset>
   );

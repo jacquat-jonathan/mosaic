@@ -1,0 +1,16 @@
+.mosaic-ds.workflow-status-scope .mds-status {
+  color: var(--mds-text);
+}
+.mosaic-ds.workflow-status-scope .mds-status--completed svg {
+  color: var(--mds-success);
+}
+.mosaic-ds.workflow-status-scope .mds-status--needs-review svg,
+.mosaic-ds.workflow-status-scope .mds-status--queued svg {
+  color: var(--mds-review);
+}
+.mosaic-ds.workflow-status-scope .mds-status--failed svg {
+  color: var(--mds-danger);
+}
+.mosaic-ds.workflow-status-scope .mds-status--running svg {
+  color: var(--mds-accent);
+}

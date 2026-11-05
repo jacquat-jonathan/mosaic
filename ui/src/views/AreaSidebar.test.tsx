@@ -11,7 +11,7 @@ import { useWorkspace } from "../state/workspace";
 beforeEach(() => {
   useUi.setState({ aiSection: "chats" });
   useChat.setState({ chats: {}, root: null });
-  useAttention.setState({ agents: [], disconnected: false });
+  useAttention.setState({ agents: [], disconnected: false, unseenFailureIds: [] });
   useReview.setState({ pending: [] });
   useWorkspace.setState({ panes: [{ id: "test", tabs: [], active: null }], focused: "test" });
 });
@@ -27,7 +27,7 @@ test("chat history cannot push automation navigation down the sidebar, and Manag
   render(<AiSidebar />);
   expect(screen.getByRole("button", { name: "Discuss the report" })).toBeTruthy();
   expect(screen.queryByRole("button", { name: "All runs" })).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: "Automations" }));
+  fireEvent.click(screen.getByRole("radio", { name: "Automations" }));
   expect(screen.queryByRole("button", { name: "Discuss the report" })).toBeNull();
   expect(screen.queryByRole("button", { name: "+ New chat" })).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "All runs" }));

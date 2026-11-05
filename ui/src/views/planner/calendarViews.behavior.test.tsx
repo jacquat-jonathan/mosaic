@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   CalendarOverlayOccurrence,
@@ -263,12 +263,55 @@ describe("week calendar", () => {
     onTaskDrop: vi.fn(),
     onSessionMove: vi.fn(),
     onEventMove: vi.fn(),
-    onEventResizePreview: vi.fn(),
     onEventResize: vi.fn(),
-    onSessionResizeStart: vi.fn(),
     onSessionResize: vi.fn(),
     onEventDelete: vi.fn(),
     onSessionCancel: vi.fn(),
+  });
+
+  it("places the current-time line across the visible week and advances it on the minute", () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-10-28T09:07:30"));
+      const { container, unmount } = render(<WeekView {...props()} />);
+      const line = () => container.querySelector<HTMLElement>(".planner-now-line")!;
+      expect(container.querySelectorAll(".planner-now-line")).toHaveLength(1);
+      expect(line().parentElement).toBe(container.querySelector(".planner-time-scroll"));
+      expect(parseFloat(line().style.top)).toBeCloseTo((4 + 7 / 60) * 40);
+      const firstLabel = screen.getByLabelText(/^Current time/).textContent;
+      act(() => vi.advanceTimersByTime(30000));
+      expect(parseFloat(line().style.top)).toBeCloseTo((4 + 8 / 60) * 40);
+      expect(screen.getByLabelText(/^Current time/).textContent).not.toBe(firstLabel);
+      unmount();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("refreshes on focus and hides the line outside the visible dates or hours", () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-10-28T22:59:00"));
+      const { container } = render(<WeekView {...props()} />);
+      expect(container.querySelector(".planner-now-line")).toBeTruthy();
+      act(() => vi.advanceTimersByTime(60000));
+      expect(container.querySelector(".planner-now-line")).toBeNull();
+      expect(screen.queryByLabelText(/^Current time/)).toBeNull();
+      act(() => {
+        vi.setSystemTime(new Date("2026-10-29T10:00:00"));
+        window.dispatchEvent(new Event("focus"));
+      });
+      expect(container.querySelector(".planner-now-line")).toBeTruthy();
+      act(() => {
+        vi.setSystemTime(new Date("2026-10-30T10:00:00"));
+        window.dispatchEvent(new Event("focus"));
+      });
+      expect(container.querySelector(".planner-now-line")).toBeNull();
+    } finally {
+      cleanup();
+      vi.useRealTimers();
+    }
   });
 
   it("renders all-day and timed kinds and activates cards with mouse and keyboard", () => {
@@ -340,12 +383,13 @@ describe("week calendar", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: "Delete" }));
     expect(p.onEventDelete).toHaveBeenCalled();
 
-    const eventResize = screen.getByLabelText(/Resize Planning/);
+    const eventResize = screen.getByLabelText(/Resize Planning end/);
     fireEvent.keyDown(eventResize, { key: "ArrowUp" });
     fireEvent.keyDown(eventResize, { key: "ArrowDown" });
     fireEvent.keyDown(eventResize, { key: "Enter" });
-    expect(p.onEventResize).toHaveBeenCalledWith(expect.anything(), -15);
-    expect(p.onEventResize).toHaveBeenCalledWith(expect.anything(), 15);
+    expect(p.onEvent).not.toHaveBeenCalled();
+    expect(p.onEventResize).toHaveBeenCalledWith(expect.anything(), -15, "end");
+    expect(p.onEventResize).toHaveBeenCalledWith(expect.anything(), 15, "end");
 
     const timedSession = screen.getByText(/90 min/).closest("[role=button]")!;
     const sessionTransfer = transfer();
@@ -354,10 +398,11 @@ describe("week calendar", () => {
     fireEvent.contextMenu(timedSession);
     fireEvent.click(screen.getByRole("menuitem", { name: "Delete" }));
     expect(p.onSessionCancel).toHaveBeenCalled();
-    const sessionResize = screen.getByLabelText(/Resize Write tests/);
+    const sessionResize = screen.getByLabelText(/Resize Write tests end/);
     fireEvent.keyDown(sessionResize, { key: "ArrowDown" });
-    expect(p.onSessionResizeStart).toHaveBeenCalled();
-    expect(p.onSessionResize).toHaveBeenCalledWith(expect.anything(), 15);
+    fireEvent.keyDown(sessionResize, { key: "Enter" });
+    expect(p.onSession).not.toHaveBeenCalled();
+    expect(p.onSessionResize).toHaveBeenCalledWith(expect.anything(), 15, "end");
     window.dispatchEvent(new Event("click"));
     window.dispatchEvent(new Event("blur"));
   });
@@ -372,5 +417,11 @@ describe("week calendar", () => {
     rerender(<WeekView {...p} selectedRange={{ day: "2026-10-28", startHour: 9, endHour: 10 }} />);
     fireEvent.mouseDown(document.body);
     window.dispatchEvent(new Event("mouseup"));
+  });
+  it("creates an event from a keyboard-activated empty time slot", () => {
+    const p = props();
+    render(<WeekView {...p} />);
+    fireEvent.click(screen.getAllByRole("button", { name: /^Create event/ })[0], { detail: 0 });
+    expect(p.onEmptyRange).toHaveBeenCalledTimes(1);
   });
 });

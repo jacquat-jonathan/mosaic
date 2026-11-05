@@ -7,6 +7,7 @@ import {
   isCompactCalendarWidth,
   parseCalendarDate,
   timedLayout,
+  resizeTimedRange,
   visibleCalendarHours,
   visibleDays,
 } from "./calendarModel";
@@ -68,5 +69,22 @@ describe("planner calendar presentation", () => {
     );
     expect(items.map((item) => item.column)).toEqual([0, 1, 0]);
     expect(items.slice(0, 2).every((item) => item.columns === 2)).toBe(true);
+  });
+});
+
+it("resizes either endpoint while preserving the other and a 15 minute minimum", () => {
+  const start = "2026-11-02T09:00:00.000Z",
+    end = "2026-11-02T10:00:00.000Z";
+  expect(resizeTimedRange(start, end, -30, "start")).toEqual({
+    start_value: "2026-11-02T08:30:00.000Z",
+    end_value: end,
+  });
+  expect(resizeTimedRange(start, end, 1000, "start")).toEqual({
+    start_value: "2026-11-02T09:45:00.000Z",
+    end_value: end,
+  });
+  expect(resizeTimedRange(start, end, -1000, "end")).toEqual({
+    start_value: start,
+    end_value: "2026-11-02T09:15:00.000Z",
   });
 });

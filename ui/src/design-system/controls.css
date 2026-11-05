@@ -62,12 +62,14 @@
 }
 .mosaic-ds .mds-button:disabled,
 .mosaic-ds .mds-input:disabled,
+.mosaic-ds .mds-range:disabled,
 .mosaic-ds .mds-switch:disabled {
   opacity: var(--mds-disabled-opacity);
   cursor: default;
 }
 .mosaic-ds .mds-button:focus-visible,
 .mosaic-ds .mds-input:focus-visible,
+.mosaic-ds .mds-range:focus-visible,
 .mosaic-ds .mds-switch:focus-visible,
 .mosaic-ds .mds-segmented input:focus-visible + span {
   outline: var(--mds-focus-width) solid var(--mds-accent);
@@ -106,6 +108,11 @@
 .mosaic-ds .mds-input[aria-invalid="true"]:focus {
   border-color: transparent;
   outline-color: var(--mds-danger);
+}
+.mosaic-ds .mds-range {
+  width: 160px;
+  min-width: 0;
+  accent-color: var(--mds-accent);
 }
 .mosaic-ds .mds-hint {
   color: var(--mds-text-muted);
@@ -156,8 +163,11 @@
 }
 .mosaic-ds .mds-segmented input {
   position: absolute;
-  width: 1px;
-  height: 1px;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  margin: 0;
   opacity: 0;
 }
 .mosaic-ds .mds-segmented span {
@@ -224,9 +234,9 @@
 }
 .mosaic-ds .mds-dialog {
   width: var(--mds-dialog-width);
-  max-width: calc(100vw - 32px);
-  max-height: calc(100vh - 32px);
-  overflow: auto;
+  max-width: calc(100% - 32px);
+  max-height: calc(100% - 32px);
+  overflow: hidden;
   padding: 0;
   color: var(--mds-text);
   background: var(--mds-surface);
@@ -234,6 +244,10 @@
   border-radius: var(--mds-radius-dialog);
   box-shadow: var(--mds-shadow-floating);
   font: inherit;
+}
+.mosaic-ds .mds-dialog[open] {
+  display: flex;
+  flex-direction: column;
 }
 .mosaic-ds .mds-dialog::backdrop {
   background: var(--mds-overlay);
@@ -247,6 +261,7 @@
   color: var(--mds-text-muted);
 }
 .mosaic-ds .mds-dialog-actions {
+  flex: none;
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
@@ -259,6 +274,7 @@
   width: 720px;
 }
 .mosaic-ds .mds-dialog-header {
+  flex: none;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -273,6 +289,8 @@
   color: var(--mds-text-muted);
 }
 .mosaic-ds .mds-dialog-body {
+  min-height: 0;
+  overflow: auto;
   padding: 0 var(--mds-space-9) var(--mds-space-9);
   display: grid;
   gap: var(--mds-space-8);
@@ -358,4 +376,84 @@
 .mosaic-ds .mds-tooltip-anchor:hover .mds-tooltip:not([data-dismissed]),
 .mosaic-ds .mds-tooltip-anchor:focus-within .mds-tooltip:not([data-dismissed]) {
   display: block;
+}
+
+/* A focus-managed modal for supported WebKit versions without showModal. */
+.mosaic-ds .mds-dialog-fallback-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--mds-overlay);
+}
+.mosaic-ds .mds-dialog-fallback-backdrop[hidden],
+.mosaic-ds .mds-dialog:not([open]) {
+  display: none;
+}
+.mosaic-ds .mds-dialog--fallback[open] {
+  display: flex;
+  position: relative;
+  inset: auto;
+  margin: 0;
+}
+
+.mosaic-ds .mds-settings-group {
+  min-width: 0;
+  margin-bottom: var(--mds-space-10);
+}
+.mosaic-ds .mds-settings-group > header {
+  padding-block: var(--mds-space-6);
+  border-bottom: 1px solid var(--mds-border);
+}
+.mosaic-ds .mds-settings-group > header h3 {
+  margin: 0;
+  font-size: var(--mds-text-body);
+  font-weight: var(--mds-weight-strong);
+}
+.mosaic-ds .mds-settings-group > header p {
+  margin: var(--mds-space-2) 0 0;
+}
+.mosaic-ds .mds-color-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--mds-space-2);
+  min-width: 0;
+}
+.mosaic-ds .mds-color-option {
+  display: inline-flex;
+  position: relative;
+  align-items: center;
+  gap: var(--mds-space-2);
+  padding: var(--mds-space-3);
+  border: 1px solid var(--mds-border);
+  border-radius: var(--mds-radius-control);
+  font-size: var(--mds-text-small);
+  cursor: pointer;
+}
+.mosaic-ds .mds-color-option:has(input:checked) {
+  border-color: var(--mds-text);
+  background: var(--mds-surface-selected);
+}
+.mosaic-ds .mds-color-option:has(input:focus-visible) {
+  outline: var(--mds-focus-width) solid var(--mds-accent);
+  outline-offset: var(--mds-focus-offset);
+}
+.mosaic-ds .mds-color-option:has(input:disabled) {
+  opacity: 0.5;
+  cursor: default;
+}
+.mosaic-ds .mds-color-option input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+}
+.mosaic-ds .mds-color-swatch {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  border: 1px solid var(--mds-border);
+  border-radius: 50%;
 }

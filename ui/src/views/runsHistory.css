@@ -1,0 +1,30 @@
+.mosaic-ds.runs-history {
+  min-width: 0;
+}
+.mosaic-ds.runs-history .runs-history-heading {
+  margin-bottom: var(--mds-space-9);
+}
+.mosaic-ds.runs-history h1 {
+  font-size: var(--mds-text-heading);
+  margin: 0 0 var(--mds-space-4);
+}
+.mosaic-ds.runs-history .runs-history-heading p {
+  margin: 0;
+}
+.mosaic-ds.runs-history .mds-notice {
+  margin-block: var(--mds-space-6);
+  overflow-wrap: anywhere;
+}
+.mosaic-ds.runs-history[data-density="compact"] .mds-runs-table td {
+  padding-block: var(--mds-space-6);
+}
+.mosaic-ds.workflow-list-recent {
+  margin-top: var(--mds-space-10);
+}
+.mosaic-ds.workflow-list-recent h2 {
+  font-size: var(--mds-text-heading);
+  margin: 0 0 var(--mds-space-6);
+}
+.mosaic-ds.workflow-list-recent[data-density="compact"] .mds-runs-table td {
+  padding-block: var(--mds-space-6);
+}

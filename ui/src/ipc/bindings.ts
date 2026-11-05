@@ -42,8 +42,6 @@ export const commands = {
 	plannerTrashEvent: (id: string, expectedRevision: number) => __TAURI_INVOKE<PlannerEvent>("planner_trash_event", { id, expectedRevision }),
 	plannerCancelEventOccurrence: (seriesId: string, expectedRevision: number, occurrenceKey: string) => __TAURI_INVOKE<PlannerEvent>("planner_cancel_event_occurrence", { seriesId, expectedRevision, occurrenceKey }),
 	plannerReplaceEventOccurrence: (seriesId: string, expectedRevision: number, occurrenceKey: string, input: CreateEvent) => __TAURI_INVOKE<PlannerEvent>("planner_replace_event_occurrence", { seriesId, expectedRevision, occurrenceKey, input }),
-	plannerMigrationPreview: () => __TAURI_INVOKE<MarkdownImportPreview>("planner_migration_preview"),
-	plannerImportMarkdown: (preview: MarkdownImportPreview, selectedFingerprints: string[], allowDuplicates: boolean, timezone: string) => __TAURI_INVOKE<MarkdownImportResult>("planner_import_markdown", { preview, selectedFingerprints, allowDuplicates, timezone }),
 	plannerIcalPreview: (sourceKind: string, content: string, fallbackTimezone: string) => __TAURI_INVOKE<IcalImportPreview>("planner_ical_preview", { sourceKind, content, fallbackTimezone }),
 	plannerIcalImport: (preview: IcalImportPreview, selectedKeys: string[], allowDuplicates: boolean) => __TAURI_INVOKE<IcalImportResult>("planner_ical_import", { preview, selectedKeys, allowDuplicates }),
 	plannerIcalExport: () => __TAURI_INVOKE<string>("planner_ical_export"),
@@ -53,7 +51,7 @@ export const commands = {
 	plannerRestoreBackup: (path: string) => __TAURI_INVOKE<string>("planner_restore_backup", { path }),
 	calendarSubscriptions: () => __TAURI_INVOKE<SubscriptionView[]>("calendar_subscriptions"),
 	addCalendarSubscription: (name: string, url: string, color: string, refreshMinutes: number) => __TAURI_INVOKE<SubscriptionView>("add_calendar_subscription", { name, url, color, refreshMinutes }),
-	updateCalendarSubscription: (id: string, name: string, color: string, visible: boolean, refreshMinutes: number) => __TAURI_INVOKE<SubscriptionView>("update_calendar_subscription", { id, name, color, visible, refreshMinutes }),
+	updateCalendarSubscription: (id: string, name: string, color: string, visible: boolean, refreshMinutes: number, url: string | null) => __TAURI_INVOKE<SubscriptionView>("update_calendar_subscription", { id, name, color, visible, refreshMinutes, url }),
 	removeCalendarSubscription: (id: string) => __TAURI_INVOKE<null>("remove_calendar_subscription", { id }),
 	refreshCalendarSubscriptions: (force: boolean) => __TAURI_INVOKE<SubscriptionView[]>("refresh_calendar_subscriptions", { force }),
 	calendarOverlayRange: (from: string, to: string, timezone: string) => __TAURI_INVOKE<OverlayRange>("calendar_overlay_range", { from, to, timezone }),
@@ -144,7 +142,7 @@ export const commands = {
 	/**  Symlinks the bundled CLI into ~/.local/bin (no admin rights needed). */
 	installCli: () => __TAURI_INVOKE<CliInfo>("install_cli"),
 	updateStatus: () => __TAURI_INVOKE<UpdateStatus>("update_status"),
-	/**  Asks GitHub for the newest signed release (only when the person clicks Check). */
+	/**  Asks GitHub for the newest signed release, manually or according to the app update preference. */
 	checkUpdates: () => __TAURI_INVOKE<UpdateCheck>("check_updates"),
 	/**
 	 *  Downloads and verifies the newest release in the background, streaming progress as
@@ -521,46 +519,6 @@ export type IcalImportResult = {
 };
 
 export type LinkStyle = "wiki" | "markdown";
-
-export type MarkdownImportCandidate = {
-	source_path: string,
-	source_line: number,
-	block_id: string | null,
-	fingerprint: string,
-	parent_fingerprint: string | null,
-	epic_fingerprint: string | null,
-	depth: number,
-	kind: MarkdownImportKind,
-	title: string,
-	status: TaskStatus,
-	due_date: string | null,
-	all_day_session_date: string | null,
-	archived: boolean,
-	default_selected: boolean,
-	duplicate: boolean,
-};
-
-export type MarkdownImportGroup = {
-	source_path: string,
-	tasks: MarkdownImportCandidate[],
-};
-
-export type MarkdownImportKind = "epic" | "task" | "subtask";
-
-export type MarkdownImportPreview = {
-	planner_revision: number,
-	groups: MarkdownImportGroup[],
-	candidates: number,
-	selected_by_default: number,
-	duplicates: number,
-};
-
-export type MarkdownImportResult = {
-	planner_revision: number,
-	imported_epic_ids: string[],
-	imported_task_ids: string[],
-	skipped_duplicates: string[],
-};
 
 /**  A note that mentions another note's title or alias without linking to it. */
 export type Mention = {
@@ -1016,6 +974,8 @@ export type VaultInfo_Serialize = {
 export type VaultPreferences = {
 	version?: number,
 	agents_folder?: string,
+	/**  Show daily-note creation controls in the app. Existing notes remain ordinary files. */
+	daily_notes_enabled?: boolean,
 	daily_folder?: string,
 	daily_template?: string,
 	daily_format?: DailyFormat,
@@ -1026,9 +986,14 @@ export type VaultPreferences = {
 	show_attachments_in_tree?: boolean,
 	/**
 	 *  Allows scripts by default in sandboxed HTML previews. Individual previews may override this
-	 *  for the current app session; the preview CSP still denies network access.
+	 *  for the current app session. Internet access is configured separately.
 	 */
 	allow_html_scripts?: boolean,
+	/**
+	 *  Allows each HTML preview's listed external origins without a per-page prompt.
+	 *  Individual previews may block internet access for the current app session.
+	 */
+	allow_html_internet?: boolean,
 	link_style?: LinkStyle,
 	startup_note?: string,
 	folder_colors?: { [key in string]: string },

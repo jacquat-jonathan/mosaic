@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { api } from "../ipc/api";
@@ -143,4 +143,25 @@ test("closes on Escape and discards a dialog that belongs to another vault", asy
   view.rerender(<NewNoteDialog />);
   await waitFor(() => expect(useUi.getState().newNote).toBeNull());
   expect(screen.queryByRole("dialog")).toBeNull();
+});
+
+test("pending creation blocks dismissal and duplicate writes, then preserves failed drafts", async () => {
+  let fail!: (error: Error) => void;
+  const create = vi.spyOn(api, "createNote").mockImplementation(
+    () =>
+      new Promise((_resolve, reject) => {
+        fail = reject;
+      }),
+  );
+  render(<NewNoteDialog />);
+  await screen.findByText("# Work/Draft.md");
+  fireEvent.click(screen.getByRole("button", { name: "Create" }));
+  expect(screen.getByLabelText("Name")).toHaveProperty("disabled", true);
+  fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+  fireEvent.submit(screen.getByLabelText("Name").closest("form")!);
+  expect(useUi.getState().newNote).not.toBeNull();
+  expect(create).toHaveBeenCalledOnce();
+  await act(async () => fail(new Error("creation failed")));
+  expect(await screen.findByRole("alert")).toHaveProperty("textContent", "creation failed");
+  expect(screen.getByLabelText("Name")).toHaveProperty("value", "Draft");
 });

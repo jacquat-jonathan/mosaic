@@ -1,0 +1,112 @@
+/* Renderer-owned controls share app tokens; note text and table cells retain their own font. */
+.mosaic-ds.table-toolbar {
+  gap: var(--mds-space-3);
+  padding: var(--mds-space-4);
+  border-color: var(--mds-border);
+  background: var(--mds-surface-subtle);
+  color: var(--mds-text);
+  font: var(--mds-text-body) / 1.5 var(--mds-font-ui);
+}
+.mosaic-ds.table-toolbar .table-position {
+  border-color: var(--mds-border);
+  font-size: var(--mds-text-small);
+  overflow-wrap: anywhere;
+}
+.mosaic-ds.table-toolbar :is(button, select) {
+  min-width: 0;
+  max-width: 100%;
+  min-height: 28px;
+  font-size: var(--mds-text-body);
+  background: var(--mds-surface);
+  border-color: var(--mds-border);
+  color: var(--mds-text);
+}
+.mosaic-ds.table-toolbar button:hover:not(:disabled) {
+  background: var(--mds-surface-hover);
+}
+.mosaic-ds .table-source-back {
+  font: var(--mds-text-body) / 1.5 var(--mds-font-ui);
+  color: var(--mds-accent);
+}
+.mosaic-ds :is(.table-axis, .table-insert) {
+  color: var(--mds-text-muted);
+  background: var(--mds-surface-subtle);
+  border-color: var(--mds-border);
+  font: var(--mds-text-small) / 1 var(--mds-font-ui);
+}
+.mosaic-ds :is(.table-axis, .table-insert):hover,
+.mosaic-ds :is(.table-axis, .table-insert):focus-visible {
+  background: var(--mds-surface-selected);
+  color: var(--mds-text);
+}
+.mosaic-ds :is(.table-axis, .table-insert, .table-resize, .table-source-back):focus-visible,
+.mosaic-ds.table-toolbar :is(button, select):focus-visible {
+  outline: var(--mds-focus-width) solid var(--mds-accent);
+  outline-offset: var(--mds-focus-offset);
+}
+.mosaic-ds.cm-section-actions .mds-button {
+  height: 24px;
+  min-height: 0;
+  padding: 0;
+  color: var(--mds-text-muted);
+}
+.mosaic-ds.cm-section-actions .cm-section-add {
+  font: 500 18px / 1 var(--mds-font-ui);
+  background: var(--mds-surface-subtle);
+}
+.mosaic-ds.cm-section-actions .cm-section-handle::before {
+  background: var(--mds-text-muted);
+}
+.mosaic-ds.cm-section-actions .mds-button:focus-visible {
+  outline: var(--mds-focus-width) solid var(--mds-accent);
+  outline-offset: var(--mds-focus-offset);
+}
+.mosaic-ds.editor-block-actions {
+  display: contents;
+}
+.mosaic-ds.editor-block-actions .block-action {
+  font: var(--mds-text-small) / 1.5 var(--mds-font-ui);
+  color: var(--mds-text-muted);
+  background: var(--mds-surface);
+  border: 1px solid var(--mds-border);
+}
+.cm-rendered-block:focus-within .block-action,
+.mosaic-ds.editor-block-actions .block-action:focus-visible {
+  opacity: 1;
+}
+.mosaic-ds.note-editor-controls .cm-tooltip.cm-tooltip-autocomplete {
+  min-width: 0;
+  width: min(380px, calc(100vw / var(--ui-scale, 1) - 24px));
+  max-width: calc(100vw / var(--ui-scale, 1) - 24px);
+  background: var(--mds-surface) !important;
+  color: var(--mds-text) !important;
+  border-radius: var(--mds-radius-menu);
+  box-shadow: var(--mds-shadow-floating);
+  padding: var(--mds-space-2);
+}
+.mosaic-ds.note-editor-controls .cm-tooltip-autocomplete > ul {
+  min-width: 0;
+  max-width: 100%;
+  font: var(--mds-text-body) / 1.5 var(--mds-font-ui);
+  background: var(--mds-surface);
+}
+.mosaic-ds.note-editor-controls .cm-tooltip-autocomplete ul li {
+  color: var(--mds-text);
+}
+.mosaic-ds.note-editor-controls .cm-tooltip-autocomplete ul li[aria-selected] {
+  background: var(--mds-surface-selected) !important;
+}
+.mosaic-ds.note-editor-controls :is(.cm-completionDetail, .cm-slash-detail) {
+  color: var(--mds-text-muted);
+  font-size: var(--mds-text-small);
+}
+.mosaic-ds.note-editor-controls :is(.cm-completionSection, completion-section) {
+  color: var(--mds-text-muted);
+  font-size: var(--mds-text-caption);
+  letter-spacing: normal;
+  text-transform: none;
+}
+.mosaic-ds.note-editor-controls .cm-slash-icon {
+  background: var(--mds-surface-subtle);
+  color: var(--mds-text-muted);
+}

@@ -1,0 +1,134 @@
+.mosaic-ds.workflow-editor {
+  width: 100%;
+  max-width: 920px;
+  margin-inline: auto;
+  min-width: 0;
+  padding: var(--mds-space-10);
+  scroll-padding-bottom: 220px;
+}
+.mosaic-ds.workflow-editor > header {
+  margin-bottom: var(--mds-space-10);
+}
+.mosaic-ds.workflow-editor h1 {
+  font-size: var(--mds-text-heading);
+  margin: var(--mds-space-4) 0 var(--mds-space-6);
+}
+.mosaic-ds.workflow-editor > header p {
+  margin: 0;
+}
+.mosaic-ds.workflow-editor .workflow-form-fields {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.mosaic-ds.workflow-editor .workflow-form-legend {
+  font-size: var(--mds-text-hint);
+  color: var(--mds-text-muted);
+}
+.mosaic-ds.workflow-editor .workflow-section {
+  min-width: 0;
+  padding: var(--mds-space-9);
+  border: 1px solid var(--mds-border);
+  border-radius: var(--mds-radius-dialog);
+  background: var(--mds-surface-subtle);
+  margin-block: var(--mds-space-8);
+}
+.mosaic-ds.workflow-editor .workflow-section h2 {
+  font-size: var(--mds-text-body);
+  margin: 0 0 var(--mds-space-8);
+}
+.mosaic-ds.workflow-editor .workflow-section .mds-field {
+  margin-block: var(--mds-space-6);
+}
+.mosaic-ds.workflow-editor .workflow-section p {
+  line-height: var(--mds-leading);
+}
+.mosaic-ds.workflow-editor .mds-input {
+  width: 100%;
+}
+.mosaic-ds.workflow-editor textarea.mds-input {
+  resize: vertical;
+  line-height: var(--mds-leading);
+}
+.mosaic-ds.workflow-editor .mds-notice {
+  margin-block: var(--mds-space-6);
+  overflow-wrap: anywhere;
+}
+.mosaic-ds.workflow-editor .mds-setting-control {
+  flex: none;
+}
+.mosaic-ds.workflow-editor .workflow-save {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--mds-space-6);
+  align-items: center;
+  padding: var(--mds-space-9);
+  border: 1px solid var(--mds-border);
+  background: var(--mds-surface);
+  border-radius: var(--mds-radius-group);
+  margin-top: var(--mds-space-9);
+}
+.mosaic-ds.workflow-editor .workflow-save > div {
+  flex: 1 1 220px;
+}
+.mosaic-ds.workflow-editor .workflow-save p {
+  margin: var(--mds-space-4) 0 0;
+}
+.mosaic-ds.workflow-editor .workflow-folder-picker {
+  border: 0;
+  padding: var(--mds-space-6) 0;
+  min-width: 0;
+  margin: 0;
+}
+.mosaic-ds.workflow-editor .workflow-folder-picker legend {
+  font-weight: var(--mds-weight-strong);
+}
+.mosaic-ds.workflow-editor .workflow-folder-chips,
+.mosaic-ds.workflow-editor .workflow-folder-results {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--mds-space-4);
+}
+.mosaic-ds.workflow-editor .workflow-folder-results {
+  max-height: 160px;
+  overflow: auto;
+  padding: var(--mds-space-2);
+}
+.mosaic-ds.workflow-editor .workflow-folder-chips .mds-button,
+.mosaic-ds.workflow-editor .workflow-folder-results .mds-button {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.mosaic-ds.workflow-editor .workflow-folder-chips svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+.mosaic-ds.workflow-editor summary:focus-visible {
+  outline: var(--mds-focus-width) solid var(--mds-accent);
+  outline-offset: var(--mds-focus-offset);
+}
+.mosaic-ds.workflow-editor[data-density="compact"] .workflow-section {
+  padding: var(--mds-space-7);
+}
+.mosaic-ds.workflow-editor[data-density="compact"] .mds-setting-row {
+  padding-block: var(--mds-space-5);
+}
+@media (max-width: 650px) {
+  .mosaic-ds.workflow-editor .workflow-section,
+  .mosaic-ds.workflow-editor .workflow-save {
+    padding: var(--mds-space-7);
+  }
+}
+@container (max-width: 620px) {
+  .mosaic-ds.workflow-editor .workflow-save {
+    position: static;
+  }
+  .mosaic-ds.workflow-editor {
+    scroll-padding-bottom: var(--mds-space-10);
+  }
+}

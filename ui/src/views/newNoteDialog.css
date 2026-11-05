@@ -1,0 +1,27 @@
+.mosaic-ds.new-note-scope .new-note-fields {
+  display: grid;
+  gap: var(--mds-space-7);
+  min-width: 0;
+}
+.mosaic-ds.new-note-scope .template-preview {
+  min-width: 0;
+  max-height: 240px;
+  overflow: auto;
+  border: 1px solid var(--mds-border);
+  border-radius: var(--mds-radius-control);
+  background: var(--mds-surface-subtle);
+  color: var(--mds-text);
+  padding: var(--mds-space-6);
+}
+.mosaic-ds.new-note-scope .template-preview pre {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: var(--mds-text-small) / 1.6 var(--font-mono);
+}
+.mosaic-ds.new-note-scope .mds-field {
+  font-weight: 600;
+}
+.mosaic-ds.new-note-scope .mds-field .mds-input {
+  font-weight: 400;
+}

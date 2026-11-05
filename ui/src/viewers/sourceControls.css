@@ -1,0 +1,74 @@
+/* CodeMirror owns the panel markup; keep its editing/search model and scope only its chrome. */
+.mosaic-ds.source-editor-controls .cm-panels {
+  background: var(--mds-surface-subtle);
+  color: var(--mds-text);
+  border-color: var(--mds-border) !important;
+  max-height: 55%;
+  overflow: auto;
+}
+.mosaic-ds.source-editor-controls .cm-panel.cm-search {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--mds-space-3);
+  padding: var(--mds-space-5);
+  font: var(--mds-text-body) / 1.5 var(--mds-font-ui);
+}
+.mosaic-ds.source-editor-controls .cm-search br {
+  flex-basis: 100%;
+  height: 0;
+}
+.mosaic-ds.source-editor-controls .cm-search input:not([type="checkbox"]) {
+  min-width: 0;
+  max-width: 100%;
+  width: 240px;
+  padding: var(--mds-space-3) var(--mds-space-4);
+  border: 1px solid var(--mds-border);
+  border-radius: var(--mds-radius-control);
+  color: var(--mds-text);
+  background: var(--mds-surface);
+  font: inherit;
+}
+.mosaic-ds.source-editor-controls .cm-search button {
+  min-height: 28px;
+  padding: var(--mds-space-2) var(--mds-space-4);
+  border: 0;
+  border-radius: var(--mds-radius-control);
+  background: transparent;
+  color: var(--mds-text);
+  font: inherit;
+  cursor: default;
+}
+.mosaic-ds.source-editor-controls .cm-search button:hover:not(:disabled) {
+  background: var(--mds-surface-hover);
+}
+.mosaic-ds.source-editor-controls .cm-search button:disabled {
+  opacity: 0.45;
+}
+.mosaic-ds.source-editor-controls .cm-search :is(input, button):focus-visible {
+  outline: var(--mds-focus-width) solid var(--mds-accent);
+  outline-offset: var(--mds-focus-offset);
+}
+.mosaic-ds.source-editor-controls .cm-search button[name="close"] {
+  position: static;
+  margin-left: auto;
+}
+.mosaic-ds.source-editor-controls .cm-search label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--mds-space-3);
+  max-width: 100%;
+  padding: 0;
+  white-space: normal;
+  font: inherit;
+}
+.mosaic-ds.source-editor-controls .cm-search input[type="checkbox"] {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--mds-accent);
+}
+.mosaic-ds.source-editor-controls .cm-tooltip-autocomplete {
+  font: 13px / 1.6 var(--font-mono);
+}

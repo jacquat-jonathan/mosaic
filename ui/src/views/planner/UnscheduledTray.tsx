@@ -1,16 +1,23 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent } from "react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import type { PlannerEpic, PlannerTask } from "../../ipc/types";
 import { isCompactCalendarWidth } from "./calendarModel";
+import { openTaskGroups, type OpenTaskNode } from "./unscheduledTaskModel";
 
+export type TaskDragPreview = { label: string; color: string; grabOffsetPx: number };
 export const TASK_DRAG = "application/x-mosaic-unscheduled-task";
 export function UnscheduledTray({
   tasks,
   epics,
   onSchedule,
+  onDragPreview,
+  designSystem = false,
 }: {
   tasks: PlannerTask[];
   epics: PlannerEpic[];
   onSchedule(task: PlannerTask): void;
+  onDragPreview?(preview: TaskDragPreview | null): void;
+  designSystem?: boolean;
 }) {
   const trayRef = useRef<HTMLElement>(null);
   const [manuallyCollapsed, setManuallyCollapsed] = useState(false),
@@ -35,62 +42,64 @@ export function UnscheduledTray({
   }, [compact]);
   const collapsed = compact ? !compactExpanded : manuallyCollapsed;
   const epicById = useMemo(() => new Map(epics.map((item) => [item.id, item])), [epics]);
-  const shown = useMemo(
-    () =>
-      tasks.filter(
-        (task) =>
-          task.status !== "done" &&
-          !task.archived_at &&
-          !task.trashed_at &&
-          (!epic || (epic === "__none" ? !task.epic_id : task.epic_id === epic)) &&
-          (!search.trim() ||
-            `${epicById.get(task.epic_id ?? "")?.title ?? "Unassigned"} ${task.title}`
-              .toLowerCase()
-              .includes(search.trim().toLowerCase())),
-      ),
-    [tasks, epic, search, epicById],
-  );
-  const groups = useMemo(() => {
-    const byEpic = new Map<string, PlannerTask[]>();
-    for (const task of shown) {
-      const key = task.epic_id ?? "__none";
-      byEpic.set(key, [...(byEpic.get(key) ?? []), task]);
-    }
-    return [...byEpic]
-      .sort(([left], [right]) => {
-        if (left === "__none") return 1;
-        if (right === "__none") return -1;
-        return (epicById.get(left)?.title ?? "").localeCompare(epicById.get(right)?.title ?? "");
-      })
-      .map(([id, items]) => ({
-        id,
-        title: epicById.get(id)?.title ?? "Unassigned",
-        color: epicById.get(id)?.color ?? "var(--accent)",
-        tasks: items,
-      }));
-  }, [shown, epicById]);
+  const groups = useMemo(() => openTaskGroups(tasks, epics, search, epic), [tasks, epics, search, epic]);
+  const shownCount = groups.reduce((sum, group) => sum + group.count, 0);
   const drag = (event: DragEvent, task: PlannerTask) => {
     event.dataTransfer.setData(TASK_DRAG, task.id);
     event.dataTransfer.effectAllowed = "copy";
+    onDragPreview?.({
+      label: task.title,
+      color: epicById.get(task.epic_id ?? "")?.color ?? "var(--accent)",
+      grabOffsetPx: Math.max(0, event.clientY - event.currentTarget.getBoundingClientRect().top),
+    });
   };
+  const renderTask = (node: OpenTaskNode) => (
+    <li key={node.task.id}>
+      <div
+        className="unscheduled-task-card"
+        data-task-id={node.task.id}
+        draggable
+        onDragStart={(event) => {
+          event.stopPropagation();
+          drag(event, node.task);
+        }}
+        onDragEnd={() => onDragPreview?.(null)}
+      >
+        <button className="mds-button" onClick={() => onSchedule(node.task)}>
+          <strong>{node.task.title}</strong>
+          <span>
+            {node.task.estimate_minutes ? `${node.task.estimate_minutes} min` : "1 hour"}
+            {node.task.due_date ? ` · due ${node.task.due_date}` : ""}
+          </span>
+        </button>
+      </div>
+      {node.children.length > 0 && (
+        <ul className="unscheduled-subtasks" aria-label={`Subtasks of ${node.task.title}`}>
+          {node.children.map(renderTask)}
+        </ul>
+      )}
+    </li>
+  );
   const toggle = () => (compact ? setCompactExpanded((value) => !value) : setManuallyCollapsed((value) => !value));
   return (
     <aside ref={trayRef} className={`unscheduled-tray ${compact ? "compact" : ""} ${collapsed ? "collapsed" : ""}`}>
       <header>
         <button
+          className="mds-button mds-icon-button"
           aria-label={collapsed ? "Show open tasks" : "Hide open tasks"}
           aria-expanded={!collapsed}
           onClick={toggle}
         >
-          {collapsed ? "▸" : "▾"}
+          {designSystem ? collapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} /> : collapsed ? "▸" : "▾"}
         </button>
         <h3>Open tasks</h3>
-        <span className="panel-meta">{shown.length}</span>
+        <span className="panel-meta">{shownCount}</span>
       </header>
       {!collapsed && (
         <>
           <div className="unscheduled-filters">
             <input
+              className="mds-input"
               type="search"
               aria-label="Search open tasks"
               placeholder="Search tasks…"
@@ -98,6 +107,7 @@ export function UnscheduledTray({
               onChange={(event) => setSearch(event.target.value)}
             />
             <select
+              className="mds-input"
               aria-label="Filter open tasks by epic"
               value={epic}
               onChange={(event) => setEpic(event.target.value)}
@@ -117,30 +127,22 @@ export function UnscheduledTray({
                 <h4>
                   <i style={{ background: group.color }} />
                   {group.title}
-                  <span>{group.tasks.length}</span>
+                  <span>{group.count}</span>
                 </h4>
-                <ul>
-                  {group.tasks.map((task) => (
-                    <li
-                      key={task.id}
-                      draggable
-                      onDragStart={(event) => drag(event, task)}
-                      style={{ "--task-color": group.color } as CSSProperties}
-                    >
-                      <button onClick={() => onSchedule(task)}>
-                        <strong>{task.title}</strong>
-                        <span>
-                          {task.estimate_minutes ? `${task.estimate_minutes} min` : "1 hour"}
-                          {task.due_date ? ` · due ${task.due_date}` : ""}
-                        </span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
+                {group.sections.map((status) => (
+                  <div
+                    className="unscheduled-status"
+                    key={status.id}
+                    style={{ "--task-color": group.color } as CSSProperties}
+                  >
+                    <h5>{status.title}</h5>
+                    <ul aria-label={`${group.title}: ${status.title}`}>{status.nodes.map(renderTask)}</ul>
+                  </div>
+                ))}
               </section>
             ))}
           </div>
-          {!shown.length && <p className="panel-meta">All tasks are done.</p>}
+          {!shownCount && <p className="panel-meta">All tasks are done.</p>}
         </>
       )}
     </aside>

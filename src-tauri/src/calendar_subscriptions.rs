@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
 use tauri::{AppHandle, Manager, State};
@@ -362,6 +362,8 @@ pub(crate) async fn add_calendar_subscription(
 
 #[tauri::command(async)]
 #[specta::specta]
+// Tauri injects app/state alongside the flat arguments shared with the generated UI bindings.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn update_calendar_subscription(
     app: AppHandle,
     state: State<AppState>,
@@ -370,6 +372,7 @@ pub(crate) fn update_calendar_subscription(
     color: String,
     visible: bool,
     refresh_minutes: u32,
+    url: Option<String>,
 ) -> CmdResult<SubscriptionView> {
     if name.trim().is_empty() || refresh_minutes < 5 {
         return Err(Error::Invalid(
@@ -383,13 +386,49 @@ pub(crate) fn update_calendar_subscription(
         .get_mut(&key)
         .and_then(|items| items.iter_mut().find(|item| item.id == id))
         .ok_or_else(|| Error::NotFound(format!("calendar subscription/{id}")))?;
+    // An omitted URL preserves the Keychain entry. Never send stored feed credentials to the UI.
+    let replacement = url
+        .filter(|url| !url.trim().is_empty())
+        .map(|url| normalized_url(&url))
+        .transpose()?;
+    let previous_cache = cache_path(&app, subscription)?;
+    let previous_url = if let Some(url) = &replacement {
+        let previous = get_secret(&id)?;
+        set_secret(&id, url.as_str())?;
+        Some(previous)
+    } else {
+        None
+    };
+    if replacement.is_some() {
+        invalidate_feed(subscription);
+    }
     subscription.name = name.trim().to_string();
     subscription.color = color;
     subscription.visible = visible;
     subscription.refresh_minutes = refresh_minutes;
     let result = subscription.clone();
-    save(&app, &store)?;
+    if let Err(error) = save(&app, &store) {
+        if let Some(previous) = previous_url {
+            set_secret(&id, &previous)?;
+        }
+        return Err(error);
+    }
+    if replacement.is_some() {
+        let _ = fs::remove_file(previous_cache);
+    }
     view(&app, &result)
+}
+
+fn invalidate_feed(subscription: &mut Subscription) {
+    subscription.cache_file = format!(
+        "{}-{}.ics",
+        subscription.id,
+        Utc::now().timestamp_nanos_opt().unwrap_or_default()
+    );
+    subscription.etag = None;
+    subscription.last_modified = None;
+    subscription.last_success = None;
+    subscription.last_error = None;
 }
 
 #[tauri::command(async)]
@@ -452,26 +491,8 @@ pub(crate) fn calendar_overlay_range(
 ) -> CmdResult<OverlayRange> {
     let key = vault_key(&state)?;
     let store = load(&app)?;
-    let items = store.vaults.get(&key).cloned().unwrap_or_default();
-    let mut occurrences = Vec::new();
-    for subscription in items.iter().filter(|item| item.visible) {
-        let path = cache_path(&app, subscription)?;
-        if !path.is_file() {
-            continue;
-        }
-        let content = fs::read_to_string(&path)
-            .map_err(|error| io_error(path.display().to_string(), error))?;
-        occurrences.extend(overlay_occurrences(
-            &content,
-            &subscription.id,
-            &subscription.name,
-            Some(subscription.color.clone()),
-            &from,
-            &to,
-            &timezone,
-        )?);
-    }
-    occurrences.sort_by(|a, b| a.start_value.cmp(&b.start_value));
+    let mut items = store.vaults.get(&key).cloned().unwrap_or_default();
+    let occurrences = cached_overlays(&mut items, &cache_directory(&app)?, &from, &to, &timezone);
     Ok(OverlayRange {
         subscriptions: items
             .iter()
@@ -481,13 +502,115 @@ pub(crate) fn calendar_overlay_range(
     })
 }
 
+fn cached_overlays(
+    items: &mut [Subscription],
+    directory: &Path,
+    from: &str,
+    to: &str,
+    timezone: &str,
+) -> Vec<OverlayOccurrence> {
+    let mut occurrences = Vec::new();
+    for subscription in items.iter_mut().filter(|item| item.visible) {
+        let path = directory.join(&subscription.cache_file);
+        if !path.is_file() {
+            continue;
+        }
+        let result = fs::read_to_string(&path)
+            .map_err(|error| io_error(path.display().to_string(), error))
+            .and_then(|content| {
+                overlay_occurrences(
+                    &content,
+                    &subscription.id,
+                    &subscription.name,
+                    Some(subscription.color.clone()),
+                    from,
+                    to,
+                    timezone,
+                )
+            });
+        match result {
+            Ok(events) => occurrences.extend(events),
+            Err(error) => subscription.last_error = Some(error.to_string()),
+        }
+    }
+    occurrences.sort_by(|a, b| a.start_value.cmp(&b.start_value));
+    occurrences
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
+    fn malformed_cached_calendars_keep_the_list_and_other_calendars_events() {
+        let directory = tempfile::tempdir().unwrap();
+        let base = Subscription {
+            id: "good".into(),
+            name: "Working calendar".into(),
+            color: "#6477d4".into(),
+            visible: true,
+            refresh_minutes: 30,
+            etag: None,
+            last_modified: None,
+            last_success: None,
+            last_error: Some("Refresh unavailable; using cache".into()),
+            cache_file: "good.ics".into(),
+        };
+        let mut items = vec![
+            base.clone(),
+            Subscription {
+                id: "bad".into(),
+                name: "Broken calendar".into(),
+                cache_file: "bad.ics".into(),
+                last_error: None,
+                ..base.clone()
+            },
+            Subscription {
+                id: "corrupt".into(),
+                name: "Corrupt calendar".into(),
+                cache_file: "corrupt.ics".into(),
+                last_error: None,
+                ..base
+            },
+        ];
+        let good = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:good\r\nDTSTART:20261103T090000Z\r\nDTEND:20261103T100000Z\r\nSUMMARY:Working event\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        fs::write(directory.path().join("good.ics"), good).unwrap();
+        let bad = good.replace(
+            "SUMMARY:Working event",
+            "RRULE:FREQ=DAILY;COUNT=3\r\nSUMMARY:Unsupported recurrence",
+        );
+        fs::write(directory.path().join("bad.ics"), &bad).unwrap();
+        fs::write(directory.path().join("corrupt.ics"), [0xff, 0xfe]).unwrap();
+        let occurrences = cached_overlays(
+            &mut items,
+            directory.path(),
+            "2026-11-03",
+            "2026-11-03",
+            "UTC",
+        );
+        assert_eq!(occurrences.len(), 1);
+        assert_eq!(occurrences[0].title, "Working event");
+        assert_eq!(occurrences[0].source_id, "good");
+        assert_eq!(
+            items
+                .iter()
+                .map(|item| item.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["good", "bad", "corrupt"]
+        );
+        assert_eq!(
+            items[0].last_error.as_deref(),
+            Some("Refresh unavailable; using cache")
+        );
+        assert!(items[1].last_error.as_deref().unwrap().contains("COUNT"));
+        assert!(items[2].last_error.is_some());
+        assert!(validate_ical(&bad, "UTC").is_err());
+        assert_eq!(validate_ical(good, "UTC").unwrap(), 1);
+    }
+
+    #[test]
     fn metadata_never_serializes_a_feed_url() {
-        let subscription = Subscription {
+        let mut subscription = Subscription {
             id: "id".into(),
             name: "Team".into(),
             color: "#5b8def".into(),
@@ -502,6 +625,24 @@ mod tests {
         let encoded = serde_json::to_string(&subscription).unwrap();
         assert!(!encoded.contains("url"));
         assert!(!encoded.contains("https"));
+        subscription.etag = Some("old etag".into());
+        subscription.last_modified = Some("old modified".into());
+        subscription.last_success = Some("2026-11-01T00:00:00Z".into());
+        subscription.last_error = Some("old error".into());
+        invalidate_feed(&mut subscription);
+        assert_ne!(subscription.cache_file, "id.ics");
+        assert_eq!(
+            std::path::Path::new(&subscription.cache_file)
+                .components()
+                .count(),
+            1
+        );
+        assert!(subscription.etag.is_none());
+        assert!(subscription.last_modified.is_none());
+        assert!(subscription.last_success.is_none());
+        assert!(subscription.last_error.is_none());
+        assert_eq!(subscription.id, "id");
+        assert_eq!(subscription.name, "Team");
     }
 
     #[test]

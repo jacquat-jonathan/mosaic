@@ -94,3 +94,33 @@ test("a restored tab that wasn't active loads when it's shown", async () => {
   expect(ws().buffers["Ideas.md"]?.content).toBeTypeOf("string");
   vi.unstubAllGlobals();
 });
+
+test("explicit discard removes a deleted draft from every pane without saving it", async () => {
+  vi.useFakeTimers();
+  const write = vi.spyOn(api, "write");
+  write.mockClear();
+  try {
+    await ws().open("Welcome.md");
+    await ws().open("Ideas.md", { newTab: true });
+    ws().edit("Welcome.md", "unsaved deleted draft");
+    useWorkspace.setState((s) => ({
+      buffers: { ...s.buffers, "Welcome.md": { ...s.buffers["Welcome.md"], deleted: true } },
+      panes: [
+        { id: "p", tabs: ["Welcome.md", "Ideas.md"], active: "Welcome.md" },
+        { id: "q", tabs: ["Welcome.md"], active: "Welcome.md" },
+      ],
+      focused: "p",
+    }));
+    ws().discardDeleted("Welcome.md");
+    vi.advanceTimersByTime(AUTOSAVE_MS + 1);
+    expect(ws().panes.flatMap((p) => p.tabs)).toEqual(["Ideas.md"]);
+    expect(ws().buffers["Welcome.md"]).toBeUndefined();
+    expect(ws().buffers["Ideas.md"]).toBeDefined();
+    expect(write).not.toHaveBeenCalled();
+    ws().discardDeleted("Ideas.md");
+    expect(ws().buffers["Ideas.md"]).toBeDefined();
+  } finally {
+    write.mockRestore();
+    vi.useRealTimers();
+  }
+});

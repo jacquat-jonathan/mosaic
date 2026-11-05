@@ -43,7 +43,10 @@ import { resolveLink } from "../../links";
 import { renderMarkdown } from "../../markdown";
 import { renderBlocksIn } from "../../editor/blocks";
 import { CodeEditor } from "../CodeEditor";
-import { Segmented, Toolbar } from "../Toolbar";
+import { DocumentToolbar } from "../Toolbar";
+import { Button, IconButton, Notice, SegmentedControl } from "../../design-system/components";
+import { DesignSystemScope } from "../../views/DesignSystemScope";
+import "./canvasControls.css";
 import {
   CanvasParseError,
   KNOWN_NODE_TYPES,
@@ -190,20 +193,24 @@ function toFlow(doc: CanvasDoc, canvasPath: string, onText: CardData["onText"]):
 export function CanvasEditor({ buffer }: { buffer: Buffer }) {
   const [mode, setMode] = useState<"canvas" | "source">("canvas");
   const [toolsHost, setToolsHost] = useState<HTMLElement | null>(null);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: re-parse only on external reloads; our own edits already live in the flow state
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-parse on external reloads and view switches; canvas edits already live in flow state
   const parsed = useMemo(() => {
     try {
       return { doc: parseCanvas(buffer.content ?? ""), error: null };
     } catch (e) {
       return { doc: null, error: e instanceof CanvasParseError ? e.message : String(e) };
     }
-  }, [buffer.version, buffer.path]);
+  }, [buffer.version, buffer.path, mode]);
 
+  useEffect(() => {
+    if (parsed.error && mode === "canvas") setMode("source");
+  }, [parsed.error, mode]);
   const showSource = mode === "source" || !parsed.doc;
   return (
     <div className="viewer">
-      <Toolbar>
-        <Segmented<"canvas" | "source">
+      <DocumentToolbar label="Canvas controls">
+        <SegmentedControl<"canvas" | "source">
+          label="Canvas view"
           value={showSource ? "source" : "canvas"}
           onChange={setMode}
           options={[
@@ -212,13 +219,13 @@ export function CanvasEditor({ buffer }: { buffer: Buffer }) {
           ]}
         />
         {parsed.error && (
-          <span className="toolbar-error">
+          <Notice tone="error">
             Can't display this canvas: {parsed.error}. The file is left untouched — fix it in Source.
-          </span>
+          </Notice>
         )}
         <span className="spacer" />
-        <span ref={setToolsHost} />
-      </Toolbar>
+        <span className="document-toolbar-tools" ref={setToolsHost} />
+      </DocumentToolbar>
       {showSource ? (
         <CodeEditor buffer={buffer} />
       ) : (
@@ -821,7 +828,10 @@ function CanvasFlow({
     setEdges(edgesRef.current);
     queueMicrotask(() => {
       commitRef.current();
-      void flow.fitView({ padding: 0.2, duration: 200 });
+      void flow.fitView({
+        padding: 0.2,
+        duration: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 200,
+      });
     });
   };
 
@@ -852,7 +862,12 @@ function CanvasFlow({
           onIcon={(icon) => addNode(iconCard(icon))}
           onGroup={() => addNode({ type: "group", label: "Group" })}
           onFile={() => void addFile()}
-          onFit={() => void flow.fitView({ padding: 0.2, duration: 200 })}
+          onFit={() =>
+            void flow.fitView({
+              padding: 0.2,
+              duration: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 200,
+            })
+          }
           onLayout={layoutCards}
           onMore={(r) =>
             useUi.getState().showMenu(r.left, r.bottom + 4, [
@@ -879,11 +894,11 @@ function CanvasFlow({
       )}
       <EdgeMarkers used={markers} />
       {presenting && (
-        <div className="present-hud">
+        <DesignSystemScope className="present-hud canvas-presentation-controls">
           {presenting.index + 1} / {presenting.steps.length}
           {presenting.steps[presenting.index].label && ` · ${presenting.steps[presenting.index].label}`}
           <span> · ← → to move, Esc to stop</span>
-        </div>
+        </DesignSystemScope>
       )}
       <ReactFlow<FlowNode, Edge>
         nodes={shown.nodes}
@@ -937,7 +952,11 @@ function CanvasFlow({
             <div className="align-guide horizontal" style={{ transform: `translateY(${guides.y}px)` }} />
           )}
         </ViewportPortal>
-        {!presenting && <Controls showInteractive={false} />}
+        {!presenting && (
+          <DesignSystemScope className="canvas-navigation-controls">
+            <Controls showInteractive={false} />
+          </DesignSystemScope>
+        )}
         {!presenting && <MiniMap pannable zoomable />}
       </ReactFlow>
     </div>
@@ -965,22 +984,25 @@ function CanvasTools({
   onMore(anchor: DOMRect): void;
   host: HTMLElement;
 }) {
+  const shapeButton = useRef<HTMLButtonElement>(null);
   const [palette, setPalette] = useState<DOMRect | null>(null);
   return createPortal(
     <span className="canvas-tools">
-      <button onClick={onCard} title="Add a text card (or double-click the canvas)">
+      <Button onClick={onCard} title="Add a text card (or double-click the canvas)">
         <Plus size={14} /> Card
-      </button>
-      <button
+      </Button>
+      <Button
+        ref={shapeButton}
         title="Add a shape: click one, or drag it onto the canvas"
         aria-expanded={!!palette}
         onClick={(e) => setPalette(palette ? null : e.currentTarget.getBoundingClientRect())}
       >
         <Shapes size={14} /> Shape
-      </button>
+      </Button>
       {palette && (
         <ShapePalette
           anchor={palette}
+          returnFocusRef={shapeButton}
           onClose={() => setPalette(null)}
           onPick={(item) => {
             setPalette(null);
@@ -989,13 +1011,13 @@ function CanvasTools({
           }}
         />
       )}
-      <button onClick={onFile} title="Add a note or file (or drag one from the sidebar)">
+      <Button onClick={onFile} title="Add a note or file (or drag one from the sidebar)">
         <FileText size={14} /> File
-      </button>
-      <button onClick={onGroup}>
+      </Button>
+      <Button onClick={onGroup}>
         <SquareDashed size={14} /> Group
-      </button>
-      <button
+      </Button>
+      <Button
         title="Arrange the selected cards (or all) along their connections"
         onClick={(e) => {
           const r = e.currentTarget.getBoundingClientRect();
@@ -1006,17 +1028,17 @@ function CanvasTools({
         }}
       >
         <Network size={14} /> Layout
-      </button>
-      <button onClick={onFit} title="Fit to view">
+      </Button>
+      <IconButton label="Fit to view" onClick={onFit}>
         <Maximize size={14} />
-      </button>
-      <button
+      </IconButton>
+      <IconButton
+        label="More"
         onClick={(e) => onMore(e.currentTarget.getBoundingClientRect())}
         title="More: copy as Mermaid, export, present"
-        aria-label="More"
       >
         <Ellipsis size={14} />
-      </button>
+      </IconButton>
     </span>,
     host,
   );

@@ -83,7 +83,7 @@ interface VaultState {
   /** Moves whose links didn't all follow; each gets a banner with Fix links. */
   unfinishedRenames: UnfinishedRename[];
 
-  openVault(path: string): Promise<void>;
+  openVault(path: string, options?: { preserveWorkspace?: boolean }): Promise<void>;
   refresh(): Promise<void>;
   toggle(dir: string, open?: boolean): void;
   revealParents(path: string): void;
@@ -130,10 +130,30 @@ export const useVault = create<VaultState>((set, get) => {
     bookmarks: [],
     unfinishedRenames: [],
 
-    async openVault(path) {
+    async openVault(path, options) {
+      const preserve = !!options?.preserveWorkspace;
+      if (preserve && get().vault?.root !== path) return;
       try {
-        if (!(await leaveAllDrafts())) return;
+        if (!preserve && !(await leaveAllDrafts())) return;
         const vault = await api.openVault(path);
+        if (preserve) {
+          if (get().vault?.root !== path) return;
+          if (vault.root !== path) throw new Error("The vault root changed while reconnecting.");
+          set({ vault, error: null, offline: false });
+          await loadVaultPreferences(vault.root);
+          if (get().vault?.root !== path) return;
+          await get().refresh();
+          if (get().vault?.root !== path) return;
+          const bookmarks = await api.bookmarks().catch(() => get().bookmarks);
+          if (get().vault?.root !== path) return;
+          set({ bookmarks });
+          await Promise.all(
+            Object.keys(useWorkspace.getState().buffers)
+              .filter((p) => !p.startsWith("mosaic:"))
+              .map((p) => useWorkspace.getState().externalChange(p)),
+          );
+          return;
+        }
         set({
           vault,
           entries: [],
@@ -175,7 +195,7 @@ export const useVault = create<VaultState>((set, get) => {
         ) {
           try {
             await api.restorePlannerBackup(path);
-            await get().openVault(path);
+            await get().openVault(path, options);
             return;
           } catch (restoreError) {
             fail(restoreError);

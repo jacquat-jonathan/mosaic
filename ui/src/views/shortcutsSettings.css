@@ -1,0 +1,68 @@
+.mosaic-ds.shortcut-settings {
+  min-width: 0;
+}
+.mosaic-ds.shortcut-settings .shortcut-settings-note {
+  margin: var(--mds-space-6) 0;
+}
+.mosaic-ds.shortcut-settings .mds-notice {
+  margin-block: var(--mds-space-6);
+  overflow-wrap: anywhere;
+}
+.mosaic-ds.shortcut-settings .shortcut-settings-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+.mosaic-ds.shortcut-settings .shortcut-settings-table th,
+.mosaic-ds.shortcut-settings .shortcut-settings-table td {
+  padding: var(--mds-space-5) 0;
+  border-bottom: 1px solid var(--mds-border);
+  overflow-wrap: anywhere;
+}
+.mosaic-ds.shortcut-settings .shortcut-settings-table th {
+  text-align: left;
+  font-weight: 400;
+  padding-right: var(--mds-space-6);
+}
+.mosaic-ds.shortcut-settings .shortcut-settings-table thead th {
+  color: var(--mds-text-muted);
+  font-weight: 600;
+}
+.mosaic-ds.shortcut-settings .shortcut-settings-table td,
+.mosaic-ds.shortcut-settings .shortcut-settings-table th:last-child {
+  width: 180px;
+  text-align: right;
+}
+.mosaic-ds.shortcut-settings .shortcut-binding {
+  min-width: 78px;
+  max-width: 100%;
+  justify-content: center;
+  white-space: normal;
+}
+.mosaic-ds.shortcut-settings .shortcut-binding[data-custom],
+.mosaic-ds.shortcut-settings .shortcut-binding[data-recording] {
+  border-color: var(--mds-accent);
+}
+.mosaic-ds.shortcut-settings kbd {
+  font: var(--mds-text-small) var(--font-ui);
+}
+.mosaic-ds.shortcut-settings .mds-badge {
+  margin-left: var(--mds-space-4);
+}
+.mosaic-ds.shortcut-settings h3 {
+  font-size: var(--mds-text-body);
+  margin: var(--mds-space-9) 0 var(--mds-space-4);
+}
+.mosaic-ds.shortcut-settings .shortcut-reset {
+  margin-top: var(--mds-space-6);
+}
+.mosaic-ds.shortcut-settings[data-density="compact"] .shortcut-settings-table th,
+.mosaic-ds.shortcut-settings[data-density="compact"] .shortcut-settings-table td {
+  padding-block: var(--mds-space-4);
+}
+@media (max-width: 720px) {
+  .mosaic-ds.shortcut-settings .shortcut-settings-table td,
+  .mosaic-ds.shortcut-settings .shortcut-settings-table th:last-child {
+    width: 135px;
+  }
+}

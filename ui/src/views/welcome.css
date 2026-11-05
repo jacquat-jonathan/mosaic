@@ -1,0 +1,43 @@
+.mosaic-ds.welcome-page {
+  height: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--mds-space-6);
+  padding: var(--mds-space-10);
+  overflow: auto;
+  overflow-wrap: anywhere;
+}
+.mosaic-ds.welcome-page > * {
+  flex: none;
+}
+.mosaic-ds.welcome-page > img {
+  margin-top: auto;
+}
+.mosaic-ds.welcome-page > :last-child {
+  margin-bottom: auto;
+}
+.mosaic-ds.welcome-page h1 {
+  margin: var(--mds-space-3) 0 0;
+  font-size: calc(var(--mds-text-body) * 2);
+  font-weight: var(--mds-weight-strong);
+}
+.mosaic-ds.welcome-page > p {
+  color: var(--mds-text-muted);
+  margin: 0 0 var(--mds-space-6);
+  max-width: 360px;
+  text-align: center;
+}
+.mosaic-ds.welcome-page .welcome-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--mds-space-4);
+}
+.mosaic-ds.welcome-page .mds-button {
+  white-space: normal;
+}
+.mosaic-ds.welcome-page .mds-notice {
+  max-width: 520px;
+}

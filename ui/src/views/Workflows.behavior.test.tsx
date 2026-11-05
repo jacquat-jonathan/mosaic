@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Agent, AgentRun, Proposal, TesseraStatus } from "../ipc/types";
@@ -211,6 +211,46 @@ afterEach(() => {
 });
 
 describe("workflow helpers and detail views", () => {
+  it("returns focus between detail, edit, and cancelled draft confirmation", async () => {
+    const user = userEvent.setup();
+    const selected = agents.find((entry) => entry.name === "successful")!;
+    vi.spyOn(api, "read").mockResolvedValue({
+      path: selected.path,
+      kind: "markdown",
+      size: 10,
+      mtime: 1,
+      hash: "hash",
+      content: "---\nname: successful\n---\nBody",
+      review: null,
+    });
+    vi.mocked(useUi.getState().ask).mockResolvedValueOnce(false);
+    render(<Workflows name="successful" />);
+    await user.click(screen.getByRole("button", { name: "Edit workflow" }));
+    const instructions = screen.getByLabelText("Instructions");
+    expect(document.activeElement).toBe(instructions);
+    await user.type(instructions, " changed");
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.getByLabelText("Instructions")).toHaveProperty("value", `${selected.instructions} changed`);
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "Edit workflow" })));
+  });
+
+  it("shows an unavailable workflow with a route back to the list", () => {
+    render(<Workflows name="missing" />);
+    expect(screen.getByRole("heading", { name: "Workflow unavailable" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Edit workflow" })).toHaveProperty("disabled", true);
+    fireEvent.click(screen.getByRole("button", { name: "Back to workflows" }));
+    expect(useUi.getState().openView).toHaveBeenCalledWith("workflows");
+  });
+
+  it("announces source-opening failures in the workflow context", async () => {
+    vi.mocked(useWorkspace.getState().open).mockRejectedValueOnce(new Error("Source unavailable"));
+    render(<WorkflowContext name="ready" />);
+    fireEvent.click(screen.getByRole("button", { name: "Edit source" }));
+    expect((await screen.findByRole("alert")).textContent).toBe("Source unavailable");
+  });
+
   it("describes all run states and frontmatter shapes", () => {
     expect(runState(run(1, "a", "running"))).toBe("Running");
     expect(runState(run(1, "a", "failed"))).toBe("Failed");
@@ -273,6 +313,94 @@ describe("workflow helpers and detail views", () => {
 });
 
 describe("workflow list actions", () => {
+  it("serializes mutations and ignores a run result after the vault changes", async () => {
+    let finish!: (id: number) => void;
+    vi.mocked(api.tesseraRun).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    render(<Workflows />);
+    const card = screen.getByRole("article", { name: "Agent ready" });
+    fireEvent.click(within(card).getByRole("button", { name: "Run now" }));
+    expect(screen.getByRole("button", { name: "Pause automations" })).toHaveProperty("disabled", true);
+    act(() => useVault.setState({ vault: { root: "/other", name: "Other" } }));
+    await act(async () => finish(99));
+    expect(useUi.getState().openView).not.toHaveBeenCalledWith("run", "99");
+  });
+
+  it("ignores stale test-trigger selections and deletion confirmations", async () => {
+    render(<Workflows />);
+    const card = screen.getByRole("article", { name: "Agent paused" });
+    fireEvent.click(within(card).getByRole("button", { name: "Test trigger…" }));
+    const picker = useUi.getState().picker!;
+    act(() => useVault.setState({ vault: { root: "/other", name: "Other" } }));
+    await act(async () => picker.onPick(picker.items[0]));
+    expect(api.tesseraTestEvent).not.toHaveBeenCalled();
+    act(() => {
+      useUi.setState({ picker: null });
+      useVault.setState({ vault: { root: "/vault", name: "Vault" } });
+    });
+    let confirm!: (accepted: boolean) => void;
+    vi.mocked(useUi.getState().ask).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          confirm = resolve;
+        }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "More actions for Agent ready" }));
+    const menu = useUi.getState().menu!;
+    act(() => {
+      void menu.items.find((item) => item.label === "Delete workflow…")?.action?.();
+    });
+    act(() => useVault.setState({ vault: { root: "/other", name: "Other" } }));
+    await act(async () => confirm(true));
+    expect(useVault.getState().remove).not.toHaveBeenCalled();
+  });
+
+  it("selects the newest result even when history arrives out of order", () => {
+    useAttention.setState({
+      status: {
+        ...status,
+        runs: [
+          run(1, "ready", "successful", { started: 10, answer: "Old result" }),
+          run(2, "ready", "failed", { started: 20, error: "Newest result" }),
+        ],
+      },
+    });
+    render(<Workflows agentsOnly />);
+    const card = screen.getByRole("article", { name: "Agent ready" });
+    expect(within(card).getByText("Newest result")).toBeTruthy();
+    expect(within(card).queryByText("Old result")).toBeNull();
+    fireEvent.click(within(card).getByRole("button", { name: "Open run log" }));
+    expect(useUi.getState().openView).toHaveBeenCalledWith("run", "2");
+  });
+
+  it("rechecks running state before deleting after confirmation", async () => {
+    let confirm!: (accepted: boolean) => void;
+    vi.mocked(useUi.getState().ask).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          confirm = resolve;
+        }),
+    );
+    render(<Workflows />);
+    fireEvent.click(screen.getByRole("button", { name: "More actions for Agent ready" }));
+    act(() => {
+      void useUi
+        .getState()
+        .menu!.items.find((item) => item.label === "Delete workflow…")
+        ?.action?.();
+    });
+    act(() => useAttention.setState({ status: { ...status, runs: [...runs, run(10, "ready", "running")] } }));
+    await act(async () => confirm(true));
+    expect(useVault.getState().remove).not.toHaveBeenCalled();
+    expect(
+      screen.getAllByRole("alert").some((alert) => alert.textContent?.includes("Wait for the current run to finish")),
+    ).toBe(true);
+  });
+
   it("streams run answers and tool outcomes, retaining readable older results", async () => {
     const events: NonNullable<AgentRun["transcript"]>["events"] = [
       { kind: "text", text: "Reading **the note**." },
@@ -283,7 +411,8 @@ describe("workflow list actions", () => {
     });
     const { rerender } = render(<RunDetail id="77" />);
     expect(screen.getByText("the note").tagName).toBe("STRONG");
-    fireEvent.click(screen.getByRole("button", { name: "Read Other" }));
+    fireEvent.click(screen.getByText("Read Other"));
+    fireEvent.click(screen.getByRole("button", { name: "Open Other.md" }));
     expect(useWorkspace.getState().open).toHaveBeenCalledWith("Other.md", { newTab: true });
     act(() =>
       useAttention.setState({
@@ -306,7 +435,8 @@ describe("workflow list actions", () => {
         },
       }),
     );
-    expect(screen.getByTitle("Permission denied")).toBeTruthy();
+    expect(screen.getByText("Permission denied")).toBeTruthy();
+    fireEvent.click(screen.getByText("Proposed Other"));
     expect(screen.getByText("Workflow stopped")).toBeTruthy();
     expect(screen.getByText(/log was shortened/)).toBeTruthy();
     expect(screen.queryByText("Working…")).toBeNull();
@@ -316,16 +446,62 @@ describe("workflow list actions", () => {
     expect(screen.getByText("Finished", { selector: "p" })).toBeTruthy();
   });
 
+  it("follows new run output only while the reader remains near the bottom", () => {
+    const current = run(77, "ready", "running", {
+      transcript: { events: [{ kind: "text", text: "First" }], truncated: false },
+    });
+    useAttention.setState({ status: { ...status, runs: [current] } });
+    render(<RunDetail id="77" />);
+    const log = screen.getByRole("region", { name: "Run log" });
+    let height = 300;
+    Object.defineProperties(log, { scrollHeight: { get: () => height }, clientHeight: { value: 100 } });
+    log.scrollTop = 200;
+    fireEvent.scroll(log);
+    const append = (text: string) =>
+      act(() =>
+        useAttention.setState({
+          status: {
+            ...status,
+            runs: [{ ...current, transcript: { events: [{ kind: "text", text }], truncated: false } }],
+          },
+        }),
+      );
+    height = 500;
+    append("Second");
+    expect(log.scrollTop).toBe(500);
+    log.scrollTop = 0;
+    fireEvent.scroll(log);
+    height = 700;
+    append("Third");
+    expect(log.scrollTop).toBe(0);
+    log.scrollTop = 600;
+    fireEvent.scroll(log);
+    height = 900;
+    append("Fourth");
+    expect(log.scrollTop).toBe(900);
+  });
+
+  it("keeps changed-file failures visible and preserves review navigation", async () => {
+    vi.mocked(useWorkspace.getState().open).mockRejectedValueOnce(new Error("File unavailable"));
+    render(<RunDetail id="1" compact />);
+    fireEvent.click(screen.getByText("Changed files"));
+    fireEvent.click(screen.getByRole("button", { name: "Notes/Changed.md" }));
+    expect((await screen.findByRole("alert")).textContent).toBe("File unavailable");
+    fireEvent.click(screen.getByRole("button", { name: "Open activity and reviews" }));
+    expect(useUi.getState().openView).toHaveBeenCalledWith("activity");
+  });
+
   it("renders every state and runs, pauses, tests and opens menu actions", async () => {
     render(<Workflows />);
-    expect(screen.getByText("Queued · 2")).toBeTruthy();
+    expect(screen.getByText("Queued")).toBeTruthy();
+    expect(screen.getByText("Queued runs")).toBeTruthy();
     expect(screen.getAllByText("Needs review").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Scheduler error").length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole("button", { name: "Pause automations" }));
     await waitFor(() => expect(api.tesseraPauseAll).toHaveBeenCalledWith(true));
     const readyCard = screen.getByText("Agent ready").closest("article")!;
-    fireEvent.click(readyCard.querySelector<HTMLButtonElement>("button.primary")!);
+    fireEvent.click(within(readyCard).getByRole("button", { name: "Run now" }));
     await waitFor(() => expect(api.tesseraRun).toHaveBeenCalledWith("ready"));
 
     const pausedCard = screen.getByText("Agent paused").closest("article")!;
@@ -339,6 +515,7 @@ describe("workflow list actions", () => {
     await waitFor(() => expect(api.tesseraPauseAgent).toHaveBeenCalled());
 
     const more = screen.getByRole("button", { name: "More actions for Agent ready" });
+    await waitFor(() => expect((more as HTMLButtonElement).disabled).toBe(false));
     vi.spyOn(more, "getBoundingClientRect").mockReturnValue({ left: 10, bottom: 20 } as DOMRect);
     fireEvent.click(more);
     const menu = useUi.getState().menu!;
@@ -347,6 +524,63 @@ describe("workflow list actions", () => {
     await menu.items.find((item) => item.label === "Edit agent source")?.action?.();
     await menu.items.find((item) => item.label === "Delete workflow…")?.action?.();
     await waitFor(() => expect(useVault.getState().remove).toHaveBeenCalledWith("Agents/ready.md"));
+  });
+
+  it("preserves all eight ledger states, tool warnings, errors, and named filtering", () => {
+    const states = ["ready", "queued", "running", "paused", "successful", "needs-review", "failed", "skipped"];
+    useAttention.setState({
+      status: {
+        ...status,
+        runs: states.map((state, index) =>
+          run(index + 1, index === 6 ? "broken" : "ready", state, {
+            started: 100,
+            transcript:
+              index === 6
+                ? {
+                    truncated: false,
+                    events: [
+                      { kind: "tool", id: "read", summary: "Read", path: "Other.md", writes: false },
+                      { kind: "tool_done", id: "read", error: "Denied", review: null },
+                    ],
+                  }
+                : undefined,
+          }),
+        ),
+      },
+    });
+    const { rerender } = render(<Workflows runsOnly />);
+    const rows = screen.getByRole("table", { name: "Workflow runs" }).querySelectorAll("tbody tr");
+    expect(Array.from(rows).map((row) => row.querySelector(".mds-status")?.textContent)).toEqual([
+      "Skipped",
+      "Failed",
+      "Needs review",
+      "Completed",
+      "Paused",
+      "Running",
+      "Queued",
+      "Ready",
+    ]);
+    const failed = screen.getByRole("button", { name: "Run 7" }).closest("tr")!;
+    expect(failed.textContent).toContain("1 tool warning · Something failed");
+    expect(screen.getByRole("button", { name: "Run 7" }).hasAttribute("aria-expanded")).toBe(false);
+    rerender(<Workflows runsOnly name="broken" />);
+    expect(screen.getAllByRole("row")).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "Run 7" })).toBeTruthy();
+  });
+
+  it("distinguishes loading, failed, empty and retained run history", () => {
+    useAttention.setState({ status: null, error: null });
+    render(<Workflows runsOnly />);
+    expect(screen.getByRole("region", { name: "Run history" }).getAttribute("aria-busy")).toBe("true");
+    expect(screen.getByText("Loading runs…")).toBeTruthy();
+    act(() => useAttention.setState({ error: "History unavailable" }));
+    expect(screen.getByRole("alert").textContent).toBe("History unavailable");
+    expect(screen.getByText("Run history could not be loaded.")).toBeTruthy();
+    act(() => useAttention.setState({ status: { ...status, runs: [] }, error: null }));
+    expect(screen.getByText("No runs yet. Run a workflow to see its history here.")).toBeTruthy();
+    act(() => useAttention.setState({ status, error: "Refresh failed" }));
+    expect(screen.getByRole("alert").textContent).toBe("Refresh failed");
+    expect(screen.getByRole("button", { name: "Run 5" })).toBeTruthy();
   });
 
   it("orders the Ledger by newest run and updates review status after a decision", () => {

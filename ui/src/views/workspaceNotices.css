@@ -1,0 +1,21 @@
+.mosaic-ds.workspace-notices {
+  flex: none;
+  max-height: 45%;
+  min-height: 0;
+  overflow: auto;
+}
+.mosaic-ds.workspace-notices .mds-notice {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--mds-space-5);
+}
+.mosaic-ds.workspace-notices .mds-notice > span {
+  flex: 1 1 260px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.mosaic-ds.workspace-notices .mds-button {
+  flex: none;
+  white-space: normal;
+}

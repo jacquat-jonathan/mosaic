@@ -72,7 +72,7 @@ const inside = (spans: Span[], from: number, to: number) => spans.some((s) => fr
 
 /** Width suffix like `|300` in `![[img.png|300]]`. */
 function embedWidth(alias: string | null): number | null {
-  const m = alias ? /^(\d+)(x\d+)?$/.exec(alias.trim()) : null;
+  const m = alias ? /^(\d+)(x\d+)?$/.exec(alias.split("|").at(-1)!.trim()) : null;
   return m ? Number(m[1]) : null;
 }
 
@@ -419,7 +419,11 @@ function buildInline(state: EditorState, blocks: Blocks, rangeFrom: number, rang
       const kind = kindOf(resolved ?? link.target);
       const widget =
         kind === "image"
-          ? new ImageWidget(resolved, link.target, embedWidth(link.alias), ctx)
+          ? new ImageWidget(resolved, link.target, embedWidth(link.alias), ctx, null, {
+              from,
+              to,
+              text: doc.sliceString(from, to),
+            })
           : kind === "pdf" && resolved
             ? new ReactWidget(
                 `pdf:${resolved}`,
@@ -489,8 +493,16 @@ function decorateImage(
   const alt = marks.length >= 2 ? doc.sliceString(marks[0].to, marks[1].from) : "";
   const src = url ? decodeURI(doc.sliceString(url.from, url.to).replace(/^<|>$/g, "")) : "";
   const widget = isExternal(src)
-    ? new ImageWidget(null, alt, null, ctx, src)
-    : new ImageWidget(ctx.resolve(src, true), alt || src, embedWidth(alt.split("|")[1] ?? null), ctx);
+    ? new ImageWidget(null, alt, null, ctx, src, {
+        from: node.from,
+        to: node.to,
+        text: doc.sliceString(node.from, node.to),
+      })
+    : new ImageWidget(ctx.resolve(src, true), alt || src, embedWidth(alt.includes("|") ? alt : null), ctx, null, {
+        from: node.from,
+        to: node.to,
+        text: doc.sliceString(node.from, node.to),
+      });
   out.push(Decoration.replace({ widget }).range(node.from, node.to));
 }
 

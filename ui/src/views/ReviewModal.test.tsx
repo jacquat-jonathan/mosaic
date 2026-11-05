@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { api } from "../ipc/api";
 import type { Proposal } from "../ipc/types";
+import { useVault } from "../state/vault";
 import { useReview } from "../state/review";
 import { useWorkspace } from "../state/workspace";
 import { proposalWhat, proposalWho, ReviewModal } from "./ReviewModal";
@@ -31,7 +32,7 @@ const proposal = (overrides: Partial<Proposal> = {}): Proposal => ({
 function mockContents(current: string | null, proposed: string | null) {
   vi.spyOn(api, "proposalContent").mockResolvedValue(proposed);
   const read = vi.spyOn(api, "read");
-  if (current === null) read.mockRejectedValue(new Error("missing"));
+  if (current === null) read.mockRejectedValue({ code: "not_found", message: "missing" });
   else
     read.mockResolvedValue({
       path: "Notes/Plan.md",
@@ -42,6 +43,10 @@ function mockContents(current: string | null, proposed: string | null) {
       mtime: Date.now(),
     });
 }
+
+beforeEach(() => {
+  useVault.setState({ vault: { root: "/vault", name: "Vault" } });
+});
 
 afterEach(() => {
   cleanup();
@@ -97,9 +102,9 @@ test("recovers from a stale conflict, compares the human edit, and accepts anywa
 
   await user.click(await screen.findByRole("button", { name: "Accept" }));
   expect((await screen.findByRole("alert")).textContent).toContain("changed after the agent proposed");
-  await user.click(await screen.findByRole("button", { name: "What changed since" }));
+  await user.click(await screen.findByRole("radio", { name: "What changed since" }));
   expect(screen.getByText("kept by me")).toBeTruthy();
-  await user.click(screen.getByRole("button", { name: "What accepting does" }));
+  await user.click(screen.getByRole("radio", { name: "What accepting does" }));
   await user.click(screen.getByRole("button", { name: "Accept anyway" }));
   await waitFor(() => expect(accept).toHaveBeenLastCalledWith(7, true, null));
 });
@@ -154,4 +159,53 @@ test("renders rename, binary deletion, and text creation-specific review states"
   render(<ReviewModal proposal={proposal({ action: "created", base_hash: null })} onClose={vi.fn()} />);
   expect(await screen.findByText("brand new")).toBeTruthy();
   expect(screen.getByText(/Accepting creates the file/)).toBeTruthy();
+});
+
+test("serializes decisions and refuses Escape or close while acceptance is pending", async () => {
+  const user = userEvent.setup();
+  mockContents("old", "new");
+  let finish!: () => void;
+  const accept = vi.spyOn(api, "acceptProposal").mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        finish = () => resolve("Notes/Plan.md");
+      }),
+  );
+  vi.spyOn(useReview.getState(), "refresh").mockResolvedValue();
+  vi.spyOn(useWorkspace.getState(), "open").mockResolvedValue();
+  const close = vi.fn();
+  render(<ReviewModal proposal={proposal()} onClose={close} />);
+  await user.click(await screen.findByRole("button", { name: "Accept" }));
+  expect(screen.getByRole("button", { name: "Accepting…" })).toHaveProperty("disabled", true);
+  expect(screen.getByRole("button", { name: "Close dialog" })).toHaveProperty("disabled", true);
+  await user.keyboard("{Escape}");
+  expect(close).not.toHaveBeenCalled();
+  expect(accept).toHaveBeenCalledTimes(1);
+  await act(async () => finish());
+  await waitFor(() => expect(close).toHaveBeenCalledTimes(1));
+});
+
+test("retries failed comparisons without enabling acceptance of an unread file", async () => {
+  const user = userEvent.setup();
+  mockContents("old", "new");
+  vi.mocked(api.read).mockRejectedValueOnce(new Error("Read denied"));
+  render(<ReviewModal proposal={proposal()} onClose={vi.fn()} />);
+  expect(await screen.findByText("Read denied")).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Accept" })).toHaveProperty("disabled", true);
+  await user.click(screen.getByRole("button", { name: "Retry comparison" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Accept" })).toHaveProperty("disabled", false));
+});
+
+test("does not repeat an accepted change when opening its file fails", async () => {
+  const user = userEvent.setup();
+  mockContents("old", "new");
+  const accept = vi.spyOn(api, "acceptProposal").mockResolvedValue("Notes/Plan.md");
+  vi.spyOn(useReview.getState(), "refresh").mockResolvedValue();
+  vi.spyOn(useWorkspace.getState(), "open").mockRejectedValue(new Error("Unavailable"));
+  render(<ReviewModal proposal={proposal()} onClose={vi.fn()} />);
+  await user.click(await screen.findByRole("button", { name: "Accept" }));
+  expect((await screen.findByRole("alert")).textContent).toContain("The change was accepted");
+  expect(screen.queryByRole("button", { name: "Accept" })).toBeNull();
+  expect(accept).toHaveBeenCalledTimes(1);
+  expect(screen.getByRole("button", { name: "Close" })).toHaveProperty("disabled", false);
 });

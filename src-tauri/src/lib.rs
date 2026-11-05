@@ -759,8 +759,6 @@ pub(crate) fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             planner::planner_trash_event,
             planner::planner_cancel_event_occurrence,
             planner::planner_replace_event_occurrence,
-            planner::planner_migration_preview,
-            planner::planner_import_markdown,
             planner::planner_ical_preview,
             planner::planner_ical_import,
             planner::planner_ical_export,

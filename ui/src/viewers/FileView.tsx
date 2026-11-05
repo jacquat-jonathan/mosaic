@@ -1,5 +1,4 @@
-import { useEffect, useState } from "react";
-import { ExternalLink } from "lucide-react";
+import { useEffect } from "react";
 import { useWorkspace, type Buffer } from "../state/workspace";
 import { MarkdownEditor } from "./MarkdownEditor";
 import { CodeEditor } from "./CodeEditor";
@@ -8,13 +7,15 @@ import { HtmlViewer } from "./HtmlViewer";
 import { PdfViewer } from "./PdfViewer";
 import { CsvEditor } from "./CsvEditor";
 import { ConflictBar } from "../views/ConflictBar";
-import { openInDefaultApp } from "../ipc/api";
-import { errorMessage } from "../ipc/types";
 import { CanvasEditor } from "./canvas/CanvasEditor";
 import { ExcalidrawEditor } from "./ExcalidrawEditor";
 import { RenderedSourceViewer } from "./RenderedSourceViewer";
 import { renderChart, renderGraphviz } from "./visuals";
 import { isSpecialTab } from "../views/specialTabs";
+import { UnsupportedFile as Unsupported } from "./UnsupportedFile";
+import { Notice } from "../design-system/components";
+import { DesignSystemScope } from "../views/DesignSystemScope";
+import "./documentStates.css";
 import { SpecialView } from "../views/SpecialView";
 
 /** Picks the viewer or editor for a file by its kind. */
@@ -27,9 +28,9 @@ export function FileView({ path }: { path: string }) {
   if (isSpecialTab(path)) return <SpecialView path={path} />;
   if (!buffer)
     return (
-      <div className="empty">
-        <p>Loading…</p>
-      </div>
+      <DesignSystemScope className="document-state">
+        <Notice>Loading file…</Notice>
+      </DesignSystemScope>
     );
   return (
     <div className="file-view">
@@ -75,29 +76,4 @@ function Viewer({ buffer }: { buffer: Buffer }) {
     default:
       return <CodeEditor buffer={buffer} />;
   }
-}
-
-function Unsupported({ path, message }: { path: string; message: string }) {
-  // Programs and installers are refused by the backend; say why instead of doing nothing.
-  const [refused, setRefused] = useState<string | null>(null);
-  useEffect(() => setRefused(null), [path]);
-  return (
-    <div className="empty">
-      <p>{message}</p>
-      <p>
-        <button
-          className="primary"
-          onClick={() =>
-            openInDefaultApp(path).then(
-              () => setRefused(null),
-              (e) => setRefused(errorMessage(e)),
-            )
-          }
-        >
-          <ExternalLink size={14} /> Open in default app
-        </button>
-      </p>
-      {refused && <p className="error-text">{refused}</p>}
-    </div>
-  );
 }

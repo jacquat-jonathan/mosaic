@@ -22,6 +22,8 @@ import {
 } from "./tableEdit";
 import { cellMarkdown, renderCellMarkdown } from "./tableCell";
 import { editTableSource } from "./tableSource";
+import { editorScope, editorButton } from "./designSystemDom";
+import "./editorControls.css";
 
 const tableFocus = new WeakMap<EditorView, { from: number; row: number; col: number; caret?: "start" | "end" }>();
 const controllers = new WeakMap<
@@ -85,6 +87,7 @@ export class TableWidget extends WidgetType {
     };
     const toolbar = document.createElement("div");
     toolbar.className = "table-toolbar";
+    editorScope(toolbar);
     toolbar.setAttribute("role", "group");
     toolbar.setAttribute("aria-label", "Table editing");
     const tableLabel = document.createElement("span");
@@ -94,6 +97,7 @@ export class TableWidget extends WidgetType {
     position.className = "table-position";
     const alignSelect = document.createElement("select");
     alignSelect.setAttribute("aria-label", "Column alignment");
+    alignSelect.className = "mds-input";
     for (const value of ["left", "center", "right"]) {
       const option = document.createElement("option");
       option.value = value;
@@ -758,7 +762,7 @@ export class TableWidget extends WidgetType {
         const value = alignSelect.value as "left" | "center" | "right";
         commit(setAlign(typed(), active.col, value === "left" ? null : value), active);
       });
-      const sourceButton = document.createElement("button");
+      const sourceButton = editorButton(document.createElement("button"));
       sourceButton.textContent = "Markdown";
       sourceButton.title = "Edit table as Markdown";
       sourceButton.addEventListener("click", () => {
@@ -776,7 +780,7 @@ export class TableWidget extends WidgetType {
         ["Italic", "italic", "I"],
         ["Strikethrough", "strikeThrough", "S"],
       ]) {
-        const button = document.createElement("button");
+        const button = editorButton(document.createElement("button"));
         button.textContent = text;
         button.setAttribute("aria-label", label);
         button.title = label;

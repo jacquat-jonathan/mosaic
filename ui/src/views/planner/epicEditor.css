@@ -1,0 +1,32 @@
+.mosaic-ds.epic-editor-scope .epic-editor-form {
+  display: grid;
+  gap: var(--mds-space-7);
+}
+.mosaic-ds.epic-editor-scope input[type="color"] {
+  width: 64px;
+  height: 36px;
+  padding: var(--mds-space-2);
+}
+.mosaic-ds.epic-editor-scope .planner-activity {
+  margin: 0;
+  border-color: var(--mds-border);
+}
+.mosaic-ds.epic-editor-scope .planner-activity summary {
+  font-size: var(--mds-text-body);
+  padding: var(--mds-space-3) 0;
+  cursor: pointer;
+}
+.mosaic-ds.epic-editor-scope .planner-activity summary:focus-visible {
+  outline: var(--mds-focus-width) solid var(--mds-accent);
+  outline-offset: var(--mds-focus-offset);
+}
+.mosaic-ds.epic-editor-scope .planner-activity summary span,
+.mosaic-ds.epic-editor-scope .planner-activity time {
+  color: var(--mds-text-muted);
+  font-size: var(--mds-text-small);
+}
+.mosaic-ds.epic-editor-scope .planner-activity li {
+  font-size: var(--mds-text-hint);
+  border-color: var(--mds-border);
+  overflow-wrap: anywhere;
+}

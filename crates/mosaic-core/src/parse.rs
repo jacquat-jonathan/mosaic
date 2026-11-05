@@ -27,6 +27,9 @@ pub struct Link {
     /// Byte range of the target text inside the file (what to replace when the target moves).
     #[serde(skip)]
     pub target_range: (usize, usize),
+    /// Byte range of the whole link (`[[...]]`, `![..](..)`), for rewriting it in another syntax.
+    #[serde(skip)]
+    pub link_range: (usize, usize),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -324,6 +327,7 @@ pub fn parse(text: &str) -> Parsed {
                     line_start + inner.start(),
                     line_start + inner.start() + target_len,
                 ),
+                link_range: (line_start + whole.start(), line_start + whole.end()),
             });
         }
         for c in MD_LINK.captures_iter(&scan) {
@@ -357,6 +361,7 @@ pub fn parse(text: &str) -> Parsed {
                     line_start + url_m.start() + angle,
                     line_start + url_m.start() + angle + path_part.len(),
                 ),
+                link_range: (line_start + whole.start(), line_start + whole.end()),
             });
         }
         // "# Heading" has a space after '#', so heading markers never match the tag pattern.

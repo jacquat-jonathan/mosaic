@@ -254,6 +254,7 @@ fn embed_link(kind: LinkKind, target: &str, heading: Option<String>, line: usize
         embed: true,
         line,
         target_range: (0, 0),
+        link_range: (0, 0),
     }
 }
 

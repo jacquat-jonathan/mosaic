@@ -47,5 +47,20 @@
     { "why": "ambiguous, but the source's folder makes the name resolve", "path": "Projects/Mosaic/Plan.md", "from": "Projects/Mosaic/X.md", "expected": "Plan" },
     { "why": "the name already resolves to the shortest path", "path": "Archive/Plan.md", "from": null, "expected": "Plan" },
     { "why": "other files keep their extension", "path": "Attachments/diagram.png", "from": null, "expected": "diagram.png" }
+  ],
+  "wikiSafe": [
+    { "why": "plain name", "text": "Notes", "expected": true },
+    { "why": "parentheses are fine in wiki links", "text": "Notes (v2)", "expected": true },
+    { "why": "a hash starts a heading", "text": "Notes #1", "expected": false },
+    { "why": "a caret starts a block id", "text": "a^b", "expected": false },
+    { "why": "a bar starts an alias", "text": "a|b", "expected": false },
+    { "why": "brackets end the link", "text": "a[b", "expected": false }
+  ],
+  "markdownUrl": [
+    { "why": "spaces", "path": "Projects/My Note.md", "from": "Projects/a.md", "expected": "My%20Note.md" },
+    { "why": "percent sign", "path": "100%.md", "from": "a.md", "expected": "100%25.md" },
+    { "why": "hash and parentheses", "path": "Notes (v2) #1.md", "from": "src.md", "expected": "Notes%20%28v2%29%20%231.md" },
+    { "why": "folder names are encoded too", "path": "A (x)/B #2.md", "from": "src.md", "expected": "A%20%28x%29/B%20%232.md" },
+    { "why": "non-ASCII stays readable", "path": "Café.md", "from": "src.md", "expected": "Café.md" }
   ]
 }

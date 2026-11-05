@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { linkLabel, linkTextFor, parseWikiLink, resolveLink } from "./links";
+import { linkLabel, linkTextFor, markdownUrlFor, parseWikiLink, resolveLink, wikiSafe } from "./links";
 import { isTextKind, kindOf } from "./ipc/kinds";
 import type { Entry } from "./ipc/types";
 import shared from "../../fixtures/links.json";
@@ -28,6 +28,14 @@ test.each(shared.resolve.map((c) => [c.why, c] as const))("resolves: %s", (_why,
 
 test.each(shared.linkText.map((c) => [c.why, c] as const))("link text: %s", (_why, c) => {
   expect(linkTextFor(c.path, vault, c.from)).toBe(c.expected);
+});
+
+test.each(shared.markdownUrl.map((c) => [c.why, c] as const))("markdown url: %s", (_why, c) => {
+  expect(markdownUrlFor(c.path, c.from)).toBe(c.expected);
+});
+
+test.each(shared.wikiSafe.map((c) => [c.why, c] as const))("wiki safe: %s", (_why, c) => {
+  expect(wikiSafe(c.text)).toBe(c.expected);
 });
 
 test("covers empty fragments, root traversal, aliases and deterministic ties", () => {

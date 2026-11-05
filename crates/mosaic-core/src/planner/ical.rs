@@ -542,12 +542,34 @@ impl PlannerStore {
             }
         }
         output.push("END:VCALENDAR".into());
-        Ok(format!("{}\r\n", output.join("\r\n")))
+        let lines: Vec<String> = output.iter().map(|line| folded(line)).collect();
+        Ok(format!("{}\r\n", lines.join("\r\n")))
     }
+}
+
+/// Fold one content line at 75 octets (RFC 5545 3.1) on char boundaries. Every entry in the
+/// export is exactly one logical line, so any CR/LF left in an unescaped value (URL, ATTENDEE,
+/// RRULE...) is dropped here instead of being allowed to inject extra properties.
+fn folded(line: &str) -> String {
+    let line: String = line.chars().filter(|c| !matches!(c, '\r' | '\n')).collect();
+    let mut result = String::with_capacity(line.len() + line.len() / 70 * 3);
+    let mut octets = 0;
+    for ch in line.chars() {
+        // A continuation line starts with one space that counts toward the 75 octets.
+        if octets + ch.len_utf8() > 75 {
+            result.push_str("\r\n ");
+            octets = 1;
+        }
+        result.push(ch);
+        octets += ch.len_utf8();
+    }
+    result
 }
 
 fn escaped(value: &str) -> String {
     value
+        .replace("\r\n", "\n")
+        .replace('\r', "\n")
         .replace('\\', "\\\\")
         .replace('\n', "\\n")
         .replace(',', "\\,")

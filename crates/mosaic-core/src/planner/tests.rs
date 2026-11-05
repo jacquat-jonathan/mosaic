@@ -789,3 +789,103 @@ fn ten_thousand_tasks_and_a_busy_month_load_within_the_acceptance_budget() {
         "large planner month loaded in {elapsed:?}, over the five-second acceptance budget"
     );
 }
+
+fn export_with_event(
+    title: &str,
+    description: &str,
+    url: Option<&str>,
+    participants: &[&str],
+) -> String {
+    let mut store = in_memory();
+    store
+        .create_event(CreateEvent {
+            title: title.into(),
+            description: description.into(),
+            location: String::new(),
+            meeting_url: url.map(str::to_string),
+            participants: participants.iter().map(|p| p.to_string()).collect(),
+            epic_id: None,
+            color: None,
+            all_day: false,
+            start_value: "2026-10-13T07:00:00.000Z".into(),
+            end_value: "2026-10-13T08:00:00.000Z".into(),
+            timezone: "Europe/Zurich".into(),
+            recurrence_rule: None,
+        })
+        .unwrap();
+    store.export_ical().unwrap()
+}
+
+/// RFC 5545 unfolding: remove each CRLF that is followed by exactly one space or tab.
+fn rfc_unfold(content: &str) -> String {
+    content.replace("\r\n ", "").replace("\r\n\t", "")
+}
+
+fn assert_folded(exported: &str) {
+    assert!(exported.ends_with("\r\n"));
+    for line in exported.split("\r\n") {
+        assert!(line.len() <= 75, "line over 75 octets: {line:?}");
+        assert!(!line.contains('\r') && !line.contains('\n'), "bare CR/LF: {line:?}");
+    }
+}
+
+#[test]
+fn ical_export_folds_long_ascii_lines_and_unfolds_losslessly() {
+    let title = "word ".repeat(40).trim().to_string();
+    let exported = export_with_event(&title, "", None, &[]);
+    assert_folded(&exported);
+    assert!(exported.contains("\r\n "));
+    assert!(rfc_unfold(&exported).contains(&format!("SUMMARY:{title}\r\n")));
+}
+
+#[test]
+fn ical_export_never_splits_multibyte_characters_when_folding() {
+    for ch in ['é', '日', '😀'] {
+        for pad in 0..4 {
+            let title = format!("{}{}", "a".repeat(pad), ch.to_string().repeat(60));
+            let exported = export_with_event(&title, "", None, &[]);
+            assert_folded(&exported);
+            assert!(rfc_unfold(&exported).contains(&format!("SUMMARY:{title}\r\n")));
+        }
+    }
+}
+
+#[test]
+fn ical_export_normalises_carriage_returns_in_text() {
+    let exported = export_with_event("Title", "one\r\ntwo\rthree\nfour", None, &[]);
+    assert_folded(&exported);
+    assert!(exported.contains("DESCRIPTION:one\\ntwo\\nthree\\nfour\r\n"));
+}
+
+#[test]
+fn ical_export_cannot_inject_lines_through_url_or_attendee() {
+    let exported = export_with_event(
+        "Title",
+        "",
+        Some("https://example.test/\r\nATTENDEE:mailto:evil@example.test"),
+        &["a@example.test\r\nDESCRIPTION:injected", "b@example.test\nX-EVIL:1"],
+    );
+    assert_folded(&exported);
+    let unfolded = rfc_unfold(&exported);
+    for line in unfolded.split("\r\n") {
+        assert!(
+            !line.starts_with("DESCRIPTION:") && !line.starts_with("X-EVIL"),
+            "injected line: {line:?}"
+        );
+    }
+    assert_eq!(unfolded.matches("\r\nATTENDEE:").count(), 2);
+}
+
+#[test]
+fn ical_export_roundtrips_folded_text_through_import() {
+    let title = "Quarterly planning,review;alignment ".repeat(4).trim().to_string() + "é日😀end";
+    let description = "x".repeat(200) + "\nsecond line";
+    let exported = export_with_event(&title, &description, None, &[]);
+    assert_folded(&exported);
+    let preview = in_memory()
+        .preview_ical_import("roundtrip", &exported, "UTC")
+        .unwrap();
+    assert_eq!(preview.candidates.len(), 1);
+    assert_eq!(preview.candidates[0].title, title);
+    assert_eq!(preview.candidates[0].event.description, description);
+}

@@ -201,6 +201,7 @@ const buildCommands = (): Command[] => [
     "workflows",
     "runs",
     "activity",
+    "notifications",
     "connections",
     "board",
     "tasks",

@@ -67,8 +67,26 @@ function joinRelative(dir: string, rel: string): string | null {
 /** Notes are linked without ".md"; other files (and notes written with it) by full name. */
 const candidates = (lower: string) => (lower.endsWith(".md") ? [lower] : [`${lower}.md`, lower]);
 
-/** Byte order, like Rust's string comparison (upper case before lower case). */
-const byteOrder = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+/** Length in Unicode scalars (code points), like Rust's `chars().count()`; `.length` counts UTF-16 units. */
+const scalarLength = (s: string) => {
+  let n = 0;
+  for (const _ of s) n++;
+  return n;
+};
+
+/** Code point order, like Rust's string comparison (upper case before lower case). Plain `<` compares
+ * UTF-16 units and misorders astral characters against U+E000..U+FFFF. */
+const codePointOrder = (a: string, b: string) => {
+  const x = a[Symbol.iterator]();
+  const y = b[Symbol.iterator]();
+  for (;;) {
+    const p = x.next();
+    const q = y.next();
+    if (p.done || q.done) return p.done === q.done ? 0 : p.done ? -1 : 1;
+    const d = p.value.codePointAt(0)! - q.value.codePointAt(0)!;
+    if (d) return d;
+  }
+};
 
 /** An exact vault path, else a file whose path ends with `/name`: in `fromDir` first, then the shortest. */
 function lookup(name: string, files: Entry[], fromDir: string): string | null {
@@ -77,14 +95,14 @@ function lookup(name: string, files: Entry[], fromDir: string): string | null {
   const matches = files
     .filter((e) => e.path.toLowerCase().endsWith(`/${name}`))
     .map((e) => e.path)
-    .sort((a, b) => a.length - b.length || byteOrder(a, b));
+    .sort((a, b) => scalarLength(a) - scalarLength(b) || codePointOrder(a, b));
   return matches.find((p) => parentOf(p).toLowerCase() === fromDir.toLowerCase()) ?? matches[0] ?? null;
 }
 
 /**
  * Resolves a link target to a vault path, or null if unresolved. Rules (Obsidian-compatible):
  * case-insensitive; `.md` optional for notes; an exact vault path wins, then a file in the source's
- * folder, then the shortest path (ties in byte order). Markdown links (and `../`) try the path
+ * folder, then the shortest path (fewest Unicode scalars; ties in code point order). Markdown links (and `../`) try the path
  * relative to the source first. Aliases from frontmatter resolve as a last resort.
  */
 export function resolveLink(

@@ -1,7 +1,7 @@
 //! Obsidian-compatible link resolution. Mirrors `ui/src/links.ts`; keep the two in sync.
 //!
 //! Rules: case-insensitive; `.md` optional for notes; an exact vault path wins, then a file in the
-//! source note's folder, then the shortest path (ties alphabetical). Markdown links try the path
+//! source note's folder, then the shortest path (fewest Unicode scalars; ties in code point order). Markdown links try the path
 //! relative to the source first. Aliases from frontmatter resolve as a last resort.
 
 use std::collections::HashMap;
@@ -57,7 +57,14 @@ impl FileSet {
                 .push(p.to_string());
         }
         for list in fs.by_name.values_mut() {
-            list.sort_by(|a, b| a.len().cmp(&b.len()).then_with(|| a.cmp(b)));
+            // Shortest = fewest Unicode scalars (same count as `[...s].length` in links.ts), ties in
+            // code point order (== UTF-8 byte order). Never bytes: that disagrees with the UI.
+            list.sort_by(|a, b| {
+                a.chars()
+                    .count()
+                    .cmp(&b.chars().count())
+                    .then_with(|| a.cmp(b))
+            });
         }
         for (alias, path) in aliases {
             fs.aliases

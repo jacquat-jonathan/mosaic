@@ -541,6 +541,8 @@ export type IcalImportCandidate = {
 	excluded_occurrences?: string[],
 	/**  Occurrence this candidate overrides (RECURRENCE-ID), if it is an override. */
 	recurrence_key?: string | null,
+	/**  Timezone `recurrence_key` was resolved in, so it can be redone for another series. */
+	recurrence_timezone?: string | null,
 };
 
 export type IcalImportPreview = {

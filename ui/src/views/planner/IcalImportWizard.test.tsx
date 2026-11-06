@@ -38,6 +38,7 @@ const preview: IcalImportPreview = {
       event,
       excluded_occurrences: [],
       recurrence_key: null,
+      recurrence_timezone: null,
     },
     {
       key: "duplicate",
@@ -53,6 +54,7 @@ const preview: IcalImportPreview = {
       event,
       excluded_occurrences: [],
       recurrence_key: null,
+      recurrence_timezone: null,
     },
   ],
 };

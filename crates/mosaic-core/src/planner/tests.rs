@@ -975,6 +975,41 @@ fn ical_import_links_an_override_to_a_stored_series_in_the_series_timezone() {
     );
 }
 
+#[test]
+fn ical_reimport_links_a_tzid_override_in_the_series_timezone_when_its_dtstart_differs() {
+    let master = "BEGIN:VEVENT\r\nUID:re\r\nDTSTART;TZID=America/Los_Angeles:20260401T170000\r\n\
+        DTEND;TZID=America/Los_Angeles:20260401T180000\r\nSUMMARY:Daily\r\nRRULE:FREQ=DAILY\r\n\
+        END:VEVENT\r\n";
+    let first = format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\n{master}END:VCALENDAR\r\n");
+    // Same feed again, now with an override whose RECURRENCE-ID is in the series zone but
+    // whose DTSTART is UTC.
+    let second = format!(
+        "BEGIN:VCALENDAR\r\nVERSION:2.0\r\n{master}\
+         BEGIN:VEVENT\r\nUID:re\r\nRECURRENCE-ID;TZID=America/Los_Angeles:20260403T170000\r\n\
+         DTSTART:20260404T020000Z\r\nDTEND:20260404T030000Z\r\nSUMMARY:Moved\r\nEND:VEVENT\r\n\
+         END:VCALENDAR\r\n"
+    );
+    let mut store = in_memory();
+    import_all(&mut store, &first);
+    import_all(&mut store, &second);
+    let range = store.calendar_range("2026-04-02", "2026-04-05").unwrap();
+    let daily = range
+        .events
+        .iter()
+        .filter(|item| item.title == "Daily")
+        .map(|item| item.occurrence_key.as_str())
+        .collect::<Vec<_>>();
+    assert!(!daily.contains(&"2026-04-03"), "{daily:?}");
+    assert_eq!(
+        range
+            .events
+            .iter()
+            .filter(|item| item.title == "Moved")
+            .count(),
+        1
+    );
+}
+
 fn export_with_event(
     title: &str,
     description: &str,

@@ -30,6 +30,9 @@ pub struct IcalImportCandidate {
     /// Occurrence this candidate overrides (RECURRENCE-ID), if it is an override.
     #[serde(default)]
     pub recurrence_key: Option<String>,
+    /// Timezone `recurrence_key` was resolved in, so it can be redone for another series.
+    #[serde(default)]
+    pub recurrence_timezone: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -80,6 +83,7 @@ struct ParsedEvent {
     // series' timezone once the whole feed is read.
     raw_recurrence: Option<RawDate>,
     raw_exdates: Vec<RawDate>,
+    key_timezone: String,
     cancelled: bool,
     revision: ParsedRevision,
     event: CreateEvent,
@@ -345,6 +349,7 @@ fn parse(content: &str, fallback_timezone: &str) -> Result<Vec<ParsedEvent>> {
                 excluded_occurrences: Vec::new(),
                 raw_recurrence,
                 raw_exdates,
+                key_timezone: String::new(),
                 cancelled,
                 revision: ParsedRevision {
                     sequence,
@@ -399,6 +404,7 @@ fn parse(content: &str, fallback_timezone: &str) -> Result<Vec<ParsedEvent>> {
                 .collect::<Vec<_>>();
             occurrence_key(value, &params, &timezone)
         };
+        event.key_timezone = timezone.clone();
         event.recurrence_key = event.raw_recurrence.as_ref().map(key).transpose()?;
         event.excluded_occurrences = event
             .raw_exdates
@@ -496,6 +502,7 @@ impl PlannerStore {
                 event: parsed.event,
                 excluded_occurrences,
                 recurrence_key: parsed.recurrence_key,
+                recurrence_timezone: Some(parsed.key_timezone),
             });
         }
         let duplicates = candidates.iter().filter(|item| item.duplicate).count();
@@ -559,7 +566,6 @@ impl PlannerStore {
             if candidate.recurrence_key.is_some() {
                 // An override replaces one occurrence of its imported series; without
                 // the series it stays a standalone event.
-                let same_import = series_ids.contains_key(&candidate.source_uid);
                 series_id = match series_ids.get(&candidate.source_uid) {
                     Some(id) => Some(id.clone()),
                     None => tx
@@ -580,11 +586,11 @@ impl PlannerStore {
                         Err(Error::NotFound(_)) => None,
                         Err(error) => return Err(error),
                     };
-                    // The key was computed in the timezone of the series in the same feed.
-                    // For a series stored earlier, redo it in that series' timezone; a
-                    // value that needs its own TZID to be read is not linked.
-                    if let Some(series) = series.as_ref().filter(|_| !same_import)
-                        && series.timezone != candidate.event.timezone
+                    // Redo the key when it was resolved in another timezone than the series
+                    // it links to; a value that needs its own TZID to be read is not linked.
+                    if let Some(series) = &series
+                        && candidate.recurrence_timezone.as_deref()
+                            != Some(series.timezone.as_str())
                     {
                         let id = &candidate.recurrence_id;
                         link_key = (id.ends_with('Z') || id.len() == 8)

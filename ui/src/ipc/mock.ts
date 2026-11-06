@@ -253,6 +253,7 @@ function mockIcalPreview(content: string, sourceKind: string): IcalImportPreview
       event,
       excluded_occurrences: [],
       recurrence_key: null,
+      recurrence_timezone: null,
     };
   });
   return {

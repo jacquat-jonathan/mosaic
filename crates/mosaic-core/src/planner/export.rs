@@ -1,5 +1,7 @@
 use super::service::PlannerService;
-use super::{ActivityEntry, PlannerStore, PlannerSummary, now, sql_error};
+use super::{
+    ACTIVITY_SELECT, ActivityEntry, PlannerStore, PlannerSummary, activity_row, now, sql_error,
+};
 use crate::error::Result;
 use serde::Serialize;
 
@@ -19,26 +21,10 @@ impl PlannerStore {
     fn all_activity(&self) -> Result<Vec<ActivityEntry>> {
         let mut statement = self
             .conn
-            .prepare(
-                "SELECT id, entity_kind, entity_id, occurred_at, action, summary, before_json, after_json
-                 FROM activity ORDER BY id",
-            )
+            .prepare(&format!("{ACTIVITY_SELECT} ORDER BY id"))
             .map_err(sql_error)?;
         statement
-            .query_map([], |row| {
-                let before: Option<String> = row.get(6)?;
-                let after: Option<String> = row.get(7)?;
-                Ok(ActivityEntry {
-                    id: row.get(0)?,
-                    entity_kind: row.get(1)?,
-                    entity_id: row.get(2)?,
-                    occurred_at: row.get(3)?,
-                    action: row.get(4)?,
-                    summary: row.get(5)?,
-                    before: before.and_then(|value| serde_json::from_str(&value).ok()),
-                    after: after.and_then(|value| serde_json::from_str(&value).ok()),
-                })
-            })
+            .query_map([], activity_row)
             .map_err(sql_error)?
             .collect::<std::result::Result<_, _>>()
             .map_err(sql_error)

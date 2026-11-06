@@ -1,7 +1,8 @@
 use super::service::PlannerService;
 use super::{
     CreateTask, FutureSessionPolicy, MoveTask, PlannerStore, PlannerTask, TaskStatus, UpdateTask,
-    bump_store_revision, expect_revision, now, record_activity, required_title, sql_error,
+    bump_store_revision, expect_revision, now, record_activity, record_activity_because,
+    required_title, sql_error,
 };
 use crate::error::{Error, Result};
 use chrono::NaiveDate;
@@ -222,7 +223,7 @@ impl PlannerStore {
             ("task", &id),
             &at,
             "created",
-            "Created task",
+            &format!("Created task {:?}", task.title),
             None,
             Some(serde_json::to_value(&task).unwrap()),
         )?;
@@ -271,7 +272,7 @@ impl PlannerStore {
             ("task", id),
             &at,
             "updated",
-            "Updated task",
+            &updated_summary(&before, &after),
             Some(serde_json::to_value(&before).unwrap()),
             Some(serde_json::to_value(&after).unwrap()),
         )?;
@@ -350,19 +351,23 @@ impl PlannerStore {
             let after = task_in(&tx, task_id)?;
             let previous = &before[task_id];
             let summary = if task_id != id {
-                "Moved with parent task".to_string()
+                format!(
+                    "Moved task {:?} along with its parent task {id}",
+                    after.title
+                )
             } else if previous.status != after.status {
                 format!(
-                    "Moved task from {} to {}",
+                    "Moved task {:?} from {} to {}",
+                    after.title,
                     status_label(previous.status),
                     status_label(after.status)
                 )
             } else if previous.epic_id != after.epic_id {
-                "Moved task to another epic".to_string()
+                format!("Moved task {:?} to another epic", after.title)
             } else if previous.parent_id != after.parent_id {
-                "Changed task hierarchy".to_string()
+                format!("Changed the parent of task {:?}", after.title)
             } else {
-                "Reordered task".to_string()
+                format!("Reordered task {:?} within its column", after.title)
             };
             record_activity(
                 &tx,
@@ -436,14 +441,17 @@ impl PlannerStore {
                     params![session_id, at],
                 )
                 .map_err(sql_error)?;
-                record_activity(
+                record_activity_because(
                     &tx,
                     ("work_session", &session_id),
                     &at,
                     "cancelled",
-                    "Cancelled future session when task completed",
-                    None,
-                    None,
+                    &format!("Cancelled planned work session of task {:?}", before.title),
+                    Some(&format!(
+                        "task {id} was completed and its future sessions were set to be cancelled"
+                    )),
+                    Some(serde_json::json!({"task_id": id, "state": "planned"})),
+                    Some(serde_json::json!({"task_id": id, "state": "cancelled"})),
                 )?;
             }
         }
@@ -453,7 +461,11 @@ impl PlannerStore {
             ("task", id),
             &at,
             "completed",
-            "Completed task",
+            &format!(
+                "Completed task {:?} (status {} -> done)",
+                after.title,
+                status_label(before.status)
+            ),
             Some(serde_json::to_value(&before).unwrap()),
             Some(serde_json::to_value(&after).unwrap()),
         )?;
@@ -479,7 +491,7 @@ impl PlannerStore {
             ("task", id),
             &at,
             "reopened",
-            "Reopened task",
+            &format!("Reopened task {:?} (status done -> new)", after.title),
             Some(serde_json::to_value(&before).unwrap()),
             Some(serde_json::to_value(&after).unwrap()),
         )?;
@@ -540,7 +552,7 @@ impl PlannerStore {
             ("task", id),
             &at,
             action,
-            &format!("{} task", action),
+            &format!("{} task {:?}", capitalize(action), after.title),
             Some(serde_json::to_value(&before).unwrap()),
             Some(serde_json::to_value(&after).unwrap()),
         )?;
@@ -596,5 +608,29 @@ impl PlannerService {
 
     pub fn trash_task(&self, id: &str, expected_revision: i64) -> Result<PlannerTask> {
         self.store()?.trash_task(id, expected_revision)
+    }
+}
+
+fn capitalize(word: &str) -> String {
+    let mut chars = word.chars();
+    chars
+        .next()
+        .map(|first| first.to_uppercase().chain(chars).collect())
+        .unwrap_or_default()
+}
+
+/// `Updated task "Title": title, due_date` — names the fields so the summary stands alone.
+fn updated_summary(before: &PlannerTask, after: &PlannerTask) -> String {
+    let fields: Vec<String> = super::diff_snapshots(
+        serde_json::to_value(before).ok().as_ref(),
+        serde_json::to_value(after).ok().as_ref(),
+    )
+    .into_iter()
+    .map(|change| change.field)
+    .collect();
+    if fields.is_empty() {
+        format!("Updated task {:?} (no field changed)", after.title)
+    } else {
+        format!("Updated task {:?}: {}", after.title, fields.join(", "))
     }
 }

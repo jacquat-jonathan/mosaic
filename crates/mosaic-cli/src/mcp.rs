@@ -664,7 +664,7 @@ impl MosaicMcp {
     }
 
     #[tool(
-        description = "Read the complete activity history of one app-owned planner task, oldest first, including before/after snapshots for creation, edits, moves, completion and lifecycle changes."
+        description = "Read the complete activity history of one app-owned planner task, oldest first. Each entry says when (occurred_at, UTC), who (source: app, cli, agent or external, plus actor: the agent name; both absent on old entries), what (action and a self-contained summary), exactly which fields changed (changes: field, from, to — status transitions appear as the status field), why when it was a consequence of another change (reason), and a one-line `text` rendering. The full before/after snapshots are included too."
     )]
     async fn planner_task_history(
         &self,

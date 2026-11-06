@@ -1,0 +1,76 @@
+.mosaic-ds.notifications-view {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.mosaic-ds.notifications-view .notifications-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--mds-space-6);
+  flex-wrap: wrap;
+  margin-bottom: var(--mds-space-7);
+}
+.mosaic-ds.notifications-view h1 {
+  display: flex;
+  align-items: center;
+  gap: var(--mds-space-4);
+  font-size: var(--mds-text-heading);
+  margin: 0;
+}
+.mosaic-ds.notifications-view .notifications-actions {
+  display: flex;
+  gap: var(--mds-space-3);
+}
+.mosaic-ds.notifications-view .notifications-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--mds-border);
+}
+.mosaic-ds.notifications-view .notification {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--mds-space-4);
+  padding: var(--mds-space-4) 0;
+  border-bottom: 1px solid var(--mds-border);
+}
+.mosaic-ds.notifications-view .notification-icon {
+  flex: none;
+  margin-top: 2px;
+  color: var(--mds-text-muted);
+}
+.mosaic-ds.notifications-view .notification[data-severity="error"] .notification-icon {
+  color: var(--mds-danger, currentColor);
+}
+.mosaic-ds.notifications-view .notification-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.mosaic-ds.notifications-view .notification[data-unread="true"] .notification-title {
+  font-weight: 600;
+}
+.mosaic-ds.notifications-view .notification-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: var(--mds-space-3);
+  border-radius: 50%;
+  background: currentColor;
+}
+.mosaic-ds.notifications-view .notification-detail,
+.mosaic-ds.notifications-view .notification-meta {
+  color: var(--mds-text-muted);
+  font-size: var(--mds-text-small, 0.85em);
+}

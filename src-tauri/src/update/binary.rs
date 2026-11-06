@@ -104,6 +104,16 @@ fn asset_url(release: &GithubRelease, name: &str) -> Result<String, String> {
         .ok_or_else(|| format!("Missing release asset: {name}"))
 }
 async fn latest() -> Result<Option<(Manifest, String)>, String> {
+    Ok(signed_releases(None).await?.into_iter().next())
+}
+/// Complete signed releases, newest first. The newest is always returned (and must verify, and fit
+/// this macOS); with `floor`, older ones are added while they are newer than `floor`, so an app that
+/// skipped versions can show every change. An older release that is incomplete or fails
+/// verification is left out rather than blocking the update; unsigned notes are never shown.
+async fn signed_releases(
+    floor: Option<(u64, u64, u64)>,
+) -> Result<Vec<(Manifest, String)>, String> {
+    let mut found: Vec<(Manifest, String)> = Vec::new();
     let client = crate::http::client(Duration::from_secs(30))?;
     let https = |url: String| {
         let client = client.clone();
@@ -128,6 +138,10 @@ async fn latest() -> Result<Option<(Manifest, String)>, String> {
         .collect();
     releases.sort_by_key(|r| std::cmp::Reverse(parse_version(&r.tag_name)));
     for release in releases {
+        if !found.is_empty() && floor.is_none_or(|f| parse_version(&release.tag_name) <= Some(f)) {
+            break;
+        }
+        let newest = found.is_empty();
         let version = &release.tag_name[1..];
         let archive = format!("Mosaic-{version}-universal.tar.gz");
         if [
@@ -142,11 +156,24 @@ async fn latest() -> Result<Option<(Manifest, String)>, String> {
         {
             continue;
         }
-        let bytes = https(asset_url(&release, "manifest.json")?).await?;
-        let signature = https(asset_url(&release, "manifest.sig")?).await?;
-        let manifest = verified_manifest(&bytes, &signature, PUBLIC_KEY)?;
-        if manifest.version != version {
-            return Err("Release tag doesn't match its signed manifest".into());
+        let fetched = async {
+            let bytes = https(asset_url(&release, "manifest.json")?).await?;
+            let signature = https(asset_url(&release, "manifest.sig")?).await?;
+            let manifest = verified_manifest(&bytes, &signature, PUBLIC_KEY)?;
+            if manifest.version != version {
+                return Err("Release tag doesn't match its signed manifest".to_string());
+            }
+            Ok(manifest)
+        }
+        .await;
+        let manifest = match fetched {
+            Ok(manifest) => manifest,
+            Err(e) if newest => return Err(e),
+            Err(_) => continue,
+        };
+        if !newest {
+            found.push((manifest, asset_url(&release, &archive)?));
+            continue;
         }
         let current = Command::new("/usr/bin/sw_vers")
             .arg("-productVersion")
@@ -169,28 +196,41 @@ async fn latest() -> Result<Option<(Manifest, String)>, String> {
                 manifest.minimum_macos
             ));
         }
-        return Ok(Some((manifest, asset_url(&release, &archive)?)));
+        found.push((manifest, asset_url(&release, &archive)?));
     }
-    Ok(None)
+    Ok(found)
+}
+/// The releases newer than `current`, newest first, for the "what's new" list.
+fn releases_since(manifests: Vec<Manifest>, current: Option<(u64, u64, u64)>) -> Vec<Release> {
+    let mut newer: Vec<_> = manifests
+        .into_iter()
+        .filter(|m| parse_version(&m.version) > current)
+        .collect();
+    newer.sort_by_key(|m| std::cmp::Reverse(parse_version(&m.version)));
+    newer.dedup_by(|a, b| a.version == b.version);
+    newer
+        .into_iter()
+        .map(|m| Release {
+            version: m.version,
+            date: m.date,
+            notes: m.notes,
+        })
+        .collect()
 }
 pub(super) async fn check() -> CmdResult<UpdateCheck> {
-    let release = latest().await.map_err(invalid)?;
-    let newer = release
-        .as_ref()
-        .is_some_and(|(m, _)| parse_version(&m.version) > parse_version(env!("CARGO_PKG_VERSION")));
+    let current = parse_version(env!("CARGO_PKG_VERSION"));
+    let manifests: Vec<Manifest> = signed_releases(current)
+        .await
+        .map_err(invalid)?
+        .into_iter()
+        .map(|(manifest, _)| manifest)
+        .collect();
+    let latest_version = manifests.first().map(|m| m.version.clone());
+    let releases = releases_since(manifests, current);
     Ok(UpdateCheck {
-        latest_version: release.as_ref().map(|(m, _)| m.version.clone()),
-        releases: release
-            .filter(|_| newer)
-            .map(|(m, _)| {
-                vec![Release {
-                    version: m.version,
-                    date: m.date,
-                    notes: m.notes,
-                }]
-            })
-            .unwrap_or_default(),
-        update_available: newer,
+        latest_version,
+        update_available: !releases.is_empty(),
+        releases,
     })
 }
 fn checksum(path: &Path) -> Result<String, String> {
@@ -424,6 +464,38 @@ mod tests {
             .expect("a published release");
         assert!(parse_version(&manifest.version) >= parse_version("0.20.0"));
         assert!(url.ends_with(&manifest.archive), "{url}");
+    }
+
+    fn manifest(version: &str, notes: &[&str]) -> Manifest {
+        Manifest {
+            version: version.into(),
+            bundle_id: String::new(),
+            minimum_macos: "12.0".into(),
+            architectures: vec![],
+            archive: String::new(),
+            sha256: String::new(),
+            size: 1,
+            date: format!("date-{version}"),
+            notes: notes.iter().map(|n| n.to_string()).collect(),
+        }
+    }
+
+    #[test]
+    fn update_lists_every_skipped_version_newest_first() {
+        // Installed 0.26.0; 0.27.0, 0.28.0 and 0.29.0 were all skipped. 0.10.0 sorts after 0.9.0.
+        let found = vec![
+            manifest("0.27.0", &["a"]),
+            manifest("0.29.0", &["c"]),
+            manifest("0.28.0", &["b"]),
+            manifest("0.26.0", &["installed"]),
+            manifest("0.9.0", &["old"]),
+        ];
+        let releases = releases_since(found, parse_version("0.26.0"));
+        let versions: Vec<_> = releases.iter().map(|r| r.version.as_str()).collect();
+        assert_eq!(versions, ["0.29.0", "0.28.0", "0.27.0"]);
+        assert_eq!(releases[1].notes, ["b"]);
+        assert_eq!(releases[1].date, "date-0.28.0");
+        assert!(releases_since(vec![manifest("0.26.0", &[])], parse_version("0.26.0")).is_empty());
     }
 
     #[test]

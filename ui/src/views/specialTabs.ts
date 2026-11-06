@@ -29,6 +29,7 @@ const names: Record<string, string> = {
   run: "Run",
   runs: "Runs",
   activity: "Activity & review",
+  notifications: "Notifications",
   connections: "Connections",
   settings: "Settings",
   planning: "Planning view",

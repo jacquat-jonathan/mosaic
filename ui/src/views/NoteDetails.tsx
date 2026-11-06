@@ -36,8 +36,8 @@ export function NoteDetails({ path }: { path: string }) {
   const [dragLine, setDragLine] = useState<number | null>(null),
     [dropLine, setDropLine] = useState<number | null>(null);
   const mounted = useRef(true),
-    lock = useRef(false),
-    retryFocus = useRef(false);
+    lock = useRef(false);
+  const [retryFocus, setRetryFocus] = useState(false);
   const backlinkHeading = useRef<HTMLHeadingElement>(null),
     retry = useRef<HTMLButtonElement>(null);
   const outline = useRef<HTMLDivElement>(null);
@@ -86,11 +86,11 @@ export function NoteDetails({ path }: { path: string }) {
     };
   }, [path, root, revision, tick]);
   useEffect(() => {
-    if (!loading && retryFocus.current) {
+    if (!loading && retryFocus) {
       (loadProblem ? retry.current : backlinkHeading.current)?.focus({ preventScroll: true });
-      retryFocus.current = false;
+      setRetryFocus(false);
     }
-  }, [loading, loadProblem]);
+  }, [loading, loadProblem, retryFocus]);
   const act = async (work: () => Promise<unknown>) => {
     if (!current() || lock.current) return;
     lock.current = true;
@@ -193,7 +193,10 @@ export function NoteDetails({ path }: { path: string }) {
               ref={retry}
               variant="secondary"
               onClick={() => {
-                retryFocus.current = true;
+                // State, not a ref: the failed load's pending effect must not consume this request,
+                // and loading must be true in the same commit so this load's failure can't either.
+                setRetryFocus(true);
+                setLoading(true);
                 setTick((value) => value + 1);
               }}
             >

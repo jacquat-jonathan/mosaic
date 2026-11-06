@@ -126,13 +126,19 @@ impl VaultState {
         })
     }
 
-    /// The scheduler's state; a missing or unreadable file starts from the defaults.
-    pub fn tessera(&self) -> TesseraSettings {
-        self.read(TESSERA_FILE).ok().flatten().unwrap_or_default()
+    /// The scheduler's state; only a missing file starts from the defaults.
+    pub fn tessera(&self) -> Result<TesseraSettings> {
+        Ok(self.read(TESSERA_FILE)?.unwrap_or_default())
     }
 
-    pub fn set_tessera(&self, value: &TesseraSettings) -> Result<()> {
-        self.locked(|| self.write(TESSERA_FILE, value))
+    /// Read, mutate and persist under the same cross-process lock. Never replace a stale snapshot.
+    pub fn update_tessera<T>(&self, change: impl FnOnce(&mut TesseraSettings) -> T) -> Result<T> {
+        self.locked(|| {
+            let mut state = self.tessera()?;
+            let result = change(&mut state);
+            self.write(TESSERA_FILE, &state)?;
+            Ok(result)
+        })
     }
 
     fn read<T: DeserializeOwned>(&self, name: &str) -> Result<Option<T>> {
@@ -273,6 +279,125 @@ mod tests {
         json
     }
 
+    fn run(id: u64) -> AgentRun {
+        serde_json::from_value(serde_json::json!({
+            "id": id, "agent": "test", "title": "Test", "started": 1,
+            "finished": null, "late": false, "status": "running", "answer": "",
+            "error": null, "proposals": 0
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn concurrent_completions_and_preferences_preserve_each_other() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = VaultState::in_dir(dir.path().into()).unwrap();
+        state
+            .update_tessera(|s| s.runs = vec![run(1), run(2)])
+            .unwrap();
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(3));
+        std::thread::scope(|scope| {
+            for id in 1..=2 {
+                let state = state.clone();
+                let barrier = barrier.clone();
+                scope.spawn(move || {
+                    // Both jobs have observed the same pre-completion state.
+                    assert!(
+                        state
+                            .tessera()
+                            .unwrap()
+                            .runs
+                            .iter()
+                            .all(|r| r.finished.is_none())
+                    );
+                    barrier.wait();
+                    state
+                        .update_tessera(|s| {
+                            let run = s.runs.iter_mut().find(|r| r.id == id).unwrap();
+                            run.finished = Some(42);
+                            run.status = "done".into();
+                            run.transcript.push(crate::chat::ChatEvent::Text {
+                                text: format!("run {id}"),
+                            });
+                        })
+                        .unwrap();
+                });
+            }
+            barrier.wait();
+            state
+                .update_tessera(|s| {
+                    s.paused = true;
+                    s.last_checked = 42;
+                })
+                .unwrap();
+        });
+        let saved = state.tessera().unwrap();
+        assert!(saved.paused);
+        assert_eq!(saved.last_checked, 42);
+        assert!(
+            saved
+                .runs
+                .iter()
+                .all(|r| r.finished == Some(42) && r.transcript.events.len() == 1)
+        );
+    }
+
+    #[test]
+    fn malformed_scheduler_state_is_preserved() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = VaultState::in_dir(dir.path().into()).unwrap();
+        let path = dir.path().join(TESSERA_FILE);
+        std::fs::write(&path, "{broken").unwrap();
+        assert!(state.tessera().is_err());
+        assert!(state.update_tessera(|s| s.paused = true).is_err());
+        assert_eq!(std::fs::read_to_string(path).unwrap(), "{broken");
+    }
+
+    #[test]
+    fn state_process_writer() {
+        let Some(dir) = std::env::var_os("MOSAIC_STATE_TEST_DIR") else {
+            return;
+        };
+        let state = VaultState::in_dir(dir.into()).unwrap();
+        // A pipe barrier starts independently opened writers together without sleep-based ordering.
+        use std::io::Read;
+        std::io::stdin().read_exact(&mut [0u8; 1]).unwrap();
+        for _ in 0..25 {
+            state.update_tessera(|s| s.last_checked += 1).unwrap();
+        }
+    }
+
+    #[test]
+    fn independent_process_writers_do_not_lose_updates() {
+        use std::io::Write;
+        let dir = tempfile::tempdir().unwrap();
+        let mut children: Vec<_> = (0..3)
+            .map(|_| {
+                std::process::Command::new(std::env::current_exe().unwrap())
+                    .args(["--exact", "vault_state::tests::state_process_writer"])
+                    .env("MOSAIC_STATE_TEST_DIR", dir.path())
+                    .stdin(std::process::Stdio::piped())
+                    .stdout(std::process::Stdio::null())
+                    .spawn()
+                    .unwrap()
+            })
+            .collect();
+        for child in &mut children {
+            child.stdin.take().unwrap().write_all(b"!").unwrap();
+        }
+        for child in &mut children {
+            assert!(child.wait().unwrap().success());
+        }
+        assert_eq!(
+            VaultState::in_dir(dir.path().into())
+                .unwrap()
+                .tessera()
+                .unwrap()
+                .last_checked,
+            75
+        );
+    }
+
     #[test]
     fn a_vaults_state_moves_out_of_settings_json_once_and_stays_there_for_a_downgrade() {
         let d = tempfile::tempdir().unwrap();
@@ -285,7 +410,7 @@ mod tests {
             vec![rule("Private", Access::Hidden)]
         );
         assert_eq!(state.bookmarks().unwrap(), vec!["A.md"]);
-        assert_eq!(state.tessera().last_checked, 42);
+        assert_eq!(state.tessera().unwrap().last_checked, 42);
         assert_eq!(
             std::fs::read(support.join("settings.json")).unwrap(),
             before
@@ -351,7 +476,7 @@ mod tests {
         let before = old_settings(&support, &root);
         let state = VaultState::open_in(&root, &support).unwrap();
         let rules = std::fs::read(state.dir.join(RULES_FILE)).unwrap();
-        let mut t = state.tessera();
+        let mut t = state.tessera().unwrap();
         t.last_checked = 99;
         t.runs.push(AgentRun {
             id: 1,
@@ -380,10 +505,15 @@ mod tests {
                 truncated: false,
             },
         });
-        state.set_tessera(&t).unwrap();
-        assert_eq!(state.tessera().last_checked, 99);
+        state.update_tessera(|state| *state = t.clone()).unwrap();
+        assert_eq!(state.tessera().unwrap().last_checked, 99);
         assert_eq!(
-            VaultState::open_in(&root, &support).unwrap().tessera().runs[0].transcript,
+            VaultState::open_in(&root, &support)
+                .unwrap()
+                .tessera()
+                .unwrap()
+                .runs[0]
+                .transcript,
             t.runs[0].transcript
         );
         assert_eq!(

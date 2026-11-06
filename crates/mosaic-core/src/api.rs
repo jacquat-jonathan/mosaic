@@ -5,7 +5,7 @@ use crate::error::{Error, Result};
 use crate::history::{Action, History, Source, Version};
 use crate::index::{Backlink, Index, OutLink, SearchHit, SyncPlan, SyncStats, TagCount};
 use crate::kind::FileKind;
-use crate::links::{FileSet, markdown_url_for, wiki_text_for};
+use crate::links::{FileSet, encode_url_text, markdown_url_for, wiki_safe, wiki_text_for};
 use crate::parse::{self, Heading, LinkKind};
 use crate::planner::PlannerService;
 use crate::settings::{Access, AgentRule, Settings, access_for, rule_covers};
@@ -297,8 +297,16 @@ impl Workspace {
 
     /// Who changes files through this workspace (recorded in the history). The app is the default.
     pub fn with_source(self, source: Source) -> Self {
+        self.planner.set_actor_context(Some(source.as_str()), None);
         *self.source.lock().unwrap_or_else(|p| p.into_inner()) = source;
         self
+    }
+
+    /// The agent's name, shown in the AI activity log and on planner activity entries (e.g. the
+    /// MCP client "claude-code").
+    pub fn set_actor(&self, name: &str) {
+        self.ctx.set_actor(name);
+        self.planner.set_actor_context(None, Some(name));
     }
 }
 
@@ -1656,16 +1664,25 @@ impl FileService {
                         continue;
                     }
                     let new_target = map_path(&target);
-                    let replacement = if markdown {
-                        markdown_url_for(&new_target, new_src)
+                    let (range, replacement) = if markdown {
+                        (l.target_range, markdown_url_for(&new_target, new_src))
                     } else {
                         let current = new_set.resolve(&l.target, Some(new_src), false);
                         if current.as_deref() == Some(new_target.as_str()) {
                             continue; // still resolves: leave the user's text alone
                         }
-                        wiki_text_for(new_set, &new_target, Some(new_src))
+                        let text = wiki_text_for(new_set, &new_target, Some(new_src));
+                        if wiki_safe(&text) {
+                            (l.target_range, text)
+                        } else {
+                            // `#`, `^`, `|` or brackets in the name can't be written in `[[...]]`.
+                            (
+                                l.link_range,
+                                wiki_as_markdown(l, &text, &new_target, new_src),
+                            )
+                        }
                     };
-                    edits.push((l.target_range, replacement));
+                    edits.push((range, replacement));
                 }
                 if edits.is_empty() {
                     return Ok(false);
@@ -1700,6 +1717,24 @@ impl FileService {
         self.record_as(new_src, Action::Edited, source, actor);
         Ok(true)
     }
+}
+
+/// A wiki link rewritten as a Markdown link to `new_target`, keeping its embed mark, alias, heading and block.
+fn wiki_as_markdown(l: &parse::Link, text: &str, new_target: &str, new_src: &str) -> String {
+    let label = l
+        .alias
+        .clone()
+        .unwrap_or_else(|| text.rsplit('/').next().unwrap_or(text).to_string())
+        .replace(['[', ']'], "");
+    let mut url = markdown_url_for(new_target, new_src);
+    if let Some(h) = &l.heading {
+        url.push('#');
+        url.push_str(&encode_url_text(h));
+    } else if let Some(b) = &l.block {
+        url.push_str("#%5E");
+        url.push_str(&encode_url_text(b));
+    }
+    format!("{}[{label}]({url})", if l.embed { "!" } else { "" })
 }
 
 fn read_only(path: &str) -> Error {
@@ -2230,6 +2265,39 @@ mod tests {
         w.files.rename("Note.md", "Archive/Note.md", true).unwrap();
         let other = text(&w, "Other.md");
         assert!(other.contains("[[Start]]"), "alias link kept: {other}");
+    }
+
+    #[test]
+    fn renaming_to_a_name_with_link_syntax_keeps_every_link_working() {
+        let (_d, w) = ws();
+        w.files.create("Old.md", "x").unwrap();
+        w.files
+            .create(
+                "src.md",
+                "see [[Old]] and ![[Old#Sec|shown]]\n[md](Old.md)\n",
+            )
+            .unwrap();
+        w.files.rename("Old.md", "Notes (v2) #1.md", true).unwrap();
+        let src = text(&w, "src.md");
+        assert!(
+            src.contains("[Notes (v2) #1](Notes%20%28v2%29%20%231.md)"),
+            "{src}"
+        );
+        assert!(
+            src.contains("![shown](Notes%20%28v2%29%20%231.md#Sec)"),
+            "{src}"
+        );
+        assert!(src.contains("[md](Notes%20%28v2%29%20%231.md)"), "{src}");
+        let back = w.index().backlinks("Notes (v2) #1.md").unwrap();
+        assert!(back.iter().any(|b| b.source == "src.md"), "{back:?}");
+        let links = crate::parse::parse(&src).links;
+        assert_eq!(links.len(), 3);
+        assert!(
+            links
+                .iter()
+                .all(|l| l.target == "Notes (v2) #1.md" || l.target == "Notes (v2) #1"),
+            "{links:?}"
+        );
     }
 
     #[test]

@@ -8,6 +8,7 @@ enum Frequency {
     Daily,
     Weekly,
     Monthly,
+    Yearly,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -18,6 +19,7 @@ struct Rule {
     month_days: Vec<i32>,
     week_start: Option<Weekday>,
     until: Option<NaiveDate>,
+    count: Option<u32>,
 }
 
 fn parse_weekday(value: &str) -> Option<Weekday> {
@@ -41,6 +43,7 @@ fn parse_rule(value: &str) -> Result<Rule> {
     let mut month_days = Vec::new();
     let mut week_start = None;
     let mut until = None;
+    let mut count = None;
     for part in value.split(';') {
         let (key, value) = part
             .split_once('=')
@@ -51,9 +54,10 @@ fn parse_rule(value: &str) -> Result<Rule> {
                     "DAILY" => Frequency::Daily,
                     "WEEKLY" => Frequency::Weekly,
                     "MONTHLY" => Frequency::Monthly,
+                    "YEARLY" => Frequency::Yearly,
                     _ => {
                         return Err(Error::Invalid(
-                            "recurrence frequency must be DAILY, WEEKLY or MONTHLY".into(),
+                            "recurrence frequency must be DAILY, WEEKLY, MONTHLY or YEARLY".into(),
                         ));
                     }
                 });
@@ -95,10 +99,21 @@ fn parse_rule(value: &str) -> Result<Rule> {
             }
             "UNTIL" => {
                 let value = value.trim_end_matches('Z');
-                let value = &value[..value.len().min(8)];
+                let value = value.get(..8).unwrap_or(value);
                 until = Some(NaiveDate::parse_from_str(value, "%Y%m%d").map_err(|_| {
                     Error::Invalid("recurrence UNTIL must start with YYYYMMDD".into())
                 })?);
+            }
+            "COUNT" => {
+                count = Some(
+                    value
+                        .parse::<u32>()
+                        .ok()
+                        .filter(|value| *value > 0 && *value <= 100_000)
+                        .ok_or_else(|| {
+                            Error::Invalid("recurrence COUNT must be 1–100000".into())
+                        })?,
+                );
             }
             other => {
                 return Err(Error::Invalid(format!(
@@ -113,6 +128,16 @@ fn parse_rule(value: &str) -> Result<Rule> {
             "BYMONTHDAY cannot be used with WEEKLY recurrence".into(),
         ));
     }
+    if count.is_some() && until.is_some() {
+        return Err(Error::Invalid(
+            "recurrence rule cannot have both COUNT and UNTIL".into(),
+        ));
+    }
+    if frequency == Frequency::Yearly && (!month_days.is_empty() || !weekdays.is_empty()) {
+        return Err(Error::Invalid(
+            "BYDAY and BYMONTHDAY are not supported with YEARLY recurrence".into(),
+        ));
+    }
     Ok(Rule {
         frequency,
         interval,
@@ -120,6 +145,7 @@ fn parse_rule(value: &str) -> Result<Rule> {
         month_days,
         week_start,
         until,
+        count,
     })
 }
 
@@ -133,6 +159,7 @@ pub(super) fn normalize_rule(value: Option<String>) -> Result<Option<String>> {
         Frequency::Daily => "DAILY",
         Frequency::Weekly => "WEEKLY",
         Frequency::Monthly => "MONTHLY",
+        Frequency::Yearly => "YEARLY",
     };
     let mut parts = vec![format!("FREQ={frequency}")];
     if rule.interval != 1 {
@@ -171,6 +198,9 @@ pub(super) fn normalize_rule(value: Option<String>) -> Result<Option<String>> {
     if let Some(until) = rule.until {
         parts.push(format!("UNTIL={}", until.format("%Y%m%d")));
     }
+    if let Some(count) = rule.count {
+        parts.push(format!("COUNT={count}"));
+    }
     Ok(Some(parts.join(";")))
 }
 
@@ -193,6 +223,27 @@ fn start_of_week(date: NaiveDate, week_start: Weekday) -> NaiveDate {
 }
 
 fn occurs(rule: &Rule, base: NaiveDate, date: NaiveDate) -> bool {
+    if !matches_pattern(rule, base, date) {
+        return false;
+    }
+    let Some(count) = rule.count else { return true };
+    // COUNT limits the number of occurrences, so `date` must be among the first `count` matches.
+    let mut seen = 0;
+    let mut day = base;
+    while day <= date {
+        if matches_pattern(rule, base, day) {
+            seen += 1;
+            if seen > count {
+                return false;
+            }
+        }
+        let Some(next) = day.succ_opt() else { break };
+        day = next;
+    }
+    true
+}
+
+fn matches_pattern(rule: &Rule, base: NaiveDate, date: NaiveDate) -> bool {
     if date < base || rule.until.is_some_and(|until| date > until) {
         return false;
     }
@@ -242,13 +293,47 @@ fn occurs(rule: &Rule, base: NaiveDate, date: NaiveDate) -> bool {
                     || !rule.weekdays.is_empty()
                     || date.day() == base.day())
         }
+        Frequency::Yearly => {
+            let years = date.year() - base.year();
+            years % i32::try_from(rule.interval).unwrap_or(1) == 0
+                && date.month() == base.month()
+                && date.day() == base.day()
+        }
     }
 }
 
 fn local_datetime(tz: Tz, value: NaiveDateTime) -> Result<DateTime<Tz>> {
-    tz.from_local_datetime(&value)
+    // Ambiguous (fall-back) times resolve to the first occurrence. A time inside a spring-forward
+    // gap is shifted forward by the gap length (02:30 -> 03:30), by applying the UTC offset that
+    // was in force the day before (assumes no other offset change in between).
+    if let Some(resolved) = tz.from_local_datetime(&value).earliest() {
+        return Ok(resolved);
+    }
+    use chrono::Offset as _;
+    let before = value - chrono::Duration::days(1);
+    let offset = tz
+        .from_local_datetime(&before)
         .earliest()
-        .ok_or_else(|| Error::Invalid(format!("{value} does not exist in {tz}")))
+        .ok_or_else(|| Error::Invalid(format!("{value} does not exist in {tz}")))?
+        .offset()
+        .fix();
+    Ok(
+        (value - chrono::Duration::seconds(i64::from(offset.local_minus_utc())))
+            .and_utc()
+            .with_timezone(&tz),
+    )
+}
+
+/// Last local date a timed occurrence touches. The end instant is exclusive, so a
+/// non-empty event ending at exactly 00:00 belongs only to the previous day; a
+/// zero-length event still belongs to its own day.
+fn last_local_date(start: DateTime<Utc>, end: DateTime<Utc>, tz: Tz) -> NaiveDate {
+    let last = if end > start {
+        end - chrono::Duration::nanoseconds(1)
+    } else {
+        end
+    };
+    last.with_timezone(&tz).date_naive()
 }
 
 /// Returns occurrence key, normalized start and normalized end. Recurring timed events are rebuilt
@@ -316,7 +401,7 @@ pub(super) fn expand(
     let local_start = start_utc.with_timezone(&tz);
     if event.recurrence_rule.is_none() {
         return Ok(
-            if end_utc.with_timezone(&tz).date_naive() >= from && local_start.date_naive() <= to {
+            if last_local_date(start_utc, end_utc, tz) >= from && local_start.date_naive() <= to {
                 vec![(
                     local_start.date_naive().to_string(),
                     start_utc.to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
@@ -343,7 +428,7 @@ pub(super) fn expand(
         {
             let start = local_datetime(tz, date.and_time(time))?.with_timezone(&Utc);
             let end = start + duration;
-            let local_end_date = end.with_timezone(&tz).date_naive();
+            let local_end_date = last_local_date(start, end, tz);
             if local_end_date >= from && date <= to {
                 result.push((
                     date.to_string(),
@@ -387,6 +472,126 @@ mod tests {
         }
     }
 
+    fn daily_at(start: &str, end: &str) -> PlannerEvent {
+        let mut e = event();
+        e.start_value = start.into();
+        e.end_value = end.into();
+        e.recurrence_rule = Some("FREQ=DAILY".into());
+        e
+    }
+
+    #[test]
+    fn dst_gap_occurrence_is_shifted_forward_not_an_error() {
+        // 02:30 Europe/Zurich does not exist on 2026-03-29.
+        let e = daily_at("2026-03-27T01:30:00.000Z", "2026-03-27T02:00:00.000Z");
+        let d = |day| NaiveDate::from_ymd_opt(2026, 3, day).unwrap();
+        let o = expand(&e, d(28), d(30)).unwrap();
+        assert_eq!(o.len(), 3);
+        assert_eq!(o[0].1, "2026-03-28T01:30:00.000Z");
+        assert_eq!(o[1].1, "2026-03-29T01:30:00.000Z"); // 03:30 CEST
+        assert_eq!(o[1].2, "2026-03-29T02:00:00.000Z");
+        assert_eq!(o[2].1, "2026-03-30T00:30:00.000Z");
+    }
+
+    #[test]
+    fn dst_ambiguous_occurrence_uses_first_instant() {
+        // 02:30 Europe/Zurich happens twice on 2026-10-25; the earlier (CEST) one wins.
+        let e = daily_at("2026-10-23T00:30:00.000Z", "2026-10-23T01:00:00.000Z");
+        let d = |day| NaiveDate::from_ymd_opt(2026, 10, day).unwrap();
+        let o = expand(&e, d(25), d(25)).unwrap();
+        assert_eq!(o.len(), 1);
+        assert_eq!(o[0].1, "2026-10-25T00:30:00.000Z");
+    }
+
+    #[test]
+    fn dst_gap_shifts_by_the_gap_length_for_half_hour_and_midnight_gaps() {
+        // Lord Howe: 02:00 -> 02:30 on 2026-10-04, so 02:15 becomes 02:45 (+11:00).
+        let mut e = daily_at("2026-10-01T15:45:00.000Z", "2026-10-01T16:15:00.000Z");
+        e.timezone = "Australia/Lord_Howe".into();
+        let d = |day| NaiveDate::from_ymd_opt(2026, 10, day).unwrap();
+        let o = expand(&e, d(4), d(4)).unwrap();
+        assert_eq!(o[0].0, "2026-10-04");
+        assert_eq!(o[0].1, "2026-10-03T15:45:00.000Z");
+        assert_eq!(o[0].2, "2026-10-03T16:15:00.000Z");
+        // Havana: 00:00 -> 01:00 on 2026-03-08, so 00:30 becomes 01:30 (-04:00).
+        let mut e = daily_at("2026-03-05T05:30:00.000Z", "2026-03-05T06:30:00.000Z");
+        e.timezone = "America/Havana".into();
+        let d = |day| NaiveDate::from_ymd_opt(2026, 3, day).unwrap();
+        let o = expand(&e, d(8), d(8)).unwrap();
+        assert_eq!(o[0].0, "2026-03-08");
+        assert_eq!(o[0].1, "2026-03-08T05:30:00.000Z");
+        assert_eq!(o[0].2, "2026-03-08T06:30:00.000Z");
+    }
+
+    fn utc_timed(start: &str, end: &str, rule: Option<&str>) -> PlannerEvent {
+        let mut event = event();
+        event.timezone = "UTC".into();
+        event.start_value = start.into();
+        event.end_value = end.into();
+        event.recurrence_rule = rule.map(Into::into);
+        event
+    }
+
+    fn days(event: &PlannerEvent, from: (u32, u32), to: (u32, u32)) -> Vec<String> {
+        expand(
+            event,
+            NaiveDate::from_ymd_opt(2026, from.0, from.1).unwrap(),
+            NaiveDate::from_ymd_opt(2026, to.0, to.1).unwrap(),
+        )
+        .unwrap()
+        .into_iter()
+        .map(|occurrence| occurrence.0)
+        .collect()
+    }
+
+    #[test]
+    fn timed_event_ending_at_midnight_stays_on_its_start_day() {
+        let event = utc_timed("2026-03-27T22:00:00.000Z", "2026-03-28T00:00:00.000Z", None);
+        assert_eq!(days(&event, (3, 27), (3, 27)), vec!["2026-03-27"]);
+        assert!(days(&event, (3, 28), (3, 28)).is_empty());
+        // Ending one millisecond past midnight still reaches the next day.
+        let event = utc_timed("2026-03-27T22:00:00.000Z", "2026-03-28T00:00:00.001Z", None);
+        assert_eq!(days(&event, (3, 28), (3, 28)), vec!["2026-03-27"]);
+    }
+
+    #[test]
+    fn recurring_timed_event_ending_at_midnight_stays_on_its_start_day() {
+        let event = utc_timed(
+            "2026-03-27T22:00:00.000Z",
+            "2026-03-28T00:00:00.000Z",
+            Some("FREQ=DAILY;UNTIL=20260330"),
+        );
+        assert_eq!(days(&event, (3, 28), (3, 28)), vec!["2026-03-28"]);
+        assert_eq!(days(&event, (3, 29), (3, 29)), vec!["2026-03-29"]);
+        let all = days(&event, (3, 27), (3, 30));
+        assert_eq!(all.len(), 4);
+    }
+
+    #[test]
+    fn zero_length_timed_events_appear_on_their_day() {
+        let midnight = utc_timed("2026-03-28T00:00:00.000Z", "2026-03-28T00:00:00.000Z", None);
+        assert_eq!(days(&midnight, (3, 28), (3, 28)), vec!["2026-03-28"]);
+        assert!(days(&midnight, (3, 27), (3, 27)).is_empty());
+        let recurring = utc_timed(
+            "2026-03-28T00:00:00.000Z",
+            "2026-03-28T00:00:00.000Z",
+            Some("FREQ=DAILY;UNTIL=20260330"),
+        );
+        assert_eq!(
+            days(&recurring, (3, 28), (3, 29)),
+            vec!["2026-03-28", "2026-03-29"]
+        );
+        assert!(days(&recurring, (3, 27), (3, 27)).is_empty());
+    }
+
+    #[test]
+    fn all_day_end_stays_exclusive() {
+        let mut event = utc_timed("2026-03-27", "2026-03-28", None);
+        event.all_day = true;
+        assert_eq!(days(&event, (3, 27), (3, 27)), vec!["2026-03-27"]);
+        assert!(days(&event, (3, 28), (3, 28)).is_empty());
+    }
+
     #[test]
     fn recurring_wall_clock_survives_dst() {
         let occurrences = expand(
@@ -408,8 +613,24 @@ mod tests {
             .unwrap(),
             Some("FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,WE;WKST=SU".into())
         );
-        assert!(normalize_rule(Some("FREQ=YEARLY".into())).is_err());
-        assert!(normalize_rule(Some("FREQ=DAILY;COUNT=3".into())).is_err());
+        assert_eq!(
+            normalize_rule(Some("FREQ=YEARLY".into())).unwrap(),
+            Some("FREQ=YEARLY".into())
+        );
+        assert_eq!(
+            normalize_rule(Some("FREQ=WEEKLY;COUNT=3".into())).unwrap(),
+            Some("FREQ=WEEKLY;COUNT=3".into())
+        );
+        for rule in [
+            "FREQ=DAILY;COUNT=0",
+            "FREQ=DAILY;COUNT=x",
+            "FREQ=DAILY;COUNT=3;UNTIL=20260401",
+            "FREQ=YEARLY;BYDAY=MO",
+            "FREQ=YEARLY;BYMONTHDAY=1",
+            "FREQ=DAILY;BYSETPOS=1",
+        ] {
+            assert!(normalize_rule(Some(rule.into())).is_err(), "{rule}");
+        }
         assert!(normalize_rule(Some("FREQ=WEEKLY;WKST=NO".into())).is_err());
         assert_eq!(
             normalize_rule(Some("FREQ=MONTHLY;BYMONTHDAY=1,15,-1;INTERVAL=2".into())).unwrap(),
@@ -424,6 +645,38 @@ mod tests {
         ] {
             assert!(normalize_rule(Some(rule.into())).is_err(), "{rule}");
         }
+    }
+
+    #[test]
+    fn yearly_and_count_rules_expand() {
+        let mut event = event();
+        event.all_day = true;
+        event.start_value = "2024-02-29".into();
+        event.end_value = "2024-03-01".into();
+        event.recurrence_rule = Some("FREQ=YEARLY".into());
+        let days = |event: &PlannerEvent| {
+            expand(
+                event,
+                NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(),
+                NaiveDate::from_ymd_opt(2033, 1, 1).unwrap(),
+            )
+            .unwrap()
+            .into_iter()
+            .map(|occurrence| occurrence.0)
+            .collect::<Vec<_>>()
+        };
+        assert_eq!(days(&event), vec!["2024-02-29", "2028-02-29", "2032-02-29"]);
+        event.start_value = "2026-11-03".into();
+        event.end_value = "2026-11-04".into();
+        event.recurrence_rule = Some("FREQ=YEARLY;INTERVAL=2".into());
+        assert_eq!(
+            days(&event),
+            vec!["2026-11-03", "2028-11-03", "2030-11-03", "2032-11-03"]
+        );
+        event.recurrence_rule = Some("FREQ=DAILY;INTERVAL=2;COUNT=3".into());
+        assert_eq!(days(&event), vec!["2026-11-03", "2026-11-05", "2026-11-07"]);
+        event.recurrence_rule = Some("FREQ=WEEKLY;COUNT=2".into());
+        assert_eq!(days(&event), vec!["2026-11-03", "2026-11-10"]);
     }
 
     #[test]
@@ -514,5 +767,24 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["2026-04-05"]
         );
+    }
+
+    #[test]
+    fn non_ascii_until_is_an_error_not_a_panic() {
+        for until in [
+            "2026032é",           // 2-byte char straddles byte 8
+            "202603€",            // 3-byte char straddles byte 8
+            "202603😀",           // 4-byte char straddles byte 8
+            "é2026032",           // multi-byte char first
+            "２０２６０３２７",   // full-width digits
+            "日本語日本語日本語", // long, all multi-byte
+        ] {
+            let error = parse_rule(&format!("FREQ=DAILY;UNTIL={until}")).unwrap_err();
+            assert!(
+                matches!(&error, Error::Invalid(m) if m == "recurrence UNTIL must start with YYYYMMDD"),
+                "{until:?} gave {error:?}"
+            );
+        }
+        assert!(parse_rule("FREQ=DAILY;UNTIL=20260331T235959Z").is_ok());
     }
 }

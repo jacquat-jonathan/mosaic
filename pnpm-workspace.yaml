@@ -10,3 +10,7 @@ overrides:
   "lodash-es@<4.18.0": ^4.18.0         # chevrotain (mermaid, langium)
   "source-map-js@<1.2.2": ^1.2.2       # postcss (vite), sass
   "katex@<0.18.2": ^0.18.9             # mermaid's math labels
+  # nyc 18 and test-exclude 8 declare glob ^13 and minimatch ^10; babel-plugin-istanbul 8.0.2 uses
+  # test-exclude 7, which declares glob ^10. No release of these reaches the patched versions.
+  "glob@>=9.0.0 <14.0.2": ^14.0.2
+  "minimatch@>=7.0.0 <11.0.1": ^11.0.1

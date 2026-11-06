@@ -98,8 +98,13 @@ function plannerRecord(entity_kind: "epic" | "task" | "event", entity_id: string
     occurred_at: plannerNow(),
     action,
     summary,
+    source: "app",
+    actor: null,
+    reason: null,
+    changes: [],
     before: null,
     after: null,
+    text: `${plannerNow()} | app | ${entity_kind} ${entity_id} | ${action} | ${summary}`,
   });
 }
 function plannerConflict(current: { revision: number }, expected: number) {
@@ -474,7 +479,7 @@ function mockAgents(): Agent[] {
     .map(([path, f]) => {
       const skill = /\/SKILL\.md$/i.test(path);
       const title = skill ? path.slice(folder.length + 1).split("/")[0] : path.split("/").pop()!.replace(/\.md$/i, "");
-      const fm = /^---\n([\s\S]*?)\n---/.exec(f.content);
+      const fm = /^---\r?\n(?:([\s\S]*?)\r?\n)??---/.exec(f.content);
       let props: Record<string, unknown> = {};
       try {
         props = parseYaml(fm?.[1] ?? "") ?? {};
@@ -2759,10 +2764,10 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
 function mockQuery(q: string): QueryResult {
   const tokens = q.match(/(?:[^\s"]+|"[^"]*")+/g) ?? [];
   let rows: QueryRow[] = [...files].map(([path, f]) => {
-    const fm = /^---\n([\s\S]*?)\n---/.exec(f.content);
+    const fm = /^---\r?\n(?:([\s\S]*?)\r?\n)??---/.exec(f.content);
     let props: Record<string, unknown> = {};
     try {
-      props = (fm && (parseYaml(fm[1]) as Record<string, unknown>)) || {};
+      props = (fm && (parseYaml(fm[1] ?? "") as Record<string, unknown>)) || {};
     } catch {
       /* keep empty */
     }

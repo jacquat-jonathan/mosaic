@@ -27,6 +27,9 @@ pub struct Link {
     /// Byte range of the target text inside the file (what to replace when the target moves).
     #[serde(skip)]
     pub target_range: (usize, usize),
+    /// Byte range of the whole link (`[[...]]`, `![..](..)`), for rewriting it in another syntax.
+    #[serde(skip)]
+    pub link_range: (usize, usize),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -69,8 +72,9 @@ pub struct Parsed {
     pub body: String,
 }
 
-static FRONTMATTER: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\A---[ \t]*\r?\n((?s:.*?))\r?\n---[ \t]*(?:\r?\n|\z)").unwrap());
+static FRONTMATTER: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"\A---[ \t]*\r?\n(?:((?s:.*?))\r?\n)??---[ \t]*(?:\r?\n|\z)").unwrap()
+});
 static WIKI: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(!?)\[\[([^\[\]\n]+?)\]\]").unwrap());
 static MD_LINK: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"(!?)\[([^\]\n]*)\]\(\s*(<[^>\n]+>|[^\s()]+)(?:\s+"[^"\n]*")?\s*\)"#).unwrap()
@@ -79,7 +83,7 @@ static TAG: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?:^|[\s(,])#([\p{L}\p{N}_\-/]*[\p{L}_\-/][\p{L}\p{N}_\-/]*)").unwrap()
 });
 static HEADING: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^(#{1,6})[ \t]+(.+?)[ \t#]*$").unwrap());
+    LazyLock::new(|| Regex::new(r"^(#{1,6})[ \t]+(.+?)(?:[ \t]+#+)?[ \t]*$").unwrap());
 static BLOCK_ID: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\s\^([A-Za-z0-9-]+)\s*$").unwrap());
 static TASK: LazyLock<Regex> = LazyLock::new(|| {
@@ -192,9 +196,12 @@ fn yaml_strings(v: &serde_norway::Value) -> Vec<String> {
 }
 
 pub fn frontmatter_span(text: &str) -> Option<(usize, String)> {
-    FRONTMATTER
-        .captures(text)
-        .map(|c| (c.get(0).unwrap().end(), c[1].to_string()))
+    FRONTMATTER.captures(text).map(|c| {
+        (
+            c.get(0).unwrap().end(),
+            c.get(1).map_or(String::new(), |m| m.as_str().to_string()),
+        )
+    })
 }
 
 /// `line` with its checkbox set to `mark`, if it's a task line whose text is `text`.
@@ -324,6 +331,7 @@ pub fn parse(text: &str) -> Parsed {
                     line_start + inner.start(),
                     line_start + inner.start() + target_len,
                 ),
+                link_range: (line_start + whole.start(), line_start + whole.end()),
             });
         }
         for c in MD_LINK.captures_iter(&scan) {
@@ -357,6 +365,7 @@ pub fn parse(text: &str) -> Parsed {
                     line_start + url_m.start() + angle,
                     line_start + url_m.start() + angle + path_part.len(),
                 ),
+                link_range: (line_start + whole.start(), line_start + whole.end()),
             });
         }
         // "# Heading" has a space after '#', so heading markers never match the tag pattern.
@@ -416,6 +425,32 @@ mod tests {
         assert_eq!(p.tasks[1].due, None);
     }
 
+    #[test]
+    fn empty_frontmatter_is_a_present_but_empty_block() {
+        for (text, body) in [
+            ("---\n---\n# Title\n", "# Title\n"),
+            ("---\r\n---\r\n# Title\r\n", "# Title\r\n"),
+            ("---\n---", ""),
+            ("---\r\n---", ""),
+            ("---\n---\n", ""),
+        ] {
+            let p = parse(text);
+            assert_eq!(p.frontmatter.as_deref(), Some(""), "{text:?}");
+            assert_eq!(p.body, body, "{text:?}");
+        }
+        // A later fence must not be mistaken for the close of a block that is already closed.
+        let p = parse("---\n---\nbody\n\n---\nrule\n");
+        assert_eq!(p.frontmatter.as_deref(), Some(""));
+        assert_eq!(p.body, "body\n\n---\nrule\n");
+        // Non-empty blocks still work with CRLF and a closing fence at EOF.
+        assert_eq!(
+            parse("---\r\ntags: [a]\r\n---").frontmatter.as_deref(),
+            Some("tags: [a]")
+        );
+        assert_eq!(parse("---\ntags: [a]\n---").tags, vec!["a"]);
+        assert_eq!(parse("---\n# not closed\n").frontmatter, None);
+    }
+
     const HOME: &str = "---\naliases: [Start, Index]\ntags: [hub]\ncustom_key: keep me\n---\n# Home\n\nSee [[Projects/Mosaic/Plan|the plan]], [[Ideas]] and [[Ideas#Later]].\nEmbedded: ![[diagram.png]]\n\n```\n[[not a link]] #notatag\n```\n\nInline `[[nope]]` and [md](../Other%20Note.md#Sec) and [web](https://x.y) #hub #area/work\nEnd ^blk-1\n";
 
     #[test]
@@ -461,6 +496,19 @@ mod tests {
             let raw = &HOME[l.target_range.0..l.target_range.1];
             assert_eq!(percent_decode(raw), l.target, "range for {l:?}");
         }
+    }
+
+    #[test]
+    fn heading_closing_sequence_follows_commonmark() {
+        let texts = |src: &str| -> Vec<String> {
+            parse(src).headings.into_iter().map(|h| h.text).collect()
+        };
+        assert_eq!(texts("# Learning C#\n"), ["Learning C#"]);
+        assert_eq!(texts("# Foo ##\n"), ["Foo"]);
+        assert_eq!(texts("# Foo #  \n"), ["Foo"]);
+        assert_eq!(texts("# C# #\n"), ["C#"]);
+        assert_eq!(texts("## F#\n"), ["F#"]);
+        assert_eq!(texts("# Foo#bar\n"), ["Foo#bar"]);
     }
 
     #[test]

@@ -965,6 +965,44 @@ fn validate_ical_accepts_feeds_with_and_without_a_utf8_bom() {
 }
 
 #[test]
+fn one_unsupported_recurrence_never_rejects_the_whole_feed() {
+    let event = |uid: &str, rule: &str| {
+        format!(
+            "BEGIN:VEVENT\r\nUID:{uid}\r\nDTSTART:20261103T090000Z\r\nDTEND:20261103T100000Z\r\nSUMMARY:{uid}\r\n{rule}END:VEVENT\r\n"
+        )
+    };
+    let wrap =
+        |events: String| format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\n{events}END:VCALENDAR\r\n");
+    // YEARLY and COUNT are supported now.
+    for rule in ["RRULE:FREQ=YEARLY\r\n", "RRULE:FREQ=WEEKLY;COUNT=3\r\n"] {
+        assert_eq!(
+            validate_ical(&wrap(event("a", rule)), "UTC").unwrap(),
+            1,
+            "{rule}"
+        );
+    }
+    // A rule that is still unsupported is skipped; the other events survive.
+    let feed = wrap(
+        event("good", "")
+            + &event("bad", "RRULE:FREQ=DAILY;BYSETPOS=1\r\n")
+            + &event("yearly", "RRULE:FREQ=YEARLY\r\n"),
+    );
+    assert_eq!(validate_ical(&feed, "UTC").unwrap(), 2);
+    let store = in_memory();
+    let preview = store.preview_ical_import("feed", &feed, "UTC").unwrap();
+    let mut uids = preview
+        .candidates
+        .iter()
+        .map(|c| c.source_uid.as_str())
+        .collect::<Vec<_>>();
+    uids.sort();
+    assert_eq!(uids, vec!["good", "yearly"]);
+    let occurrences =
+        overlay_occurrences(&feed, "s", "S", None, "2026-11-03", "2026-11-03", "UTC").unwrap();
+    assert_eq!(occurrences.len(), 2);
+}
+
+#[test]
 fn activity_records_actor_field_changes_and_readable_text() {
     let mut store = in_memory();
     store

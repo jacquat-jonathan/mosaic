@@ -383,6 +383,11 @@ fn parse(content: &str, fallback_timezone: &str) -> Result<Vec<ParsedEvent>> {
             (latest.get(&candidate_key(&event.uid, &event.recurrence_id)) == Some(&index))
                 .then_some(event)
         })
+        // One event with a recurrence rule we cannot expand must not reject the whole feed.
+        .filter(|event| {
+            event.cancelled
+                || super::recurrence::normalize_rule(event.event.recurrence_rule.clone()).is_ok()
+        })
         .collect())
 }
 

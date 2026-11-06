@@ -129,3 +129,30 @@ export function linkTextFor(path: string, entries: Entry[], fromPath: string | n
   const short = strip(fileName(path));
   return resolveLink(short, entries, fromPath) === path ? short : strip(path);
 }
+
+/** Whether `text` can sit inside `[[...]]` and parse back as the same target (`#`, `^`, `|` and brackets can't). */
+export const wikiSafe = (text: string) => !/[#^|[\]]/.test(text);
+
+/** Percent-encodes what would end or change a Markdown link URL. Mirrors `encode_url_text` in links.rs. */
+export function encodeUrlText(s: string): string {
+  const special = /[\s%#()[\]<>"?^|`\\]/;
+  const encoder = new TextEncoder();
+  let out = "";
+  for (const c of s) {
+    const code = c.codePointAt(0) ?? 0;
+    if (code < 0x20 || code === 0x7f || special.test(c)) {
+      for (const b of encoder.encode(c)) out += `%${b.toString(16).toUpperCase().padStart(2, "0")}`;
+    } else out += c;
+  }
+  return out;
+}
+
+/** Relative Markdown link URL from `fromPath`'s folder to `path`. Mirrors `markdown_url_for` in links.rs. */
+export function markdownUrlFor(path: string, fromPath: string): string {
+  const fromParts = parentOf(fromPath).split("/").filter(Boolean);
+  const toParts = path.split("/");
+  let common = 0;
+  while (common < fromParts.length && common < toParts.length && fromParts[common] === toParts[common]) common++;
+  const segs = [...Array<string>(fromParts.length - common).fill(".."), ...toParts.slice(common)];
+  return segs.map(encodeUrlText).join("/");
+}

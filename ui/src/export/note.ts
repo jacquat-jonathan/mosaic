@@ -10,7 +10,7 @@ import { renderBlocksAll } from "../editor/blocks";
 import { useVault, parentOf } from "../state/vault";
 import { useWorkspace } from "../state/workspace";
 
-const FRONTMATTER = /^---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(\r?\n|$)/;
+const FRONTMATTER = /^---[ \t]*\r?\n(?:([\s\S]*?)\r?\n)??---[ \t]*(\r?\n|$)/;
 
 const escapeHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 

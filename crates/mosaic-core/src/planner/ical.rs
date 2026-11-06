@@ -106,12 +106,26 @@ fn property(line: &str) -> Option<IcalProperty<'_>> {
 }
 
 fn text(value: &str) -> String {
-    value
-        .replace("\\n", "\n")
-        .replace("\\N", "\n")
-        .replace("\\,", ",")
-        .replace("\\;", ";")
-        .replace("\\\\", "\\")
+    // One left-to-right pass so each backslash is consumed exactly once; sequential `replace`
+    // calls would turn the `\n` inside an escaped `\\n` into a newline.
+    let mut result = String::with_capacity(value.len());
+    let mut chars = value.chars();
+    while let Some(c) = chars.next() {
+        if c != '\\' {
+            result.push(c);
+            continue;
+        }
+        match chars.next() {
+            Some('n' | 'N') => result.push('\n'),
+            Some(escaped @ ('\\' | ',' | ';')) => result.push(escaped),
+            Some(other) => {
+                result.push('\\');
+                result.push(other);
+            }
+            None => result.push('\\'),
+        }
+    }
+    result
 }
 
 fn title_marks_cancellation(title: &str) -> bool {
@@ -205,6 +219,8 @@ fn parse(content: &str, fallback_timezone: &str) -> Result<Vec<ParsedEvent>> {
             "iCalendar input is larger than 10 MB".into(),
         ));
     }
+    // Outlook and Windows tools often prefix feeds with a UTF-8 BOM.
+    let content = content.strip_prefix('\u{feff}').unwrap_or(content);
     let lines = unfolded(content);
     if !lines
         .iter()

@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { readProps, removeProp, renameProp, setProp } from "./properties";
+import { readProps, removeProp, renameProp, setProp, withProperties } from "./properties";
 
 const yaml =
   "# a comment\ntags: [project, mosaic]\ndue: 2026-10-02\ndone: false\ncount: 3\ntitle: Plan\nmeta: {a: 1}\n";
@@ -35,4 +35,19 @@ test("adds, renames and removes properties", () => {
   expect(removeProp(out, "name")).toBe("aliases:\n  - Roadmap\n");
   expect(removeProp("a: 1\n", "a")).toBe("");
   expect(setProp("", "status", "draft")).toBe("status: draft\n");
+});
+
+test("setting a property on an empty frontmatter block reuses it", () => {
+  for (const eol of ["\n", "\r\n"]) {
+    const note = `---${eol}---${eol}# Title${eol}`;
+    const out = withProperties(note, setProp("", "status", "draft"));
+    expect(out).toBe(`---${eol}status: draft${eol}---${eol}# Title${eol}`);
+    expect(out.match(/^---/gm)).toHaveLength(2);
+  }
+  // No trailing newline after the closing fence.
+  expect(withProperties("---\n---", setProp("", "a", 1))).toBe("---\na: 1\n---");
+  // Clearing the last property leaves an empty block rather than a blank-line one.
+  expect(withProperties("---\na: 1\n---\nbody", "")).toBe("---\n---\nbody");
+  // No frontmatter yet: a block is added once.
+  expect(withProperties("# T\n", "a: 1\n")).toBe("---\na: 1\n---\n\n# T\n");
 });

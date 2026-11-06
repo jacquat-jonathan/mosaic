@@ -95,7 +95,7 @@ fn parse_rule(value: &str) -> Result<Rule> {
             }
             "UNTIL" => {
                 let value = value.trim_end_matches('Z');
-                let value = &value[..value.len().min(8)];
+                let value = value.get(..8).unwrap_or(value);
                 until = Some(NaiveDate::parse_from_str(value, "%Y%m%d").map_err(|_| {
                     Error::Invalid("recurrence UNTIL must start with YYYYMMDD".into())
                 })?);
@@ -251,6 +251,18 @@ fn local_datetime(tz: Tz, value: NaiveDateTime) -> Result<DateTime<Tz>> {
         .ok_or_else(|| Error::Invalid(format!("{value} does not exist in {tz}")))
 }
 
+/// Last local date a timed occurrence touches. The end instant is exclusive, so a
+/// non-empty event ending at exactly 00:00 belongs only to the previous day; a
+/// zero-length event still belongs to its own day.
+fn last_local_date(start: DateTime<Utc>, end: DateTime<Utc>, tz: Tz) -> NaiveDate {
+    let last = if end > start {
+        end - chrono::Duration::nanoseconds(1)
+    } else {
+        end
+    };
+    last.with_timezone(&tz).date_naive()
+}
+
 /// Returns occurrence key, normalized start and normalized end. Recurring timed events are rebuilt
 /// from their local wall clock, which keeps (for example) 09:00 stable across DST transitions.
 pub(super) fn expand(
@@ -316,7 +328,7 @@ pub(super) fn expand(
     let local_start = start_utc.with_timezone(&tz);
     if event.recurrence_rule.is_none() {
         return Ok(
-            if end_utc.with_timezone(&tz).date_naive() >= from && local_start.date_naive() <= to {
+            if last_local_date(start_utc, end_utc, tz) >= from && local_start.date_naive() <= to {
                 vec![(
                     local_start.date_naive().to_string(),
                     start_utc.to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
@@ -343,7 +355,7 @@ pub(super) fn expand(
         {
             let start = local_datetime(tz, date.and_time(time))?.with_timezone(&Utc);
             let end = start + duration;
-            let local_end_date = end.with_timezone(&tz).date_naive();
+            let local_end_date = last_local_date(start, end, tz);
             if local_end_date >= from && date <= to {
                 result.push((
                     date.to_string(),
@@ -385,6 +397,75 @@ mod tests {
             archived_at: None,
             trashed_at: None,
         }
+    }
+
+    fn utc_timed(start: &str, end: &str, rule: Option<&str>) -> PlannerEvent {
+        let mut event = event();
+        event.timezone = "UTC".into();
+        event.start_value = start.into();
+        event.end_value = end.into();
+        event.recurrence_rule = rule.map(Into::into);
+        event
+    }
+
+    fn days(event: &PlannerEvent, from: (u32, u32), to: (u32, u32)) -> Vec<String> {
+        expand(
+            event,
+            NaiveDate::from_ymd_opt(2026, from.0, from.1).unwrap(),
+            NaiveDate::from_ymd_opt(2026, to.0, to.1).unwrap(),
+        )
+        .unwrap()
+        .into_iter()
+        .map(|occurrence| occurrence.0)
+        .collect()
+    }
+
+    #[test]
+    fn timed_event_ending_at_midnight_stays_on_its_start_day() {
+        let event = utc_timed("2026-03-27T22:00:00.000Z", "2026-03-28T00:00:00.000Z", None);
+        assert_eq!(days(&event, (3, 27), (3, 27)), vec!["2026-03-27"]);
+        assert!(days(&event, (3, 28), (3, 28)).is_empty());
+        // Ending one millisecond past midnight still reaches the next day.
+        let event = utc_timed("2026-03-27T22:00:00.000Z", "2026-03-28T00:00:00.001Z", None);
+        assert_eq!(days(&event, (3, 28), (3, 28)), vec!["2026-03-27"]);
+    }
+
+    #[test]
+    fn recurring_timed_event_ending_at_midnight_stays_on_its_start_day() {
+        let event = utc_timed(
+            "2026-03-27T22:00:00.000Z",
+            "2026-03-28T00:00:00.000Z",
+            Some("FREQ=DAILY;UNTIL=20260330"),
+        );
+        assert_eq!(days(&event, (3, 28), (3, 28)), vec!["2026-03-28"]);
+        assert_eq!(days(&event, (3, 29), (3, 29)), vec!["2026-03-29"]);
+        let all = days(&event, (3, 27), (3, 30));
+        assert_eq!(all.len(), 4);
+    }
+
+    #[test]
+    fn zero_length_timed_events_appear_on_their_day() {
+        let midnight = utc_timed("2026-03-28T00:00:00.000Z", "2026-03-28T00:00:00.000Z", None);
+        assert_eq!(days(&midnight, (3, 28), (3, 28)), vec!["2026-03-28"]);
+        assert!(days(&midnight, (3, 27), (3, 27)).is_empty());
+        let recurring = utc_timed(
+            "2026-03-28T00:00:00.000Z",
+            "2026-03-28T00:00:00.000Z",
+            Some("FREQ=DAILY;UNTIL=20260330"),
+        );
+        assert_eq!(
+            days(&recurring, (3, 28), (3, 29)),
+            vec!["2026-03-28", "2026-03-29"]
+        );
+        assert!(days(&recurring, (3, 27), (3, 27)).is_empty());
+    }
+
+    #[test]
+    fn all_day_end_stays_exclusive() {
+        let mut event = utc_timed("2026-03-27", "2026-03-28", None);
+        event.all_day = true;
+        assert_eq!(days(&event, (3, 27), (3, 27)), vec!["2026-03-27"]);
+        assert!(days(&event, (3, 28), (3, 28)).is_empty());
     }
 
     #[test]
@@ -514,5 +595,24 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["2026-04-05"]
         );
+    }
+
+    #[test]
+    fn non_ascii_until_is_an_error_not_a_panic() {
+        for until in [
+            "2026032é",           // 2-byte char straddles byte 8
+            "202603€",            // 3-byte char straddles byte 8
+            "202603😀",           // 4-byte char straddles byte 8
+            "é2026032",           // multi-byte char first
+            "２０２６０３２７",   // full-width digits
+            "日本語日本語日本語", // long, all multi-byte
+        ] {
+            let error = parse_rule(&format!("FREQ=DAILY;UNTIL={until}")).unwrap_err();
+            assert!(
+                matches!(&error, Error::Invalid(m) if m == "recurrence UNTIL must start with YYYYMMDD"),
+                "{until:?} gave {error:?}"
+            );
+        }
+        assert!(parse_rule("FREQ=DAILY;UNTIL=20260331T235959Z").is_ok());
     }
 }

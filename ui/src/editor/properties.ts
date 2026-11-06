@@ -2,6 +2,7 @@
 // while keeping the rest of the YAML as written (comments, order, quoting).
 
 import { isMap, isScalar, isSeq, parseDocument } from "yaml";
+import { FRONTMATTER_RE } from "./livePreview";
 
 export type PropKind = "list" | "checkbox" | "date" | "number" | "text" | "other";
 
@@ -92,4 +93,16 @@ export function emptyValue(kind: PropKind): unknown {
     default:
       return "";
   }
+}
+
+/**
+ * The note with its frontmatter replaced by `yaml`. An existing block (even an empty `---`/`---` one)
+ * is reused in place, with its line endings; a note without one gets a new block on top.
+ */
+export function withProperties(content: string, yaml: string): string {
+  const fm = FRONTMATTER_RE.exec(content);
+  const eol = (fm ? fm[0] : content).includes("\r\n") ? "\r\n" : "\n";
+  const text = yaml.trimEnd();
+  const block = text ? `---${eol}${text.replace(/\r?\n/g, eol)}${eol}---` : `---${eol}---`;
+  return fm ? block + content.slice(fm[0].length) : `${block}${eol}${eol}${content}`;
 }

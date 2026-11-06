@@ -256,7 +256,15 @@ change. Every result includes a `revision`. Pass that exact value as `expected_r
 moving, completing, reopening, archiving, restoring or trashing a task. If another person or process
 changed it first, Mosaic returns `conflict`; read it again and reconsider the change.
 
-`planner_task_history` returns the full activity timeline with before/after snapshots. Use
+`planner_task_history` returns the full activity timeline, oldest first. Every entry has `occurred_at`
+(UTC), `source` (`app` for a person, `cli`, `agent`, `external`) and `actor` (the agent's name), the
+`action` and a self-contained `summary`, a `changes` list of `{field, from, to}` (a status transition
+is the `status` change; `null` means unset), an optional `reason` when the entry is a consequence of
+another change (for example a work session cancelled because its task was completed), the full
+`before`/`after` snapshots, and `text`: the same entry as one readable line,
+`time | source:actor | task <id> | action | summary | field: old -> new | reason: …`. Entries written
+before Mosaic recorded the actor have no `source`/`actor` (shown as `unknown`); their `changes` are
+derived from the snapshots. Use
 `create_planner_task`, `update_planner_task`, `move_planner_task`, `complete_planner_task`,
 `reopen_planner_task`, `archive_planner_task`, `restore_planner_task` and `trash_planner_task` for
 changes. Moving requires the complete destination epic, parent and status. Completion refuses open

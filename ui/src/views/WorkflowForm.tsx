@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { parseDocument } from "yaml";
+import { isMap, isScalar, parseDocument, type YAMLMap } from "yaml";
 import { Button, Notice, Select, SettingRow, Switch, TextArea, TextField } from "../design-system/components";
 import { api } from "../ipc/api";
 import { errorMessage, type Agent } from "../ipc/types";
@@ -7,7 +7,6 @@ import { useAttention } from "../state/attention";
 import { useUi } from "../state/ui";
 import { useVault, uniquePath } from "../state/vault";
 import { useWorkspace } from "../state/workspace";
-import { FRONTMATTER_RE } from "../editor/livePreview";
 import { vaultPrefs } from "../state/vaultPreferences";
 import { registerDraft } from "../state/drafts";
 import { FolderChoices } from "./FolderChoices";
@@ -15,6 +14,9 @@ import { eventFolder } from "./workflowPresentation";
 import { viewPath } from "./specialTabs";
 import { DesignSystemScope } from "./DesignSystemScope";
 import "./workflowEditor.css";
+
+// Unlike the editor's FRONTMATTER_RE, this also matches fences with nothing between them.
+const AGENT_FRONTMATTER_RE = /^---[ \t]*\r?\n(?:([\s\S]*?)\r?\n)?---[ \t]*(?=\r?\n|$)/;
 
 export function workflowContent(
   source: string,
@@ -25,11 +27,19 @@ export function workflowContent(
   instructions?: string,
   web = false,
 ): string {
-  const fm = FRONTMATTER_RE.exec(source);
+  const fm = AGENT_FRONTMATTER_RE.exec(source);
   const doc = parseDocument(fm?.[1] ?? "");
   if (doc.errors.length) throw new Error("Fix the agent's YAML in its source before using the form.");
-  // Initialize an empty mapping before deleting optional keys for a manual workflow.
-  if (!doc.contents) doc.set("may-change", folders);
+  // A manual workflow may have no frontmatter keys yet (nothing, a comment, or `~`/`null`): start a
+  // mapping, which `set` and `delete` require. Anything else is not something the form can edit.
+  if (!doc.contents || (isScalar(doc.contents) && doc.contents.value === null)) {
+    const map = doc.createNode({}) as YAMLMap.Parsed;
+    map.flow = false;
+    doc.contents = map;
+  } else if (!isMap(doc.contents))
+    throw new Error(
+      "The agent's frontmatter must be a mapping of keys to values. Fix it in its source before using the form.",
+    );
   if (schedule) doc.set("schedule", schedule);
   else doc.delete("schedule");
   if (events.length === 1) doc.set("on", events[0]);

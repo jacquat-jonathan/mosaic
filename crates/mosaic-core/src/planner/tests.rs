@@ -943,6 +943,38 @@ fn ical_import_keeps_an_override_standalone_when_a_multi_day_series_only_touches
     assert!(range.events.iter().any(|item| item.title == "Stray"));
 }
 
+#[test]
+fn ical_import_links_an_override_to_a_stored_series_in_the_series_timezone() {
+    let master = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\n\
+        BEGIN:VEVENT\r\nUID:db\r\nDTSTART;TZID=America/Los_Angeles:20260401T170000\r\n\
+        DTEND;TZID=America/Los_Angeles:20260401T180000\r\nSUMMARY:Daily\r\nRRULE:FREQ=DAILY\r\n\
+        END:VEVENT\r\nEND:VCALENDAR\r\n";
+    // Only the changed occurrence: 20260404T000000Z is 17:00 on 04-03 in Los Angeles.
+    let update = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\n\
+        BEGIN:VEVENT\r\nUID:db\r\nRECURRENCE-ID:20260404T000000Z\r\nDTSTART:20260404T020000Z\r\n\
+        DTEND:20260404T030000Z\r\nSUMMARY:Moved\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+    let mut store = in_memory();
+    import_all(&mut store, master);
+    import_all(&mut store, update);
+    let range = store.calendar_range("2026-04-02", "2026-04-05").unwrap();
+    let daily = range
+        .events
+        .iter()
+        .filter(|item| item.title == "Daily")
+        .map(|item| item.occurrence_key.as_str())
+        .collect::<Vec<_>>();
+    assert!(!daily.contains(&"2026-04-03"), "{daily:?}");
+    assert!(daily.contains(&"2026-04-04"), "{daily:?}");
+    assert_eq!(
+        range
+            .events
+            .iter()
+            .filter(|item| item.title == "Moved")
+            .count(),
+        1
+    );
+}
+
 fn export_with_event(
     title: &str,
     description: &str,

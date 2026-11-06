@@ -555,9 +555,11 @@ impl PlannerStore {
             }
             let mut input = candidate.event.clone();
             let mut series_id = None;
+            let mut link_key = candidate.recurrence_key.clone();
             if candidate.recurrence_key.is_some() {
                 // An override replaces one occurrence of its imported series; without
                 // the series it stays a standalone event.
+                let same_import = series_ids.contains_key(&candidate.source_uid);
                 series_id = match series_ids.get(&candidate.source_uid) {
                     Some(id) => Some(id.clone()),
                     None => tx
@@ -573,22 +575,32 @@ impl PlannerStore {
                 // Link only when the series still recurs on that date; otherwise the
                 // override would vanish from every listing, so keep it standalone.
                 if let Some(id) = &series_id {
-                    let key = candidate.recurrence_key.as_deref().unwrap_or_default();
-                    let linkable = match (
-                        match super::calendar::event_in(&tx, id) {
-                            Ok(series) => Some(series),
-                            Err(Error::NotFound(_)) => None,
-                            Err(error) => return Err(error),
-                        },
-                        NaiveDate::parse_from_str(key, "%Y-%m-%d").ok(),
-                    ) {
+                    let series = match super::calendar::event_in(&tx, id) {
+                        Ok(series) => Some(series),
+                        Err(Error::NotFound(_)) => None,
+                        Err(error) => return Err(error),
+                    };
+                    // The key was computed in the timezone of the series in the same feed.
+                    // For a series stored earlier, redo it in that series' timezone; a
+                    // value that needs its own TZID to be read is not linked.
+                    if let Some(series) = series.as_ref().filter(|_| !same_import)
+                        && series.timezone != candidate.event.timezone
+                    {
+                        let id = &candidate.recurrence_id;
+                        link_key = (id.ends_with('Z') || id.len() == 8)
+                            .then(|| occurrence_key(id, &[], &series.timezone).ok())
+                            .flatten();
+                    }
+                    let key = link_key.clone().unwrap_or_default();
+                    let linkable = match (series, NaiveDate::parse_from_str(&key, "%Y-%m-%d").ok())
+                    {
                         (Some(series), Some(date)) => {
                             series.recurrence_rule.is_some()
                                 && series.trashed_at.is_none()
                                 && series.archived_at.is_none()
                                 && super::recurrence::expand(&series, date, date)?
                                     .iter()
-                                    .any(|(occurrence, _, _)| occurrence == key)
+                                    .any(|(occurrence, _, _)| *occurrence == key)
                         }
                         _ => false,
                     };
@@ -605,7 +617,7 @@ impl PlannerStore {
                     "INSERT INTO event_exceptions(series_id, occurrence_key, action, replacement_event_id)
                      VALUES (?1, ?2, 'replaced', ?3)
                      ON CONFLICT(series_id, occurrence_key) DO UPDATE SET action = 'replaced', replacement_event_id = ?3",
-                    params![series_id, candidate.recurrence_key, event.id],
+                    params![series_id, link_key, event.id],
                 )
                 .map_err(sql_error)?;
             } else if candidate.recurrence_key.is_none() {

@@ -857,6 +857,31 @@ fn ical_import_keeps_exdates_and_links_recurrence_id_overrides_to_the_series() {
     assert_eq!(seen, expected);
 }
 
+#[test]
+fn ical_import_keeps_an_override_standalone_when_its_series_does_not_recur_there() {
+    let content = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\n\
+        BEGIN:VEVENT\r\nUID:s2\r\nDTSTART:20260401T090000Z\r\nDTEND:20260401T100000Z\r\n\
+        SUMMARY:Short\r\nRRULE:FREQ=DAILY;COUNT=2\r\nEND:VEVENT\r\n\
+        BEGIN:VEVENT\r\nUID:s2\r\nRECURRENCE-ID:20260410T090000Z\r\nDTSTART:20260410T110000Z\r\n\
+        DTEND:20260410T120000Z\r\nSUMMARY:Stale\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+    let mut store = in_memory();
+    let preview = store.preview_ical_import("file", content, "UTC").unwrap();
+    let keys = preview
+        .candidates
+        .iter()
+        .map(|candidate| candidate.key.clone())
+        .collect::<Vec<_>>();
+    store.import_ical(&preview, &keys, false).unwrap();
+
+    let range = store.calendar_range("2026-04-10", "2026-04-10").unwrap();
+    let titles = range
+        .events
+        .iter()
+        .map(|item| item.title.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(titles, ["Stale"]);
+}
+
 fn export_with_event(
     title: &str,
     description: &str,

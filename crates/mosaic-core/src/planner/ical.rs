@@ -536,8 +536,29 @@ impl PlannerStore {
                         .optional()
                         .map_err(sql_error)?,
                 };
-                if series_id.is_some() {
-                    input.recurrence_rule = None;
+                // Link only when the series still recurs on that date; otherwise the
+                // override would vanish from every listing, so keep it standalone.
+                if let Some(id) = &series_id {
+                    let linkable = match (
+                        super::calendar::event_in(&tx, id),
+                        candidate
+                            .recurrence_key
+                            .as_deref()
+                            .and_then(|key| NaiveDate::parse_from_str(key, "%Y-%m-%d").ok()),
+                    ) {
+                        (Ok(series), Some(date)) => {
+                            series.recurrence_rule.is_some()
+                                && series.trashed_at.is_none()
+                                && series.archived_at.is_none()
+                                && !super::recurrence::expand(&series, date, date)?.is_empty()
+                        }
+                        _ => false,
+                    };
+                    if linkable {
+                        input.recurrence_rule = None;
+                    } else {
+                        series_id = None;
+                    }
                 }
             }
             let event = super::calendar::insert_event(&tx, input, series_id.as_deref(), &at)?;

@@ -390,6 +390,33 @@ fn ical_preview_import_export_and_overlay_deduplicate() {
 }
 
 #[test]
+fn ical_text_unescape_handles_backslash_before_n_and_round_trips() {
+    // `\\new\\table` is the escaped form of `\new\table`: the `\\` must collapse to a single
+    // backslash instead of the second backslash combining with `n` into a newline.
+    let content = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:path@example.test\r\nDTSTART;VALUE=DATE:20261014\r\nDTEND;VALUE=DATE:20261015\r\nSUMMARY:Path C:\\\\new\\\\table\\, a\\; b\r\nDESCRIPTION:Line\\none\\NTwo\\\\n\\\\\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+    let mut store = in_memory();
+    let preview = store
+        .preview_ical_import("file:path.ics", content, "UTC")
+        .unwrap();
+    let candidate = &preview.candidates[0];
+    assert_eq!(candidate.title, "Path C:\\new\\table, a; b");
+    assert_eq!(candidate.event.description, "Line\none\nTwo\\n\\");
+
+    let selected = vec![candidate.key.clone()];
+    store.import_ical(&preview, &selected, false).unwrap();
+    let exported = store.export_ical().unwrap();
+    let roundtrip = PlannerStore::in_memory()
+        .unwrap()
+        .preview_ical_import("roundtrip", &exported, "UTC")
+        .unwrap();
+    assert_eq!(roundtrip.candidates[0].title, candidate.title);
+    assert_eq!(
+        roundtrip.candidates[0].event.description,
+        candidate.event.description
+    );
+}
+
+#[test]
 fn ical_overlay_accepts_week_start_rules() {
     let content = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:weekly@example.test\r\nDTSTART;TZID=Europe/Zurich:20260325T090000\r\nDTEND;TZID=Europe/Zurich:20260325T100000\r\nRRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY=SU;WKST=SU\r\nSUMMARY:Fortnightly sync\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
 
@@ -812,6 +839,24 @@ fn ical_unfolding_removes_exactly_one_fold_character() {
             "fold {fold:?} with eol {eol:?}"
         );
     }
+}
+
+#[test]
+fn nested_valarm_properties_do_not_override_event_properties() {
+    let content = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:alarm@example.com\r\nDTSTART:20261013T090000Z\r\nSUMMARY:S\r\nDESCRIPTION:Real description\r\nBEGIN:VALARM\r\nACTION:DISPLAY\r\nSUMMARY:Alarm summary\r\nDESCRIPTION:Reminder\r\nTRIGGER:-PT15M\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+    let store = in_memory();
+    let preview = store
+        .preview_ical_import("file:alarm.ics", content, "UTC")
+        .unwrap();
+    assert_eq!(preview.candidates[0].event.title, "S");
+    assert_eq!(preview.candidates[0].event.description, "Real description");
+}
+
+#[test]
+fn validate_ical_accepts_feeds_with_and_without_a_utf8_bom() {
+    let ics = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:bom\r\nDTSTART:20261103T090000Z\r\nDTEND:20261103T100000Z\r\nSUMMARY:Working event\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+    assert_eq!(validate_ical(ics, "UTC").unwrap(), 1);
+    assert_eq!(validate_ical(&format!("\u{feff}{ics}"), "UTC").unwrap(), 1);
 }
 
 #[test]

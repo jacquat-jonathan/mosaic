@@ -90,8 +90,17 @@ pub fn hash_bytes(bytes: &[u8]) -> String {
 }
 
 /// Validates a vault-relative path and returns it in canonical `a/b/c.md` form ("" is the root).
+///
+/// Only `/` separates segments, except on Windows where `\` does too. Elsewhere a backslash is an
+/// ordinary file-name character, so `a\b.md` is one file in the vault root and `..\x` is not a
+/// traversal (a single, harmless segment).
 pub fn normalize(rel: &str) -> Result<String> {
-    let rel = rel.trim().replace('\\', "/");
+    let rel = rel.trim();
+    let rel = if cfg!(windows) {
+        rel.replace('\\', "/")
+    } else {
+        rel.to_string()
+    };
     if rel.starts_with('/') {
         return Err(Error::InvalidPath(format!(
             "{rel} (must be relative to the vault)"
@@ -721,6 +730,74 @@ mod tests {
         assert!(normalize("/etc/passwd").is_err());
         assert!(normalize(".obsidian/app.json").is_err());
         assert!(normalize("a/.git/config").is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn backslash_is_a_file_name_character_on_unix() {
+        assert_eq!(normalize("back\\slash.md").unwrap(), "back\\slash.md");
+        assert_eq!(normalize("a/b\\c.md").unwrap(), "a/b\\c.md");
+        let (d, v) = vault();
+        fs::write(d.path().join("back\\slash.md"), "x").unwrap();
+        let listed = v.list("", false).unwrap();
+        assert!(listed.iter().any(|e| e.path == "back\\slash.md"));
+        assert_eq!(
+            v.read("back\\slash.md").unwrap().content.as_deref(),
+            Some("x")
+        );
+        v.write("back\\slash.md", "y", None).unwrap();
+        assert_eq!(
+            fs::read_to_string(d.path().join("back\\slash.md")).unwrap(),
+            "y"
+        );
+        assert!(!d.path().join("back").exists());
+        v.create("new\\one.md", "n").unwrap();
+        assert!(d.path().join("new\\one.md").is_file());
+        v.rename("back\\slash.md", "moved\\it.md").unwrap();
+        assert!(d.path().join("moved\\it.md").is_file());
+        assert!(!d.path().join("back\\slash.md").exists());
+        assert!(!matches!(v.delete("moved\\it.md"), Err(Error::NotFound(_))));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn backslash_traversal_attempts_stay_inside_the_vault() {
+        let (d, v) = vault();
+        let outside = tempfile::tempdir().unwrap();
+        fs::write(outside.path().join("secret.md"), "s").unwrap();
+        // Real `..` segments are still refused, with or without backslashes around them.
+        for bad in [
+            "../secret.md",
+            "a/../../secret.md",
+            "a\\/../../secret.md",
+            "/etc/passwd",
+        ] {
+            assert!(matches!(v.read(bad), Err(Error::InvalidPath(_))), "{bad}");
+        }
+        // `..\x` is one dot-prefixed name on Unix: refused as hidden, never read as a parent.
+        assert!(matches!(
+            v.resolve("..\\secret.md"),
+            Err(Error::InvalidPath(_))
+        ));
+        assert!(matches!(
+            v.read("..\\secret.md"),
+            Err(Error::InvalidPath(_))
+        ));
+        // `x..\y` is an ordinary file name inside the vault.
+        assert!(
+            v.resolve("x..\\y")
+                .unwrap()
+                .starts_with(d.path().canonicalize().unwrap())
+        );
+        // A backslash does not hide a dot-prefixed segment from the hidden-path rule.
+        assert!(normalize("a\\b/.git/config").is_err());
+        assert!(normalize(".obsidian/x\\y").is_err());
+        // Symlink escape is still refused for backslash-named links.
+        std::os::unix::fs::symlink(outside.path(), d.path().join("lin\\k")).unwrap();
+        assert!(matches!(
+            v.read("lin\\k/secret.md"),
+            Err(Error::InvalidPath(_))
+        ));
     }
 
     #[test]

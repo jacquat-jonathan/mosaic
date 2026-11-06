@@ -1368,7 +1368,7 @@ function FileCard({ file, subpath }: { file: string; subpath?: string }) {
         (f) =>
           live &&
           setPreview({
-            html: renderMarkdown((f.content ?? "").replace(/^---\n[\s\S]*?\n---\n?/, "").slice(0, 4000)),
+            html: renderMarkdown((f.content ?? "").replace(/^---\r?\n(?:[\s\S]*?\r?\n)??---\r?\n?/, "").slice(0, 4000)),
           }),
       );
     return () => {

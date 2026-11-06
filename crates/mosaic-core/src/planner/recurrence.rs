@@ -95,7 +95,7 @@ fn parse_rule(value: &str) -> Result<Rule> {
             }
             "UNTIL" => {
                 let value = value.trim_end_matches('Z');
-                let value = &value[..value.len().min(8)];
+                let value = value.get(..8).unwrap_or(value);
                 until = Some(NaiveDate::parse_from_str(value, "%Y%m%d").map_err(|_| {
                     Error::Invalid("recurrence UNTIL must start with YYYYMMDD".into())
                 })?);
@@ -595,5 +595,24 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["2026-04-05"]
         );
+    }
+
+    #[test]
+    fn non_ascii_until_is_an_error_not_a_panic() {
+        for until in [
+            "2026032é",           // 2-byte char straddles byte 8
+            "202603€",            // 3-byte char straddles byte 8
+            "202603😀",           // 4-byte char straddles byte 8
+            "é2026032",           // multi-byte char first
+            "２０２６０３２７",   // full-width digits
+            "日本語日本語日本語", // long, all multi-byte
+        ] {
+            let error = parse_rule(&format!("FREQ=DAILY;UNTIL={until}")).unwrap_err();
+            assert!(
+                matches!(&error, Error::Invalid(m) if m == "recurrence UNTIL must start with YYYYMMDD"),
+                "{until:?} gave {error:?}"
+            );
+        }
+        assert!(parse_rule("FREQ=DAILY;UNTIL=20260331T235959Z").is_ok());
     }
 }

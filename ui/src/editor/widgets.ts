@@ -374,7 +374,7 @@ export class CanvasEmbedWidget extends WidgetType {
 }
 
 export function stripFrontmatter(text: string): string {
-  const m = /^---\r?\n[\s\S]*?\r?\n---[ \t]*(\r?\n|$)/.exec(text);
+  const m = /^---\r?\n(?:[\s\S]*?\r?\n)??---[ \t]*(\r?\n|$)/.exec(text);
   return m ? text.slice(m[0].length) : text;
 }
 

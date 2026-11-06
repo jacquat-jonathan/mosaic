@@ -882,6 +882,67 @@ fn ical_import_keeps_an_override_standalone_when_its_series_does_not_recur_there
     assert_eq!(titles, ["Stale"]);
 }
 
+fn import_all(store: &mut PlannerStore, content: &str) {
+    let preview = store.preview_ical_import("file", content, "UTC").unwrap();
+    let keys = preview
+        .candidates
+        .iter()
+        .map(|candidate| candidate.key.clone())
+        .collect::<Vec<_>>();
+    store.import_ical(&preview, &keys, false).unwrap();
+}
+
+#[test]
+fn ical_import_resolves_utc_exdate_and_recurrence_id_in_the_series_timezone() {
+    // 17:00 Los Angeles on 2026-04-03 is 2026-04-04T00:00Z: the UTC date is a day later.
+    let content = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\n\
+        BEGIN:VEVENT\r\nUID:tz\r\nDTSTART;TZID=America/Los_Angeles:20260401T170000\r\n\
+        DTEND;TZID=America/Los_Angeles:20260401T180000\r\nSUMMARY:Daily\r\nRRULE:FREQ=DAILY\r\n\
+        EXDATE:20260402T000000Z\r\nEND:VEVENT\r\n\
+        BEGIN:VEVENT\r\nUID:tz\r\nRECURRENCE-ID:20260404T000000Z\r\nDTSTART:20260404T020000Z\r\n\
+        DTEND:20260404T030000Z\r\nSUMMARY:Moved\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+    let mut store = in_memory();
+    import_all(&mut store, content);
+    let range = store.calendar_range("2026-04-01", "2026-04-05").unwrap();
+    let mut titles = range
+        .events
+        .iter()
+        .map(|item| (item.occurrence_key.clone(), item.title.clone()))
+        .collect::<Vec<_>>();
+    titles.sort();
+    // The UTC EXDATE removes 04-01 (Los Angeles), the UTC override replaces 04-03; neither
+    // may land on the next UTC day.
+    let daily = titles
+        .iter()
+        .filter(|(_, title)| title == "Daily")
+        .map(|(key, _)| key.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        daily,
+        ["2026-04-02", "2026-04-04", "2026-04-05"],
+        "{titles:?}"
+    );
+    assert_eq!(
+        titles.iter().filter(|(_, title)| title == "Moved").count(),
+        1,
+        "{titles:?}"
+    );
+}
+
+#[test]
+fn ical_import_keeps_an_override_standalone_when_a_multi_day_series_only_touches_its_date() {
+    // Weekly Mon-Wed all-day series: Tuesday is inside an occurrence but is not a key.
+    let content = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\n\
+        BEGIN:VEVENT\r\nUID:md\r\nDTSTART;VALUE=DATE:20260406\r\nDTEND;VALUE=DATE:20260409\r\n\
+        SUMMARY:Retreat\r\nRRULE:FREQ=WEEKLY\r\nEND:VEVENT\r\n\
+        BEGIN:VEVENT\r\nUID:md\r\nRECURRENCE-ID;VALUE=DATE:20260407\r\nDTSTART;VALUE=DATE:20260407\r\n\
+        DTEND;VALUE=DATE:20260408\r\nSUMMARY:Stray\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+    let mut store = in_memory();
+    import_all(&mut store, content);
+    let range = store.calendar_range("2026-04-07", "2026-04-07").unwrap();
+    assert!(range.events.iter().any(|item| item.title == "Stray"));
+}
+
 fn export_with_event(
     title: &str,
     description: &str,

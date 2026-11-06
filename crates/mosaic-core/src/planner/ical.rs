@@ -68,12 +68,18 @@ pub struct OverlayOccurrence {
     pub read_only: bool,
 }
 
+type RawDate = (String, Vec<(String, String)>);
+
 #[derive(Debug, Clone)]
 struct ParsedEvent {
     uid: String,
     recurrence_id: String,
     recurrence_key: Option<String>,
     excluded_occurrences: Vec<String>,
+    // RECURRENCE-ID and EXDATE as written; their occurrence keys are resolved in the
+    // series' timezone once the whole feed is read.
+    raw_recurrence: Option<RawDate>,
+    raw_exdates: Vec<RawDate>,
     cancelled: bool,
     revision: ParsedRevision,
     event: CreateEvent,
@@ -204,19 +210,29 @@ fn datetime(
     ))
 }
 
-fn occurrence_key(value: &str, params: &[(&str, &str)], fallback_timezone: &str) -> Result<String> {
-    let (all_day, start, timezone) = datetime(value, params, fallback_timezone)?;
+/// The occurrence date of `value` in `series_timezone`, which is how recurrence expansion keys
+/// occurrences. A UTC value or one with its own TZID can fall on another date elsewhere.
+fn occurrence_key(value: &str, params: &[(&str, &str)], series_timezone: &str) -> Result<String> {
+    let (all_day, start, _) = datetime(value, params, series_timezone)?;
     if all_day {
         return Ok(start);
     }
-    let timezone: Tz = timezone
-        .parse()
-        .map_err(|_| Error::Invalid("invalid recurrence timezone".into()))?;
+    let (timezone, _) = canonical_timezone(series_timezone)?;
     Ok(DateTime::parse_from_rfc3339(&start)
         .map_err(|_| Error::Invalid("invalid recurrence date-time".into()))?
         .with_timezone(&timezone)
         .date_naive()
         .to_string())
+}
+
+fn owned_date(value: &str, params: &[(&str, &str)]) -> RawDate {
+    (
+        value.trim().to_string(),
+        params
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect(),
+    )
 }
 
 fn parse(content: &str, fallback_timezone: &str) -> Result<Vec<ParsedEvent>> {
@@ -256,8 +272,8 @@ fn parse(content: &str, fallback_timezone: &str) -> Result<Vec<ParsedEvent>> {
             nested = 0;
             let mut uid = None;
             let mut recurrence_id = String::new();
-            let mut recurrence_key = None;
-            let mut excluded_occurrences = Vec::new();
+            let mut raw_recurrence = None;
+            let mut raw_exdates = Vec::new();
             let mut cancelled = calendar_cancelled;
             let mut sequence = 0;
             let mut last_modified = String::new();
@@ -278,19 +294,11 @@ fn parse(content: &str, fallback_timezone: &str) -> Result<Vec<ParsedEvent>> {
                     "UID" => uid = Some(value.trim().to_string()),
                     "RECURRENCE-ID" => {
                         recurrence_id = value.trim().to_string();
-                        recurrence_key = Some(occurrence_key(
-                            value.trim(),
-                            &parameters,
-                            fallback_timezone,
-                        )?);
+                        raw_recurrence = Some(owned_date(value, &parameters));
                     }
                     "EXDATE" => {
                         for value in value.split(',') {
-                            excluded_occurrences.push(occurrence_key(
-                                value.trim(),
-                                &parameters,
-                                fallback_timezone,
-                            )?);
+                            raw_exdates.push(owned_date(value, &parameters));
                         }
                     }
                     "STATUS" => cancelled |= value.trim().eq_ignore_ascii_case("CANCELLED"),
@@ -333,8 +341,10 @@ fn parse(content: &str, fallback_timezone: &str) -> Result<Vec<ParsedEvent>> {
             result.push(ParsedEvent {
                 uid,
                 recurrence_id,
-                recurrence_key,
-                excluded_occurrences,
+                recurrence_key: None,
+                excluded_occurrences: Vec::new(),
+                raw_recurrence,
+                raw_exdates,
                 cancelled,
                 revision: ParsedRevision {
                     sequence,
@@ -371,6 +381,30 @@ fn parse(content: &str, fallback_timezone: &str) -> Result<Vec<ParsedEvent>> {
     }
     if result.is_empty() {
         return Err(Error::Invalid("iCalendar document has no events".into()));
+    }
+    let series_timezones = result
+        .iter()
+        .filter(|event| event.recurrence_id.is_empty())
+        .map(|event| (event.uid.clone(), event.event.timezone.clone()))
+        .collect::<HashMap<_, _>>();
+    for event in &mut result {
+        let timezone = series_timezones
+            .get(&event.uid)
+            .unwrap_or(&event.event.timezone)
+            .clone();
+        let key = |(value, params): &RawDate| {
+            let params = params
+                .iter()
+                .map(|(k, v)| (k.as_str(), v.as_str()))
+                .collect::<Vec<_>>();
+            occurrence_key(value, &params, &timezone)
+        };
+        event.recurrence_key = event.raw_recurrence.as_ref().map(key).transpose()?;
+        event.excluded_occurrences = event
+            .raw_exdates
+            .iter()
+            .map(key)
+            .collect::<Result<Vec<_>>>()?;
     }
     let mut latest = HashMap::<String, usize>::new();
     for (index, event) in result.iter().enumerate() {
@@ -539,18 +573,22 @@ impl PlannerStore {
                 // Link only when the series still recurs on that date; otherwise the
                 // override would vanish from every listing, so keep it standalone.
                 if let Some(id) = &series_id {
+                    let key = candidate.recurrence_key.as_deref().unwrap_or_default();
                     let linkable = match (
-                        super::calendar::event_in(&tx, id),
-                        candidate
-                            .recurrence_key
-                            .as_deref()
-                            .and_then(|key| NaiveDate::parse_from_str(key, "%Y-%m-%d").ok()),
+                        match super::calendar::event_in(&tx, id) {
+                            Ok(series) => Some(series),
+                            Err(Error::NotFound(_)) => None,
+                            Err(error) => return Err(error),
+                        },
+                        NaiveDate::parse_from_str(key, "%Y-%m-%d").ok(),
                     ) {
-                        (Ok(series), Some(date)) => {
+                        (Some(series), Some(date)) => {
                             series.recurrence_rule.is_some()
                                 && series.trashed_at.is_none()
                                 && series.archived_at.is_none()
-                                && !super::recurrence::expand(&series, date, date)?.is_empty()
+                                && super::recurrence::expand(&series, date, date)?
+                                    .iter()
+                                    .any(|(occurrence, _, _)| occurrence == key)
                         }
                         _ => false,
                     };

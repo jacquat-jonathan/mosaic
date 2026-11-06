@@ -817,6 +817,199 @@ fn ten_thousand_tasks_and_a_busy_month_load_within_the_acceptance_budget() {
     );
 }
 
+#[test]
+fn ical_import_keeps_exdates_and_links_recurrence_id_overrides_to_the_series() {
+    let content = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\n\
+        BEGIN:VEVENT\r\nUID:s1\r\nDTSTART:20260401T090000Z\r\nDTEND:20260401T100000Z\r\n\
+        SUMMARY:Daily\r\nRRULE:FREQ=DAILY\r\nEXDATE:20260402T090000Z\r\nEND:VEVENT\r\n\
+        BEGIN:VEVENT\r\nUID:s1\r\nRECURRENCE-ID:20260403T090000Z\r\nDTSTART:20260403T110000Z\r\n\
+        DTEND:20260403T120000Z\r\nSUMMARY:Moved\r\nEND:VEVENT\r\n\
+        BEGIN:VEVENT\r\nUID:s1\r\nRECURRENCE-ID:20260404T090000Z\r\nDTSTART:20260404T090000Z\r\n\
+        DTEND:20260404T100000Z\r\nSUMMARY:Dropped\r\nSTATUS:CANCELLED\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+    let mut store = in_memory();
+    let preview = store.preview_ical_import("file", content, "UTC").unwrap();
+    let keys = preview
+        .candidates
+        .iter()
+        .map(|candidate| candidate.key.clone())
+        .collect::<Vec<_>>();
+    store.import_ical(&preview, &keys, false).unwrap();
+
+    let range = store.calendar_range("2026-04-01", "2026-04-05").unwrap();
+    let mut seen = range
+        .events
+        .iter()
+        .map(|item| {
+            (
+                item.start_value[..10].to_string(),
+                item.title.clone(),
+                item.start_value[11..16].to_string(),
+            )
+        })
+        .collect::<Vec<_>>();
+    seen.sort();
+    let expected = [
+        ("2026-04-01", "Daily", "09:00"),
+        ("2026-04-03", "Moved", "11:00"),
+        ("2026-04-05", "Daily", "09:00"),
+    ]
+    .map(|(a, b, c)| (a.to_string(), b.to_string(), c.to_string()));
+    assert_eq!(seen, expected);
+}
+
+#[test]
+fn ical_import_keeps_an_override_standalone_when_its_series_does_not_recur_there() {
+    let content = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\n\
+        BEGIN:VEVENT\r\nUID:s2\r\nDTSTART:20260401T090000Z\r\nDTEND:20260401T100000Z\r\n\
+        SUMMARY:Short\r\nRRULE:FREQ=DAILY;COUNT=2\r\nEND:VEVENT\r\n\
+        BEGIN:VEVENT\r\nUID:s2\r\nRECURRENCE-ID:20260410T090000Z\r\nDTSTART:20260410T110000Z\r\n\
+        DTEND:20260410T120000Z\r\nSUMMARY:Stale\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+    let mut store = in_memory();
+    let preview = store.preview_ical_import("file", content, "UTC").unwrap();
+    let keys = preview
+        .candidates
+        .iter()
+        .map(|candidate| candidate.key.clone())
+        .collect::<Vec<_>>();
+    store.import_ical(&preview, &keys, false).unwrap();
+
+    let range = store.calendar_range("2026-04-10", "2026-04-10").unwrap();
+    let titles = range
+        .events
+        .iter()
+        .map(|item| item.title.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(titles, ["Stale"]);
+}
+
+fn import_all(store: &mut PlannerStore, content: &str) {
+    let preview = store.preview_ical_import("file", content, "UTC").unwrap();
+    let keys = preview
+        .candidates
+        .iter()
+        .map(|candidate| candidate.key.clone())
+        .collect::<Vec<_>>();
+    store.import_ical(&preview, &keys, false).unwrap();
+}
+
+#[test]
+fn ical_import_resolves_utc_exdate_and_recurrence_id_in_the_series_timezone() {
+    // 17:00 Los Angeles on 2026-04-03 is 2026-04-04T00:00Z: the UTC date is a day later.
+    let content = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\n\
+        BEGIN:VEVENT\r\nUID:tz\r\nDTSTART;TZID=America/Los_Angeles:20260401T170000\r\n\
+        DTEND;TZID=America/Los_Angeles:20260401T180000\r\nSUMMARY:Daily\r\nRRULE:FREQ=DAILY\r\n\
+        EXDATE:20260402T000000Z\r\nEND:VEVENT\r\n\
+        BEGIN:VEVENT\r\nUID:tz\r\nRECURRENCE-ID:20260404T000000Z\r\nDTSTART:20260404T020000Z\r\n\
+        DTEND:20260404T030000Z\r\nSUMMARY:Moved\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+    let mut store = in_memory();
+    import_all(&mut store, content);
+    let range = store.calendar_range("2026-04-01", "2026-04-05").unwrap();
+    let mut titles = range
+        .events
+        .iter()
+        .map(|item| (item.occurrence_key.clone(), item.title.clone()))
+        .collect::<Vec<_>>();
+    titles.sort();
+    // The UTC EXDATE removes 04-01 (Los Angeles), the UTC override replaces 04-03; neither
+    // may land on the next UTC day.
+    let daily = titles
+        .iter()
+        .filter(|(_, title)| title == "Daily")
+        .map(|(key, _)| key.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        daily,
+        ["2026-04-02", "2026-04-04", "2026-04-05"],
+        "{titles:?}"
+    );
+    assert_eq!(
+        titles.iter().filter(|(_, title)| title == "Moved").count(),
+        1,
+        "{titles:?}"
+    );
+}
+
+#[test]
+fn ical_import_keeps_an_override_standalone_when_a_multi_day_series_only_touches_its_date() {
+    // Weekly Mon-Wed all-day series: Tuesday is inside an occurrence but is not a key.
+    let content = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\n\
+        BEGIN:VEVENT\r\nUID:md\r\nDTSTART;VALUE=DATE:20260406\r\nDTEND;VALUE=DATE:20260409\r\n\
+        SUMMARY:Retreat\r\nRRULE:FREQ=WEEKLY\r\nEND:VEVENT\r\n\
+        BEGIN:VEVENT\r\nUID:md\r\nRECURRENCE-ID;VALUE=DATE:20260407\r\nDTSTART;VALUE=DATE:20260407\r\n\
+        DTEND;VALUE=DATE:20260408\r\nSUMMARY:Stray\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+    let mut store = in_memory();
+    import_all(&mut store, content);
+    let range = store.calendar_range("2026-04-07", "2026-04-07").unwrap();
+    assert!(range.events.iter().any(|item| item.title == "Stray"));
+}
+
+#[test]
+fn ical_import_links_an_override_to_a_stored_series_in_the_series_timezone() {
+    let master = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\n\
+        BEGIN:VEVENT\r\nUID:db\r\nDTSTART;TZID=America/Los_Angeles:20260401T170000\r\n\
+        DTEND;TZID=America/Los_Angeles:20260401T180000\r\nSUMMARY:Daily\r\nRRULE:FREQ=DAILY\r\n\
+        END:VEVENT\r\nEND:VCALENDAR\r\n";
+    // Only the changed occurrence: 20260404T000000Z is 17:00 on 04-03 in Los Angeles.
+    let update = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\n\
+        BEGIN:VEVENT\r\nUID:db\r\nRECURRENCE-ID:20260404T000000Z\r\nDTSTART:20260404T020000Z\r\n\
+        DTEND:20260404T030000Z\r\nSUMMARY:Moved\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+    let mut store = in_memory();
+    import_all(&mut store, master);
+    import_all(&mut store, update);
+    let range = store.calendar_range("2026-04-02", "2026-04-05").unwrap();
+    let daily = range
+        .events
+        .iter()
+        .filter(|item| item.title == "Daily")
+        .map(|item| item.occurrence_key.as_str())
+        .collect::<Vec<_>>();
+    assert!(!daily.contains(&"2026-04-03"), "{daily:?}");
+    assert!(daily.contains(&"2026-04-04"), "{daily:?}");
+    assert_eq!(
+        range
+            .events
+            .iter()
+            .filter(|item| item.title == "Moved")
+            .count(),
+        1
+    );
+}
+
+#[test]
+fn ical_reimport_links_a_tzid_override_in_the_series_timezone_when_its_dtstart_differs() {
+    let master = "BEGIN:VEVENT\r\nUID:re\r\nDTSTART;TZID=America/Los_Angeles:20260401T170000\r\n\
+        DTEND;TZID=America/Los_Angeles:20260401T180000\r\nSUMMARY:Daily\r\nRRULE:FREQ=DAILY\r\n\
+        END:VEVENT\r\n";
+    let first = format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\n{master}END:VCALENDAR\r\n");
+    // Same feed again, now with an override whose RECURRENCE-ID is in the series zone but
+    // whose DTSTART is UTC.
+    let second = format!(
+        "BEGIN:VCALENDAR\r\nVERSION:2.0\r\n{master}\
+         BEGIN:VEVENT\r\nUID:re\r\nRECURRENCE-ID;TZID=America/Los_Angeles:20260403T170000\r\n\
+         DTSTART:20260404T020000Z\r\nDTEND:20260404T030000Z\r\nSUMMARY:Moved\r\nEND:VEVENT\r\n\
+         END:VCALENDAR\r\n"
+    );
+    let mut store = in_memory();
+    import_all(&mut store, &first);
+    import_all(&mut store, &second);
+    let range = store.calendar_range("2026-04-02", "2026-04-05").unwrap();
+    let daily = range
+        .events
+        .iter()
+        .filter(|item| item.title == "Daily")
+        .map(|item| item.occurrence_key.as_str())
+        .collect::<Vec<_>>();
+    assert!(!daily.contains(&"2026-04-03"), "{daily:?}");
+    assert_eq!(
+        range
+            .events
+            .iter()
+            .filter(|item| item.title == "Moved")
+            .count(),
+        1
+    );
+}
+
 fn export_with_event(
     title: &str,
     description: &str,

@@ -537,6 +537,12 @@ export type IcalImportCandidate = {
 	recurrence_rule: string | null,
 	duplicate: boolean,
 	event: CreateEvent,
+	/**  Occurrence keys of this series that EXDATE or a cancelled override removed. */
+	excluded_occurrences?: string[],
+	/**  Occurrence this candidate overrides (RECURRENCE-ID), if it is an override. */
+	recurrence_key?: string | null,
+	/**  Timezone `recurrence_key` was resolved in, so it can be redone for another series. */
+	recurrence_timezone?: string | null,
 };
 
 export type IcalImportPreview = {

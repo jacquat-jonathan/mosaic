@@ -120,7 +120,7 @@ const EVENT_COLUMNS: &str = "id, series_id, title, description, location, meetin
     participants_json, epic_id, color, all_day, start_value, end_value, timezone,
     recurrence_rule, revision, created_at, updated_at, archived_at, trashed_at";
 
-fn event_in(tx: &Transaction<'_>, id: &str) -> Result<PlannerEvent> {
+pub(super) fn event_in(tx: &Transaction<'_>, id: &str) -> Result<PlannerEvent> {
     tx.query_row(
         &format!("SELECT {EVENT_COLUMNS} FROM events WHERE id = ?1"),
         [id],

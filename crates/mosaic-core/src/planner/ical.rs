@@ -24,6 +24,15 @@ pub struct IcalImportCandidate {
     pub recurrence_rule: Option<String>,
     pub duplicate: bool,
     pub event: CreateEvent,
+    /// Occurrence keys of this series that EXDATE or a cancelled override removed.
+    #[serde(default)]
+    pub excluded_occurrences: Vec<String>,
+    /// Occurrence this candidate overrides (RECURRENCE-ID), if it is an override.
+    #[serde(default)]
+    pub recurrence_key: Option<String>,
+    /// Timezone `recurrence_key` was resolved in, so it can be redone for another series.
+    #[serde(default)]
+    pub recurrence_timezone: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -62,12 +71,19 @@ pub struct OverlayOccurrence {
     pub read_only: bool,
 }
 
+type RawDate = (String, Vec<(String, String)>);
+
 #[derive(Debug, Clone)]
 struct ParsedEvent {
     uid: String,
     recurrence_id: String,
     recurrence_key: Option<String>,
     excluded_occurrences: Vec<String>,
+    // RECURRENCE-ID and EXDATE as written; their occurrence keys are resolved in the
+    // series' timezone once the whole feed is read.
+    raw_recurrence: Option<RawDate>,
+    raw_exdates: Vec<RawDate>,
+    key_timezone: String,
     cancelled: bool,
     revision: ParsedRevision,
     event: CreateEvent,
@@ -198,19 +214,29 @@ fn datetime(
     ))
 }
 
-fn occurrence_key(value: &str, params: &[(&str, &str)], fallback_timezone: &str) -> Result<String> {
-    let (all_day, start, timezone) = datetime(value, params, fallback_timezone)?;
+/// The occurrence date of `value` in `series_timezone`, which is how recurrence expansion keys
+/// occurrences. A UTC value or one with its own TZID can fall on another date elsewhere.
+fn occurrence_key(value: &str, params: &[(&str, &str)], series_timezone: &str) -> Result<String> {
+    let (all_day, start, _) = datetime(value, params, series_timezone)?;
     if all_day {
         return Ok(start);
     }
-    let timezone: Tz = timezone
-        .parse()
-        .map_err(|_| Error::Invalid("invalid recurrence timezone".into()))?;
+    let (timezone, _) = canonical_timezone(series_timezone)?;
     Ok(DateTime::parse_from_rfc3339(&start)
         .map_err(|_| Error::Invalid("invalid recurrence date-time".into()))?
         .with_timezone(&timezone)
         .date_naive()
         .to_string())
+}
+
+fn owned_date(value: &str, params: &[(&str, &str)]) -> RawDate {
+    (
+        value.trim().to_string(),
+        params
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect(),
+    )
 }
 
 fn parse(content: &str, fallback_timezone: &str) -> Result<Vec<ParsedEvent>> {
@@ -250,8 +276,8 @@ fn parse(content: &str, fallback_timezone: &str) -> Result<Vec<ParsedEvent>> {
             nested = 0;
             let mut uid = None;
             let mut recurrence_id = String::new();
-            let mut recurrence_key = None;
-            let mut excluded_occurrences = Vec::new();
+            let mut raw_recurrence = None;
+            let mut raw_exdates = Vec::new();
             let mut cancelled = calendar_cancelled;
             let mut sequence = 0;
             let mut last_modified = String::new();
@@ -272,19 +298,11 @@ fn parse(content: &str, fallback_timezone: &str) -> Result<Vec<ParsedEvent>> {
                     "UID" => uid = Some(value.trim().to_string()),
                     "RECURRENCE-ID" => {
                         recurrence_id = value.trim().to_string();
-                        recurrence_key = Some(occurrence_key(
-                            value.trim(),
-                            &parameters,
-                            fallback_timezone,
-                        )?);
+                        raw_recurrence = Some(owned_date(value, &parameters));
                     }
                     "EXDATE" => {
                         for value in value.split(',') {
-                            excluded_occurrences.push(occurrence_key(
-                                value.trim(),
-                                &parameters,
-                                fallback_timezone,
-                            )?);
+                            raw_exdates.push(owned_date(value, &parameters));
                         }
                     }
                     "STATUS" => cancelled |= value.trim().eq_ignore_ascii_case("CANCELLED"),
@@ -327,8 +345,11 @@ fn parse(content: &str, fallback_timezone: &str) -> Result<Vec<ParsedEvent>> {
             result.push(ParsedEvent {
                 uid,
                 recurrence_id,
-                recurrence_key,
-                excluded_occurrences,
+                recurrence_key: None,
+                excluded_occurrences: Vec::new(),
+                raw_recurrence,
+                raw_exdates,
+                key_timezone: String::new(),
                 cancelled,
                 revision: ParsedRevision {
                     sequence,
@@ -365,6 +386,31 @@ fn parse(content: &str, fallback_timezone: &str) -> Result<Vec<ParsedEvent>> {
     }
     if result.is_empty() {
         return Err(Error::Invalid("iCalendar document has no events".into()));
+    }
+    let series_timezones = result
+        .iter()
+        .filter(|event| event.recurrence_id.is_empty())
+        .map(|event| (event.uid.clone(), event.event.timezone.clone()))
+        .collect::<HashMap<_, _>>();
+    for event in &mut result {
+        let timezone = series_timezones
+            .get(&event.uid)
+            .unwrap_or(&event.event.timezone)
+            .clone();
+        let key = |(value, params): &RawDate| {
+            let params = params
+                .iter()
+                .map(|(k, v)| (k.as_str(), v.as_str()))
+                .collect::<Vec<_>>();
+            occurrence_key(value, &params, &timezone)
+        };
+        event.key_timezone = timezone.clone();
+        event.recurrence_key = event.raw_recurrence.as_ref().map(key).transpose()?;
+        event.excluded_occurrences = event
+            .raw_exdates
+            .iter()
+            .map(key)
+            .collect::<Result<Vec<_>>>()?;
     }
     let mut latest = HashMap::<String, usize>::new();
     for (index, event) in result.iter().enumerate() {
@@ -412,8 +458,27 @@ impl PlannerStore {
         fallback_timezone: &str,
     ) -> Result<IcalImportPreview> {
         let parsed = parse(content, fallback_timezone)?;
+        let mut cancelled_overrides = HashMap::<String, Vec<String>>::new();
+        for event in parsed.iter().filter(|event| event.cancelled) {
+            if let Some(key) = &event.recurrence_key {
+                cancelled_overrides
+                    .entry(event.uid.clone())
+                    .or_default()
+                    .push(key.clone());
+            }
+        }
         let mut candidates = Vec::with_capacity(parsed.len());
         for parsed in parsed.into_iter().filter(|event| !event.cancelled) {
+            let mut excluded_occurrences = parsed.excluded_occurrences;
+            if parsed.recurrence_key.is_none() {
+                excluded_occurrences.extend(
+                    cancelled_overrides
+                        .get(&parsed.uid)
+                        .into_iter()
+                        .flatten()
+                        .cloned(),
+                );
+            }
             let duplicate: bool = self
                 .conn
                 .query_row(
@@ -435,6 +500,9 @@ impl PlannerStore {
                 recurrence_rule: parsed.event.recurrence_rule.clone(),
                 duplicate,
                 event: parsed.event,
+                excluded_occurrences,
+                recurrence_key: parsed.recurrence_key,
+                recurrence_timezone: Some(parsed.key_timezone),
             });
         }
         let duplicates = candidates.iter().filter(|item| item.duplicate).count();
@@ -467,11 +535,15 @@ impl PlannerStore {
         let at = now();
         let mut imported_event_ids = Vec::new();
         let mut skipped_duplicates = Vec::new();
-        for candidate in preview
+        let mut series_ids = HashMap::<String, String>::new();
+        // Series first, so their overrides can link to them whatever the file order.
+        let mut ordered = preview
             .candidates
             .iter()
             .filter(|candidate| selected.contains(&candidate.key))
-        {
+            .collect::<Vec<_>>();
+        ordered.sort_by_key(|candidate| candidate.recurrence_key.is_some());
+        for candidate in ordered {
             let duplicate: bool = tx
                 .query_row(
                     "SELECT EXISTS(SELECT 1 FROM event_imports WHERE source_kind = ?1
@@ -488,7 +560,84 @@ impl PlannerStore {
                 skipped_duplicates.push(candidate.key.clone());
                 continue;
             }
-            let event = super::calendar::insert_event(&tx, candidate.event.clone(), None, &at)?;
+            let mut input = candidate.event.clone();
+            let mut series_id = None;
+            let mut link_key = candidate.recurrence_key.clone();
+            if candidate.recurrence_key.is_some() {
+                // An override replaces one occurrence of its imported series; without
+                // the series it stays a standalone event.
+                series_id = match series_ids.get(&candidate.source_uid) {
+                    Some(id) => Some(id.clone()),
+                    None => tx
+                        .query_row(
+                            "SELECT imported_event_id FROM event_imports WHERE source_kind = ?1
+                             AND source_uid = ?2 AND recurrence_id = '' ORDER BY imported_at DESC LIMIT 1",
+                            params![preview.source_kind, candidate.source_uid],
+                            |row| row.get(0),
+                        )
+                        .optional()
+                        .map_err(sql_error)?,
+                };
+                // Link only when the series still recurs on that date; otherwise the
+                // override would vanish from every listing, so keep it standalone.
+                if let Some(id) = &series_id {
+                    let series = match super::calendar::event_in(&tx, id) {
+                        Ok(series) => Some(series),
+                        Err(Error::NotFound(_)) => None,
+                        Err(error) => return Err(error),
+                    };
+                    // Redo the key when it was resolved in another timezone than the series
+                    // it links to; a value that needs its own TZID to be read is not linked.
+                    if let Some(series) = &series
+                        && candidate.recurrence_timezone.as_deref()
+                            != Some(series.timezone.as_str())
+                    {
+                        let id = &candidate.recurrence_id;
+                        link_key = (id.ends_with('Z') || id.len() == 8)
+                            .then(|| occurrence_key(id, &[], &series.timezone).ok())
+                            .flatten();
+                    }
+                    let key = link_key.clone().unwrap_or_default();
+                    let linkable = match (series, NaiveDate::parse_from_str(&key, "%Y-%m-%d").ok())
+                    {
+                        (Some(series), Some(date)) => {
+                            series.recurrence_rule.is_some()
+                                && series.trashed_at.is_none()
+                                && series.archived_at.is_none()
+                                && super::recurrence::expand(&series, date, date)?
+                                    .iter()
+                                    .any(|(occurrence, _, _)| *occurrence == key)
+                        }
+                        _ => false,
+                    };
+                    if linkable {
+                        input.recurrence_rule = None;
+                    } else {
+                        series_id = None;
+                    }
+                }
+            }
+            let event = super::calendar::insert_event(&tx, input, series_id.as_deref(), &at)?;
+            if let Some(series_id) = &series_id {
+                tx.execute(
+                    "INSERT INTO event_exceptions(series_id, occurrence_key, action, replacement_event_id)
+                     VALUES (?1, ?2, 'replaced', ?3)
+                     ON CONFLICT(series_id, occurrence_key) DO UPDATE SET action = 'replaced', replacement_event_id = ?3",
+                    params![series_id, link_key, event.id],
+                )
+                .map_err(sql_error)?;
+            } else if candidate.recurrence_key.is_none() {
+                series_ids.insert(candidate.source_uid.clone(), event.id.clone());
+                for key in &candidate.excluded_occurrences {
+                    tx.execute(
+                        "INSERT INTO event_exceptions(series_id, occurrence_key, action, replacement_event_id)
+                         VALUES (?1, ?2, 'cancelled', NULL)
+                         ON CONFLICT(series_id, occurrence_key) DO NOTHING",
+                        params![event.id, key],
+                    )
+                    .map_err(sql_error)?;
+                }
+            }
             tx.execute(
                 "INSERT INTO event_imports(source_kind, source_uid, recurrence_id, imported_event_id, imported_at)
                  VALUES (?1, ?2, ?3, ?4, ?5)",

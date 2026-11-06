@@ -67,10 +67,13 @@ fn ensure_integrity(conn: &Connection, path: &Path) -> Result<()> {
     if result == "ok" {
         Ok(())
     } else {
-        Err(Error::Invalid(format!(
-            "planner database {} failed its integrity check: {result}; restore the last backup explicitly",
-            path.display()
-        )))
+        Err(Error::Planner {
+            code: "planner_corrupt",
+            message: format!(
+                "planner database {} failed its integrity check: {result}",
+                path.display()
+            ),
+        })
     }
 }
 
@@ -79,9 +82,12 @@ fn migrate(conn: &mut Connection, existed: bool, backup_path: &Path) -> Result<(
         .pragma_query_value(None, "user_version", |row| row.get(0))
         .map_err(sql_error)?;
     if version > SCHEMA_VERSION {
-        return Err(Error::Invalid(format!(
-            "planner schema {version} is newer than supported schema {SCHEMA_VERSION}"
-        )));
+        return Err(Error::Planner {
+            code: "planner_newer_schema",
+            message: format!(
+                "planner schema {version} is newer than supported schema {SCHEMA_VERSION}"
+            ),
+        });
     }
     if version == SCHEMA_VERSION {
         return Ok(());
@@ -450,6 +456,17 @@ fn migrate_v2(conn: &mut Connection) -> Result<()> {
     tx.commit().map_err(sql_error)
 }
 
+pub(super) fn backup_available(vault_root: &Path) -> bool {
+    let path = vault_root.join(DIRECTORY).join(BACKUP);
+    Connection::open_with_flags(&path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+        .and_then(|conn| {
+            let version: i64 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
+            let integrity: String = conn.query_row("PRAGMA quick_check", [], |row| row.get(0))?;
+            Ok((0..=SCHEMA_VERSION).contains(&version) && integrity == "ok")
+        })
+        .unwrap_or(false)
+}
+
 pub(super) fn restore_last_backup(vault_root: &Path) -> Result<PathBuf> {
     let directory = vault_root.join(DIRECTORY);
     let backup_path = directory.join(BACKUP);
@@ -505,6 +522,10 @@ mod tests {
             conn.pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))
                 .unwrap(),
             SCHEMA_VERSION
+        );
+        assert!(
+            backup_available(dir.path()),
+            "pre-v1 migration backups remain recoverable"
         );
         let backup = Connection::open(hidden.join(BACKUP)).unwrap();
         assert_eq!(

@@ -53,11 +53,6 @@ export function topLevel(paths: string[]): string[] {
   });
 }
 
-/** Only integrity failures explicitly marked recoverable by the planner store offer restoration. */
-export function isPlannerRecoveryError(message: string): boolean {
-  return message.includes("planner database") && message.includes("restore the last backup explicitly");
-}
-
 interface VaultState {
   vault: VaultInfo | null;
   entries: Entry[];
@@ -184,24 +179,6 @@ export const useVault = create<VaultState>((set, get) => {
         }
       } catch (e) {
         const message = errorMessage(e);
-        if (
-          isPlannerRecoveryError(message) &&
-          (await useUi.getState().ask({
-            title: "Restore planner backup?",
-            body: "Mosaic could not open this vault's planner database. Restore the last valid planner backup? The damaged database will be preserved for recovery, and Markdown files will not be changed.",
-            confirmLabel: "Restore backup",
-            danger: true,
-          }))
-        ) {
-          try {
-            await api.restorePlannerBackup(path);
-            await get().openVault(path, options);
-            return;
-          } catch (restoreError) {
-            fail(restoreError);
-            return;
-          }
-        }
         set({ error: message });
       }
     },

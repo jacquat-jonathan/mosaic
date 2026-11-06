@@ -524,8 +524,10 @@ impl Vault {
         if !src.exists() {
             return Err(Error::NotFound(from_n));
         }
-        // Allow case-only renames on case-insensitive volumes.
-        let case_only = from_n.to_lowercase() == to_n.to_lowercase();
+        // A case-only rename is fine on a case-insensitive volume, where both
+        // names are the same file. On a case-sensitive volume they are different
+        // files, and the target must not be overwritten.
+        let case_only = from_n.to_lowercase() == to_n.to_lowercase() && same_file(&src, &dst);
         if dst.exists() && !case_only {
             return Err(Error::AlreadyExists(to_n));
         }
@@ -563,10 +565,24 @@ impl Vault {
             return Err(Error::InvalidPath("cannot delete the vault root".into()));
         }
         let abs = self.resolve(&norm)?;
-        if fs::symlink_metadata(&abs).is_err() {
+        // An iCloud file that isn't downloaded is only a `.<name>.icloud` stub next to where the
+        // file would be, so the real path doesn't exist. Trash the stub too, never read it.
+        let stub = icloud_placeholder(&abs);
+        let has_real = fs::symlink_metadata(&abs).is_ok();
+        let has_stub = stub
+            .as_ref()
+            .is_some_and(|s| fs::symlink_metadata(s).is_ok());
+        let targets: Vec<&Path> = [
+            has_real.then_some(abs.as_path()),
+            stub.as_deref().filter(|_| has_stub),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
+        if targets.is_empty() {
             return Err(Error::NotFound(norm));
         }
-        trash::delete(&abs).map_err(|e| Error::Io {
+        trash::delete_all(targets).map_err(|e| Error::Io {
             path: norm,
             source: std::io::Error::other(e.to_string()),
         })
@@ -600,6 +616,12 @@ impl Vault {
         }
         Ok(abs)
     }
+}
+
+/// Where macOS leaves the stub for an evicted iCloud Drive file: `dir/.<name>.icloud`.
+fn icloud_placeholder(abs: &Path) -> Option<PathBuf> {
+    let name = abs.file_name()?.to_str()?;
+    Some(abs.with_file_name(format!(".{name}.icloud")))
 }
 
 /// Types that run code, install software or point Finder at another file when opened.
@@ -636,6 +658,25 @@ const LAUNCHABLE_EXTENSIONS: &[&str] = &[
     "dylib",
 ];
 
+/// True when both paths exist and refer to the same underlying file.
+fn same_file(a: &Path, b: &Path) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        match (fs::metadata(a), fs::metadata(b)) {
+            (Ok(x), Ok(y)) => x.dev() == y.dev() && x.ino() == y.ino(),
+            _ => false,
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        match (fs::canonicalize(a), fs::canonicalize(b)) {
+            (Ok(x), Ok(y)) => x == y,
+            _ => false,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -644,6 +685,32 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let v = Vault::open(dir.path()).unwrap();
         (dir, v)
+    }
+
+    #[test]
+    fn delete_removes_icloud_placeholder_without_the_file() {
+        let (dir, v) = vault();
+        fs::create_dir(dir.path().join("notes")).unwrap();
+        let stub = dir.path().join("notes/.evicted.md.icloud");
+        fs::write(&stub, b"bplist00").unwrap();
+        v.delete("notes/evicted.md").unwrap();
+        assert!(fs::symlink_metadata(&stub).is_err());
+        // Nothing real and no stub is still not found.
+        assert!(matches!(
+            v.delete("notes/evicted.md"),
+            Err(Error::NotFound(_))
+        ));
+    }
+
+    #[test]
+    fn delete_removes_file_and_stale_placeholder() {
+        let (dir, v) = vault();
+        let file = dir.path().join("a.md");
+        let stub = dir.path().join(".a.md.icloud");
+        fs::write(&file, b"x").unwrap();
+        fs::write(&stub, b"bplist00").unwrap();
+        v.delete("a.md").unwrap();
+        assert!(!file.exists() && fs::symlink_metadata(&stub).is_err());
     }
 
     #[test]
@@ -824,6 +891,22 @@ mod tests {
             Err(Error::InvalidPath(_))
         ));
         assert!(v.list("", false).unwrap().iter().all(|e| e.path != "link"));
+    }
+
+    #[test]
+    fn case_only_rename_never_overwrites_a_different_file() {
+        let (dir, v) = vault();
+        fs::write(dir.path().join("a.md"), "AAA").unwrap();
+        fs::write(dir.path().join("A.md"), "BBB").unwrap();
+        // Only meaningful where the two names are distinct files.
+        if !same_file(&dir.path().join("a.md"), &dir.path().join("A.md")) {
+            assert!(matches!(
+                v.rename("a.md", "A.md"),
+                Err(Error::AlreadyExists(_))
+            ));
+            assert_eq!(fs::read_to_string(dir.path().join("a.md")).unwrap(), "AAA");
+            assert_eq!(fs::read_to_string(dir.path().join("A.md")).unwrap(), "BBB");
+        }
     }
 
     #[test]

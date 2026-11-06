@@ -14,6 +14,7 @@ import { Settings } from "./Settings";
 import { SearchPanel } from "./SearchPanel";
 import { TaskBoard } from "./TaskBoard";
 import { TaskQueryView } from "./TaskQueryView";
+import { NotificationsView } from "./NotificationsView";
 
 export function SpecialView({ path }: { path: string }) {
   const { kind, id } = parseView(path);
@@ -43,6 +44,8 @@ export function SpecialView({ path }: { path: string }) {
       return <RunDetail id={id} />;
     case "activity":
       return <ActivityPanel />;
+    case "notifications":
+      return <NotificationsView />;
     case "connections":
       return <LegacyConnections />;
     case "settings":

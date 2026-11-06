@@ -56,7 +56,7 @@ pub struct Release {
 pub struct UpdateCheck {
     /// The newest signed release, if one could be found.
     latest_version: Option<String>,
-    /// That release, when it's newer than this app.
+    /// Every signed release newer than this app, newest first, so skipped versions are all listed.
     releases: Vec<Release>,
     update_available: bool,
 }

@@ -39,7 +39,8 @@ const EPIC_DRAG_TYPE = "application/x-mosaic-planner-epic";
 const DEFAULT_EPIC_COLOR = "#6477d4";
 export function BoardView() {
   const boardId = useId();
-  const root = useVault((state) => state.vault?.root) ?? "";
+  const vault = useVault((state) => state.vault);
+  const root = vault?.root ?? "";
   const [summary, setSummary] = useState<PlannerSummary | null>(null),
     [epics, setEpics] = useState<PlannerEpic[]>([]),
     [tasks, setTasks] = useState<PlannerTask[]>([]);
@@ -61,7 +62,7 @@ export function BoardView() {
     [busy, setBusy] = useState(new Set<string>());
   const mounted = useRef(true),
     loadVersion = useRef(0);
-  const isCurrent = useCallback(() => mounted.current && root === useVault.getState().vault?.root, [root]);
+  const isCurrent = useCallback(() => mounted.current && vault === useVault.getState().vault, [vault]);
   useEffect(() => {
     mounted.current = true;
     return () => {

@@ -84,6 +84,7 @@ export const commands = {
 	setBookmarks: (paths: string[]) => __TAURI_INVOKE<null>("set_bookmarks", { paths }),
 	copyPath: (from: string, to: string) => __TAURI_INVOKE<Written_Serialize>("copy_path", { from, to }),
 	currentVault: () => __TAURI_INVOKE<{
+	session?: VaultSession | null,
 	root: string,
 	name: string,
 	/**  Set when undo history and proposals can't be saved for this vault (shown as a banner). */
@@ -998,6 +999,7 @@ export type UpdateWorkSession = {
 export type VaultInfo = VaultInfo_Serialize | VaultInfo_Deserialize;
 
 export type VaultInfo_Deserialize = {
+	session: VaultSession | null,
 	root: string,
 	name: string,
 	/**  Set when undo history and proposals can't be saved for this vault (shown as a banner). */
@@ -1005,6 +1007,7 @@ export type VaultInfo_Deserialize = {
 };
 
 export type VaultInfo_Serialize = {
+	session?: VaultSession | null,
 	root: string,
 	name: string,
 	/**  Set when undo history and proposals can't be saved for this vault (shown as a banner). */
@@ -1042,6 +1045,14 @@ export type VaultPreferences = {
 	 *  earlier into this vault's preferences.
 	 */
 	legacy_migrated?: boolean,
+};
+
+/**  Persistent identity follows vault moves; generation distinguishes every activation, including A → B → A. */
+export type VaultSession = {
+	/**  Absent only when this vault cannot persist its identity (notes remain usable). */
+	vault_id: string | null,
+	root: string,
+	generation: string,
 };
 
 /**  One version of a file (its content is fetched separately with [`History::content`]). */

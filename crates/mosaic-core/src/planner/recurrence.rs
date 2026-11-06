@@ -303,9 +303,25 @@ fn matches_pattern(rule: &Rule, base: NaiveDate, date: NaiveDate) -> bool {
 }
 
 fn local_datetime(tz: Tz, value: NaiveDateTime) -> Result<DateTime<Tz>> {
-    tz.from_local_datetime(&value)
+    // Ambiguous (fall-back) times resolve to the first occurrence. A time inside a spring-forward
+    // gap is shifted forward by the gap length (02:30 -> 03:30), by applying the UTC offset that
+    // was in force the day before (assumes no other offset change in between).
+    if let Some(resolved) = tz.from_local_datetime(&value).earliest() {
+        return Ok(resolved);
+    }
+    use chrono::Offset as _;
+    let before = value - chrono::Duration::days(1);
+    let offset = tz
+        .from_local_datetime(&before)
         .earliest()
-        .ok_or_else(|| Error::Invalid(format!("{value} does not exist in {tz}")))
+        .ok_or_else(|| Error::Invalid(format!("{value} does not exist in {tz}")))?
+        .offset()
+        .fix();
+    Ok(
+        (value - chrono::Duration::seconds(i64::from(offset.local_minus_utc())))
+            .and_utc()
+            .with_timezone(&tz),
+    )
 }
 
 /// Last local date a timed occurrence touches. The end instant is exclusive, so a
@@ -454,6 +470,57 @@ mod tests {
             archived_at: None,
             trashed_at: None,
         }
+    }
+
+    fn daily_at(start: &str, end: &str) -> PlannerEvent {
+        let mut e = event();
+        e.start_value = start.into();
+        e.end_value = end.into();
+        e.recurrence_rule = Some("FREQ=DAILY".into());
+        e
+    }
+
+    #[test]
+    fn dst_gap_occurrence_is_shifted_forward_not_an_error() {
+        // 02:30 Europe/Zurich does not exist on 2026-03-29.
+        let e = daily_at("2026-03-27T01:30:00.000Z", "2026-03-27T02:00:00.000Z");
+        let d = |day| NaiveDate::from_ymd_opt(2026, 3, day).unwrap();
+        let o = expand(&e, d(28), d(30)).unwrap();
+        assert_eq!(o.len(), 3);
+        assert_eq!(o[0].1, "2026-03-28T01:30:00.000Z");
+        assert_eq!(o[1].1, "2026-03-29T01:30:00.000Z"); // 03:30 CEST
+        assert_eq!(o[1].2, "2026-03-29T02:00:00.000Z");
+        assert_eq!(o[2].1, "2026-03-30T00:30:00.000Z");
+    }
+
+    #[test]
+    fn dst_ambiguous_occurrence_uses_first_instant() {
+        // 02:30 Europe/Zurich happens twice on 2026-10-25; the earlier (CEST) one wins.
+        let e = daily_at("2026-10-23T00:30:00.000Z", "2026-10-23T01:00:00.000Z");
+        let d = |day| NaiveDate::from_ymd_opt(2026, 10, day).unwrap();
+        let o = expand(&e, d(25), d(25)).unwrap();
+        assert_eq!(o.len(), 1);
+        assert_eq!(o[0].1, "2026-10-25T00:30:00.000Z");
+    }
+
+    #[test]
+    fn dst_gap_shifts_by_the_gap_length_for_half_hour_and_midnight_gaps() {
+        // Lord Howe: 02:00 -> 02:30 on 2026-10-04, so 02:15 becomes 02:45 (+11:00).
+        let mut e = daily_at("2026-10-01T15:45:00.000Z", "2026-10-01T16:15:00.000Z");
+        e.timezone = "Australia/Lord_Howe".into();
+        let d = |day| NaiveDate::from_ymd_opt(2026, 10, day).unwrap();
+        let o = expand(&e, d(4), d(4)).unwrap();
+        assert_eq!(o[0].0, "2026-10-04");
+        assert_eq!(o[0].1, "2026-10-03T15:45:00.000Z");
+        assert_eq!(o[0].2, "2026-10-03T16:15:00.000Z");
+        // Havana: 00:00 -> 01:00 on 2026-03-08, so 00:30 becomes 01:30 (-04:00).
+        let mut e = daily_at("2026-03-05T05:30:00.000Z", "2026-03-05T06:30:00.000Z");
+        e.timezone = "America/Havana".into();
+        let d = |day| NaiveDate::from_ymd_opt(2026, 3, day).unwrap();
+        let o = expand(&e, d(8), d(8)).unwrap();
+        assert_eq!(o[0].0, "2026-03-08");
+        assert_eq!(o[0].1, "2026-03-08T05:30:00.000Z");
+        assert_eq!(o[0].2, "2026-03-08T06:30:00.000Z");
     }
 
     fn utc_timed(start: &str, end: &str, rule: Option<&str>) -> PlannerEvent {

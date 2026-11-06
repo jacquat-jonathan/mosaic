@@ -524,8 +524,10 @@ impl Vault {
         if !src.exists() {
             return Err(Error::NotFound(from_n));
         }
-        // Allow case-only renames on case-insensitive volumes.
-        let case_only = from_n.to_lowercase() == to_n.to_lowercase();
+        // A case-only rename is fine on a case-insensitive volume, where both
+        // names are the same file. On a case-sensitive volume they are different
+        // files, and the target must not be overwritten.
+        let case_only = from_n.to_lowercase() == to_n.to_lowercase() && same_file(&src, &dst);
         if dst.exists() && !case_only {
             return Err(Error::AlreadyExists(to_n));
         }
@@ -655,6 +657,25 @@ const LAUNCHABLE_EXTENSIONS: &[&str] = &[
     "shortcut",
     "dylib",
 ];
+
+/// True when both paths exist and refer to the same underlying file.
+fn same_file(a: &Path, b: &Path) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        match (fs::metadata(a), fs::metadata(b)) {
+            (Ok(x), Ok(y)) => x.dev() == y.dev() && x.ino() == y.ino(),
+            _ => false,
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        match (fs::canonicalize(a), fs::canonicalize(b)) {
+            (Ok(x), Ok(y)) => x == y,
+            _ => false,
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -870,6 +891,22 @@ mod tests {
             Err(Error::InvalidPath(_))
         ));
         assert!(v.list("", false).unwrap().iter().all(|e| e.path != "link"));
+    }
+
+    #[test]
+    fn case_only_rename_never_overwrites_a_different_file() {
+        let (dir, v) = vault();
+        fs::write(dir.path().join("a.md"), "AAA").unwrap();
+        fs::write(dir.path().join("A.md"), "BBB").unwrap();
+        // Only meaningful where the two names are distinct files.
+        if !same_file(&dir.path().join("a.md"), &dir.path().join("A.md")) {
+            assert!(matches!(
+                v.rename("a.md", "A.md"),
+                Err(Error::AlreadyExists(_))
+            ));
+            assert_eq!(fs::read_to_string(dir.path().join("a.md")).unwrap(), "AAA");
+            assert_eq!(fs::read_to_string(dir.path().join("A.md")).unwrap(), "BBB");
+        }
     }
 
     #[test]

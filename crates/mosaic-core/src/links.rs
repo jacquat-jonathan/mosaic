@@ -153,7 +153,30 @@ pub fn wiki_text_for(files: &FileSet, path: &str, from: Option<&str>) -> String 
     }
 }
 
-/// Relative Markdown link URL from `from`'s folder to `path`, with spaces encoded.
+/// Whether `text` can be written inside `[[...]]` and read back as the same target: `#`, `^` and `|`
+/// there start a heading, block or alias, and brackets end the link.
+pub fn wiki_safe(text: &str) -> bool {
+    !text.contains(['#', '^', '|', '[', ']'])
+}
+
+/// Percent-encodes what would end or change a Markdown link URL (`%`, whitespace, `#`, parentheses,
+/// brackets, …). The parser decodes it again; see `parse::percent_decode`.
+pub fn encode_url_text(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        if c.is_ascii_control() || c.is_whitespace() || "%#()[]<>\"?^|`\\".contains(c) {
+            let mut buf = [0u8; 4];
+            for b in c.encode_utf8(&mut buf).bytes() {
+                out.push_str(&format!("%{b:02X}"));
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+/// Relative Markdown link URL from `from`'s folder to `path`, with special characters encoded.
 pub fn markdown_url_for(path: &str, from: &str) -> String {
     let from_parts: Vec<&str> = parent(from).split('/').filter(|s| !s.is_empty()).collect();
     let to_parts: Vec<&str> = path.split('/').collect();
@@ -164,7 +187,10 @@ pub fn markdown_url_for(path: &str, from: &str) -> String {
         .count();
     let mut segs: Vec<String> = vec!["..".to_string(); from_parts.len() - common];
     segs.extend(to_parts[common..].iter().map(|s| s.to_string()));
-    segs.join("/").replace('%', "%25").replace(' ', "%20")
+    segs.iter()
+        .map(|s| encode_url_text(s))
+        .collect::<Vec<_>>()
+        .join("/")
 }
 
 #[cfg(test)]
@@ -210,6 +236,38 @@ mod tests {
         for c in cases["linkText"].as_array().unwrap() {
             let got = wiki_text_for(&f, c["path"].as_str().unwrap(), c["from"].as_str());
             assert_eq!(got, c["expected"].as_str().unwrap(), "{}: {c}", c["why"]);
+        }
+    }
+
+    #[test]
+    fn writes_the_shared_markdown_urls() {
+        let (_, cases) = shared();
+        for c in cases["markdownUrl"].as_array().unwrap() {
+            let got = markdown_url_for(c["path"].as_str().unwrap(), c["from"].as_str().unwrap());
+            assert_eq!(got, c["expected"].as_str().unwrap(), "{}: {c}", c["why"]);
+            // And the parser reads back what the writer wrote.
+            let note = format!("[x]({got})");
+            let l = &crate::parse::parse(&note).links;
+            assert_eq!(l.len(), 1, "{}: {c}", c["why"]);
+            let leaf = c["path"]
+                .as_str()
+                .unwrap()
+                .rsplit_once('/')
+                .map_or(c["path"].as_str().unwrap(), |x| x.1);
+            assert!(l[0].target.ends_with(leaf), "{}: {c}", c["why"]);
+        }
+    }
+
+    #[test]
+    fn knows_which_names_fit_in_a_wiki_link() {
+        let (_, cases) = shared();
+        for c in cases["wikiSafe"].as_array().unwrap() {
+            assert_eq!(
+                wiki_safe(c["text"].as_str().unwrap()),
+                c["expected"].as_bool().unwrap(),
+                "{}: {c}",
+                c["why"]
+            );
         }
     }
 

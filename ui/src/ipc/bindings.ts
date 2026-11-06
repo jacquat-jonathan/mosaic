@@ -168,15 +168,49 @@ export type Access =
 /**  Agents' changes become proposals that the person accepts or rejects in the app. */
 "review";
 
+export type ActivityChange = {
+	field: string,
+	from: unknown | null,
+	to: unknown | null,
+};
+
 export type ActivityEntry = {
 	id: number,
 	entity_kind: string,
 	entity_id: string,
+	/**  When the change happened: UTC, RFC 3339 with milliseconds. */
 	occurred_at: string,
+	/**
+	 *  Machine-readable kind: `created`, `updated`, `moved`, `completed`, `reopened`,
+	 *  `archived`, `restored`, `trashed`, `cancelled`, …
+	 */
 	action: string,
+	/**  One self-contained sentence saying what happened. */
 	summary: string,
+	/**
+	 *  Who made the change: `app` (a person), `cli`, `agent` (an AI over MCP) or `external`.
+	 *  `None` for entries written before this was recorded.
+	 */
+	source: string | null,
+	/**  The agent's name (the MCP client, e.g. `claude-code`), when known. */
+	actor: string | null,
+	/**
+	 *  Why this happened when it was a consequence of another change, e.g. a session cancelled
+	 *  because its task was completed.
+	 */
+	reason: string | null,
+	/**
+	 *  Every field that changed, with its old and new value (`from` is `null` for a field that
+	 *  was unset, `to` is `null` when it was cleared). Empty when only the snapshots exist and
+	 *  nothing differs; derived from the snapshots for entries written before this existed.
+	 */
+	changes: ActivityChange[],
+	/**  The whole record before the change (`null` for creation). */
 	before: unknown | null,
+	/**  The whole record after the change. */
 	after: unknown | null,
+	/**  The entry as one plain-text line: see [`ActivityEntry::to_text`]. */
+	text: string,
 };
 
 export type Agent = {

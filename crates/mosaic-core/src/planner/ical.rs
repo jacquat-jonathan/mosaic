@@ -106,12 +106,26 @@ fn property(line: &str) -> Option<IcalProperty<'_>> {
 }
 
 fn text(value: &str) -> String {
-    value
-        .replace("\\n", "\n")
-        .replace("\\N", "\n")
-        .replace("\\,", ",")
-        .replace("\\;", ";")
-        .replace("\\\\", "\\")
+    // One left-to-right pass so each backslash is consumed exactly once; sequential `replace`
+    // calls would turn the `\n` inside an escaped `\\n` into a newline.
+    let mut result = String::with_capacity(value.len());
+    let mut chars = value.chars();
+    while let Some(c) = chars.next() {
+        if c != '\\' {
+            result.push(c);
+            continue;
+        }
+        match chars.next() {
+            Some('n' | 'N') => result.push('\n'),
+            Some(escaped @ ('\\' | ',' | ';')) => result.push(escaped),
+            Some(other) => {
+                result.push('\\');
+                result.push(other);
+            }
+            None => result.push('\\'),
+        }
+    }
+    result
 }
 
 fn title_marks_cancellation(title: &str) -> bool {

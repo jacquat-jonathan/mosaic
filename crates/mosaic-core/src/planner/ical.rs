@@ -87,7 +87,7 @@ fn unfolded(content: &str) -> Vec<String> {
     let mut result: Vec<String> = Vec::new();
     for raw in content.replace("\r\n", "\n").replace('\r', "\n").lines() {
         if (raw.starts_with(' ') || raw.starts_with('\t')) && !result.is_empty() {
-            result.last_mut().unwrap().push_str(raw.trim_start());
+            result.last_mut().unwrap().push_str(&raw[1..]);
         } else {
             result.push(raw.to_string());
         }

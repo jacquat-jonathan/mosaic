@@ -26,6 +26,7 @@ import { AreaSidebar } from "./views/AreaSidebar";
 import { useWorkspace } from "./state/workspace";
 import { contextKind, isSpecialTab } from "./views/specialTabs";
 import { startAttention } from "./state/attention";
+import { startNotifications } from "./state/notifications";
 import { WorkspaceNotices } from "./views/WorkspaceNotices";
 import { useReview } from "./state/review";
 
@@ -112,6 +113,7 @@ function Main() {
   const indexing = useVault((s) => s.indexing);
   const active = useWorkspace((s) => s.panes.find((p) => p.id === s.focused)?.active ?? null);
   useEffect(() => startAttention(vault.root), [vault.root]);
+  useEffect(() => startNotifications(vault.root), [vault.root]);
   useEffect(() => {
     let current = true;
     void api.updateStatus().then(

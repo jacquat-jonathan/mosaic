@@ -77,3 +77,14 @@ test("deleting a workflow targets a note or the whole skill folder", () => {
     "Agents/Inbox triage",
   );
 });
+test("a manual workflow whose frontmatter is empty or null saves without a YAML error", () => {
+  // Hand-made manual workflows often start as `---` fences with nothing (or only `~`) between them.
+  for (const source of ["---\n~\n---\nBody\n", "---\nnull\n---\nBody\n", "---\n---\nBody\n", "---\n\n---\nBody\n"]) {
+    const saved = workflowContent(source, null, [], null, []);
+    expect(saved, JSON.stringify(source)).toBe("---\nmay-change: []\n---\nBody\n");
+  }
+});
+test("frontmatter that is not a mapping is rejected with a readable message", () => {
+  for (const source of ["---\njust text\n---\nB", "---\n- a\n---\nB"])
+    expect(() => workflowContent(source, null, [], null, [])).toThrow(/mapping/);
+});

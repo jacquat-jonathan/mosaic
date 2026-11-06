@@ -98,8 +98,13 @@ function plannerRecord(entity_kind: "epic" | "task" | "event", entity_id: string
     occurred_at: plannerNow(),
     action,
     summary,
+    source: "app",
+    actor: null,
+    reason: null,
+    changes: [],
     before: null,
     after: null,
+    text: `${plannerNow()} | app | ${entity_kind} ${entity_id} | ${action} | ${summary}`,
   });
 }
 function plannerConflict(current: { revision: number }, expected: number) {

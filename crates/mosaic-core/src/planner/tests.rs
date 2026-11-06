@@ -92,7 +92,7 @@ fn domain_revisions_hierarchy_completion_and_history_are_atomic() {
             .last()
             .unwrap()
             .summary,
-        "Moved task from New to In progress"
+        "Moved task \"Ship\" from New to In progress"
     );
 
     let stale = store.update_task(
@@ -826,4 +826,160 @@ fn one_unsupported_recurrence_never_rejects_the_whole_feed() {
     let occurrences =
         overlay_occurrences(&feed, "s", "S", None, "2026-11-03", "2026-11-03", "UTC").unwrap();
     assert_eq!(occurrences.len(), 2);
+}
+
+#[test]
+fn activity_records_actor_field_changes_and_readable_text() {
+    let mut store = in_memory();
+    store
+        .set_activity_context("agent", Some("claude-code"))
+        .unwrap();
+    let created = task(&mut store, None, None, "Write docs");
+    let updated = store
+        .update_task(
+            &created.id,
+            UpdateTask {
+                expected_revision: created.revision,
+                title: Some("Write the docs".into()),
+                description: None,
+                due_date: Some("2026-12-01".into()),
+                clear_due_date: false,
+                estimate_minutes: None,
+                clear_estimate: false,
+            },
+        )
+        .unwrap();
+    store.set_activity_context("app", None).unwrap();
+    let moved = store
+        .move_task(
+            &updated.id,
+            MoveTask {
+                expected_revision: updated.revision,
+                epic_id: None,
+                parent_id: None,
+                status: TaskStatus::Blocked,
+                position: 1024,
+            },
+        )
+        .unwrap();
+
+    let log = store.activity("task", &created.id).unwrap();
+    assert_eq!(log.len(), 3);
+    assert_eq!(log[0].source.as_deref(), Some("agent"));
+    assert_eq!(log[0].actor.as_deref(), Some("claude-code"));
+    assert!(
+        log[0].changes.is_empty(),
+        "creation carries the full snapshot instead"
+    );
+
+    let edit = &log[1];
+    assert_eq!(
+        edit.summary,
+        "Updated task \"Write the docs\": due_date, title"
+    );
+    let fields: Vec<_> = edit.changes.iter().map(|c| c.field.as_str()).collect();
+    assert_eq!(fields, ["due_date", "title"]);
+    assert_eq!(edit.changes[1].from, Some(serde_json::json!("Write docs")));
+    assert_eq!(
+        edit.changes[1].to,
+        Some(serde_json::json!("Write the docs"))
+    );
+    assert_eq!(edit.changes[0].from, None);
+    assert_eq!(edit.changes[0].to, Some(serde_json::json!("2026-12-01")));
+
+    let transition = &log[2];
+    assert_eq!(transition.source.as_deref(), Some("app"));
+    assert_eq!(transition.actor, None);
+    let status = transition
+        .changes
+        .iter()
+        .find(|c| c.field == "status")
+        .unwrap();
+    assert_eq!(status.from, Some(serde_json::json!("new")));
+    assert_eq!(status.to, Some(serde_json::json!("blocked")));
+    assert_eq!(moved.status, TaskStatus::Blocked);
+    assert!(transition.text.contains("| app |"));
+    assert!(transition.text.contains("status: \"new\" -> \"blocked\""));
+    assert!(log[0].text.contains("| agent:claude-code |"));
+    assert!(
+        !transition
+            .changes
+            .iter()
+            .any(|c| c.field == "revision" || c.field == "updated_at")
+    );
+}
+
+#[test]
+fn cascaded_session_cancellation_explains_why() {
+    let mut store = in_memory();
+    let parent = task(&mut store, None, None, "Plan trip");
+    let session = store
+        .create_work_session(CreateWorkSession {
+            task_id: parent.id.clone(),
+            all_day: true,
+            start_value: "2999-01-01".into(),
+            end_value: "2999-01-02".into(),
+            timezone: "UTC".into(),
+        })
+        .unwrap();
+    store
+        .complete_task(
+            &parent.id,
+            parent.revision,
+            false,
+            FutureSessionPolicy::Cancel,
+        )
+        .unwrap();
+    let log = store.activity("work_session", &session.id).unwrap();
+    let cancelled = log.iter().find(|e| e.action == "cancelled").unwrap();
+    assert!(cancelled.reason.as_deref().unwrap().contains(&parent.id));
+    assert_eq!(cancelled.changes[0].field, "state");
+    assert!(cancelled.text.contains("reason: task"));
+    let done = store.activity("task", &parent.id).unwrap();
+    assert!(done.last().unwrap().summary.contains("status New -> done"));
+}
+
+#[test]
+fn legacy_activity_rows_stay_readable_with_derived_changes() {
+    let mut store = in_memory();
+    let t = task(&mut store, None, None, "Old");
+    // A row as written by schema v2: no source, actor, reason or stored changes.
+    store
+        .conn
+        .execute(
+            "INSERT INTO activity(entity_kind, entity_id, occurred_at, action, summary, before_json, after_json)
+             VALUES ('task', ?1, '2026-01-01T00:00:00.000Z', 'updated', 'Updated task',
+                     '{\"title\":\"A\",\"revision\":1}', '{\"title\":\"B\",\"revision\":2}')",
+            [&t.id],
+        )
+        .unwrap();
+    let legacy = store.activity("task", &t.id).unwrap().pop().unwrap();
+    assert_eq!(legacy.source, None);
+    assert_eq!(legacy.changes.len(), 1);
+    assert_eq!(legacy.changes[0].field, "title");
+    assert!(legacy.text.contains("| unknown |"));
+}
+
+#[test]
+fn workspace_source_and_actor_reach_planner_activity() {
+    let dir = tempfile::tempdir().unwrap();
+    let ws = Workspace::open(dir.path())
+        .unwrap()
+        .with_source(crate::history::Source::Agent);
+    ws.set_actor("claude-code");
+    let created = ws
+        .planner
+        .create_task(CreateTask {
+            epic_id: None,
+            parent_id: None,
+            title: "From agent".into(),
+            description: String::new(),
+            status: TaskStatus::New,
+            due_date: None,
+            estimate_minutes: None,
+        })
+        .unwrap();
+    let entry = ws.planner.activity("task", &created.id).unwrap().remove(0);
+    assert_eq!(entry.source.as_deref(), Some("agent"));
+    assert_eq!(entry.actor.as_deref(), Some("claude-code"));
 }

@@ -25,7 +25,7 @@ pub use ical::{
 };
 pub use service::PlannerService;
 
-pub const SCHEMA_VERSION: i64 = 2;
+pub const SCHEMA_VERSION: i64 = 3;
 
 #[derive(Debug)]
 pub struct PlannerStore {
@@ -362,13 +362,123 @@ pub struct ActivityEntry {
     pub id: i64,
     pub entity_kind: String,
     pub entity_id: String,
+    /// When the change happened: UTC, RFC 3339 with milliseconds.
     pub occurred_at: String,
+    /// Machine-readable kind: `created`, `updated`, `moved`, `completed`, `reopened`,
+    /// `archived`, `restored`, `trashed`, `cancelled`, …
     pub action: String,
+    /// One self-contained sentence saying what happened.
     pub summary: String,
+    /// Who made the change: `app` (a person), `cli`, `agent` (an AI over MCP) or `external`.
+    /// `None` for entries written before this was recorded.
+    pub source: Option<String>,
+    /// The agent's name (the MCP client, e.g. `claude-code`), when known.
+    pub actor: Option<String>,
+    /// Why this happened when it was a consequence of another change, e.g. a session cancelled
+    /// because its task was completed.
+    pub reason: Option<String>,
+    /// Every field that changed, with its old and new value (`from` is `null` for a field that
+    /// was unset, `to` is `null` when it was cleared). Empty when only the snapshots exist and
+    /// nothing differs; derived from the snapshots for entries written before this existed.
+    pub changes: Vec<ActivityChange>,
+    /// The whole record before the change (`null` for creation).
     #[cfg_attr(feature = "specta", specta(type = Option<specta_typescript::Unknown>))]
     pub before: Option<serde_json::Value>,
+    /// The whole record after the change.
     #[cfg_attr(feature = "specta", specta(type = Option<specta_typescript::Unknown>))]
     pub after: Option<serde_json::Value>,
+    /// The entry as one plain-text line: see [`ActivityEntry::to_text`].
+    pub text: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+pub struct ActivityChange {
+    pub field: String,
+    #[cfg_attr(feature = "specta", specta(type = Option<specta_typescript::Unknown>))]
+    pub from: Option<serde_json::Value>,
+    #[cfg_attr(feature = "specta", specta(type = Option<specta_typescript::Unknown>))]
+    pub to: Option<serde_json::Value>,
+}
+
+/// Bookkeeping that changes on every edit and says nothing a reader needs.
+const NOISY_FIELDS: [&str; 2] = ["revision", "updated_at"];
+
+/// The fields that differ between two snapshots, in alphabetical field order (stable).
+pub(super) fn diff_snapshots(
+    before: Option<&serde_json::Value>,
+    after: Option<&serde_json::Value>,
+) -> Vec<ActivityChange> {
+    let (Some(serde_json::Value::Object(before)), Some(serde_json::Value::Object(after))) =
+        (before, after)
+    else {
+        return Vec::new();
+    };
+    let keys = after
+        .keys()
+        .chain(before.keys().filter(|key| !after.contains_key(*key)));
+    keys.filter(|key| !NOISY_FIELDS.contains(&key.as_str()))
+        .filter_map(|key| {
+            let (from, to) = (before.get(key), after.get(key));
+            (from != to).then(|| ActivityChange {
+                field: key.clone(),
+                from: from.filter(|v| !v.is_null()).cloned(),
+                to: to.filter(|v| !v.is_null()).cloned(),
+            })
+        })
+        .collect()
+}
+
+fn short_value(value: &Option<serde_json::Value>) -> String {
+    match value {
+        None => "none".into(),
+        Some(serde_json::Value::String(text)) => {
+            let text = text.replace('\n', " ");
+            if text.chars().count() > 60 {
+                format!("\"{}…\"", text.chars().take(60).collect::<String>())
+            } else {
+                format!("\"{text}\"")
+            }
+        }
+        Some(other) => other.to_string(),
+    }
+}
+
+impl ActivityEntry {
+    /// One line a person or an AI can read without the JSON:
+    /// `2026-11-05T10:00:00.000Z | agent:claude-code | task 1234 | moved | Moved task from … |
+    /// status: "new" -> "in-progress" | reason: …`. Entries from before the actor was recorded
+    /// say `unknown`.
+    pub fn to_text(&self) -> String {
+        let who = match (self.source.as_deref(), self.actor.as_deref()) {
+            (Some(source), Some(actor)) => format!("{source}:{actor}"),
+            (Some(source), None) => source.to_string(),
+            (None, _) => "unknown".to_string(),
+        };
+        let mut line = format!(
+            "{} | {who} | {} {} | {} | {}",
+            self.occurred_at, self.entity_kind, self.entity_id, self.action, self.summary
+        );
+        if !self.changes.is_empty() {
+            let changes: Vec<String> = self
+                .changes
+                .iter()
+                .map(|c| {
+                    format!(
+                        "{}: {} -> {}",
+                        c.field,
+                        short_value(&c.from),
+                        short_value(&c.to)
+                    )
+                })
+                .collect();
+            line.push_str(&format!(" | {}", changes.join("; ")));
+        }
+        if let Some(reason) = &self.reason {
+            line.push_str(&format!(" | reason: {reason}"));
+        }
+        line
+    }
 }
 
 impl PlannerStore {
@@ -419,32 +529,63 @@ impl PlannerStore {
         })
     }
 
+    /// Records who is making changes through this store from now on.
+    pub fn set_activity_context(&self, source: &str, actor: Option<&str>) -> Result<()> {
+        self.conn
+            .execute(
+                "UPDATE activity_context SET source = ?1, actor = ?2 WHERE id = 1",
+                params![source, actor],
+            )
+            .map(drop)
+            .map_err(sql_error)
+    }
+
     pub fn activity(&self, entity_kind: &str, entity_id: &str) -> Result<Vec<ActivityEntry>> {
         let mut stmt = self
             .conn
-            .prepare(
-                "SELECT id, entity_kind, entity_id, occurred_at, action, summary, before_json, after_json
-                 FROM activity WHERE entity_kind = ?1 AND entity_id = ?2 ORDER BY id",
-            )
+            .prepare(&format!(
+                "{ACTIVITY_SELECT} WHERE entity_kind = ?1 AND entity_id = ?2 ORDER BY id"
+            ))
             .map_err(sql_error)?;
-        stmt.query_map(params![entity_kind, entity_id], |row| {
-            let before: Option<String> = row.get(6)?;
-            let after: Option<String> = row.get(7)?;
-            Ok(ActivityEntry {
-                id: row.get(0)?,
-                entity_kind: row.get(1)?,
-                entity_id: row.get(2)?,
-                occurred_at: row.get(3)?,
-                action: row.get(4)?,
-                summary: row.get(5)?,
-                before: before.and_then(|value| serde_json::from_str(&value).ok()),
-                after: after.and_then(|value| serde_json::from_str(&value).ok()),
-            })
-        })
-        .map_err(sql_error)?
-        .collect::<std::result::Result<_, _>>()
-        .map_err(sql_error)
+        stmt.query_map(params![entity_kind, entity_id], activity_row)
+            .map_err(sql_error)?
+            .collect::<std::result::Result<_, _>>()
+            .map_err(sql_error)
     }
+}
+
+pub(super) const ACTIVITY_SELECT: &str = "SELECT id, entity_kind, entity_id, occurred_at, action,
+    summary, before_json, after_json, source, actor, reason, changes_json FROM activity";
+
+pub(super) fn activity_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ActivityEntry> {
+    let before: Option<String> = row.get(6)?;
+    let after: Option<String> = row.get(7)?;
+    let changes: Option<String> = row.get(11)?;
+    let before: Option<serde_json::Value> =
+        before.and_then(|value| serde_json::from_str(&value).ok());
+    let after: Option<serde_json::Value> =
+        after.and_then(|value| serde_json::from_str(&value).ok());
+    // Entries from before changes were stored get them from their snapshots.
+    let changes = changes
+        .and_then(|value| serde_json::from_str(&value).ok())
+        .unwrap_or_else(|| diff_snapshots(before.as_ref(), after.as_ref()));
+    let mut entry = ActivityEntry {
+        id: row.get(0)?,
+        entity_kind: row.get(1)?,
+        entity_id: row.get(2)?,
+        occurred_at: row.get(3)?,
+        action: row.get(4)?,
+        summary: row.get(5)?,
+        source: row.get(8)?,
+        actor: row.get(9)?,
+        reason: row.get(10)?,
+        changes,
+        before,
+        after,
+        text: String::new(),
+    };
+    entry.text = entry.to_text();
+    Ok(entry)
 }
 
 impl PlannerService {
@@ -508,19 +649,49 @@ pub(super) fn record_activity(
     before: Option<serde_json::Value>,
     after: Option<serde_json::Value>,
 ) -> Result<()> {
+    record_activity_because(tx, entity, at, action, summary, None, before, after)
+}
+
+/// Appends an activity entry stamped with who is acting (see `set_activity_context`) and the
+/// field-level changes between the snapshots. `reason` explains a consequence of another change.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn record_activity_because(
+    tx: &Transaction<'_>,
+    entity: (&str, &str),
+    at: &str,
+    action: &str,
+    summary: &str,
+    reason: Option<&str>,
+    before: Option<serde_json::Value>,
+    after: Option<serde_json::Value>,
+) -> Result<()> {
     let (entity_kind, entity_id) = entity;
+    let json = |e: serde_json::Error| Error::Invalid(e.to_string());
+    let changes =
+        serde_json::to_string(&diff_snapshots(before.as_ref(), after.as_ref())).map_err(json)?;
     let before = before
         .map(|value| serde_json::to_string(&value))
         .transpose()
-        .map_err(|e| Error::Invalid(e.to_string()))?;
+        .map_err(json)?;
     let after = after
         .map(|value| serde_json::to_string(&value))
         .transpose()
-        .map_err(|e| Error::Invalid(e.to_string()))?;
+        .map_err(json)?;
     tx.execute(
-        "INSERT INTO activity(entity_kind, entity_id, occurred_at, action, summary, before_json, after_json)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-        params![entity_kind, entity_id, at, action, summary, before, after],
+        "INSERT INTO activity(entity_kind, entity_id, occurred_at, action, summary, before_json,
+                              after_json, source, actor, reason, changes_json)
+         SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, source, actor, ?8, ?9 FROM activity_context",
+        params![
+            entity_kind,
+            entity_id,
+            at,
+            action,
+            summary,
+            before,
+            after,
+            reason,
+            changes
+        ],
     )
     .map_err(sql_error)?;
     Ok(())

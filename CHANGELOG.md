@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Clearer task activity:** every planner task history entry now says who made the change (you, the command line or an AI agent and its name), exactly which fields changed from what to what, and why when it was a consequence of another change. AI agents read the same history through `planner_task_history`, including a one-line text form of each entry. Older entries stay readable.
+
 - **More color themes:** choose Classic, Paper, Forest, Ocean or Dusk in Appearance, with light/dark previews. Palettes follow System mode across notes and app controls; use the theme accent or choose your own color.
 
 - **HTML preview defaults per vault:** optionally allow listed external sites without approving each page. Script permission stays separate, and individual pages can still block internet access for the session.

@@ -83,7 +83,15 @@ export function ActivityTimeline({
         <ol>
           {[...entries].reverse().map((entry) => (
             <li key={entry.id}>
-              <span>{entry.summary}</span>
+              <span>
+                {entry.summary}
+                {entry.source ? (
+                  <small className="planner-activity-actor">
+                    {" "}
+                    · {entry.actor ? `${entry.source}: ${entry.actor}` : entry.source}
+                  </small>
+                ) : null}
+              </span>
               <time dateTime={entry.occurred_at}>{new Date(entry.occurred_at).toLocaleString()}</time>
             </li>
           ))}

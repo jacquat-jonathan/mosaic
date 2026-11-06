@@ -42,6 +42,25 @@ test("backlink failures remain distinct from empty results and retry restores fo
   await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("heading", { name: /^Backlinks/ })));
 });
 
+test("a retry click before the failure's effects flush still restores focus to the heading", async () => {
+  vi.mocked(api.backlinks).mockRejectedValueOnce(new Error("Backlink index unavailable"));
+  // A mutation observer runs right after React commits the failure, before its passive effects run.
+  const clicked = new Promise<void>((done) => {
+    const observer = new MutationObserver(() => {
+      const retry = screen.queryByRole("button", { name: "Retry backlinks" });
+      if (!retry) return;
+      observer.disconnect();
+      fireEvent.click(retry);
+      done();
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+  });
+  render(<NoteDetails path="Note.md" />);
+  await clicked;
+  await screen.findByText("No other notes link here yet.");
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("heading", { name: /^Backlinks/ })));
+});
+
 test("mention loads retry and link writes serialize while keeping the row until acknowledgement", async () => {
   vi.spyOn(api, "unlinkedMentions")
     .mockRejectedValueOnce(new Error("Mention index unavailable"))

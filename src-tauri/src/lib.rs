@@ -17,6 +17,7 @@ use mosaic_core::vault_state::VaultState;
 use mosaic_core::{Entry, Error, FileContent, Workspace, Written};
 use serde::Serialize;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_opener::OpenerExt;
@@ -25,7 +26,9 @@ type CmdResult<T> = Result<T, Error>;
 
 #[derive(Default)]
 pub(crate) struct AppState {
-    ws: RwLock<Option<Arc<Workspace>>>,
+    ws: RwLock<Option<(Arc<Workspace>, VaultSession)>>,
+    activation: Mutex<()>,
+    generation: AtomicU64,
     watcher: Mutex<Option<mosaic_core::watch::Watcher>>,
     /// Reports proposals and history written by agents (MCP servers, the CLI) as `history-changed`.
     history_watcher: Mutex<Option<mosaic_core::watch::Watcher>>,
@@ -39,13 +42,55 @@ impl AppState {
         self.ws
             .read()
             .expect("workspace lock poisoned")
-            .clone()
+            .as_ref()
+            .map(|(ws, _)| ws.clone())
             .ok_or_else(|| Error::Invalid("no vault is open".into()))
     }
+
+    fn install(&self, ws: Arc<Workspace>) -> VaultSession {
+        let mut active = self.ws.write().expect("workspace lock poisoned");
+        self.generation.fetch_add(1, Ordering::SeqCst);
+        let session = VaultSession {
+            vault_id: mosaic_core::vault_id::peek(ws.vault.root())
+                .ok()
+                .flatten()
+                .map(|identity| identity.id),
+            root: ws.vault.root().display().to_string(),
+            generation: self.generation.load(Ordering::SeqCst).to_string(),
+        };
+        *active = Some((ws.clone(), session.clone()));
+        session
+    }
+
+    pub(crate) fn session_for(&self, ws: &Arc<Workspace>) -> Option<VaultSession> {
+        let active = self.ws.read().expect("workspace lock poisoned");
+        active
+            .as_ref()
+            .filter(|(current, _)| Arc::ptr_eq(current, ws))
+            .map(|(_, session)| session.clone())
+    }
+}
+
+/// Persistent identity follows vault moves; generation distinguishes every activation, including A → B → A.
+#[derive(Serialize, Clone, specta::Type)]
+pub(crate) struct VaultSession {
+    /// Absent only when this vault cannot persist its identity (notes remain usable).
+    vault_id: Option<String>,
+    root: String,
+    generation: String,
+}
+
+#[derive(Serialize, Clone)]
+struct VaultChanges {
+    session: VaultSession,
+    #[serde(flatten)]
+    changes: mosaic_core::watch::Changes,
 }
 
 #[derive(Serialize, Clone, specta::Type)]
 struct VaultInfo {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    session: Option<VaultSession>,
     root: String,
     name: String,
     /// Set when undo history and proposals can't be saved for this vault (shown as a banner).
@@ -55,6 +100,7 @@ struct VaultInfo {
 
 #[derive(Serialize, Clone)]
 struct IndexProgress {
+    session: VaultSession,
     done: usize,
     total: usize,
     finished: bool,
@@ -63,6 +109,7 @@ struct IndexProgress {
 fn info(ws: &Workspace) -> VaultInfo {
     let root = ws.vault.root();
     VaultInfo {
+        session: None,
         root: root.display().to_string(),
         name: root
             .file_name()
@@ -87,6 +134,7 @@ fn create_vault(parent: String, name: String) -> CmdResult<VaultInfo> {
     let vault = mosaic_core::Vault::create_new(&parent, &name)?;
     let root = vault.root();
     Ok(VaultInfo {
+        session: None,
         root: root.display().to_string(),
         name: root
             .file_name()
@@ -98,7 +146,9 @@ fn create_vault(parent: String, name: String) -> CmdResult<VaultInfo> {
 
 /// Makes `ws` the open vault: remembers it, starts the watcher and indexes in the background.
 fn activate(app: AppHandle, state: &AppState, ws: Workspace) -> CmdResult<VaultInfo> {
+    let _activation = state.activation.lock().expect("activation lock poisoned");
     let ws = Arc::new(ws);
+    let session = state.install(ws.clone());
     // Known limit: Tauri's scope can only grow (a forbid would be permanent and beat a later allow),
     // so vaults opened earlier in the session stay readable through asset URLs until restart.
     let _ = app
@@ -111,9 +161,10 @@ fn activate(app: AppHandle, state: &AppState, ws: Workspace) -> CmdResult<VaultI
     // Moves this vault's rules, bookmarks and scheduler state out of settings.json the first time.
     let _ = VaultState::open(ws.vault.root());
     let history_events = app.clone();
+    let history_session = session.clone();
     *state.history_watcher.lock().expect("watcher lock poisoned") =
         mosaic_core::watch::watch_history(ws.vault.root(), move || {
-            let _ = history_events.emit("history-changed", ());
+            let _ = history_events.emit("history-changed", &history_session);
         })
         .ok()
         .flatten();
@@ -124,17 +175,27 @@ fn activate(app: AppHandle, state: &AppState, ws: Workspace) -> CmdResult<VaultI
             let _ = planner::changed(&planner_events, &planner_ws, Vec::new());
         })
         .ok();
-    let out = info(&ws);
-    *state.ws.write().expect("workspace lock poisoned") = Some(ws.clone());
+    let mut out = info(&ws);
+    out.session = Some(session.clone());
     tessera::reset_events(&app, &ws);
     tessera::start_scheduler(app.clone());
 
     // External changes (AI, CLI, other editors) are pushed to the UI as they happen.
     let events = app.clone();
     let event_ws = ws.clone();
+    let event_session = session.clone();
     let watcher = mosaic_core::watch::watch(ws.clone(), move |changes| {
+        if events.state::<AppState>().session_for(&event_ws).is_none() {
+            return;
+        }
         tessera::vault_changed(&events, &event_ws, &changes.paths);
-        let _ = events.emit("vault-changed", changes);
+        let _ = events.emit(
+            "vault-changed",
+            VaultChanges {
+                session: event_session.clone(),
+                changes,
+            },
+        );
     })
     .ok();
     *state.watcher.lock().expect("watcher lock poisoned") = watcher;
@@ -142,16 +203,23 @@ fn activate(app: AppHandle, state: &AppState, ws: Workspace) -> CmdResult<VaultI
     // Index in the background; the UI shows progress and search uses the last consistent index.
     std::thread::spawn(move || {
         let emit = |done, total, finished| {
+            if app.state::<AppState>().session_for(&ws).is_none() {
+                return;
+            }
             let _ = app.emit(
                 "index-progress",
                 IndexProgress {
+                    session: session.clone(),
                     done,
                     total,
                     finished,
                 },
             );
         };
-        let _ = ws.sync(|done, total| emit(done, total, false));
+        let _ = ws.sync_cancellable(
+            |done, total| emit(done, total, false),
+            || app.state::<AppState>().session_for(&ws).is_some(),
+        );
         emit(0, 0, true);
     });
     Ok(out)
@@ -259,7 +327,11 @@ fn percent_decode(s: &str) -> Option<String> {
 #[tauri::command(async)]
 #[specta::specta]
 fn current_vault(state: State<AppState>) -> Option<VaultInfo> {
-    state.get().ok().map(|ws| info(&ws))
+    state.get().ok().map(|ws| {
+        let mut out = info(&ws);
+        out.session = state.session_for(&ws);
+        out
+    })
 }
 
 #[tauri::command(async)]
@@ -928,6 +1000,41 @@ mod bindings_tests {
         assert!(
             current == fresh,
             "ui/src/ipc/bindings.ts is out of date: run MOSAIC_WRITE_BINDINGS=1 cargo test -p mosaic-app bindings_are_current"
+        );
+    }
+}
+
+#[cfg(test)]
+mod session_tests {
+    use super::*;
+
+    #[test]
+    fn reopening_a_vault_keeps_identity_but_rejects_old_workspace_callbacks() {
+        let a = tempfile::tempdir().unwrap();
+        let b = tempfile::tempdir().unwrap();
+        let identity = mosaic_core::vault_id::identify(a.path()).unwrap().id;
+        let open = |root: &std::path::Path| {
+            Arc::new(Workspace::new(
+                mosaic_core::Vault::open(root).unwrap(),
+                mosaic_core::index::Index::in_memory().unwrap(),
+            ))
+        };
+        let state = AppState::default();
+        let first = open(a.path());
+        let first_session = state.install(first.clone());
+        let middle = open(b.path());
+        state.install(middle.clone());
+        assert!(state.session_for(&first).is_none());
+        let last = open(a.path());
+        let last_session = state.install(last.clone());
+        assert_eq!(first_session.vault_id, Some(identity));
+        assert_eq!(first_session.vault_id, last_session.vault_id);
+        assert_ne!(first_session.generation, last_session.generation);
+        assert!(state.session_for(&first).is_none());
+        assert!(state.session_for(&middle).is_none());
+        assert_eq!(
+            state.session_for(&last).unwrap().generation,
+            last_session.generation
         );
     }
 }

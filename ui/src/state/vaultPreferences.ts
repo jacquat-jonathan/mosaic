@@ -1,3 +1,4 @@
+import { vaultOperation } from "./vaultSession";
 import { create } from "zustand";
 import { api } from "../ipc/api";
 import { prefs } from "./settings";
@@ -33,11 +34,12 @@ export const vaultPrefs = () => useVaultPreferences.getState().value;
 let generation = 0;
 export async function loadVaultPreferences(root: string) {
   const ticket = ++generation;
+  const current = vaultOperation();
   if (useVaultPreferences.getState().root !== root)
     useVaultPreferences.setState({ root, value: DEFAULT_VAULT_PREFS, error: null });
   try {
     let value = await api.vaultPreferences();
-    if (ticket !== generation) return;
+    if (ticket !== generation || !current()) return;
     if (!value.legacy_migrated) {
       const legacy = prefs();
       await api.setVaultPreferences(root, {
@@ -46,17 +48,20 @@ export async function loadVaultPreferences(root: string) {
         new_note_location: legacy.newNoteLocation,
         legacy_migrated: true,
       });
+      if (!current()) return;
       value = await api.vaultPreferences();
     }
-    if (ticket === generation) useVaultPreferences.setState({ value, error: null });
+    if (ticket === generation && current()) useVaultPreferences.setState({ value, error: null });
   } catch (e) {
-    if (ticket === generation) useVaultPreferences.setState({ error: errorMessage(e) });
+    if (ticket === generation && current()) useVaultPreferences.setState({ error: errorMessage(e) });
   }
 }
 export async function saveVaultPreferences(patch: Partial<VaultPreferences>) {
+  const current = vaultOperation();
   const { root } = useVaultPreferences.getState();
   if (!root) throw new Error("Open a vault first");
   await api.setVaultPreferences(root, patch);
+  if (!current()) return;
   const value = await api.vaultPreferences();
-  if (useVaultPreferences.getState().root === root) useVaultPreferences.setState({ value });
+  if (current() && useVaultPreferences.getState().root === root) useVaultPreferences.setState({ value });
 }

@@ -506,18 +506,38 @@ impl Workspace {
     /// Brings the index up to date with the disk. The vault is walked without the index lock, and
     /// files are indexed in batches that each take it briefly, so a write made meanwhile (an
     /// autosave) waits for one batch at most.
-    pub fn sync(&self, mut progress: impl FnMut(usize, usize)) -> Result<SyncStats> {
+    pub fn sync(&self, progress: impl FnMut(usize, usize)) -> Result<SyncStats> {
+        self.sync_cancellable(progress, || true)
+            .map(|stats| stats.expect("unconditional sync cannot be cancelled"))
+    }
+
+    /// Stops obsolete background indexing between batches. A cancelled scan never marks the
+    /// index fully synchronized; completed batches remain consistent and the next sync resumes.
+    pub fn sync_cancellable(
+        &self,
+        mut progress: impl FnMut(usize, usize),
+        mut current: impl FnMut() -> bool,
+    ) -> Result<Option<SyncStats>> {
+        if !current() {
+            return Ok(None);
+        }
         let known = self.index().known_files()?;
         let plan = SyncPlan::new(&self.vault, known)?;
         for batch in plan.batches() {
+            if !current() {
+                return Ok(None);
+            }
             progress(batch.done, plan.total);
             self.index()
                 .apply_sync(&self.vault, batch.changed, batch.removed)?;
         }
+        if !current() {
+            return Ok(None);
+        }
         progress(plan.total, plan.total);
         self.synced
             .store(true, std::sync::atomic::Ordering::Relaxed);
-        Ok(plan.stats)
+        Ok(Some(plan.stats))
     }
 
     /// For a watcher keeping the index current: tells other processes they needn't walk the
@@ -1839,6 +1859,29 @@ mod tests {
             std::fs::read_to_string(d.path().join(".mosaic/vault.json")).unwrap(),
             "{ half"
         );
+    }
+
+    #[test]
+    fn cancelled_sync_stops_between_batches_and_can_resume() {
+        let (d, v) = fixture();
+        for i in 0..600 {
+            std::fs::write(
+                d.path().join(format!("cancel{i}.md")),
+                format!("# Cancel{i}"),
+            )
+            .unwrap();
+        }
+        let w = Workspace::new(v, Index::in_memory().unwrap());
+        let calls = std::cell::Cell::new(0);
+        let result = w
+            .sync_cancellable(|_, _| calls.set(calls.get() + 1), || calls.get() == 0)
+            .unwrap();
+        assert!(result.is_none());
+        assert_eq!(calls.get(), 1);
+        assert!(!w.synced.load(std::sync::atomic::Ordering::Relaxed));
+        w.sync(|_, _| {}).unwrap();
+        assert!(w.synced.load(std::sync::atomic::Ordering::Relaxed));
+        assert_eq!(w.search("Cancel599", 5).unwrap()[0].path, "cancel599.md");
     }
 
     #[test]

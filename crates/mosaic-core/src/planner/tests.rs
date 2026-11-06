@@ -920,7 +920,6 @@ fn ical_export_never_folds_before_whitespace_and_roundtrips_through_import() {
 }
 
 #[test]
-#[test]
 fn activity_records_actor_field_changes_and_readable_text() {
     let mut store = in_memory();
     store

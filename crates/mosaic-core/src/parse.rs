@@ -69,8 +69,9 @@ pub struct Parsed {
     pub body: String,
 }
 
-static FRONTMATTER: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\A---[ \t]*\r?\n((?s:.*?))\r?\n---[ \t]*(?:\r?\n|\z)").unwrap());
+static FRONTMATTER: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"\A---[ \t]*\r?\n(?:((?s:.*?))\r?\n)??---[ \t]*(?:\r?\n|\z)").unwrap()
+});
 static WIKI: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(!?)\[\[([^\[\]\n]+?)\]\]").unwrap());
 static MD_LINK: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"(!?)\[([^\]\n]*)\]\(\s*(<[^>\n]+>|[^\s()]+)(?:\s+"[^"\n]*")?\s*\)"#).unwrap()
@@ -192,9 +193,12 @@ fn yaml_strings(v: &serde_norway::Value) -> Vec<String> {
 }
 
 pub fn frontmatter_span(text: &str) -> Option<(usize, String)> {
-    FRONTMATTER
-        .captures(text)
-        .map(|c| (c.get(0).unwrap().end(), c[1].to_string()))
+    FRONTMATTER.captures(text).map(|c| {
+        (
+            c.get(0).unwrap().end(),
+            c.get(1).map_or(String::new(), |m| m.as_str().to_string()),
+        )
+    })
 }
 
 /// `line` with its checkbox set to `mark`, if it's a task line whose text is `text`.
@@ -414,6 +418,32 @@ mod tests {
         );
         assert_eq!(p.tasks[0].due.as_deref(), Some("2026-10-05"));
         assert_eq!(p.tasks[1].due, None);
+    }
+
+    #[test]
+    fn empty_frontmatter_is_a_present_but_empty_block() {
+        for (text, body) in [
+            ("---\n---\n# Title\n", "# Title\n"),
+            ("---\r\n---\r\n# Title\r\n", "# Title\r\n"),
+            ("---\n---", ""),
+            ("---\r\n---", ""),
+            ("---\n---\n", ""),
+        ] {
+            let p = parse(text);
+            assert_eq!(p.frontmatter.as_deref(), Some(""), "{text:?}");
+            assert_eq!(p.body, body, "{text:?}");
+        }
+        // A later fence must not be mistaken for the close of a block that is already closed.
+        let p = parse("---\n---\nbody\n\n---\nrule\n");
+        assert_eq!(p.frontmatter.as_deref(), Some(""));
+        assert_eq!(p.body, "body\n\n---\nrule\n");
+        // Non-empty blocks still work with CRLF and a closing fence at EOF.
+        assert_eq!(
+            parse("---\r\ntags: [a]\r\n---").frontmatter.as_deref(),
+            Some("tags: [a]")
+        );
+        assert_eq!(parse("---\ntags: [a]\n---").tags, vec!["a"]);
+        assert_eq!(parse("---\n# not closed\n").frontmatter, None);
     }
 
     const HOME: &str = "---\naliases: [Start, Index]\ntags: [hub]\ncustom_key: keep me\n---\n# Home\n\nSee [[Projects/Mosaic/Plan|the plan]], [[Ideas]] and [[Ideas#Later]].\nEmbedded: ![[diagram.png]]\n\n```\n[[not a link]] #notatag\n```\n\nInline `[[nope]]` and [md](../Other%20Note.md#Sec) and [web](https://x.y) #hub #area/work\nEnd ^blk-1\n";

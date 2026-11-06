@@ -219,6 +219,8 @@ fn parse(content: &str, fallback_timezone: &str) -> Result<Vec<ParsedEvent>> {
             "iCalendar input is larger than 10 MB".into(),
         ));
     }
+    // Outlook and Windows tools often prefix feeds with a UTF-8 BOM.
+    let content = content.strip_prefix('\u{feff}').unwrap_or(content);
     let lines = unfolded(content);
     if !lines
         .iter()

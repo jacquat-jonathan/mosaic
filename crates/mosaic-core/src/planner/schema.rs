@@ -41,6 +41,13 @@ fn configure(conn: &Connection) -> Result<()> {
             "planner database opened inside a transaction".into(),
         ));
     }
+    // Who is making changes through this connection; read by `record_activity`.
+    conn.execute_batch(
+        "CREATE TEMP TABLE IF NOT EXISTS activity_context(
+            id INTEGER PRIMARY KEY CHECK(id = 1), source TEXT NOT NULL, actor TEXT);
+         INSERT OR IGNORE INTO activity_context(id, source, actor) VALUES (1, 'app', NULL);",
+    )
+    .map_err(sql_error)?;
     if conn.path().is_some() {
         let mode: String = conn
             .pragma_query_value(None, "journal_mode", |row| row.get(0))
@@ -87,6 +94,9 @@ fn migrate(conn: &mut Connection, existed: bool, backup_path: &Path) -> Result<(
     }
     if version < 2 {
         migrate_v2(conn)?;
+    }
+    if version < 3 {
+        migrate_v3(conn)?;
     }
     Ok(())
 }
@@ -243,6 +253,28 @@ fn migrate_v1(conn: &mut Connection) -> Result<()> {
     )
     .map_err(sql_error)?;
     tx.pragma_update(None, "user_version", 1)
+        .map_err(sql_error)?;
+    tx.commit().map_err(sql_error)
+}
+
+/// Activity entries gain who made the change, why, and a field-level list of what changed.
+/// Existing rows keep NULLs: reading derives their changes from the stored snapshots, and the
+/// unknown actor is reported as such rather than guessed.
+fn migrate_v3(conn: &mut Connection) -> Result<()> {
+    let tx = conn.transaction().map_err(sql_error)?;
+    tx.execute_batch(
+        "ALTER TABLE activity ADD COLUMN source TEXT;
+         ALTER TABLE activity ADD COLUMN actor TEXT;
+         ALTER TABLE activity ADD COLUMN reason TEXT;
+         ALTER TABLE activity ADD COLUMN changes_json TEXT;",
+    )
+    .map_err(sql_error)?;
+    tx.execute(
+        "UPDATE planner_meta SET schema_version = 3, updated_at = ?1 WHERE id = 1",
+        [now()],
+    )
+    .map_err(sql_error)?;
+    tx.pragma_update(None, "user_version", 3)
         .map_err(sql_error)?;
     tx.commit().map_err(sql_error)
 }
@@ -537,7 +569,7 @@ mod tests {
         assert_eq!(
             conn.pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))
                 .unwrap(),
-            2
+            SCHEMA_VERSION
         );
         assert_eq!(
             conn.query_row(

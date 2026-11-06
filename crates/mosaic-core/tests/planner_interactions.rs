@@ -284,7 +284,7 @@ fn reordering_completed_subtasks_keeps_their_children_and_parent_selection_ident
             .last()
             .unwrap()
             .summary,
-        "Reordered task"
+        "Reordered task \"First\" within its column"
     );
     let revision = planner.summary().unwrap().revision;
     assert!(matches!(

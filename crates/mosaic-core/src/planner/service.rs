@@ -12,6 +12,8 @@ pub struct PlannerService {
     store: OnceLock<std::result::Result<Mutex<PlannerStore>, String>>,
     /// The vault whose `.mosaic/planner.sqlite3` this is; `None`: in memory (tests).
     root: Option<PathBuf>,
+    /// Who changes the planner through this service, stamped on every activity entry.
+    context: Mutex<(String, Option<String>)>,
 }
 
 impl PlannerService {
@@ -19,6 +21,7 @@ impl PlannerService {
         Self {
             store: OnceLock::new(),
             root,
+            context: Mutex::new(("app".into(), None)),
         }
     }
 
@@ -26,6 +29,17 @@ impl PlannerService {
     /// reported when the vault opens, where it can offer to restore the last backup.
     pub fn open(&self) -> Result<()> {
         self.store().map(drop)
+    }
+
+    /// Who acts through this service: `source` is `app`, `cli` or `agent`; `actor` the agent's name.
+    pub(crate) fn set_actor_context(&self, source: Option<&str>, actor: Option<&str>) {
+        let mut context = self.context.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some(source) = source {
+            context.0 = source.to_string();
+        }
+        if let Some(actor) = actor {
+            context.1 = Some(actor.to_string());
+        }
     }
 
     /// The planner's store, opened the first time it's needed.
@@ -39,7 +53,16 @@ impl PlannerService {
             .map_err(|e| e.to_string())
         });
         match store {
-            Ok(m) => Ok(m.lock().unwrap_or_else(|p| p.into_inner())),
+            Ok(m) => {
+                let guard = m.lock().unwrap_or_else(|p| p.into_inner());
+                let (source, actor) = self
+                    .context
+                    .lock()
+                    .unwrap_or_else(|p| p.into_inner())
+                    .clone();
+                guard.set_activity_context(&source, actor.as_deref())?;
+                Ok(guard)
+            }
             Err(e) => Err(Error::Invalid(format!("the planner is unavailable: {e}"))),
         }
     }

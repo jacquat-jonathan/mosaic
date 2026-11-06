@@ -92,7 +92,7 @@ fn domain_revisions_hierarchy_completion_and_history_are_atomic() {
             .last()
             .unwrap()
             .summary,
-        "Moved task from New to In progress"
+        "Moved task \"Ship\" from New to In progress"
     );
 
     let stale = store.update_task(
@@ -387,6 +387,33 @@ fn ical_preview_import_export_and_overlay_deduplicate() {
         3
     );
     assert!(overlay.iter().all(|item| item.read_only));
+}
+
+#[test]
+fn ical_text_unescape_handles_backslash_before_n_and_round_trips() {
+    // `\\new\\table` is the escaped form of `\new\table`: the `\\` must collapse to a single
+    // backslash instead of the second backslash combining with `n` into a newline.
+    let content = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:path@example.test\r\nDTSTART;VALUE=DATE:20261014\r\nDTEND;VALUE=DATE:20261015\r\nSUMMARY:Path C:\\\\new\\\\table\\, a\\; b\r\nDESCRIPTION:Line\\none\\NTwo\\\\n\\\\\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+    let mut store = in_memory();
+    let preview = store
+        .preview_ical_import("file:path.ics", content, "UTC")
+        .unwrap();
+    let candidate = &preview.candidates[0];
+    assert_eq!(candidate.title, "Path C:\\new\\table, a; b");
+    assert_eq!(candidate.event.description, "Line\none\nTwo\\n\\");
+
+    let selected = vec![candidate.key.clone()];
+    store.import_ical(&preview, &selected, false).unwrap();
+    let exported = store.export_ical().unwrap();
+    let roundtrip = PlannerStore::in_memory()
+        .unwrap()
+        .preview_ical_import("roundtrip", &exported, "UTC")
+        .unwrap();
+    assert_eq!(roundtrip.candidates[0].title, candidate.title);
+    assert_eq!(
+        roundtrip.candidates[0].event.description,
+        candidate.event.description
+    );
 }
 
 #[test]
@@ -788,4 +815,412 @@ fn ten_thousand_tasks_and_a_busy_month_load_within_the_acceptance_budget() {
         elapsed < Duration::from_secs(5),
         "large planner month loaded in {elapsed:?}, over the five-second acceptance budget"
     );
+}
+
+fn export_with_event(
+    title: &str,
+    description: &str,
+    url: Option<&str>,
+    participants: &[&str],
+) -> String {
+    let mut store = in_memory();
+    store
+        .create_event(CreateEvent {
+            title: title.into(),
+            description: description.into(),
+            location: String::new(),
+            meeting_url: url.map(str::to_string),
+            participants: participants.iter().map(|p| p.to_string()).collect(),
+            epic_id: None,
+            color: None,
+            all_day: false,
+            start_value: "2026-10-13T07:00:00.000Z".into(),
+            end_value: "2026-10-13T08:00:00.000Z".into(),
+            timezone: "Europe/Zurich".into(),
+            recurrence_rule: None,
+        })
+        .unwrap();
+    store.export_ical().unwrap()
+}
+
+/// RFC 5545 unfolding: remove each CRLF that is followed by exactly one space or tab.
+fn rfc_unfold(content: &str) -> String {
+    content.replace("\r\n ", "").replace("\r\n\t", "")
+}
+
+fn assert_folded(exported: &str) {
+    assert!(exported.ends_with("\r\n"));
+    for line in exported.split("\r\n") {
+        assert!(line.len() <= 75, "line over 75 octets: {line:?}");
+        assert!(
+            !line.contains('\r') && !line.contains('\n'),
+            "bare CR/LF: {line:?}"
+        );
+    }
+}
+
+#[test]
+fn ical_export_folds_long_ascii_lines_and_unfolds_losslessly() {
+    let title = "word ".repeat(40).trim().to_string();
+    let exported = export_with_event(&title, "", None, &[]);
+    assert_folded(&exported);
+    assert!(exported.contains("\r\n "));
+    assert!(rfc_unfold(&exported).contains(&format!("SUMMARY:{title}\r\n")));
+}
+
+#[test]
+fn ical_export_never_splits_multibyte_characters_when_folding() {
+    for ch in ['é', '日', '😀'] {
+        for pad in 0..4 {
+            let title = format!("{}{}", "a".repeat(pad), ch.to_string().repeat(60));
+            let exported = export_with_event(&title, "", None, &[]);
+            assert_folded(&exported);
+            assert!(rfc_unfold(&exported).contains(&format!("SUMMARY:{title}\r\n")));
+        }
+    }
+}
+
+#[test]
+fn ical_export_normalises_carriage_returns_in_text() {
+    let exported = export_with_event("Title", "one\r\ntwo\rthree\nfour", None, &[]);
+    assert_folded(&exported);
+    assert!(exported.contains("DESCRIPTION:one\\ntwo\\nthree\\nfour\r\n"));
+}
+
+#[test]
+fn ical_export_cannot_inject_lines_through_url_or_attendee() {
+    let exported = export_with_event(
+        "Title",
+        "",
+        Some("https://example.test/\r\nATTENDEE:mailto:evil@example.test"),
+        &[
+            "a@example.test\r\nDESCRIPTION:injected",
+            "b@example.test\nX-EVIL:1",
+        ],
+    );
+    assert_folded(&exported);
+    let unfolded = rfc_unfold(&exported);
+    for line in unfolded.split("\r\n") {
+        assert!(
+            !line.starts_with("DESCRIPTION:") && !line.starts_with("X-EVIL"),
+            "injected line: {line:?}"
+        );
+    }
+    assert!(
+        unfolded.contains("\r\nURL:https://example.test/ATTENDEE:mailto:evil@example.test\r\n")
+    );
+    assert_eq!(unfolded.matches("\r\nATTENDEE:").count(), 2);
+}
+
+#[test]
+fn ical_export_roundtrips_folded_text_through_import() {
+    let title = "Quarterly planning,review;alignment "
+        .repeat(4)
+        .trim()
+        .to_string()
+        + "é日😀end";
+    let description = "x".repeat(200) + "\nsecond line";
+    let exported = export_with_event(&title, &description, None, &[]);
+    assert_folded(&exported);
+    let preview = in_memory()
+        .preview_ical_import("roundtrip", &exported, "UTC")
+        .unwrap();
+    assert_eq!(preview.candidates.len(), 1);
+    assert_eq!(preview.candidates[0].title, title);
+    assert_eq!(preview.candidates[0].event.description, description);
+}
+
+#[test]
+fn ical_export_never_folds_before_whitespace_and_roundtrips_through_import() {
+    // "SUMMARY:" is 8 octets, so 67 chars fill the first line exactly before the space.
+    for gap in ["  ", " ", "\t"] {
+        let title = format!("{}{gap}b{gap}{}", "a".repeat(67), "c".repeat(70));
+        let exported = export_with_event(&title, "", None, &[]);
+        assert_folded(&exported);
+        assert!(!exported.contains("\r\n  ") && !exported.contains("\r\n \t"));
+        assert!(rfc_unfold(&exported).contains(&format!("SUMMARY:{title}\r\n")));
+        let preview = in_memory()
+            .preview_ical_import("roundtrip", &exported, "UTC")
+            .unwrap();
+        assert_eq!(preview.candidates[0].title, title.trim());
+    }
+}
+
+#[test]
+fn nested_valarm_properties_do_not_override_event_properties() {
+    let content = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:alarm@example.com\r\nDTSTART:20261013T090000Z\r\nSUMMARY:S\r\nDESCRIPTION:Real description\r\nBEGIN:VALARM\r\nACTION:DISPLAY\r\nSUMMARY:Alarm summary\r\nDESCRIPTION:Reminder\r\nTRIGGER:-PT15M\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+    let store = in_memory();
+    let preview = store
+        .preview_ical_import("file:alarm.ics", content, "UTC")
+        .unwrap();
+    assert_eq!(preview.candidates[0].event.title, "S");
+    assert_eq!(preview.candidates[0].event.description, "Real description");
+}
+
+#[test]
+fn validate_ical_accepts_feeds_with_and_without_a_utf8_bom() {
+    let ics = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:bom\r\nDTSTART:20261103T090000Z\r\nDTEND:20261103T100000Z\r\nSUMMARY:Working event\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+    assert_eq!(validate_ical(ics, "UTC").unwrap(), 1);
+    assert_eq!(validate_ical(&format!("\u{feff}{ics}"), "UTC").unwrap(), 1);
+}
+
+#[test]
+fn one_unsupported_recurrence_never_rejects_the_whole_feed() {
+    let event = |uid: &str, rule: &str| {
+        format!(
+            "BEGIN:VEVENT\r\nUID:{uid}\r\nDTSTART:20261103T090000Z\r\nDTEND:20261103T100000Z\r\nSUMMARY:{uid}\r\n{rule}END:VEVENT\r\n"
+        )
+    };
+    let wrap =
+        |events: String| format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\n{events}END:VCALENDAR\r\n");
+    // YEARLY and COUNT are supported now.
+    for rule in ["RRULE:FREQ=YEARLY\r\n", "RRULE:FREQ=WEEKLY;COUNT=3\r\n"] {
+        assert_eq!(
+            validate_ical(&wrap(event("a", rule)), "UTC").unwrap(),
+            1,
+            "{rule}"
+        );
+    }
+    // A rule that is still unsupported is skipped; the other events survive.
+    let feed = wrap(
+        event("good", "")
+            + &event("bad", "RRULE:FREQ=DAILY;BYSETPOS=1\r\n")
+            + &event("yearly", "RRULE:FREQ=YEARLY\r\n"),
+    );
+    assert_eq!(validate_ical(&feed, "UTC").unwrap(), 2);
+    let store = in_memory();
+    let preview = store.preview_ical_import("feed", &feed, "UTC").unwrap();
+    let mut uids = preview
+        .candidates
+        .iter()
+        .map(|c| c.source_uid.as_str())
+        .collect::<Vec<_>>();
+    uids.sort();
+    assert_eq!(uids, vec!["good", "yearly"]);
+    let occurrences =
+        overlay_occurrences(&feed, "s", "S", None, "2026-11-03", "2026-11-03", "UTC").unwrap();
+    assert_eq!(occurrences.len(), 2);
+}
+
+#[test]
+fn dst_gap_recurring_event_does_not_fail_the_calendar_range() {
+    let mut store = PlannerStore::in_memory().unwrap();
+    let make = |title: &str, start: &str, end: &str, rule: Option<&str>| CreateEvent {
+        title: title.into(),
+        description: String::new(),
+        location: String::new(),
+        meeting_url: None,
+        participants: vec![],
+        epic_id: None,
+        color: None,
+        all_day: false,
+        start_value: start.into(),
+        end_value: end.into(),
+        timezone: "Europe/Zurich".into(),
+        recurrence_rule: rule.map(Into::into),
+    };
+    store
+        .create_event(make(
+            "Gap",
+            "2026-03-27T01:30:00.000Z",
+            "2026-03-27T02:00:00.000Z",
+            Some("FREQ=DAILY"),
+        ))
+        .unwrap();
+    store
+        .create_event(make(
+            "Other",
+            "2026-03-27T08:00:00.000Z",
+            "2026-03-27T09:00:00.000Z",
+            Some("FREQ=DAILY"),
+        ))
+        .unwrap();
+    let range = store.calendar_range("2026-03-23", "2026-04-02").unwrap();
+    let count = |title: &str| {
+        range
+            .events
+            .iter()
+            .filter(|event| event.title == title)
+            .count()
+    };
+    assert_eq!(count("Gap"), 7);
+    assert_eq!(count("Other"), 7);
+    let gap_day = range
+        .events
+        .iter()
+        .find(|event| event.title == "Gap" && event.start_value.starts_with("2026-03-29"))
+        .unwrap();
+    assert_eq!(gap_day.start_value, "2026-03-29T01:30:00.000Z");
+    assert_eq!(gap_day.end_value, "2026-03-29T02:00:00.000Z");
+
+    // A corrupt stored event is skipped; the other events are still returned.
+    store
+        .conn
+        .execute(
+            "UPDATE events SET timezone = 'Not/AZone' WHERE title = 'Gap'",
+            [],
+        )
+        .unwrap();
+    let range = store.calendar_range("2026-03-23", "2026-04-02").unwrap();
+    assert_eq!(range.events.iter().filter(|e| e.title == "Gap").count(), 0);
+    assert_eq!(
+        range.events.iter().filter(|e| e.title == "Other").count(),
+        7
+    );
+}
+
+#[test]
+fn activity_records_actor_field_changes_and_readable_text() {
+    let mut store = in_memory();
+    store
+        .set_activity_context("agent", Some("claude-code"))
+        .unwrap();
+    let created = task(&mut store, None, None, "Write docs");
+    let updated = store
+        .update_task(
+            &created.id,
+            UpdateTask {
+                expected_revision: created.revision,
+                title: Some("Write the docs".into()),
+                description: None,
+                due_date: Some("2026-12-01".into()),
+                clear_due_date: false,
+                estimate_minutes: None,
+                clear_estimate: false,
+            },
+        )
+        .unwrap();
+    store.set_activity_context("app", None).unwrap();
+    let moved = store
+        .move_task(
+            &updated.id,
+            MoveTask {
+                expected_revision: updated.revision,
+                epic_id: None,
+                parent_id: None,
+                status: TaskStatus::Blocked,
+                position: 1024,
+            },
+        )
+        .unwrap();
+
+    let log = store.activity("task", &created.id).unwrap();
+    assert_eq!(log.len(), 3);
+    assert_eq!(log[0].source.as_deref(), Some("agent"));
+    assert_eq!(log[0].actor.as_deref(), Some("claude-code"));
+    assert!(
+        log[0].changes.is_empty(),
+        "creation carries the full snapshot instead"
+    );
+
+    let edit = &log[1];
+    assert_eq!(
+        edit.summary,
+        "Updated task \"Write the docs\": due_date, title"
+    );
+    let fields: Vec<_> = edit.changes.iter().map(|c| c.field.as_str()).collect();
+    assert_eq!(fields, ["due_date", "title"]);
+    assert_eq!(edit.changes[1].from, Some(serde_json::json!("Write docs")));
+    assert_eq!(
+        edit.changes[1].to,
+        Some(serde_json::json!("Write the docs"))
+    );
+    assert_eq!(edit.changes[0].from, None);
+    assert_eq!(edit.changes[0].to, Some(serde_json::json!("2026-12-01")));
+
+    let transition = &log[2];
+    assert_eq!(transition.source.as_deref(), Some("app"));
+    assert_eq!(transition.actor, None);
+    let status = transition
+        .changes
+        .iter()
+        .find(|c| c.field == "status")
+        .unwrap();
+    assert_eq!(status.from, Some(serde_json::json!("new")));
+    assert_eq!(status.to, Some(serde_json::json!("blocked")));
+    assert_eq!(moved.status, TaskStatus::Blocked);
+    assert!(transition.text.contains("| app |"));
+    assert!(transition.text.contains("status: \"new\" -> \"blocked\""));
+    assert!(log[0].text.contains("| agent:claude-code |"));
+    assert!(
+        !transition
+            .changes
+            .iter()
+            .any(|c| c.field == "revision" || c.field == "updated_at")
+    );
+}
+
+#[test]
+fn cascaded_session_cancellation_explains_why() {
+    let mut store = in_memory();
+    let parent = task(&mut store, None, None, "Plan trip");
+    let session = store
+        .create_work_session(CreateWorkSession {
+            task_id: parent.id.clone(),
+            all_day: true,
+            start_value: "2999-01-01".into(),
+            end_value: "2999-01-02".into(),
+            timezone: "UTC".into(),
+        })
+        .unwrap();
+    store
+        .complete_task(
+            &parent.id,
+            parent.revision,
+            false,
+            FutureSessionPolicy::Cancel,
+        )
+        .unwrap();
+    let log = store.activity("work_session", &session.id).unwrap();
+    let cancelled = log.iter().find(|e| e.action == "cancelled").unwrap();
+    assert!(cancelled.reason.as_deref().unwrap().contains(&parent.id));
+    assert_eq!(cancelled.changes[0].field, "state");
+    assert!(cancelled.text.contains("reason: task"));
+    let done = store.activity("task", &parent.id).unwrap();
+    assert!(done.last().unwrap().summary.contains("status New -> done"));
+}
+
+#[test]
+fn legacy_activity_rows_stay_readable_with_derived_changes() {
+    let mut store = in_memory();
+    let t = task(&mut store, None, None, "Old");
+    // A row as written by schema v2: no source, actor, reason or stored changes.
+    store
+        .conn
+        .execute(
+            "INSERT INTO activity(entity_kind, entity_id, occurred_at, action, summary, before_json, after_json)
+             VALUES ('task', ?1, '2026-01-01T00:00:00.000Z', 'updated', 'Updated task',
+                     '{\"title\":\"A\",\"revision\":1}', '{\"title\":\"B\",\"revision\":2}')",
+            [&t.id],
+        )
+        .unwrap();
+    let legacy = store.activity("task", &t.id).unwrap().pop().unwrap();
+    assert_eq!(legacy.source, None);
+    assert_eq!(legacy.changes.len(), 1);
+    assert_eq!(legacy.changes[0].field, "title");
+    assert!(legacy.text.contains("| unknown |"));
+}
+
+#[test]
+fn workspace_source_and_actor_reach_planner_activity() {
+    let dir = tempfile::tempdir().unwrap();
+    let ws = Workspace::open(dir.path())
+        .unwrap()
+        .with_source(crate::history::Source::Agent);
+    ws.set_actor("claude-code");
+    let created = ws
+        .planner
+        .create_task(CreateTask {
+            epic_id: None,
+            parent_id: None,
+            title: "From agent".into(),
+            description: String::new(),
+            status: TaskStatus::New,
+            due_date: None,
+            estimate_minutes: None,
+        })
+        .unwrap();
+    let entry = ws.planner.activity("task", &created.id).unwrap().remove(0);
+    assert_eq!(entry.source.as_deref(), Some("agent"));
+    assert_eq!(entry.actor.as_deref(), Some("claude-code"));
 }

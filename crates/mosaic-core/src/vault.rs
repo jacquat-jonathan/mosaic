@@ -90,8 +90,17 @@ pub fn hash_bytes(bytes: &[u8]) -> String {
 }
 
 /// Validates a vault-relative path and returns it in canonical `a/b/c.md` form ("" is the root).
+///
+/// Only `/` separates segments, except on Windows where `\` does too. Elsewhere a backslash is an
+/// ordinary file-name character, so `a\b.md` is one file in the vault root and `..\x` is not a
+/// traversal (a single, harmless segment).
 pub fn normalize(rel: &str) -> Result<String> {
-    let rel = rel.trim().replace('\\', "/");
+    let rel = rel.trim();
+    let rel = if cfg!(windows) {
+        rel.replace('\\', "/")
+    } else {
+        rel.to_string()
+    };
     if rel.starts_with('/') {
         return Err(Error::InvalidPath(format!(
             "{rel} (must be relative to the vault)"
@@ -524,8 +533,10 @@ impl Vault {
         if !src.exists() {
             return Err(Error::NotFound(from_n));
         }
-        // Allow case-only renames on case-insensitive volumes.
-        let case_only = from_n.to_lowercase() == to_n.to_lowercase();
+        // A case-only rename is fine on a case-insensitive volume, where both
+        // names are the same file. On a case-sensitive volume they are different
+        // files, and the target must not be overwritten.
+        let case_only = from_n.to_lowercase() == to_n.to_lowercase() && same_file(&src, &dst);
         if dst.exists() && !case_only {
             return Err(Error::AlreadyExists(to_n));
         }
@@ -563,10 +574,24 @@ impl Vault {
             return Err(Error::InvalidPath("cannot delete the vault root".into()));
         }
         let abs = self.resolve(&norm)?;
-        if fs::symlink_metadata(&abs).is_err() {
+        // An iCloud file that isn't downloaded is only a `.<name>.icloud` stub next to where the
+        // file would be, so the real path doesn't exist. Trash the stub too, never read it.
+        let stub = icloud_placeholder(&abs);
+        let has_real = fs::symlink_metadata(&abs).is_ok();
+        let has_stub = stub
+            .as_ref()
+            .is_some_and(|s| fs::symlink_metadata(s).is_ok());
+        let targets: Vec<&Path> = [
+            has_real.then_some(abs.as_path()),
+            stub.as_deref().filter(|_| has_stub),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
+        if targets.is_empty() {
             return Err(Error::NotFound(norm));
         }
-        trash::delete(&abs).map_err(|e| Error::Io {
+        trash::delete_all(targets).map_err(|e| Error::Io {
             path: norm,
             source: std::io::Error::other(e.to_string()),
         })
@@ -600,6 +625,12 @@ impl Vault {
         }
         Ok(abs)
     }
+}
+
+/// Where macOS leaves the stub for an evicted iCloud Drive file: `dir/.<name>.icloud`.
+fn icloud_placeholder(abs: &Path) -> Option<PathBuf> {
+    let name = abs.file_name()?.to_str()?;
+    Some(abs.with_file_name(format!(".{name}.icloud")))
 }
 
 /// Types that run code, install software or point Finder at another file when opened.
@@ -636,6 +667,25 @@ const LAUNCHABLE_EXTENSIONS: &[&str] = &[
     "dylib",
 ];
 
+/// True when both paths exist and refer to the same underlying file.
+fn same_file(a: &Path, b: &Path) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        match (fs::metadata(a), fs::metadata(b)) {
+            (Ok(x), Ok(y)) => x.dev() == y.dev() && x.ino() == y.ino(),
+            _ => false,
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        match (fs::canonicalize(a), fs::canonicalize(b)) {
+            (Ok(x), Ok(y)) => x == y,
+            _ => false,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -647,6 +697,32 @@ mod tests {
     }
 
     #[test]
+    fn delete_removes_icloud_placeholder_without_the_file() {
+        let (dir, v) = vault();
+        fs::create_dir(dir.path().join("notes")).unwrap();
+        let stub = dir.path().join("notes/.evicted.md.icloud");
+        fs::write(&stub, b"bplist00").unwrap();
+        v.delete("notes/evicted.md").unwrap();
+        assert!(fs::symlink_metadata(&stub).is_err());
+        // Nothing real and no stub is still not found.
+        assert!(matches!(
+            v.delete("notes/evicted.md"),
+            Err(Error::NotFound(_))
+        ));
+    }
+
+    #[test]
+    fn delete_removes_file_and_stale_placeholder() {
+        let (dir, v) = vault();
+        let file = dir.path().join("a.md");
+        let stub = dir.path().join(".a.md.icloud");
+        fs::write(&file, b"x").unwrap();
+        fs::write(&stub, b"bplist00").unwrap();
+        v.delete("a.md").unwrap();
+        assert!(!file.exists() && fs::symlink_metadata(&stub).is_err());
+    }
+
+    #[test]
     fn normalize_rules() {
         assert_eq!(normalize("a//b/./c.md").unwrap(), "a/b/c.md");
         assert_eq!(normalize("").unwrap(), "");
@@ -654,6 +730,74 @@ mod tests {
         assert!(normalize("/etc/passwd").is_err());
         assert!(normalize(".obsidian/app.json").is_err());
         assert!(normalize("a/.git/config").is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn backslash_is_a_file_name_character_on_unix() {
+        assert_eq!(normalize("back\\slash.md").unwrap(), "back\\slash.md");
+        assert_eq!(normalize("a/b\\c.md").unwrap(), "a/b\\c.md");
+        let (d, v) = vault();
+        fs::write(d.path().join("back\\slash.md"), "x").unwrap();
+        let listed = v.list("", false).unwrap();
+        assert!(listed.iter().any(|e| e.path == "back\\slash.md"));
+        assert_eq!(
+            v.read("back\\slash.md").unwrap().content.as_deref(),
+            Some("x")
+        );
+        v.write("back\\slash.md", "y", None).unwrap();
+        assert_eq!(
+            fs::read_to_string(d.path().join("back\\slash.md")).unwrap(),
+            "y"
+        );
+        assert!(!d.path().join("back").exists());
+        v.create("new\\one.md", "n").unwrap();
+        assert!(d.path().join("new\\one.md").is_file());
+        v.rename("back\\slash.md", "moved\\it.md").unwrap();
+        assert!(d.path().join("moved\\it.md").is_file());
+        assert!(!d.path().join("back\\slash.md").exists());
+        assert!(!matches!(v.delete("moved\\it.md"), Err(Error::NotFound(_))));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn backslash_traversal_attempts_stay_inside_the_vault() {
+        let (d, v) = vault();
+        let outside = tempfile::tempdir().unwrap();
+        fs::write(outside.path().join("secret.md"), "s").unwrap();
+        // Real `..` segments are still refused, with or without backslashes around them.
+        for bad in [
+            "../secret.md",
+            "a/../../secret.md",
+            "a\\/../../secret.md",
+            "/etc/passwd",
+        ] {
+            assert!(matches!(v.read(bad), Err(Error::InvalidPath(_))), "{bad}");
+        }
+        // `..\x` is one dot-prefixed name on Unix: refused as hidden, never read as a parent.
+        assert!(matches!(
+            v.resolve("..\\secret.md"),
+            Err(Error::InvalidPath(_))
+        ));
+        assert!(matches!(
+            v.read("..\\secret.md"),
+            Err(Error::InvalidPath(_))
+        ));
+        // `x..\y` is an ordinary file name inside the vault.
+        assert!(
+            v.resolve("x..\\y")
+                .unwrap()
+                .starts_with(d.path().canonicalize().unwrap())
+        );
+        // A backslash does not hide a dot-prefixed segment from the hidden-path rule.
+        assert!(normalize("a\\b/.git/config").is_err());
+        assert!(normalize(".obsidian/x\\y").is_err());
+        // Symlink escape is still refused for backslash-named links.
+        std::os::unix::fs::symlink(outside.path(), d.path().join("lin\\k")).unwrap();
+        assert!(matches!(
+            v.read("lin\\k/secret.md"),
+            Err(Error::InvalidPath(_))
+        ));
     }
 
     #[test]
@@ -824,6 +968,22 @@ mod tests {
             Err(Error::InvalidPath(_))
         ));
         assert!(v.list("", false).unwrap().iter().all(|e| e.path != "link"));
+    }
+
+    #[test]
+    fn case_only_rename_never_overwrites_a_different_file() {
+        let (dir, v) = vault();
+        fs::write(dir.path().join("a.md"), "AAA").unwrap();
+        fs::write(dir.path().join("A.md"), "BBB").unwrap();
+        // Only meaningful where the two names are distinct files.
+        if !same_file(&dir.path().join("a.md"), &dir.path().join("A.md")) {
+            assert!(matches!(
+                v.rename("a.md", "A.md"),
+                Err(Error::AlreadyExists(_))
+            ));
+            assert_eq!(fs::read_to_string(dir.path().join("a.md")).unwrap(), "AAA");
+            assert_eq!(fs::read_to_string(dir.path().join("A.md")).unwrap(), "BBB");
+        }
     }
 
     #[test]

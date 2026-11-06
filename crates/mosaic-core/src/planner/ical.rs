@@ -106,12 +106,26 @@ fn property(line: &str) -> Option<IcalProperty<'_>> {
 }
 
 fn text(value: &str) -> String {
-    value
-        .replace("\\n", "\n")
-        .replace("\\N", "\n")
-        .replace("\\,", ",")
-        .replace("\\;", ";")
-        .replace("\\\\", "\\")
+    // One left-to-right pass so each backslash is consumed exactly once; sequential `replace`
+    // calls would turn the `\n` inside an escaped `\\n` into a newline.
+    let mut result = String::with_capacity(value.len());
+    let mut chars = value.chars();
+    while let Some(c) = chars.next() {
+        if c != '\\' {
+            result.push(c);
+            continue;
+        }
+        match chars.next() {
+            Some('n' | 'N') => result.push('\n'),
+            Some(escaped @ ('\\' | ',' | ';')) => result.push(escaped),
+            Some(other) => {
+                result.push('\\');
+                result.push(other);
+            }
+            None => result.push('\\'),
+        }
+    }
+    result
 }
 
 fn title_marks_cancellation(title: &str) -> bool {
@@ -205,6 +219,8 @@ fn parse(content: &str, fallback_timezone: &str) -> Result<Vec<ParsedEvent>> {
             "iCalendar input is larger than 10 MB".into(),
         ));
     }
+    // Outlook and Windows tools often prefix feeds with a UTF-8 BOM.
+    let content = content.strip_prefix('\u{feff}').unwrap_or(content);
     let lines = unfolded(content);
     if !lines
         .iter()
@@ -220,15 +236,18 @@ fn parse(content: &str, fallback_timezone: &str) -> Result<Vec<ParsedEvent>> {
     let mut result = Vec::new();
     let mut current: Vec<String> = Vec::new();
     let mut inside = false;
+    let mut nested = 0usize;
     for line in lines {
         if line.eq_ignore_ascii_case("BEGIN:VEVENT") {
             inside = true;
+            nested = 0;
             current.clear();
         } else if line.eq_ignore_ascii_case("END:VEVENT") {
             if !inside {
                 continue;
             }
             inside = false;
+            nested = 0;
             let mut uid = None;
             let mut recurrence_id = String::new();
             let mut recurrence_key = None;
@@ -333,7 +352,15 @@ fn parse(content: &str, fallback_timezone: &str) -> Result<Vec<ParsedEvent>> {
                 },
             });
         } else if inside {
-            current.push(line);
+            // Properties of nested components (e.g. VALARM) are not event properties.
+            let upper = line.to_ascii_uppercase();
+            if upper.starts_with("BEGIN:") {
+                nested += 1;
+            } else if upper.starts_with("END:") {
+                nested = nested.saturating_sub(1);
+            } else if nested == 0 {
+                current.push(line);
+            }
         }
     }
     if result.is_empty() {
@@ -355,6 +382,11 @@ fn parse(content: &str, fallback_timezone: &str) -> Result<Vec<ParsedEvent>> {
         .filter_map(|(index, event)| {
             (latest.get(&candidate_key(&event.uid, &event.recurrence_id)) == Some(&index))
                 .then_some(event)
+        })
+        // One event with a recurrence rule we cannot expand must not reject the whole feed.
+        .filter(|event| {
+            event.cancelled
+                || super::recurrence::normalize_rule(event.event.recurrence_rule.clone()).is_ok()
         })
         .collect())
 }
@@ -542,12 +574,50 @@ impl PlannerStore {
             }
         }
         output.push("END:VCALENDAR".into());
-        Ok(format!("{}\r\n", output.join("\r\n")))
+        let lines: Vec<String> = output.iter().map(|line| folded(line)).collect();
+        Ok(format!("{}\r\n", lines.join("\r\n")))
     }
+}
+
+/// Fold one content line at 75 octets (RFC 5545 3.1) on char boundaries. Every entry in the
+/// export is exactly one logical line, so any CR/LF left in an unescaped value (URL, ATTENDEE,
+/// RRULE...) is dropped here instead of being allowed to inject extra properties.
+/// A fold may split an escape sequence (folding is lexical), but avoids landing before a space
+/// or tab when the segment has any other char, so importers that trim all leading whitespace of a continuation still unfold losslessly.
+fn folded(line: &str) -> String {
+    let chars: Vec<char> = line.chars().filter(|c| !matches!(c, '\r' | '\n')).collect();
+    let mut result = String::with_capacity(chars.len() + chars.len() / 70 * 3);
+    let (mut start, mut budget) = (0, 75);
+    while start < chars.len() {
+        let (mut end, mut used) = (start, 0);
+        while end < chars.len() && used + chars[end].len_utf8() <= budget {
+            used += chars[end].len_utf8();
+            end += 1;
+        }
+        if end < chars.len() {
+            let mut back = end;
+            while back > start && matches!(chars[back], ' ' | '\t') {
+                back -= 1;
+            }
+            if back > start {
+                end = back;
+            }
+        }
+        result.extend(&chars[start..end]);
+        if end < chars.len() {
+            result.push_str("\r\n ");
+        }
+        start = end;
+        // A continuation line starts with one space that counts toward the 75 octets.
+        budget = 74;
+    }
+    result
 }
 
 fn escaped(value: &str) -> String {
     value
+        .replace("\r\n", "\n")
+        .replace('\r', "\n")
         .replace('\\', "\\\\")
         .replace('\n', "\\n")
         .replace(',', "\\,")

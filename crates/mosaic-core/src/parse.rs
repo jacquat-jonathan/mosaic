@@ -79,7 +79,7 @@ static TAG: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?:^|[\s(,])#([\p{L}\p{N}_\-/]*[\p{L}_\-/][\p{L}\p{N}_\-/]*)").unwrap()
 });
 static HEADING: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^(#{1,6})[ \t]+(.+?)[ \t#]*$").unwrap());
+    LazyLock::new(|| Regex::new(r"^(#{1,6})[ \t]+(.+?)(?:[ \t]+#+)?[ \t]*$").unwrap());
 static BLOCK_ID: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\s\^([A-Za-z0-9-]+)\s*$").unwrap());
 static TASK: LazyLock<Regex> = LazyLock::new(|| {
@@ -461,6 +461,19 @@ mod tests {
             let raw = &HOME[l.target_range.0..l.target_range.1];
             assert_eq!(percent_decode(raw), l.target, "range for {l:?}");
         }
+    }
+
+    #[test]
+    fn heading_closing_sequence_follows_commonmark() {
+        let texts = |src: &str| -> Vec<String> {
+            parse(src).headings.into_iter().map(|h| h.text).collect()
+        };
+        assert_eq!(texts("# Learning C#\n"), ["Learning C#"]);
+        assert_eq!(texts("# Foo ##\n"), ["Foo"]);
+        assert_eq!(texts("# Foo #  \n"), ["Foo"]);
+        assert_eq!(texts("# C# #\n"), ["C#"]);
+        assert_eq!(texts("## F#\n"), ["F#"]);
+        assert_eq!(texts("# Foo#bar\n"), ["Foo#bar"]);
     }
 
     #[test]

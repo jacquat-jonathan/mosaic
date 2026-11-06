@@ -236,15 +236,18 @@ fn parse(content: &str, fallback_timezone: &str) -> Result<Vec<ParsedEvent>> {
     let mut result = Vec::new();
     let mut current: Vec<String> = Vec::new();
     let mut inside = false;
+    let mut nested = 0usize;
     for line in lines {
         if line.eq_ignore_ascii_case("BEGIN:VEVENT") {
             inside = true;
+            nested = 0;
             current.clear();
         } else if line.eq_ignore_ascii_case("END:VEVENT") {
             if !inside {
                 continue;
             }
             inside = false;
+            nested = 0;
             let mut uid = None;
             let mut recurrence_id = String::new();
             let mut recurrence_key = None;
@@ -349,7 +352,15 @@ fn parse(content: &str, fallback_timezone: &str) -> Result<Vec<ParsedEvent>> {
                 },
             });
         } else if inside {
-            current.push(line);
+            // Properties of nested components (e.g. VALARM) are not event properties.
+            let upper = line.to_ascii_uppercase();
+            if upper.starts_with("BEGIN:") {
+                nested += 1;
+            } else if upper.starts_with("END:") {
+                nested = nested.saturating_sub(1);
+            } else if nested == 0 {
+                current.push(line);
+            }
         }
     }
     if result.is_empty() {

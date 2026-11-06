@@ -1,11 +1,12 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { Bot, CalendarDays, Files, Search, Settings } from "lucide-react";
+import { Bell, Bot, CalendarDays, Files, Search, Settings } from "lucide-react";
 import { Badge, IconButton } from "../design-system/components";
 import { useUi, type Destination } from "../state/ui";
 import { useWorkspace } from "../state/workspace";
 import { useUpdateFlow } from "../state/updates";
 import { useReview } from "../state/review";
 import { useAttention } from "../state/attention";
+import { useNotifications } from "../state/notifications";
 import { shortcutOf } from "../commands";
 import { DesignSystemScope } from "./DesignSystemScope";
 import "./destinationNavigation.css";
@@ -25,6 +26,9 @@ export function DestinationNavigation() {
   const pending = useReview((state) => state.pending.length);
   const failed = useAttention((state) => state.unseenFailureIds.length);
   const count = pending + failed;
+  const unread = useNotifications(
+    (state) => state.all.filter((n) => !state.dismissed.has(n.id) && !state.read.has(n.id)).length,
+  );
   const attentionDescription = [
     pending ? `${pending} pending ${pending === 1 ? "review" : "reviews"}` : "",
     failed ? `${failed} new failed ${failed === 1 ? "run" : "runs"}` : "",
@@ -106,9 +110,22 @@ export function DestinationNavigation() {
         ))}
       </div>
       <IconButton
+        label={unread ? `Notifications (${unread} unread)` : "Notifications"}
+        data-section="Notifications"
+        data-section-start="true"
+        aria-pressed={active === "mosaic:notifications"}
+        onClick={() => useUi.getState().openView("notifications")}
+      >
+        <Bell aria-hidden="true" />
+        {unread > 0 && (
+          <Badge className="destination-attention" aria-hidden="true">
+            {unread > 99 ? "99+" : unread}
+          </Badge>
+        )}
+      </IconButton>
+      <IconButton
         label="Settings"
         data-section="Settings"
-        data-section-start="true"
         aria-pressed={active === "mosaic:settings"}
         title={`${updateReady ? "Update ready to install · " : updateAvailable ? "Update available · " : ""}Settings (${shortcutOf("settings")})`}
         aria-describedby={updateReady || updateAvailable ? `${description}-update` : undefined}

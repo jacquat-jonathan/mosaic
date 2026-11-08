@@ -92,7 +92,6 @@ test("newer schema offers retry but never backup rollback", () => {
   expect(screen.getByText(/newer version of Mosaic/)).toBeTruthy();
 });
 
-
 test("retry reopens in place without restoring or asking for a destructive action", async () => {
   const ask = vi.spyOn(useUi.getState(), "ask");
   const restore = vi.spyOn(api, "restorePlannerBackup");

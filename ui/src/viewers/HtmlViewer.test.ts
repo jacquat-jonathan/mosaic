@@ -35,25 +35,27 @@ describe("HTML preview resources", () => {
 
   it("allows vault assets and relative data fetches while keeping network schemes blocked", () => {
     const blocked = htmlPreviewCsp(false);
-    expect(blocked).toContain("connect-src data: asset: http://asset.localhost");
+    expect(blocked).toContain("connect-src data: mosaic-asset: http://mosaic-asset.localhost");
     expect(blocked).toContain("script-src 'none'");
     expect(blocked).not.toContain("https:");
     const allowed = htmlPreviewCsp(true);
-    expect(allowed).toContain("script-src data: asset: http://asset.localhost");
+    expect(allowed).toContain("script-src data: mosaic-asset: http://mosaic-asset.localhost");
     expect(allowed).not.toContain("https:");
 
     const connectedWithoutScripts = htmlPreviewCsp(false, ["https://cdn.example.com", "https://api.example.com:8443"]);
     expect(connectedWithoutScripts).toContain(
-      "style-src 'unsafe-inline' asset: http://asset.localhost https://cdn.example.com",
+      "style-src 'unsafe-inline' mosaic-asset: http://mosaic-asset.localhost https://cdn.example.com",
     );
     expect(connectedWithoutScripts).toContain(
-      "connect-src data: asset: http://asset.localhost https://cdn.example.com https://api.example.com:8443",
+      "connect-src data: mosaic-asset: http://mosaic-asset.localhost https://cdn.example.com https://api.example.com:8443",
     );
     expect(connectedWithoutScripts).toContain("script-src 'none'");
     expect(connectedWithoutScripts).toContain("frame-src 'none'");
     expect(connectedWithoutScripts).toContain("object-src 'none'");
     const connectedWithScripts = htmlPreviewCsp(true, ["https://cdn.example.com"]);
-    expect(connectedWithScripts).toContain("script-src data: asset: http://asset.localhost https://cdn.example.com");
+    expect(connectedWithScripts).toContain(
+      "script-src data: mosaic-asset: http://mosaic-asset.localhost https://cdn.example.com",
+    );
     expect(connectedWithScripts).not.toContain("https:;");
   });
 

@@ -121,6 +121,7 @@ export const commands = {
 	aiActivity: (limit: number | null) => __TAURI_INVOKE<Version[]>("ai_activity", { limit }),
 	undoChange: (id: number) => __TAURI_INVOKE<string>("undo_change", { id }),
 	absolutePath: (path: string) => __TAURI_INVOKE<string>("absolute_path", { path }),
+	assetPath: (path: string, generation: string) => __TAURI_INVOKE<string>("asset_path", { path, generation }),
 	/**
 	 *  Opens a file of the open vault with its default macOS app. The webview has no general
 	 *  "open path" permission: programs, installers and folders are refused (`Vault::openable`).
@@ -133,7 +134,7 @@ export const commands = {
 	 *  Publishes a sanitized preview on the asset origin. Unlike `srcdoc`, this gives WebKit a real,
 	 *  app-distinct origin on which scripts and sibling vault resources can run inside the sandbox.
 	 */
-	htmlPreviewDocument: (html: string) => __TAURI_INVOKE<string>("html_preview_document", { html }),
+	htmlPreviewDocument: (html: string, generation: string) => __TAURI_INVOKE<string>("html_preview_document", { html, generation }),
 	search: (query: string, limit: number | null) => __TAURI_INVOKE<SearchHit[]>("search", { query, limit }),
 	backlinks: (path: string) => __TAURI_INVOKE<Backlink[]>("backlinks", { path }),
 	tags: () => __TAURI_INVOKE<TagCount[]>("tags"),

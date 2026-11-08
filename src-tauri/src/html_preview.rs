@@ -1,13 +1,14 @@
+use crate::AppState;
 use crate::CmdResult;
 use mosaic_core::Error;
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::{Path, PathBuf};
-use tauri::{AppHandle, Manager};
+use tauri::State;
 
 const MAX_DOCUMENT_BYTES: usize = 20 * 1024 * 1024;
 
-fn write_document(dir: &Path, html: &str) -> CmdResult<PathBuf> {
+pub(crate) fn write_document(dir: &Path, html: &str) -> CmdResult<PathBuf> {
     if html.len() > MAX_DOCUMENT_BYTES {
         return Err(Error::Invalid("HTML preview is larger than 20 MiB".into()));
     }
@@ -33,17 +34,12 @@ fn write_document(dir: &Path, html: &str) -> CmdResult<PathBuf> {
 /// app-distinct origin on which scripts and sibling vault resources can run inside the sandbox.
 #[tauri::command(async)]
 #[specta::specta]
-pub(crate) fn html_preview_document(app: AppHandle, html: String) -> CmdResult<String> {
-    let dir = app
-        .path()
-        .app_cache_dir()
-        .map_err(|error| Error::Invalid(format!("HTML preview cache unavailable: {error}")))?
-        .join("html-preview");
-    let path = write_document(&dir, &html)?;
-    app.asset_protocol_scope()
-        .allow_directory(&dir, true)
-        .map_err(|error| Error::Invalid(format!("HTML preview cache unavailable: {error}")))?;
-    Ok(path.display().to_string())
+pub(crate) fn html_preview_document(
+    state: State<AppState>,
+    html: String,
+    generation: String,
+) -> CmdResult<String> {
+    state.assets.preview_path(&html, &generation)
 }
 
 #[cfg(test)]

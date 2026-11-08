@@ -2497,6 +2497,7 @@ export const mockCommands: typeof commands = {
     const a: Record<string, unknown> = { id };
     throw err("invalid", `there is no unfinished move ${a.id}`);
   },
+  assetPath: async () => notInMock("asset_path"),
   htmlPreviewDocument: async () => notInMock("html_preview_document"),
   search: async (query, limit) => {
     const a: Record<string, unknown> = { query, limit };
@@ -2722,7 +2723,8 @@ const PARAMS: Record<string, [keyof typeof commands, string[]]> = {
   open_in_default_app: ["openInDefaultApp", ["path"]],
   unfinished_renames: ["unfinishedRenames", []],
   fix_links: ["fixLinks", ["id"]],
-  html_preview_document: ["htmlPreviewDocument", ["html"]],
+  asset_path: ["assetPath", ["path", "generation"]],
+  html_preview_document: ["htmlPreviewDocument", ["html", "generation"]],
   search: ["search", ["query", "limit"]],
   backlinks: ["backlinks", ["path"]],
   tags: ["tags", []],

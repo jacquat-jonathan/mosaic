@@ -1,5 +1,6 @@
 //! Tauri front end: every command is a thin mapping onto `mosaic_core::Workspace`.
 
+mod assets;
 mod calendar_subscriptions;
 mod chat;
 mod html_preview;
@@ -28,6 +29,7 @@ type CmdResult<T> = Result<T, Error>;
 pub(crate) struct AppState {
     ws: RwLock<Option<(Arc<Workspace>, VaultSession)>>,
     activation: Mutex<()>,
+    assets: assets::AssetState,
     generation: AtomicU64,
     watcher: Mutex<Option<mosaic_core::watch::Watcher>>,
     /// Reports proposals and history written by agents (MCP servers, the CLI) as `history-changed`.
@@ -58,6 +60,7 @@ impl AppState {
             root: ws.vault.root().display().to_string(),
             generation: self.generation.load(Ordering::SeqCst).to_string(),
         };
+        self.assets.activate(ws.vault.root(), &session.generation);
         *active = Some((ws.clone(), session.clone()));
         session
     }
@@ -149,11 +152,6 @@ fn activate(app: AppHandle, state: &AppState, ws: Workspace) -> CmdResult<VaultI
     let _activation = state.activation.lock().expect("activation lock poisoned");
     let ws = Arc::new(ws);
     let session = state.install(ws.clone());
-    // Known limit: Tauri's scope can only grow (a forbid would be permanent and beat a later allow),
-    // so vaults opened earlier in the session stay readable through asset URLs until restart.
-    let _ = app
-        .asset_protocol_scope()
-        .allow_directory(ws.vault.root(), true);
     let _ = Settings::update(|settings| {
         settings.remember_vault(ws.vault.root().to_path_buf());
         true
@@ -894,6 +892,7 @@ pub(crate) fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             ai_activity,
             undo_change,
             absolute_path,
+            assets::asset_path,
             open_in_default_app,
             unfinished_renames,
             fix_links,
@@ -917,6 +916,12 @@ pub fn run() {
     #[cfg(target_os = "macos")]
     enable_webkit_spellcheck();
     tauri::Builder::default()
+        .register_asynchronous_uri_scheme_protocol("mosaic-asset", |context, request, responder| {
+            let app = context.app_handle().clone();
+            tauri::async_runtime::spawn_blocking(move || {
+                responder.respond(app.state::<AppState>().assets.respond(request));
+            });
+        })
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .manage(AppState::default())

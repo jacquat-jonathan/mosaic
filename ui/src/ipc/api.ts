@@ -2,7 +2,7 @@
 // development and tests) it falls back to an in-memory mock vault.
 
 import type { IndexProgress, UpdateDone, Written, AgentRule, ChatEvent } from "./types";
-import { isCurrentSession, type VaultSession } from "../state/vaultSession";
+import { assetGeneration, vaultOperation, isCurrentSession, type VaultSession } from "../state/vaultSession";
 import { commands } from "./bindings";
 import { mockCommands, mockInvoke } from "./mock";
 import type { VaultPreferences } from "../state/vaultPreferences";
@@ -219,19 +219,28 @@ export async function pickFolder(title = "Open a folder as a vault"): Promise<st
   return typeof picked === "string" ? picked : null;
 }
 
-/** URL the webview can load a vault file from (images, PDF). */
-export async function fileUrl(path: string): Promise<string> {
-  if (!inTauri) return await mockFileUrl(path);
+/** Preserve URL path separators so relative CSS, fonts and HTML resources stay within the grant. */
+export async function assetUrl(path: string): Promise<string> {
   const { convertFileSrc } = await import("@tauri-apps/api/core");
-  return convertFileSrc(await api.absolutePath(path));
+  return convertFileSrc("", "mosaic-asset") + path.split("/").map(encodeURIComponent).join("/");
 }
 
-/** Publishes a sanitized HTML preview on Mosaic's local asset origin. */
+/** URL the webview can load for this activation only (images, PDFs, HTML resources). */
+export async function fileUrl(path: string): Promise<string> {
+  if (!inTauri) return await mockFileUrl(path);
+  const current = vaultOperation();
+  const resource = await cmd.assetPath(path, assetGeneration());
+  if (!current()) throw new Error("Asset session changed");
+  return assetUrl(resource);
+}
+
+/** Publishes a sanitized HTML preview under the same revocable capability as its resources. */
 export async function htmlPreviewDocumentUrl(html: string): Promise<string> {
   if (!inTauri) return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
-  const path = await cmd.htmlPreviewDocument(html);
-  const { convertFileSrc } = await import("@tauri-apps/api/core");
-  return convertFileSrc(path);
+  const current = vaultOperation();
+  const path = await cmd.htmlPreviewDocument(html, assetGeneration());
+  if (!current()) throw new Error("Asset session changed");
+  return assetUrl(path);
 }
 
 async function mockFileUrl(path: string): Promise<string> {

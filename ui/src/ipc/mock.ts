@@ -875,6 +875,11 @@ function notInMock(cmd: string): never {
 /** The mock backend: one function per command in ./bindings.ts, so the compiler checks every
  * result against the Rust types and fails when a command is added, renamed or removed. */
 export const mockCommands: typeof commands = {
+  indexHealth: async () => ({ status: "healthy", watching: true, diagnostic: null }),
+  rebuildIndex: async () => {
+    emit("index-health", { root: mockRoot, health: { status: "healthy", watching: true, diagnostic: null } });
+    return null;
+  },
   openVault: async (path) => {
     const a: Record<string, unknown> = { path };
     opened = true;
@@ -2602,6 +2607,8 @@ export const mockCommands: typeof commands = {
 /** Parameter order of each command, to call `mockCommands` with an arguments object. */
 const PARAMS: Record<string, [keyof typeof commands, string[]]> = {
   open_vault: ["openVault", ["path"]],
+  index_health: ["indexHealth", ["root"]],
+  rebuild_index: ["rebuildIndex", ["root"]],
   query_notes: ["queryNotes", ["query"]],
   set_task: ["setTask", ["path", "line", "text", "done"]],
   set_task_workflow: ["setTaskWorkflow", ["path", "line", "text", "expectedState", "next"]],

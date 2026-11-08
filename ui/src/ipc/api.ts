@@ -34,6 +34,8 @@ async function importFile(path: string, bytes: Uint8Array): Promise<Written> {
 
 export const api = {
   openVault: (path: string) => cmd.openVault(path),
+  indexHealth: (root: string) => cmd.indexHealth(root),
+  rebuildIndex: (root: string) => cmd.rebuildIndex(root),
   currentVault: () => cmd.currentVault(),
   lastVault: () => cmd.lastVault(),
   createVault: (parent: string, name: string) => cmd.createVault(parent, name),
@@ -243,6 +245,9 @@ export async function openExternal(url: string): Promise<void> {
   const { openUrl } = await import("@tauri-apps/plugin-opener");
   await openUrl(url);
 }
+
+export const onIndexHealth = (cb: (event: { root: string; health: import("./types").IndexHealth }) => void) =>
+  listenTo<{ root: string; health: import("./types").IndexHealth }>("index-health", cb);
 
 /** Subscribes to background indexing progress. Returns an unsubscribe function. */
 export async function onIndexProgress(cb: (p: IndexProgress) => void): Promise<() => void> {

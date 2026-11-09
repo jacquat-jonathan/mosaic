@@ -1275,6 +1275,14 @@ pub(crate) mod tests {
         );
     }
 
+    // PERFORMANCE WORKLOAD BEGIN search
+    fn perf_metric(name: &str, elapsed: std::time::Duration) {
+        eprintln!(
+            "MOSAIC_PERF {}",
+            serde_json::json!({"name": name, "unit": "ms", "value": elapsed.as_secs_f64() * 1000.0})
+        );
+    }
+
     /// Run with `cargo test --release -p mosaic-core -- --ignored bench`.
     #[test]
     #[ignore]
@@ -1299,21 +1307,45 @@ pub(crate) mod tests {
             fs::write(folder.join(format!("Note {i}.md")), body).unwrap();
         }
         let v = Vault::open(dir.path()).unwrap();
-        let mut idx = Index::open_at(&dir.path().join("../idx-bench.db")).unwrap();
+        let database = tempfile::tempdir().unwrap();
+        let mut idx = Index::open_at(&database.path().join("index.db")).unwrap();
         let t = std::time::Instant::now();
         idx.sync(&v, |_, _| {}).unwrap();
-        eprintln!("initial index of 5000 notes: {:?}", t.elapsed());
+        perf_metric("core.cold_index_5000", t.elapsed());
+        let t = std::time::Instant::now();
+        idx.sync(&v, |_, _| {}).unwrap();
+        perf_metric("core.warm_index_5000", t.elapsed());
         let t = std::time::Instant::now();
         let hits = idx.search("charlie golf", 50).unwrap();
         let took = t.elapsed();
         eprintln!("search: {took:?}, {} hits", hits.len());
         assert!(!hits.is_empty());
-        assert!(took < std::time::Duration::from_secs(1));
+        if std::env::var_os("MOSAIC_PERF_REPORT").is_none() {
+            assert!(took < std::time::Duration::from_secs(1));
+        }
+        perf_metric("core.search_5000", took);
+        for _ in 0..19 {
+            let t = std::time::Instant::now();
+            assert_eq!(idx.search("charlie golf", 50).unwrap().len(), hits.len());
+            perf_metric("core.search_5000", t.elapsed());
+        }
+        for i in 0..100 {
+            fs::write(
+                dir.path().join(format!("f{}/Note {i}.md", i % 50)),
+                format!("# Note {i}\n\nuniquebursttoken {i}"),
+            )
+            .unwrap();
+        }
+        let t = std::time::Instant::now();
+        idx.sync(&v, |_, _| {}).unwrap();
+        perf_metric("core.burst_100_sync", t.elapsed());
+        assert_eq!(idx.search("uniquebursttoken", 200).unwrap().len(), 100);
         let t = std::time::Instant::now();
         let b = idx.backlinks("f0/Note 0.md").unwrap();
         eprintln!("backlinks: {:?} ({} hits)", t.elapsed(), b.len());
-        let _ = fs::remove_file(dir.path().join("../idx-bench.db"));
     }
+
+    // PERFORMANCE WORKLOAD END search
 
     /// A temporary vault holding exactly `files`, indexed.
     fn vault_with(files: &[(&str, &str)]) -> (tempfile::TempDir, Index) {
@@ -1406,6 +1438,7 @@ pub(crate) mod tests {
         assert_eq!(one_line(&long).chars().count(), 201);
     }
 
+    // PERFORMANCE WORKLOAD BEGIN concurrent
     /// The app and the CLI index the same vault at once (two connections to one database, as two
     /// processes have): neither may fail with "database is locked", and both see the same result.
     /// Run with `scripts/bench.sh`.
@@ -1426,7 +1459,8 @@ pub(crate) mod tests {
             )
             .unwrap();
         }
-        let db = dir.path().join("../shared-index.db");
+        let database = tempfile::tempdir().unwrap();
+        let db = database.path().join("index.db");
         let t = std::time::Instant::now();
         let handles: Vec<_> = (0..2)
             .map(|n| {
@@ -1455,6 +1489,7 @@ pub(crate) mod tests {
             "two indexers, 5000 notes, 20 concurrent edit+sync rounds each: {:?}",
             t.elapsed()
         );
+        perf_metric("core.concurrent_indexers_5000_40_edits", t.elapsed());
         let check = Index::open_at(&db).unwrap();
         assert_eq!(
             check.search("round", 10).unwrap().len(),
@@ -1463,4 +1498,5 @@ pub(crate) mod tests {
         );
         let _ = fs::remove_file(&db);
     }
+    // PERFORMANCE WORKLOAD END concurrent
 }

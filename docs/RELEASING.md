@@ -97,6 +97,9 @@ Chrome/WebKit workflows. Browser workflows use the mock vault, not a packaged ap
 PR/main CI additionally enforces Rust coverage through `MOSAIC_COVERAGE=1`. UI checks
 and four E2E shards (two per browser) run in parallel; **UI coverage** merges their
 coverage maps and enforces the combined UI floors after every test job passes.
+PR CI also runs the [packaged native smoke harness](NATIVE_SMOKE.md) in an isolated
+test bundle. Its test-only feature and bundle must never be included in release assets;
+it does not replace universal/minimum-OS or manual release installation checks.
 Report failures and environmental limitations accurately; do not silently skip checks.
 The local Rust checks warm the Cargo cache needed by the script's offline lock update.
 
@@ -144,7 +147,7 @@ Write that PR body file first with the final release scope and actual validation
 If a PR already exists, update it rather than creating another one. The handoff must
 include the PR URL, release commit SHA, tag target, checks, and remaining steps.
 
-Wait for **Rust**, **UI checks**, all four **E2E** shards and **UI coverage** to pass.
+Wait for **Rust**, **UI checks**, all four **E2E** shards, **UI coverage**, and **Packaged desktop smoke** to pass.
 If branch protection requires the former **UI** check, replace it with **UI coverage**,
 which also requires every UI test job to succeed. When merge is authorized, use **Create a merge
 commit** to preserve the tagged release commit; do not squash or rebase the release

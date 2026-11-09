@@ -5,6 +5,7 @@
 #                 which installs the new build itself after it quits).
 set -euo pipefail
 cd "$(dirname "$0")/.."
+source scripts/lockfiles.sh
 
 universal=0
 build_only=0
@@ -37,13 +38,14 @@ fi
 command -v cargo >/dev/null || { echo "Rust is required: https://rustup.rs" >&2; exit 1; }
 command -v pnpm >/dev/null || { echo "pnpm is required: corepack enable pnpm" >&2; exit 1; }
 
+bash scripts/check-toolchain.sh all
 pnpm install --frozen-lockfile
 if [[ $universal == 1 ]]; then
   rustup target add aarch64-apple-darwin x86_64-apple-darwin >/dev/null
-  MOSAIC_SIDECAR_PROFILE=universal pnpm tauri build --target universal-apple-darwin
+  MOSAIC_SIDECAR_PROFILE=universal pnpm tauri build --target universal-apple-darwin -- --locked
   app="target/universal-apple-darwin/release/bundle/macos/Mosaic.app"
 else
-  pnpm tauri build
+  pnpm tauri build -- --locked
   app="target/release/bundle/macos/Mosaic.app"
 fi
 

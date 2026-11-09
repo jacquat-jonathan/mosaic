@@ -3,14 +3,19 @@
   "private": true,
   "scripts": {
     "dev": "tauri dev",
-    "build": "tauri build",
-    "build:debug": "tauri build --debug",
+    "build": "bash scripts/build.sh",
+    "build:debug": "bash scripts/build.sh --debug",
     "icons": "tauri icon assets/icon.png -o src-tauri/icons",
     "lint": "pnpm --dir ui lint",
     "test": "pnpm --dir ui test",
-    "coverage": "bash scripts/coverage.sh"
+    "coverage": "bash scripts/coverage.sh",
+    "check:inputs": "node --test scripts/build-inputs.test.mjs"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.12.0"
+  },
+  "packageManager": "pnpm@12.8.1",
+  "engines": {
+    "node": "24.18.0"
   }
 }

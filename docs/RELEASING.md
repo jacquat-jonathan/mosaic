@@ -36,7 +36,9 @@ cutting a local release commit/tag, pushing a branch/PR, merging, and publishing
 Use authorization already given; this document does not grant publication permission.
 If only file preparation is requested, stop before the script's commit/tag step.
 
-Use macOS, Node 24+, pnpm 12, stable Rust with rustfmt/clippy, and the dependencies
+Use macOS and the exact Rust, Node and pnpm versions in `rust-toolchain.toml`,
+`.nvmrc` and `package.json` (see [build inputs](BUILD_INPUTS.md)). Run
+`bash scripts/check-toolchain.sh` and install the dependencies
 described in the [development guide](../README.md#develop). Local browser checks need
 Chrome and Playwright WebKit. The release workflow installs both Rust macOS targets
 and builds Intel plus Apple Silicon binaries; a local universal build is optional.
@@ -182,7 +184,11 @@ gh run list --repo "$release_repo" --workflow release.yml --branch "$release_tag
 
 Choose the new run for the expected `release_commit`. Its `build` job tests the
 exact tagged source, builds the universal app and CLI, verifies the bundle, and
-packages the unsigned DMG, updater archive, manifest, and checksums. The `build`
+packages the unsigned DMG, updater archive, manifest, and checksums. It also
+retains a separate **build-inputs** workflow artifact and summary containing the
+source SHA, actual tool versions, lockfile hashes and artifact digests. This is
+diagnostic metadata, not signed provenance; the five public assets are unchanged.
+The `build`
 job has no release key and cannot publish.
 
 When **Review deployments** appears in the run, the maintainer approves the

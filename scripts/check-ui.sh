@@ -2,6 +2,8 @@
 # Run the UI checks used by CI.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+source scripts/lockfiles.sh
+bash scripts/check-toolchain.sh node
 
 pnpm --dir ui lint
 pnpm --dir ui exec biome ci .

@@ -287,6 +287,12 @@ commit, and local annotated tag. Push the release branch without tags, merge its
 then publish the tag on that exact release commit. The protected `release` environment signs and
 publishes the complete assets after approval. A tag alone is not a downloadable release.
 
+For a portable recovery bundle, use `mosaic --vault /path/to/vault backup create /backup/new-bundle`.
+`mosaic backup restore /backup/new-bundle /new/vault` validates and previews without writing;
+add `--apply` to restore. Private history/settings require `--include-private-state` on both commands.
+Bundles are unencrypted; calendars require reconnection. See the [recovery guide](docs/RECOVERY.md)
+for the persistence matrix, privacy choices and a restore drill.
+
 The search index lives in `~/Library/Caches/mosaic/` and is rebuilt automatically. Undo history and
 pending AI proposals live in `~/Library/Application Support/dev.jona.mosaic/vaults/<vault-id>/`, keyed
 by the id in the vault's `.mosaic/vault.json`, so they follow a moved or renamed vault (a copied vault

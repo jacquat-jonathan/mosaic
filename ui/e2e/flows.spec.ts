@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { freezeCalendarTime } from "./calendar-clock";
 
 test.afterEach(async ({ page }) => {
   if (process.env.VITE_COVERAGE !== "true") return;
@@ -494,6 +495,7 @@ test("manage an epic lifecycle", async ({ page }) => {
 });
 
 test("create calendar events, subscriptions and work sessions", async ({ page }) => {
+  await freezeCalendarTime(page);
   await openVault(page);
   await page.getByRole("tab", { name: "Plan" }).click();
   await page.getByRole("button", { name: "Board", exact: true }).click();

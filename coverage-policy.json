@@ -1,0 +1,11 @@
+{
+  "ui_unit": { "lines": 29, "statements": 29, "branches": 25, "functions": 24 },
+  "ui_merged": { "lines": 70, "statements": 70, "branches": 70, "functions": 70 },
+  "rust": { "lines": 70 },
+  "domains": {
+    "Vault, persistence and synchronization": ["crates/mosaic-core/src/vault", "crates/mosaic-core/src/settings", "crates/mosaic-core/src/watch", "crates/mosaic-core/src/index", "ui/src/state/", "ui/src/sync.ts"],
+    "Planner and calendar": ["crates/mosaic-core/src/planner/", "src-tauri/src/planner", "src-tauri/src/calendar", "ui/src/views/planner/", "ui/src/ipc/mockPlanner"],
+    "Desktop, workflows and IPC": ["src-tauri/src/", "crates/mosaic-cli/", "ui/src/ipc/"],
+    "Files and rendering": ["crates/mosaic-core/src/", "ui/src/editor/", "ui/src/viewers/"]
+  }
+}

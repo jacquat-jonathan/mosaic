@@ -2,6 +2,8 @@
 
 mod calendar_subscriptions;
 mod chat;
+#[cfg(test)]
+mod contract_tests;
 mod html_preview;
 mod http;
 mod planner;

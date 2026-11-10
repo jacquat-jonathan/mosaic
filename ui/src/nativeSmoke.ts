@@ -3,12 +3,18 @@ import { invoke } from "@tauri-apps/api/core";
 import { api, fileUrl, inTauri, onVaultChanged } from "./ipc/api";
 import { useVault } from "./state/vault";
 import { useWorkspace } from "./state/workspace";
+import { collectViewerDiagnostics } from "./nativeSmokeDiagnostics";
 
 function assert(value: unknown, message: string): asserts value {
   if (!value) throw new Error(message);
 }
 export async function runNativeSmoke() {
   const checks: string[] = [];
+  const runtimeErrors: string[] = [];
+  const captureError = (event: ErrorEvent) => runtimeErrors.push(event.message);
+  const captureRejection = (event: PromiseRejectionEvent) => runtimeErrors.push(String(event.reason));
+  window.addEventListener("error", captureError);
+  window.addEventListener("unhandledrejection", captureRejection);
   const mark = async (label: string) => {
     checks.push(label);
     await invoke("smoke_report", { report: { pending: true, checks } });
@@ -97,8 +103,22 @@ export async function runNativeSmoke() {
       report: { ok: true, checks, phase: context.phase, userAgent: navigator.userAgent },
     });
   } catch (error) {
-    await invoke("smoke_report", { report: { ok: false, checks, error: String(error), detail: error } });
+    await invoke("smoke_report", {
+      report: {
+        ok: false,
+        checks,
+        error: String(error),
+        detail: {
+          viewer: collectViewerDiagnostics(),
+          activePath: useWorkspace.getState().activePath(),
+          runtimeErrors: runtimeErrors.slice(-10),
+          userAgent: navigator.userAgent,
+        },
+      },
+    });
   } finally {
     unlisten?.();
+    window.removeEventListener("error", captureError);
+    window.removeEventListener("unhandledrejection", captureRejection);
   }
 }

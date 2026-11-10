@@ -9,9 +9,35 @@ concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 jobs:
+  preflight:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      source: ${{ steps.source.outputs.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - name: Validate exact release source and green main merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          test "$GITHUB_REF_TYPE" = tag
+          node scripts/release-preflight.mjs "$GITHUB_REF_NAME"
+      - id: source
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
   # Installs every npm and Cargo dependency and runs their build scripts and tests, so it gets no
   # secrets and can't publish. Its output is the unsigned release assets.
   build:
+    needs: preflight
     runs-on: macos-15
     permissions:
       contents: read
@@ -23,6 +49,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ needs.preflight.outputs.source }}
+          fetch-depth: 0
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
@@ -70,11 +98,12 @@ jobs:
   # the protected `release` environment (a reviewer approves each run), installs no dependencies
   # and never executes what the build produced: sign-release.mjs only checks hashes and signs.
   sign:
-    needs: build
+    needs: [preflight, build]
     runs-on: ubuntu-24.04
     environment: release
     permissions:
       contents: write
+      actions: read
     env:
       VERSION: ${{ needs.build.outputs.version }}
     steps:
@@ -83,6 +112,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ needs.preflight.outputs.source }}
+          fetch-depth: 0
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
@@ -90,6 +121,11 @@ jobs:
         with:
           name: release-assets
           path: target/releases/v${{ env.VERSION }}
+      - name: Revalidate source and remote refs before signing
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: node scripts/release-preflight.mjs "v$VERSION"
       - name: Sign the update manifest
         env:
           MOSAIC_RELEASE_PRIVATE_KEY: ${{ secrets.MOSAIC_RELEASE_PRIVATE_KEY }}
@@ -98,7 +134,4 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-        run: |
-          dir="target/releases/v$VERSION"
-          gh release create "v$VERSION" --verify-tag --draft --title "Mosaic $VERSION" --notes-file "$dir/release-notes.md" "$dir/"*.dmg "$dir/"*.tar.gz "$dir/manifest.json" "$dir/manifest.sig" "$dir/SHA256SUMS"
-          gh release edit "v$VERSION" --draft=false
+        run: node scripts/recover-release-draft.mjs "v$VERSION" "target/releases/v$VERSION" --apply --publish

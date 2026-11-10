@@ -3,6 +3,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+node --test scripts/tests/release-invariants.test.mjs
+
 # CI runs these suites as independent jobs. Keep this wrapper as the one-command local gate.
 bash scripts/check-rust.sh
 bash scripts/check-ui.sh

@@ -7,6 +7,7 @@ export type Entry = B.Entry;
 export type FileContent = B.FileContent_Serialize;
 export type Written = B.Written_Serialize;
 export type VaultInfo = B.VaultInfo_Serialize;
+export type IndexHealth = B.IndexHealth;
 export type RecentVault = B.RecentVault;
 export type CoreError = B.Error;
 export type SearchHit = B.SearchHit;
@@ -88,6 +89,7 @@ export interface PlannerChanged {
 }
 
 export interface IndexProgress {
+  failed?: boolean;
   done: number;
   total: number;
   finished: boolean;

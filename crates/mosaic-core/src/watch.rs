@@ -3,6 +3,7 @@
 
 use crate::api::Workspace;
 use crate::error::{Error, Result};
+use crate::index_health::IndexProblem;
 use notify::RecursiveMode;
 use notify_debouncer_full::{DebounceEventResult, Debouncer, RecommendedCache, new_debouncer};
 use serde::Serialize;
@@ -29,6 +30,7 @@ pub const HEARTBEAT: Duration = Duration::from_secs(2);
 pub struct Watcher {
     _debouncer: Debouncer<notify::RecommendedWatcher, RecommendedCache>,
     stop: Option<Arc<AtomicBool>>,
+    workspace: Option<Arc<Workspace>>,
 }
 
 impl Drop for Watcher {
@@ -36,49 +38,37 @@ impl Drop for Watcher {
         if let Some(stop) = &self.stop {
             stop.store(true, Ordering::Relaxed);
         }
+        if let Some(ws) = &self.workspace {
+            ws.watcher_failed(IndexProblem::WatcherEvent, "stopped");
+        }
     }
 }
 
 pub fn watch(ws: Arc<Workspace>, on_change: impl Fn(Changes) + Send + 'static) -> Result<Watcher> {
     let root = ws.vault.root().to_path_buf();
     let handler_ws = ws.clone();
-    let mut debouncer = new_debouncer(DEBOUNCE, None, move |res: DebounceEventResult| {
-        let Ok(events) = res else { return };
-        let mut paths = BTreeSet::new();
-        for ev in &events {
-            for p in &ev.paths {
-                if let Some(rel) = handler_ws.vault.relative(p)
-                    && !rel.is_empty()
-                {
-                    paths.insert(rel);
-                }
-            }
+    let start = || -> Result<_> {
+        let mut debouncer = new_debouncer(DEBOUNCE, None, move |res: DebounceEventResult| {
+            handle_events(&handler_ws, res, &on_change);
+        })
+        .map_err(|e| Error::io("vault watcher", std::io::Error::other(e.to_string())))?;
+        debouncer
+            .watch(&root, RecursiveMode::Recursive)
+            .map_err(|e| Error::io("vault watcher", std::io::Error::other(e.to_string())))?;
+        Ok(debouncer)
+    };
+    let debouncer = match start() {
+        Ok(watcher) => watcher,
+        Err(e) => {
+            ws.watcher_failed(IndexProblem::WatcherStart, e.code());
+            return Err(e);
         }
-        let root_missing = !handler_ws.vault.root().is_dir();
-        if paths.is_empty() && !root_missing {
-            return;
-        }
-        for p in &paths {
-            let _ = handler_ws.refresh(p);
-        }
-        on_change(Changes {
-            paths: paths.into_iter().collect(),
-            root_missing,
-        });
-    })
-    .map_err(|e| Error::Io {
-        path: root.display().to_string(),
-        source: std::io::Error::other(e.to_string()),
-    })?;
-    debouncer
-        .watch(&root, RecursiveMode::Recursive)
-        .map_err(|e| Error::Io {
-            path: root.display().to_string(),
-            source: std::io::Error::other(e.to_string()),
-        })?;
+    };
+    ws.watcher_started();
     // While this watcher runs, other processes can rely on the index instead of walking the vault.
     let stop = Arc::new(AtomicBool::new(false));
     let beat = stop.clone();
+    let workspace = ws.clone();
     std::thread::spawn(move || {
         while !beat.load(Ordering::Relaxed) {
             ws.heartbeat();
@@ -88,7 +78,47 @@ pub fn watch(ws: Arc<Workspace>, on_change: impl Fn(Changes) + Send + 'static) -
     Ok(Watcher {
         _debouncer: debouncer,
         stop: Some(stop),
+        workspace: Some(workspace),
     })
+}
+
+/// A lost/overflowed event is not evidence that the index is current. Keep change notifications
+/// flowing even if indexing fails, so successful file edits remain visible and usable.
+fn handle_events(ws: &Workspace, result: DebounceEventResult, on_change: &impl Fn(Changes)) {
+    let events = match result {
+        Ok(events) => events,
+        Err(_) => {
+            ws.watcher_failed(IndexProblem::WatcherEvent, "watcher_error");
+            return;
+        }
+    };
+    if events.iter().any(|e| e.need_rescan()) {
+        ws.watcher_failed(IndexProblem::WatcherEvent, "overflow");
+    }
+    let mut paths = BTreeSet::new();
+    for event in &events {
+        for path in &event.paths {
+            if let Some(relative) = ws.vault.relative(path)
+                && !relative.is_empty()
+            {
+                paths.insert(relative);
+            }
+        }
+    }
+    let root_missing = !ws.vault.root().is_dir();
+    if root_missing {
+        ws.watcher_failed(IndexProblem::WatcherEvent, "root_missing");
+    }
+    if paths.is_empty() && !root_missing {
+        return;
+    }
+    for path in &paths {
+        let _ = ws.refresh(path);
+    }
+    on_change(Changes {
+        paths: paths.into_iter().collect(),
+        root_missing,
+    });
 }
 
 /// Watches settings.json and each vault's bookmarks and rules, which agents also write (bookmarks
@@ -124,6 +154,7 @@ pub fn watch_settings(on_change: impl Fn() + Send + 'static) -> Result<Watcher> 
     Ok(Watcher {
         _debouncer: debouncer,
         stop: None,
+        workspace: None,
     })
 }
 
@@ -172,6 +203,7 @@ fn watch_directory(
     Ok(Watcher {
         _debouncer: debouncer,
         stop: None,
+        workspace: None,
     })
 }
 
@@ -200,6 +232,7 @@ fn watch_files(
     Ok(Watcher {
         _debouncer: debouncer,
         stop: None,
+        workspace: None,
     })
 }
 
@@ -210,6 +243,54 @@ mod tests {
     use crate::vault::Vault;
     use std::sync::mpsc;
     use std::time::Instant;
+
+    #[test]
+    fn watcher_start_and_event_failures_invalidate_the_index() {
+        let dir = tempfile::tempdir().unwrap();
+        let ws = Arc::new(Workspace::new(
+            Vault::open(dir.path()).unwrap(),
+            Index::in_memory().unwrap(),
+        ));
+        ws.sync(|_, _| {}).unwrap();
+        handle_events(
+            &ws,
+            Err(vec![notify::Error::generic("private path hidden")]),
+            &|_| {},
+        );
+        assert_eq!(
+            ws.index_health().status,
+            crate::index_health::IndexStatus::Degraded
+        );
+        assert_eq!(
+            ws.index_health().diagnostic.unwrap().problem,
+            IndexProblem::WatcherEvent
+        );
+        ws.watcher_started();
+        ws.sync(|_, _| {}).unwrap();
+        handle_events(
+            &ws,
+            Ok(vec![notify_debouncer_full::DebouncedEvent::new(
+                notify::Event::new(notify::EventKind::Other).set_flag(notify::event::Flag::Rescan),
+                Instant::now(),
+            )]),
+            &|_| {},
+        );
+        assert_eq!(ws.index_health().diagnostic.unwrap().error_code, "overflow");
+        assert!(!ws.index_health().watching);
+        std::fs::remove_dir(dir.path()).unwrap();
+        assert!(watch(ws.clone(), |_| {}).is_err());
+        assert_eq!(
+            ws.index_health().diagnostic.unwrap().problem,
+            IndexProblem::WatcherStart
+        );
+        std::fs::create_dir(dir.path()).unwrap();
+        let _watcher = watch(ws.clone(), |_| {}).unwrap();
+        ws.sync(|_, _| {}).unwrap();
+        assert_eq!(
+            ws.index_health().status,
+            crate::index_health::IndexStatus::Healthy
+        );
+    }
 
     #[test]
     fn a_changed_history_database_is_reported() {

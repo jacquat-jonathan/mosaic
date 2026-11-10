@@ -81,9 +81,9 @@ Verify the intended feature and fix commits are merged into `origin/main`.
 
 Review everything since the last **published** release. Consolidate `## Unreleased`
 in `CHANGELOG.md` into concise user-facing bullets, remove stale claims, and explicitly
-mention removals or migration requirements. Each bullet must occupy one physical
-line: both the release script and packager currently extract only lines starting
-with `- `. Wrapped continuation lines are omitted from generated notes.
+mention removals or migration requirements. Use Markdown bullets; wrapped lines and
+nested bullets must be indented. Preparation, preflight and packaging share one parser
+that preserves continuations and refuses unindented prose instead of dropping it.
 
 Commit note edits before cutting the release: `release.sh` requires tracked files
 to be clean. Install dependencies and run the local gate on the intended source:
@@ -117,7 +117,9 @@ git show --no-patch "$release_tag"
 git status --short
 ```
 
-The script updates four files, commits `Release X.Y.Z`, and creates an annotated tag
+The script first checks updated remote main ancestry, permits only committed changelog
+preparation beyond main, and refuses existing local or remote version tags. It never
+fetches or publishes. The script updates four files, commits `Release X.Y.Z`, and creates an annotated tag
 on that commit. Verify all of the following:
 
 - `Cargo.toml` workspace version and `src-tauri/tauri.conf.json` version are `X.Y.Z`.
@@ -126,6 +128,16 @@ on that commit. Verify all of the following:
   and an empty `## Unreleased` section. Use the maintainer's local release date.
 - The release commit contains only the intended metadata changes, the tag annotation
   contains the notes, and the working tree is clean.
+
+Inspect the local metadata with:
+
+```sh
+node scripts/release-preflight.mjs "$release_tag" --local
+```
+
+`--local` explicitly checks only the local snapshot, not publication eligibility. It
+requires the exact tagged checkout, clean tracked source, annotated tag, commit title,
+all version declarations/lockfile entries, empty Unreleased section and dated notes.
 
 The script does not run tests or push anything. It points back to this runbook
 for publication; use the separate branch and tag pushes below.
@@ -188,8 +200,25 @@ packages the unsigned DMG, updater archive, manifest, and checksums. It also
 retains a separate **build-inputs** workflow artifact and summary containing the
 source SHA, actual tool versions, lockfile hashes and artifact digests. This is
 diagnostic metadata, not signed provenance; the five public assets are unchanged.
-The `build`
-job has no release key and cannot publish.
+
+The `build` job has no release key and cannot publish. A read-only `preflight` job now runs first,
+checking the metadata above, remote tag object/peeled SHA, main reachability and the
+latest successful main `Check` run for the **earliest first-parent main commit containing
+the release**. It requires Rust, UI checks, all four E2E shards and UI coverage; an
+unsuccessful additional job also blocks. This binds validation to the intended merge,
+not a later unrelated main commit. API errors, missing/truncated results and stale
+origin/main fail closed. Fetch before retrying; do not move a tag to satisfy the check.
+
+After the tag exists remotely, the same read-only check is available locally from an
+exact checkout of that release commit:
+
+```sh
+GH_REPO="$release_repo" node scripts/release-preflight.mjs "$release_tag"
+```
+
+Build and sign check out the preflight's exact source SHA. Immediately before signing,
+preflight repeats remote/source/check verification. No signing key is exposed to the
+preflight or build jobs. The draft publication command repeats the check before writes.
 
 When **Review deployments** appears in the run, the maintainer approves the
 `release` environment. The `sign` job verifies that the tag matches the version,
@@ -335,11 +364,7 @@ with a merge commit as in step 4. Refresh and verify the recorded recovery commi
 git fetch origin
 git merge-base --is-ancestor "$recovery_commit" origin/main
 test "$(git show -s --format=%s "$recovery_commit")" = "Release $release_version"
-release_notes="$(git show "$recovery_commit:CHANGELOG.md" | awk -v version="$release_version" '
-  index($0, "## " version " — ") == 1 { on=1; next }
-  /^## / { on=0 }
-  on && /^- / { print }
-')"
+release_notes="$(node scripts/release-notes.mjs CHANGELOG.md "$release_version")"
 test -n "$release_notes"
 git tag --force --annotate "$release_tag" "$recovery_commit" \
   -m "Mosaic $release_version" -m "$release_notes"
@@ -356,51 +381,77 @@ tagging the fix's PR merge commit repeats the 0.27.0 naming mistake.
 
 ### Repair an existing draft
 
-The workflow currently invokes `gh release create` before publishing. If that
-command created a draft and then failed during upload, rerunning it unchanged can
-fail because the draft already exists. Keep the tag fixed and the release in draft
-while repairing it; inspect the existing assets before replacing anything.
+The workflow's state-aware publication command inspects the authenticated release
+listing and downloads every existing draft asset to compare exact hashes with the
+complete, signed local set. It adds missing assets only. It never passes `--clobber`,
+deletes an asset, replaces a tag, or edits a published release. A differing or unexpected
+draft asset fails closed for maintainer investigation; do not rerun a new build over
+an existing draft and assume its bytes are identical.
 
-Recover one complete signed asset set from the exact tagged source/build. The
-`release-assets` Actions artifact is **unsigned** and lacks `manifest.sig`; it must
-not be published directly. If a maintainer has the existing trusted private key,
-they can download that build artifact and sign it from an isolated clean checkout
-of the exact release tag:
+Recover the complete signed set from the exact tagged build. The `release-assets`
+Actions artifact is unsigned and lacks `manifest.sig`; sign it only using the existing
+trusted key in the protected environment (or an explicitly authorized isolated local
+signing checkout). Never generate a replacement key or expose the signing secret.
+The command verifies all five regular files, manifest signature against this source's
+trusted public keys, archive hash/size, bundle/version/platform and both asset checksums. Signing and recovery
+also require manifest notes/date and the complete publication notes to match the tagged
+changelog, including wrapped continuations.
 
-```sh
-release_asset_dir="$(mktemp -d)"
-gh run download RUN_ID --repo "$release_repo" --name release-assets --dir "$release_asset_dir"
-MOSAIC_RELEASE_KEY_FILE=/absolute/protected/path/to/existing-key.pem \
-  node scripts/sign-release.mjs "$release_asset_dir"
-```
-
-Verify the downloaded run's commit and version first. Never generate a replacement
-key or print/export the GitHub signing secret. If the current key is available
-only in the protected environment, prepare a reviewed workflow repair to complete
-the draft there, or choose a new patch version; do not bypass the signing boundary.
-
-For an authorized draft repair, upload all five files from that single verified
-set, rather than mixing assets from separate builds:
+From the exact release checkout, inspect without changing anything:
 
 ```sh
-gh release upload "$release_tag" --repo "$release_repo" --clobber \
-  "$release_asset_dir/Mosaic-$release_version-universal.dmg" \
-  "$release_asset_dir/Mosaic-$release_version-universal.tar.gz" \
-  "$release_asset_dir/manifest.json" "$release_asset_dir/manifest.sig" \
-  "$release_asset_dir/SHA256SUMS"
+GH_REPO="$release_repo" node scripts/recover-release-draft.mjs \
+  "$release_tag" "$release_asset_dir"
 ```
 
-`--clobber` deletes each conflicting draft asset before uploading its replacement;
-retain the complete signed local set and keep the release in draft if an upload
-fails. Recheck tag identity, all five downloaded assets, checksums, manifest and
-signature, title, and release notes. When publication is authorized and those
-checks pass, finish the draft:
+For an authorized draft repair, resume missing uploads while leaving it in draft:
 
 ```sh
-gh release edit "$release_tag" --repo "$release_repo" --verify-tag \
-  --title "Mosaic $release_version" --notes-file "$release_asset_dir/release-notes.md" \
-  --prerelease=false --draft=false
+GH_REPO="$release_repo" node scripts/recover-release-draft.mjs \
+  "$release_tag" "$release_asset_dir" --apply
 ```
 
-Apply step 6 again. Never use this draft-repair procedure to overwrite a published
-asset set.
+Only with publication authorization, publish after rechecking the complete remote set:
+
+```sh
+GH_REPO="$release_repo" node scripts/recover-release-draft.mjs \
+  "$release_tag" "$release_asset_dir" --apply --publish
+```
+
+An API failure is unknown state, never evidence of absence. A published release is
+refused even if its assets match. A same-byte draft retry is idempotent, and a partial
+upload resumes without replacing completed uploads. Keep one publisher per tag: the
+workflow concurrency group serializes workflow runs, but cannot serialize a separate
+human using GitHub directly. The API does not provide a transaction covering draft
+inspection, uploads and publication; do not publish/edit the same draft concurrently.
+Apply step 6 after publication. None of these scripts grants publication authorization.
+
+## Protection audit and trust boundary
+
+Read-only inspection on 9 November 2026 found:
+
+- The `release` environment restricts deployment to tags `v*` and requires reviewer
+  `jacquat-jonathan`. Self-review is allowed and administrators may bypass protection.
+- The active main ruleset requires a PR and the `Rust` and `UI coverage` checks. It
+  allows merge, squash and rebase, with no approving-review minimum; release PRs must
+  still use a merge commit to preserve their exact tagged commit.
+- The active release-tag ruleset blocks creation, updates, deletion and non-fast-forward
+  changes for `refs/tags/v*`, with a repository-administrator bypass.
+- The legacy branch-protection endpoint returns 404; protection is provided by rulesets.
+
+No settings were changed. These are observations, not permanent guarantees. Before
+shipping, the signing reviewer must inspect the selected source/workflow, confirm the
+current environment/ref policies, and approve only trusted code. The sign job executes
+scripts from that source; preflight is an invariant check, not a sandbox against a
+malicious release author or an administrator bypass. Private-key contents were not read.
+
+## Regression and integration checks
+
+`node --test scripts/tests/release-invariants.test.mjs` uses disposable local Git
+repositories, fixture assets and freshly generated test keys. It exercises preparation,
+annotated/lightweight refs, exact commit preservation, version/notes mismatch, failed or
+missing checks, remote changes, signed assets, partial draft retries and published
+refusal. It never contacts a real release or uses a release signing key. It runs in the
+local check wrapper and PR CI. Actual universal bundle/native validation remains the
+separate packaged smoke lane; keep that lane and the exact tool pins when combining
+architecture improvements 09 and 12 with this workflow change.

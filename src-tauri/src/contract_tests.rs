@@ -191,6 +191,7 @@ fn event_payloads_serialize_through_tauri_emitter() {
             done: 2,
             total: 3,
             finished: false,
+            failed: false,
         },
     )
     .unwrap();

@@ -738,10 +738,27 @@ describe("browser mock planner behavior", () => {
 
     for (const [content, code] of [
       ["no calendar", "invalid"],
-      ["BEGIN:VCALENDAR\nEND:VCALENDAR", "invalid"],
       ["BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:x\nEND:VEVENT\nEND:VCALENDAR", "invalid"],
     ])
       await rejects("planner_ical_preview", { sourceKind: "coverage", content, fallbackTimezone: "UTC" }, code);
+    expect(
+      (
+        await invoke<IcalImportPreview>("planner_ical_preview", {
+          sourceKind: "empty",
+          content: "BEGIN:VCALENDAR\nEND:VCALENDAR",
+          fallbackTimezone: "UTC",
+        })
+      ).candidates,
+    ).toEqual([]);
+    const partial = await invoke<IcalImportPreview>("planner_ical_preview", {
+      sourceKind: "partial",
+      fallbackTimezone: "UTC",
+      content:
+        "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:broken\nDTSTART:invalid\nEND:VEVENT\nBEGIN:VEVENT\nUID:valid\nDTSTART:20261105T090000Z\nBEGIN:VALARM\nSUMMARY:Alarm\nEND:VALARM\nSUMMARY:Meeting\nEND:VEVENT\nEND:VCALENDAR",
+    });
+    expect(partial.candidates).toHaveLength(1);
+    expect(partial.candidates[0].title).toBe("Meeting");
+    expect(partial.warnings).toHaveLength(1);
     const ical =
       "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:timed\r\nDTSTART:20261101T100000Z\r\nSUMMARY:Timed\r\nDESCRIPTION:Description\r\nLOCATION:Room\r\nURL:https://example.test\r\nRRULE:FREQ=DAILY;COUNT=2\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
     const preview = await invoke<IcalImportPreview>("planner_ical_preview", {

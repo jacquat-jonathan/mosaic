@@ -154,7 +154,44 @@ pub(super) fn normalize_rule(value: Option<String>) -> Result<Option<String>> {
     if value.trim().is_empty() {
         return Ok(None);
     }
-    let rule = parse_rule(&value)?;
+    let value = value
+        .trim()
+        .strip_prefix("RRULE:")
+        .unwrap_or(value.trim())
+        .to_ascii_uppercase();
+    if let Some(days) = value
+        .split(';')
+        .find_map(|part| part.strip_prefix("BYMONTHDAY="))
+    {
+        parse_rule(&format!("FREQ=MONTHLY;BYMONTHDAY={days}"))?;
+    }
+    // Keep the compact representation used by existing local events, while accepting the full
+    // RFC recurrence grammar for imported calendars (COUNT, YEARLY, ordinal BYDAY, BYSETPOS, ...).
+    let rule = match parse_rule(&value) {
+        Ok(rule)
+            if !value
+                .split(';')
+                .any(|part| part.starts_with("UNTIL=") && part[6..].contains('T')) =>
+        {
+            rule
+        }
+        _ => {
+            let mut parsed = value
+                .parse::<rrule::RRule<rrule::Unvalidated>>()
+                .map_err(|error| Error::Invalid(format!("invalid recurrence rule: {error}")))?;
+            let mut probe = rrule::Tz::UTC
+                .with_ymd_and_hms(2000, 1, 1, 0, 0, 0)
+                .unwrap();
+            if let Some(until) = parsed.get_until() {
+                probe = until.with_timezone(&rrule::Tz::UTC);
+                parsed = parsed.until(probe);
+            }
+            parsed
+                .validate(probe)
+                .map_err(|error| Error::Invalid(format!("invalid recurrence rule: {error}")))?;
+            return Ok(Some(value));
+        }
+    };
     let frequency = match rule.frequency {
         Frequency::Daily => "DAILY",
         Frequency::Weekly => "WEEKLY",
@@ -343,6 +380,14 @@ pub(super) fn expand(
     from: NaiveDate,
     to: NaiveDate,
 ) -> Result<Vec<(String, String, String)>> {
+    if let Some(rule) = event.recurrence_rule.as_deref()
+        && (parse_rule(rule).is_err()
+            || rule
+                .split(';')
+                .any(|part| part.starts_with("UNTIL=") && part[6..].contains('T')))
+    {
+        return expand_rfc(event, rule, from, to);
+    }
     let tz: Tz = event
         .timezone
         .parse()
@@ -442,6 +487,130 @@ pub(super) fn expand(
             .ok_or_else(|| Error::Invalid("calendar range overflow".into()))?;
     }
     Ok(result)
+}
+
+fn expand_rfc(
+    event: &PlannerEvent,
+    rule: &str,
+    from: NaiveDate,
+    to: NaiveDate,
+) -> Result<Vec<(String, String, String)>> {
+    let tz: rrule::Tz = event
+        .timezone
+        .parse::<Tz>()
+        .map_err(|_| Error::Invalid("invalid recurrence timezone".into()))?
+        .into();
+    let start = if event.all_day {
+        let date = NaiveDate::parse_from_str(&event.start_value, "%Y-%m-%d")
+            .map_err(|_| Error::Invalid("invalid recurring start".into()))?;
+        tz.from_local_datetime(&date.and_hms_opt(0, 0, 0).unwrap())
+            .earliest()
+            .ok_or_else(|| Error::Invalid("invalid recurring start".into()))?
+    } else {
+        DateTime::parse_from_rfc3339(&event.start_value)
+            .map_err(|_| Error::Invalid("invalid recurring start".into()))?
+            .with_timezone(&tz)
+    };
+    let duration = if event.all_day {
+        NaiveDate::parse_from_str(&event.end_value, "%Y-%m-%d")
+            .map_err(|_| Error::Invalid("invalid recurring end".into()))?
+            .signed_duration_since(start.date_naive())
+    } else {
+        DateTime::parse_from_rfc3339(&event.end_value)
+            .map_err(|_| Error::Invalid("invalid recurring end".into()))?
+            .signed_duration_since(start)
+    };
+    let precise_keys = rule.split(';').any(|part| {
+        matches!(
+            part.split('=').next(),
+            Some("BYHOUR" | "BYMINUTE" | "BYSECOND")
+        ) || matches!(part, "FREQ=HOURLY" | "FREQ=MINUTELY" | "FREQ=SECONDLY")
+    });
+    let rule = validated_rfc_rule(rule, start)?;
+    let after_date = from
+        .checked_sub_signed(duration.max(chrono::Duration::days(1)))
+        .ok_or_else(|| Error::Invalid("calendar range overflow".into()))?;
+    let after = tz
+        .from_local_datetime(&after_date.and_hms_opt(0, 0, 0).unwrap())
+        .earliest()
+        .ok_or_else(|| Error::Invalid("invalid calendar range".into()))?;
+    let before_date = to
+        .succ_opt()
+        .ok_or_else(|| Error::Invalid("calendar range overflow".into()))?;
+    let before = tz
+        .from_local_datetime(&before_date.and_hms_opt(0, 0, 0).unwrap())
+        .latest()
+        .ok_or_else(|| Error::Invalid("invalid calendar range".into()))?;
+    // The library bounds both expansion work and output, including hostile/impossible rules.
+    let generated = rrule::RRuleSet::new(start)
+        .rrule(rule)
+        .after(after)
+        .before(before)
+        .all(10_000);
+    if generated.limited {
+        return Err(Error::Invalid(
+            "calendar recurrence exceeds the expansion limit".into(),
+        ));
+    }
+    Ok(generated
+        .dates
+        .into_iter()
+        .filter_map(|date| {
+            let end = date.checked_add_signed(duration)?;
+            if event.all_day {
+                (end.date_naive() > from && date.date_naive() <= to).then(|| {
+                    (
+                        date.date_naive().to_string(),
+                        date.date_naive().to_string(),
+                        end.date_naive().to_string(),
+                    )
+                })
+            } else {
+                (end.date_naive() >= from && date.date_naive() <= to).then(|| {
+                    (
+                        if precise_keys {
+                            date.with_timezone(&Utc)
+                                .to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
+                        } else {
+                            date.date_naive().to_string()
+                        },
+                        date.with_timezone(&Utc)
+                            .to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+                        end.with_timezone(&Utc)
+                            .to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+                    )
+                })
+            }
+        })
+        .collect())
+}
+
+/// Adapt date-only and floating UNTIL values to the event's timezone before validation.
+pub(super) fn validated_rfc_rule(rule: &str, start: DateTime<rrule::Tz>) -> Result<rrule::RRule> {
+    let mut parsed = rule
+        .parse::<rrule::RRule<rrule::Unvalidated>>()
+        .map_err(|error| Error::Invalid(format!("invalid recurrence rule: {error}")))?;
+    if let Some(value) = rule.split(';').find_map(|part| part.strip_prefix("UNTIL="))
+        && !value.ends_with('Z')
+    {
+        let local = if value.len() == 8 {
+            NaiveDate::parse_from_str(value, "%Y%m%d")
+                .ok()
+                .and_then(|date| date.and_hms_opt(23, 59, 59))
+        } else {
+            NaiveDateTime::parse_from_str(value, "%Y%m%dT%H%M%S").ok()
+        }
+        .ok_or_else(|| Error::Invalid("invalid recurrence UNTIL".into()))?;
+        let until = start
+            .timezone()
+            .from_local_datetime(&local)
+            .latest()
+            .ok_or_else(|| Error::Invalid("invalid recurrence UNTIL".into()))?;
+        parsed = parsed.until(until.with_timezone(&rrule::Tz::UTC));
+    }
+    parsed
+        .validate(start)
+        .map_err(|error| Error::Invalid(format!("invalid recurrence rule: {error}")))
 }
 
 #[cfg(test)]
@@ -605,7 +774,7 @@ mod tests {
     }
 
     #[test]
-    fn supported_rules_are_normalized_and_advanced_fields_rejected() {
+    fn supported_rules_are_normalized_and_invalid_fields_rejected() {
         assert_eq!(
             normalize_rule(Some(
                 "RRULE:FREQ=WEEKLY;BYDAY=MO,WE;INTERVAL=2;WKST=SU".into()
@@ -613,24 +782,8 @@ mod tests {
             .unwrap(),
             Some("FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,WE;WKST=SU".into())
         );
-        assert_eq!(
-            normalize_rule(Some("FREQ=YEARLY".into())).unwrap(),
-            Some("FREQ=YEARLY".into())
-        );
-        assert_eq!(
-            normalize_rule(Some("FREQ=WEEKLY;COUNT=3".into())).unwrap(),
-            Some("FREQ=WEEKLY;COUNT=3".into())
-        );
-        for rule in [
-            "FREQ=DAILY;COUNT=0",
-            "FREQ=DAILY;COUNT=x",
-            "FREQ=DAILY;COUNT=3;UNTIL=20260401",
-            "FREQ=YEARLY;BYDAY=MO",
-            "FREQ=YEARLY;BYMONTHDAY=1",
-            "FREQ=DAILY;BYSETPOS=1",
-        ] {
-            assert!(normalize_rule(Some(rule.into())).is_err(), "{rule}");
-        }
+        assert!(normalize_rule(Some("FREQ=YEARLY".into())).is_ok());
+        assert!(normalize_rule(Some("FREQ=DAILY;COUNT=3".into())).is_ok());
         assert!(normalize_rule(Some("FREQ=WEEKLY;WKST=NO".into())).is_err());
         assert_eq!(
             normalize_rule(Some("FREQ=MONTHLY;BYMONTHDAY=1,15,-1;INTERVAL=2".into())).unwrap(),

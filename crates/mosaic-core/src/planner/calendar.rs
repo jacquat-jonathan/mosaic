@@ -47,6 +47,7 @@ fn normalize_range(
     start: &str,
     end: &str,
     timezone: &str,
+    allow_zero: bool,
 ) -> Result<(String, String, String)> {
     let timezone = timezone.trim();
     if timezone.is_empty() {
@@ -74,7 +75,7 @@ fn normalize_range(
             .map_err(|_| Error::Invalid(format!("{start:?} isn't an RFC 3339 instant")))?;
         let end_time = DateTime::parse_from_rfc3339(end)
             .map_err(|_| Error::Invalid(format!("{end:?} isn't an RFC 3339 instant")))?;
-        if end_time <= start_time {
+        if end_time < start_time || (!allow_zero && end_time == start_time) {
             return Err(Error::Invalid(
                 "work-session end must be after its start".into(),
             ));
@@ -138,7 +139,7 @@ fn validate_event_range(
     end: &str,
     timezone: &str,
 ) -> Result<(String, String, String)> {
-    let normalized = normalize_range(all_day, start, end, timezone)?;
+    let normalized = normalize_range(all_day, start, end, timezone, true)?;
     normalized
         .2
         .parse::<Tz>()
@@ -247,6 +248,7 @@ impl PlannerStore {
             &input.start_value,
             &input.end_value,
             &input.timezone,
+            false,
         )?;
         let id = uuid::Uuid::new_v4().to_string();
         let at = now();
@@ -301,6 +303,7 @@ impl PlannerStore {
             &input.start_value,
             &input.end_value,
             &input.timezone,
+            false,
         )?;
         let tx = self.conn.transaction().map_err(sql_error)?;
         expect_revision(&tx, "work_sessions", id, input.expected_revision)?;
@@ -564,14 +567,10 @@ impl PlannerStore {
         expected_revision: i64,
         occurrence_key: &str,
     ) -> Result<PlannerEvent> {
-        let occurrence_date = NaiveDate::parse_from_str(occurrence_key, "%Y-%m-%d")
-            .map_err(|_| Error::Invalid("occurrence key must be an ISO date".into()))?;
         let tx = self.conn.transaction().map_err(sql_error)?;
         expect_revision(&tx, "events", series_id, expected_revision)?;
         let before = event_in(&tx, series_id)?;
-        if before.recurrence_rule.is_none()
-            || super::recurrence::expand(&before, occurrence_date, occurrence_date)?.is_empty()
-        {
+        if before.recurrence_rule.is_none() || !contains_occurrence(&before, occurrence_key)? {
             return Err(Error::Invalid(
                 "the requested occurrence does not belong to this series".into(),
             ));
@@ -611,14 +610,10 @@ impl PlannerStore {
         occurrence_key: &str,
         input: CreateEvent,
     ) -> Result<PlannerEvent> {
-        let occurrence_date = NaiveDate::parse_from_str(occurrence_key, "%Y-%m-%d")
-            .map_err(|_| Error::Invalid("occurrence key must be an ISO date".into()))?;
         let tx = self.conn.transaction().map_err(sql_error)?;
         expect_revision(&tx, "events", series_id, expected_revision)?;
         let series = event_in(&tx, series_id)?;
-        if series.recurrence_rule.is_none()
-            || super::recurrence::expand(&series, occurrence_date, occurrence_date)?.is_empty()
-        {
+        if series.recurrence_rule.is_none() || !contains_occurrence(&series, occurrence_key)? {
             return Err(Error::Invalid(
                 "the requested occurrence does not belong to this series".into(),
             ));
@@ -691,7 +686,9 @@ impl PlannerStore {
                 continue;
             };
             for (key, start, end) in expanded_keys {
-                if let Some((action, replacement_id)) = exceptions.get(&key) {
+                if let Some((action, replacement_id)) =
+                    exceptions.get(&start).or_else(|| exceptions.get(&key))
+                {
                     if action == "cancelled" {
                         continue;
                     }
@@ -846,6 +843,24 @@ fn occurrence(
         timezone: event.timezone.clone(),
         recurring,
     }
+}
+
+fn contains_occurrence(event: &PlannerEvent, key: &str) -> Result<bool> {
+    let date = if let Ok(date) = NaiveDate::parse_from_str(key, "%Y-%m-%d") {
+        date
+    } else {
+        let instant = DateTime::parse_from_rfc3339(key).map_err(|_| {
+            Error::Invalid("occurrence key must be an ISO date or timestamp".into())
+        })?;
+        let tz: Tz = event
+            .timezone
+            .parse()
+            .map_err(|_| Error::Invalid("invalid event timezone".into()))?;
+        instant.with_timezone(&tz).date_naive()
+    };
+    Ok(super::recurrence::expand(event, date, date)?
+        .iter()
+        .any(|(candidate, start, _)| candidate == key || start == key))
 }
 
 fn epic_color(conn: &rusqlite::Connection, epic_id: Option<&str>) -> Result<Option<String>> {

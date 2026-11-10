@@ -98,7 +98,7 @@ export function CalendarSourcesDialog({
         open
         size="wide"
         title="Calendar subscriptions"
-        description="Read-only HTTPS or webcal feeds. Addresses are kept in your macOS Keychain."
+        description="Read-only ICS feeds or calendar pages with a subscription link. Addresses are kept in your macOS Keychain."
         onClose={onClose}
         dismissible={!busy}
         initialFocusRef={first}

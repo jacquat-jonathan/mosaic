@@ -85,3 +85,15 @@ test("iCalendar selection keeps duplicates explicit and failed imports retain se
   expect(await screen.findByText("import failed")).toBeTruthy();
   expect(screen.getByRole("checkbox", { name: /New planning/ })).toHaveProperty("checked", true);
 });
+
+test("partial import warnings remain visible while valid events can be selected", async () => {
+  const withWarnings = {
+    ...preview,
+    warnings: ["Skipped event 2: invalid date", "Planning: unknown timezone; using UTC."],
+  };
+  render(<IcalImportWizard preview={withWarnings} fileName="mixed.ics" onDone={vi.fn()} onCancel={vi.fn()} />);
+  expect(screen.getByText("Some calendar data needs attention")).toBeTruthy();
+  expect(screen.getByText("Skipped event 2: invalid date")).toBeTruthy();
+  expect(screen.getByText("Planning: unknown timezone; using UTC.")).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Import 1 events" })).toHaveProperty("disabled", false);
+});

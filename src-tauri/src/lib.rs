@@ -4,6 +4,7 @@ mod calendar_subscriptions;
 mod chat;
 mod html_preview;
 mod http;
+mod indexing;
 mod planner;
 mod tessera;
 mod update;
@@ -26,7 +27,7 @@ type CmdResult<T> = Result<T, Error>;
 #[derive(Default)]
 pub(crate) struct AppState {
     ws: RwLock<Option<Arc<Workspace>>>,
-    watcher: Mutex<Option<mosaic_core::watch::Watcher>>,
+    watcher: Mutex<Option<indexing::Monitor>>,
     /// Reports proposals and history written by agents (MCP servers, the CLI) as `history-changed`.
     history_watcher: Mutex<Option<mosaic_core::watch::Watcher>>,
     /// Reports planner writes made by agents or other Mosaic processes as `planner-changed`.
@@ -60,6 +61,7 @@ struct IndexProgress {
     done: usize,
     total: usize,
     finished: bool,
+    failed: bool,
 }
 
 fn info(ws: &Workspace) -> VaultInfo {
@@ -136,32 +138,95 @@ fn activate(app: AppHandle, state: &AppState, ws: Workspace) -> CmdResult<VaultI
     tessera::reset_events(&app, &ws);
     tessera::start_scheduler(app.clone());
 
-    // External changes (AI, CLI, other editors) are pushed to the UI as they happen.
+    // One owner handles startup, errors and bounded reconciliation. Every callback checks the
+    // active Workspace, so dropping the monitor on switch cannot publish late old-vault results.
     let events = app.clone();
     let event_ws = ws.clone();
-    let watcher = mosaic_core::watch::watch(ws.clone(), move |changes| {
-        tessera::vault_changed(&events, &event_ws, &changes.paths);
-        let _ = events.emit("vault-changed", changes);
-    })
-    .ok();
-    *state.watcher.lock().expect("watcher lock poisoned") = watcher;
-
-    // Index in the background; the UI shows progress and search uses the last consistent index.
-    std::thread::spawn(move || {
-        let emit = |done, total, finished| {
-            let _ = app.emit(
-                "index-progress",
-                IndexProgress {
-                    done,
-                    total,
-                    finished,
-                },
-            );
-        };
-        let _ = ws.sync(|done, total| emit(done, total, false));
-        emit(0, 0, true);
-    });
+    let progress_app = app.clone();
+    let progress_ws = ws.clone();
+    let health_ws = ws.clone();
+    let monitor = indexing::start(
+        ws,
+        move |changes| {
+            if !is_active(&events, &event_ws) {
+                return;
+            }
+            tessera::vault_changed(&events, &event_ws, &changes.paths);
+            let _ = events.emit("vault-changed", changes);
+        },
+        move |done, total, finished, failed| {
+            if is_active(&progress_app, &progress_ws) {
+                let _ = progress_app.emit(
+                    "index-progress",
+                    IndexProgress {
+                        done,
+                        total,
+                        finished,
+                        failed,
+                    },
+                );
+            }
+        },
+        move |health| {
+            if is_active(&app, &health_ws) {
+                let _ = app.emit(
+                    "index-health",
+                    IndexHealthEvent {
+                        root: health_ws.vault.root().display().to_string(),
+                        health,
+                    },
+                );
+            }
+        },
+    );
+    *state.watcher.lock().expect("watcher lock poisoned") = Some(monitor);
     Ok(out)
+}
+
+fn is_active(app: &AppHandle, ws: &Arc<Workspace>) -> bool {
+    app.state::<AppState>()
+        .get()
+        .is_ok_and(|active| Arc::ptr_eq(&active, ws))
+}
+
+#[derive(Serialize, Clone)]
+struct IndexHealthEvent {
+    root: String,
+    health: mosaic_core::index_health::IndexHealth,
+}
+
+#[tauri::command(async)]
+#[specta::specta]
+fn index_health(
+    state: State<AppState>,
+    root: String,
+) -> CmdResult<mosaic_core::index_health::IndexHealth> {
+    let ws = state.get()?;
+    if ws.vault.root().to_string_lossy() != root {
+        return Err(Error::Invalid("vault changed".into()));
+    }
+    Ok(ws.index_health())
+}
+
+/// Requests an asynchronous full reindex. Does not reopen the vault or replace editor buffers.
+#[tauri::command(async)]
+#[specta::specta]
+fn rebuild_index(state: State<AppState>, root: String) -> CmdResult<()> {
+    let ws = state.ws.read().expect("workspace lock poisoned");
+    if ws
+        .as_ref()
+        .is_none_or(|ws| ws.vault.root().to_string_lossy() != root)
+    {
+        return Err(Error::Invalid("vault changed".into()));
+    }
+    state
+        .watcher
+        .lock()
+        .expect("watcher lock poisoned")
+        .as_ref()
+        .ok_or_else(|| Error::Invalid("index watcher is unavailable; reconnect the vault".into()))?
+        .request_rebuild();
+    Ok(())
 }
 
 #[derive(Serialize, specta::Type)]
@@ -731,6 +796,8 @@ pub(crate) fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
         .dangerously_cast_bigints_to_number()
         .commands(tauri_specta::collect_commands![
             open_vault,
+            index_health,
+            rebuild_index,
             query_notes,
             set_task,
             set_task_workflow,

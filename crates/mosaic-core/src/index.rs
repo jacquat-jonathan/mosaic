@@ -478,22 +478,70 @@ impl Index {
         Some(db.with_extension("db.watched"))
     }
 
-    /// Records that a watcher is keeping this index current. Called every few seconds by the
-    /// app; other processes (the MCP server) then skip their own walk of the vault.
-    pub fn mark_watched(&self) {
-        if let Some(p) = self.heartbeat_path()
-            && let Ok(f) = std::fs::File::options().create(true).append(true).open(p)
-        {
-            let _ = f.set_modified(std::time::SystemTime::now());
+    /// Invalidation epoch shared with other app/CLI processes. Heartbeats include this token;
+    /// an old watcher cannot resurrect freshness after another process fails to update the index.
+    pub(crate) fn freshness_token(&self) -> Result<String> {
+        let Some(db) = &self.path else {
+            return Ok(String::new());
+        };
+        let path = db.with_extension("db.dirty");
+        match std::fs::read_to_string(&path) {
+            Ok(token) => Ok(token),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
+            Err(e) => Err(Error::io("index freshness", e)),
         }
     }
 
-    /// Whether a watcher marked this index within `age`.
+    pub(crate) fn clear_watch(&self) {
+        if let Some(path) = self.heartbeat_path() {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+
+    pub(crate) fn invalidate_watch(&self) {
+        self.clear_watch();
+        if let Some(db) = &self.path {
+            let _ = self.write_marker(
+                &db.with_extension("db.dirty"),
+                &uuid::Uuid::new_v4().to_string(),
+            );
+        }
+    }
+
+    fn write_marker(&self, path: &Path, token: &str) -> std::io::Result<()> {
+        use std::io::Write;
+        let mut tmp = tempfile::NamedTempFile::new_in(path.parent().expect("index parent"))?;
+        tmp.write_all(token.as_bytes())?;
+        tmp.persist(path).map_err(|e| e.error)?;
+        Ok(())
+    }
+
+    pub(crate) fn mark_watched_token(&self, token: &str) -> Result<()> {
+        if self.freshness_token()? != token {
+            return Err(Error::Invalid("index requires reconciliation".into()));
+        }
+        if let Some(p) = self.heartbeat_path() {
+            self.write_marker(&p, token)
+                .map_err(|e| Error::io("index heartbeat", e))?;
+        }
+        Ok(())
+    }
+
+    /// Whether a watcher marked this index within `age`, with the current invalidation epoch.
     pub fn watched_within(&self, age: std::time::Duration) -> bool {
-        self.heartbeat_path()
-            .and_then(|p| std::fs::metadata(p).ok()?.modified().ok())
+        let Some(path) = self.heartbeat_path() else {
+            return false;
+        };
+        let fresh = std::fs::metadata(&path)
+            .ok()
+            .and_then(|m| m.modified().ok())
             .and_then(|t| t.elapsed().ok())
-            .is_some_and(|e| e < age)
+            .is_some_and(|e| e < age);
+        fresh
+            && std::fs::read_to_string(path)
+                .ok()
+                .zip(self.freshness_token().ok())
+                .is_some_and(|(watched, current)| watched == current)
     }
 
     /// `None` for an in-memory index.
@@ -656,7 +704,10 @@ impl Index {
         for e in changed {
             match vault.stat(&e.path) {
                 Ok(now) if !now.is_dir => Self::index_entry(&tx, vault, &now)?,
-                _ => Self::delete_rows(&tx, &e.path)?,
+                Ok(_) | Err(Error::NotFound(_)) | Err(Error::InvalidPath(_)) => {
+                    Self::delete_rows(&tx, &e.path)?
+                }
+                Err(error) => return Err(error),
             }
         }
         for path in removed {
@@ -724,10 +775,15 @@ impl Index {
         Self::delete_rows(tx, &e.path)?;
         let kind = e.kind.unwrap_or(FileKind::Other);
         let text = if kind.is_text() && e.size <= MAX_INDEXED_BYTES {
-            vault
-                .read_bytes(&e.path)
-                .ok()
-                .and_then(|b| String::from_utf8(b).ok())
+            // Invalid UTF-8 is a non-text file; an unreadable text file is an index failure.
+            // Do not store its metadata as successfully indexed and skip it on every later scan.
+            match vault.read_bytes(&e.path) {
+                Ok(bytes) => String::from_utf8(bytes).ok(),
+                Err(Error::NotFound(_)) => {
+                    return Self::delete_rows(tx, &e.path);
+                }
+                Err(error) => return Err(error),
+            }
         } else {
             None
         };

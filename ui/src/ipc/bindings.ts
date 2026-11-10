@@ -7,6 +7,9 @@ import { invoke as __TAURI_INVOKE } from "@tauri-apps/api/core";
 /** Commands */
 export const commands = {
 	openVault: (path: string) => __TAURI_INVOKE<VaultInfo_Serialize>("open_vault", { path }),
+	indexHealth: (root: string) => __TAURI_INVOKE<IndexHealth>("index_health", { root }),
+	/**  Requests an asynchronous full reindex. Does not reopen the vault or replace editor buffers. */
+	rebuildIndex: (root: string) => __TAURI_INVOKE<null>("rebuild_index", { root }),
 	queryNotes: (query: string) => __TAURI_INVOKE<QueryResult_Serialize>("query_notes", { query }),
 	setTask: (path: string, line: number, text: string, done: boolean) => __TAURI_INVOKE<Written_Serialize>("set_task", { path, line, text, done }),
 	setTaskWorkflow: (path: string, line: number, text: string, expectedState: string, next: string) => __TAURI_INVOKE<Written_Serialize>("set_task_workflow", { path, line, text, expectedState, next }),
@@ -558,6 +561,22 @@ export type IcalImportResult = {
 	imported_event_ids: string[],
 	skipped_duplicates: string[],
 };
+
+export type IndexDiagnostic = {
+	problem: IndexProblem,
+	error_code: string,
+	occurred_at_ms: number,
+};
+
+export type IndexHealth = {
+	status: IndexStatus,
+	watching: boolean,
+	diagnostic: IndexDiagnostic | null,
+};
+
+export type IndexProblem = "watcher_start" | "watcher_event" | "refresh" | "scan" | "freshness";
+
+export type IndexStatus = "healthy" | "rebuilding" | "degraded";
 
 export type LinkStyle = "wiki" | "markdown";
 

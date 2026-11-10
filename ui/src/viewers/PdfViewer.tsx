@@ -1,14 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import * as pdfjs from "pdfjs-dist";
-import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+import { pdfjs } from "./pdfEngine";
 import { fileUrl } from "../ipc/api";
 import { Button, Notice } from "../design-system/components";
 import { DesignSystemScope } from "../views/DesignSystemScope";
 import { useVault } from "../state/vault";
 import "./documentStates.css";
 import { errorMessage } from "../ipc/types";
-
-pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
 /** Renders every page to a canvas, lazily as pages scroll into view. */
 export function PdfViewer({ path, maxPages, compact }: { path: string; maxPages?: number; compact?: boolean }) {

@@ -54,11 +54,6 @@ export function topLevel(paths: string[]): string[] {
   });
 }
 
-/** Only integrity failures explicitly marked recoverable by the planner store offer restoration. */
-export function isPlannerRecoveryError(message: string): boolean {
-  return message.includes("planner database") && message.includes("restore the last backup explicitly");
-}
-
 interface VaultState {
   vault: VaultInfo | null;
   entries: Entry[];
@@ -137,7 +132,6 @@ export const useVault = create<VaultState>((set, get) => {
     async openVault(path, options) {
       // Serialize the whole transition, including draft handling and UI restoration. If a
       // later native open fails, the UI must still represent the last successful activation.
-      let retry = false;
       const reconnectFrom = options?.preserveWorkspace ? get().vault : undefined;
       const pending = activationQueue
         .catch(() => {})
@@ -208,33 +202,11 @@ export const useVault = create<VaultState>((set, get) => {
           } catch (e) {
             if (!requested()) return;
             const message = errorMessage(e);
-            if (
-              isPlannerRecoveryError(message) &&
-              (await useUi.getState().ask({
-                title: "Restore planner backup?",
-                body: "Mosaic could not open this vault's planner database. Restore the last valid planner backup? The damaged database will be preserved for recovery, and Markdown files will not be changed.",
-                confirmLabel: "Restore backup",
-                danger: true,
-              }))
-            ) {
-              try {
-                if (!requested()) return;
-                await api.restorePlannerBackup(path);
-                if (!requested()) return;
-                retry = true;
-                return;
-              } catch (restoreError) {
-                if (requested()) fail(restoreError);
-                return;
-              }
-            }
             if (requested()) set({ error: message });
           }
         });
       activationQueue = pending;
       await pending;
-      // Release the queue before scheduling a recovery retry.
-      if (retry) await get().openVault(path, options);
     },
 
     async refresh() {

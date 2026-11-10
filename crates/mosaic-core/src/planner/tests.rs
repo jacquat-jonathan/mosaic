@@ -1441,3 +1441,26 @@ fn workspace_source_and_actor_reach_planner_activity() {
     assert_eq!(entry.source.as_deref(), Some("agent"));
     assert_eq!(entry.actor.as_deref(), Some("claude-code"));
 }
+
+#[test]
+fn newer_schema_has_typed_unavailability_and_never_offers_rollback() {
+    let dir = tempfile::tempdir().unwrap();
+    drop(PlannerStore::open(dir.path()).unwrap());
+    let database = dir.path().join(".mosaic/planner.sqlite3");
+    fs::copy(&database, dir.path().join(".mosaic/planner-backup.sqlite3")).unwrap();
+    let conn = rusqlite::Connection::open(&database).unwrap();
+    conn.pragma_update(None, "user_version", SCHEMA_VERSION + 1)
+        .unwrap();
+    drop(conn);
+    let ws = Workspace::open(dir.path()).unwrap();
+    let failure = ws.planner.unavailable().unwrap();
+    assert_eq!(failure.code, "planner_newer_schema");
+    assert!(!failure.can_restore);
+    ws.files.create("note.md", "saved").unwrap();
+    ws.files.write("note.md", "updated", None).unwrap();
+    assert_eq!(
+        ws.files.read("note.md").unwrap().content.as_deref(),
+        Some("updated")
+    );
+    assert!(ws.planner.summary().is_err());
+}

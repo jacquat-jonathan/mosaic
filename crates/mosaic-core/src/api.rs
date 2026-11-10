@@ -4,6 +4,7 @@
 use crate::error::{Error, Result};
 use crate::history::{Action, History, Source, Version};
 use crate::index::{Backlink, Index, OutLink, SearchHit, SyncPlan, SyncStats, TagCount};
+use crate::index_health::{Health, IndexHealth, IndexProblem, IndexStatus};
 use crate::kind::FileKind;
 use crate::links::{FileSet, encode_url_text, markdown_url_for, wiki_safe, wiki_text_for};
 use crate::parse::{self, Heading, LinkKind};
@@ -31,8 +32,9 @@ pub struct Workspace {
 /// their focused services.
 pub struct Context {
     pub vault: Vault,
-    /// Set once a full sync finished: only then does the index reflect the whole vault.
-    synced: std::sync::atomic::AtomicBool,
+    health: Mutex<Health>,
+    /// Serializes full reconciliations without holding the index lock across a vault walk.
+    sync_lock: Mutex<()>,
     index: Mutex<Index>,
     /// A read-only connection to the same index for queries, so a long sync doesn't block search.
     /// `None` for an in-memory index (tests), where queries use `index`.
@@ -212,7 +214,8 @@ impl Workspace {
             .unwrap_or_default();
         let ctx = Arc::new(Context {
             vault,
-            synced: Default::default(),
+            health: Default::default(),
+            sync_lock: Default::default(),
             reader,
             index: Mutex::new(index),
             history,
@@ -489,9 +492,49 @@ impl Context {
         self.index.lock().unwrap_or_else(|p| p.into_inner())
     }
 
+    pub fn index_health(&self) -> IndexHealth {
+        self.health
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .snapshot
+            .clone()
+    }
+
+    /// Invalidate while holding the index mutex, the same ordering used by heartbeat/sync.
+    fn index_failed(&self, index: &Index, problem: IndexProblem, code: &str) {
+        index.invalidate_watch();
+        self.health
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .fail(problem, code);
+    }
+
+    pub fn watcher_failed(&self, problem: IndexProblem, code: &str) {
+        let index = self.index();
+        self.index_failed(&index, problem, code);
+        let mut health = self.health.lock().unwrap_or_else(|p| p.into_inner());
+        health.watcher_required = true;
+        health.snapshot.watching = false;
+    }
+
+    pub fn watcher_started(&self) {
+        let mut health = self.health.lock().unwrap_or_else(|p| p.into_inner());
+        health.watcher_required = true;
+        health.snapshot.watching = true;
+    }
+
+    fn refresh_index(&self, path: &str) -> Result<()> {
+        let mut index = self.index();
+        let result = index.update_path(&self.vault, path);
+        if let Err(e) = &result {
+            self.index_failed(&index, IndexProblem::Refresh, e.code());
+        }
+        result
+    }
+
     pub(crate) fn reindex(&self, path: &str) {
         // Index errors never fail a successful file operation; the next sync repairs them.
-        let _ = self.index().update_path(&self.vault, path);
+        let _ = self.refresh_index(path);
     }
 }
 
@@ -506,45 +549,116 @@ impl Workspace {
     /// Brings the index up to date with the disk. The vault is walked without the index lock, and
     /// files are indexed in batches that each take it briefly, so a write made meanwhile (an
     /// autosave) waits for one batch at most.
-    pub fn sync(&self, progress: impl FnMut(usize, usize)) -> Result<SyncStats> {
-        self.sync_cancellable(progress, || true)
+    pub fn sync(&self, mut progress: impl FnMut(usize, usize)) -> Result<SyncStats> {
+        self.reconcile(&mut progress, false, &mut || true)
             .map(|stats| stats.expect("unconditional sync cannot be cancelled"))
     }
 
     /// Stops obsolete background indexing between batches. A cancelled scan never marks the
-    /// index fully synchronized; completed batches remain consistent and the next sync resumes.
+    /// index fully synchronized or healthy; completed batches remain consistent and the next
+    /// sync resumes.
     pub fn sync_cancellable(
         &self,
         mut progress: impl FnMut(usize, usize),
         mut current: impl FnMut() -> bool,
     ) -> Result<Option<SyncStats>> {
+        self.reconcile(&mut progress, false, &mut current)
+    }
+
+    /// Re-reads every file even when size and mtime did not change. Retains the last consistent
+    /// index during each batch and removes entries for files no longer present.
+    pub fn rebuild_index(&self, mut progress: impl FnMut(usize, usize)) -> Result<SyncStats> {
+        self.reconcile(&mut progress, true, &mut || true)
+            .map(|stats| stats.expect("unconditional rebuild cannot be cancelled"))
+    }
+
+    /// Cancellable form of [`Workspace::rebuild_index`]; see [`Workspace::sync_cancellable`].
+    pub fn rebuild_index_cancellable(
+        &self,
+        mut progress: impl FnMut(usize, usize),
+        mut current: impl FnMut() -> bool,
+    ) -> Result<Option<SyncStats>> {
+        self.reconcile(&mut progress, true, &mut current)
+    }
+
+    /// `Ok(None)` means `current` reported the scan obsolete. Health then stays `Rebuilding`
+    /// without a freshness token, so this workspace never advertises a partial scan as synced.
+    fn reconcile(
+        &self,
+        progress: &mut impl FnMut(usize, usize),
+        full: bool,
+        current: &mut impl FnMut() -> bool,
+    ) -> Result<Option<SyncStats>> {
+        let _sync = self.sync_lock.lock().unwrap_or_else(|p| p.into_inner());
         if !current() {
             return Ok(None);
         }
-        let known = self.index().known_files()?;
-        let plan = SyncPlan::new(&self.vault, known)?;
-        for batch in plan.batches() {
+        let (generation, token) = {
+            let index = self.index();
+            let mut health = self.health.lock().unwrap_or_else(|p| p.into_inner());
+            health.snapshot.status = IndexStatus::Rebuilding;
+            health.synced_token = None;
+            index.clear_watch();
+            (health.generation, index.freshness_token())
+        };
+        let result = (|| {
+            let token = token?;
+            let mut known = self.index().known_files()?;
+            if full {
+                known
+                    .values_mut()
+                    .for_each(|value| *value = (u64::MAX, u64::MAX));
+            }
+            let plan = SyncPlan::new(&self.vault, known)?;
+            for batch in plan.batches() {
+                if !current() {
+                    return Ok(None);
+                }
+                progress(batch.done, plan.total);
+                self.index()
+                    .apply_sync(&self.vault, batch.changed, batch.removed)?;
+            }
             if !current() {
                 return Ok(None);
             }
-            progress(batch.done, plan.total);
-            self.index()
-                .apply_sync(&self.vault, batch.changed, batch.removed)?;
+            progress(plan.total, plan.total);
+            let index = self.index();
+            let mut health = self.health.lock().unwrap_or_else(|p| p.into_inner());
+            if health.generation != generation || index.freshness_token()? != token {
+                return Err(Error::Invalid(
+                    "index changed during reconciliation; retry required".into(),
+                ));
+            }
+            health.synced_token = Some(token);
+            if !health.watcher_required || health.snapshot.watching {
+                health.snapshot.status = IndexStatus::Healthy;
+                health.snapshot.diagnostic = None;
+            } else {
+                health.snapshot.status = IndexStatus::Degraded;
+            }
+            Ok(Some(plan.stats))
+        })();
+        if let Err(e) = &result {
+            self.index_failed(&self.index(), IndexProblem::Scan, e.code());
         }
-        if !current() {
-            return Ok(None);
-        }
-        progress(plan.total, plan.total);
-        self.synced
-            .store(true, std::sync::atomic::Ordering::Relaxed);
-        Ok(Some(plan.stats))
+        result
     }
 
-    /// For a watcher keeping the index current: tells other processes they needn't walk the
-    /// vault themselves. Does nothing until the first full sync is done.
+    /// Only a completed, error-free reconciliation may advertise freshness. A failed update in
+    /// another process invalidates our token too, even if this watcher has not seen its event yet.
     pub fn heartbeat(&self) {
-        if self.synced.load(std::sync::atomic::Ordering::Relaxed) {
-            self.index().mark_watched();
+        let index = self.index();
+        let token = {
+            let health = self.health.lock().unwrap_or_else(|p| p.into_inner());
+            if health.watcher_required && !health.snapshot.watching {
+                return;
+            }
+            health.synced_token.clone()
+        };
+        if let Some(token) = token
+            && let Err(e) = index.mark_watched_token(&token)
+        {
+            self.index_failed(&index, IndexProblem::Freshness, e.code());
         }
     }
 
@@ -556,7 +670,7 @@ impl Workspace {
                 .hist()
                 .keep_before(path, &text, &hash, &Source::External);
         }
-        self.index().update_path(&self.vault, path)
+        self.refresh_index(path)
     }
 }
 
@@ -1878,9 +1992,12 @@ mod tests {
             .unwrap();
         assert!(result.is_none());
         assert_eq!(calls.get(), 1);
-        assert!(!w.synced.load(std::sync::atomic::Ordering::Relaxed));
+        let synced = |w: &Workspace| w.health.lock().unwrap().synced_token.is_some();
+        assert!(!synced(&w));
+        assert_ne!(w.index_health().status, IndexStatus::Healthy);
         w.sync(|_, _| {}).unwrap();
-        assert!(w.synced.load(std::sync::atomic::Ordering::Relaxed));
+        assert!(synced(&w));
+        assert_eq!(w.index_health().status, IndexStatus::Healthy);
         assert_eq!(w.search("Cancel599", 5).unwrap()[0].path, "cancel599.md");
     }
 

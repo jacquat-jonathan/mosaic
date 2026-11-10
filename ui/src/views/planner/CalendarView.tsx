@@ -1,3 +1,4 @@
+import { PlannerUnavailable } from "./PlannerUnavailable";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Download, RefreshCw, Upload } from "lucide-react";
 import { Button, Notice, SegmentedControl } from "../../design-system/components";
@@ -74,7 +75,18 @@ const localInstant = (day: string, hour: number) => {
 };
 const plusIsoDays = (day: string, count: number) => isoDay(addDays(new Date(`${day}T12:00:00`), count));
 
-export function CalendarView({ initialMode }: { initialMode?: CalendarMode }) {
+export function CalendarView(props: { initialMode?: CalendarMode }) {
+  const unavailable = useVault((state) => state.vault?.planner_unavailable);
+  return unavailable ? (
+    <DesignSystemScope>
+      <PlannerUnavailable />
+    </DesignSystemScope>
+  ) : (
+    <AvailableCalendarView {...props} />
+  );
+}
+
+function AvailableCalendarView({ initialMode }: { initialMode?: CalendarMode }) {
   const vault = useVault((state) => state.vault);
   const root = vault?.root ?? "",
     sunday = useSettings((state) => state.weekStart === "sunday");

@@ -378,3 +378,20 @@ describe("planner board", () => {
     await waitFor(() => expect(create).not.toHaveBeenCalled());
   });
 });
+
+it("disables planning controls when activation reports an unavailable planner", () => {
+  useVault.setState({
+    vault: {
+      root: "/vault",
+      name: "Vault",
+      planner_unavailable: {
+        code: "planner_corrupt",
+        message: "Database damaged",
+        can_restore: false,
+      },
+    },
+  });
+  render(<BoardView />);
+  expect(screen.getByText(/Your notes remain available/)).toBeTruthy();
+  expect(screen.queryByRole("button", { name: /New task|New event|New epic/ })).toBeNull();
+});

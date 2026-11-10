@@ -1,3 +1,4 @@
+import { PlannerUnavailable } from "./PlannerUnavailable";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type DragEvent } from "react";
 import { Button, Notice, Select, TextField } from "../../design-system/components";
 import {
@@ -38,6 +39,17 @@ const DRAG_TYPE = "application/x-mosaic-planner-task";
 const EPIC_DRAG_TYPE = "application/x-mosaic-planner-epic";
 const DEFAULT_EPIC_COLOR = "#6477d4";
 export function BoardView() {
+  const unavailable = useVault((state) => state.vault?.planner_unavailable);
+  return unavailable ? (
+    <DesignSystemScope>
+      <PlannerUnavailable />
+    </DesignSystemScope>
+  ) : (
+    <AvailableBoardView />
+  );
+}
+
+function AvailableBoardView() {
   const boardId = useId();
   const root = useVault((state) => state.vault?.root) ?? "";
   const [summary, setSummary] = useState<PlannerSummary | null>(null),

@@ -9,6 +9,7 @@ pub mod days;
 pub mod error;
 pub mod history;
 pub mod index;
+pub mod index_health;
 pub mod kind;
 pub mod links;
 pub mod parse;

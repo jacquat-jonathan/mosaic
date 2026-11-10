@@ -80,3 +80,21 @@ test("external-change reads cannot create a conflict in another vault", async ()
   await pending;
   expect(ws().buffers["Same.md"]).toBe(buffer);
 });
+
+test("same-root reactivation invalidates an in-flight save before layout restoration", async () => {
+  useWorkspace.setState({ buffers: { "Same.md": { ...buffer, content: "old draft" } } });
+  let resolve!: (value: Awaited<ReturnType<typeof api.write>>) => void;
+  const write = vi.spyOn(api, "write").mockImplementationOnce(
+    () =>
+      new Promise((done) => {
+        resolve = done;
+      }),
+  );
+  const pending = ws().save("Same.md");
+  expect(write).toHaveBeenCalledWith("Same.md", "old draft", "current", "/old");
+  selectRoot("/old");
+  useWorkspace.setState({ buffers: { "Same.md": buffer } });
+  resolve({ path: "Same.md", hash: "stale acknowledgement" } as Awaited<ReturnType<typeof api.write>>);
+  await pending;
+  expect(ws().buffers["Same.md"]).toBe(buffer);
+});

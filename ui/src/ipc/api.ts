@@ -2,6 +2,7 @@
 // development and tests) it falls back to an in-memory mock vault.
 
 import type { IndexProgress, UpdateDone, Written, AgentRule, ChatEvent } from "./types";
+import { assetGeneration, vaultOperation, isCurrentSession, type VaultSession } from "../state/vaultSession";
 import { commands } from "./bindings";
 import { mockCommands, mockInvoke } from "./mock";
 import type { VaultPreferences } from "../state/vaultPreferences";
@@ -32,8 +33,14 @@ async function importFile(path: string, bytes: Uint8Array): Promise<Written> {
   return invoke<Written>("import_file", bytes, { headers: { "x-path": encodeURIComponent(path) } });
 }
 
+// Keep native activations in request order; a slow open cannot replace a newer backend workspace.
+let opening: Promise<unknown> = Promise.resolve();
 export const api = {
-  openVault: (path: string) => cmd.openVault(path),
+  openVault: (path: string) => {
+    const next = opening.catch(() => {}).then(() => cmd.openVault(path));
+    opening = next;
+    return next;
+  },
   indexHealth: (root: string) => cmd.indexHealth(root),
   rebuildIndex: (root: string) => cmd.rebuildIndex(root),
   currentVault: () => cmd.currentVault(),
@@ -214,19 +221,28 @@ export async function pickFolder(title = "Open a folder as a vault"): Promise<st
   return typeof picked === "string" ? picked : null;
 }
 
-/** URL the webview can load a vault file from (images, PDF). */
-export async function fileUrl(path: string): Promise<string> {
-  if (!inTauri) return await mockFileUrl(path);
+/** Preserve URL path separators so relative CSS, fonts and HTML resources stay within the grant. */
+export async function assetUrl(path: string): Promise<string> {
   const { convertFileSrc } = await import("@tauri-apps/api/core");
-  return convertFileSrc(await api.absolutePath(path));
+  return convertFileSrc("", "mosaic-asset") + path.split("/").map(encodeURIComponent).join("/");
 }
 
-/** Publishes a sanitized HTML preview on Mosaic's local asset origin. */
+/** URL the webview can load for this activation only (images, PDFs, HTML resources). */
+export async function fileUrl(path: string): Promise<string> {
+  if (!inTauri) return await mockFileUrl(path);
+  const current = vaultOperation();
+  const resource = await cmd.assetPath(path, assetGeneration());
+  if (!current()) throw new Error("Asset session changed");
+  return assetUrl(resource);
+}
+
+/** Publishes a sanitized HTML preview under the same revocable capability as its resources. */
 export async function htmlPreviewDocumentUrl(html: string): Promise<string> {
   if (!inTauri) return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
-  const path = await cmd.htmlPreviewDocument(html);
-  const { convertFileSrc } = await import("@tauri-apps/api/core");
-  return convertFileSrc(path);
+  const current = vaultOperation();
+  const path = await cmd.htmlPreviewDocument(html, assetGeneration());
+  if (!current()) throw new Error("Asset session changed");
+  return assetUrl(path);
 }
 
 async function mockFileUrl(path: string): Promise<string> {
@@ -256,10 +272,13 @@ export async function onIndexProgress(cb: (p: IndexProgress) => void): Promise<(
     return () => {};
   }
   const { listen } = await import("@tauri-apps/api/event");
-  return listen<IndexProgress>("index-progress", (e) => cb(e.payload));
+  return listen<IndexProgress>("index-progress", (e) => {
+    if (isCurrentSession(e.payload.session)) cb(e.payload);
+  });
 }
 
 export interface VaultChanges {
+  session?: VaultSession;
   paths: string[];
   root_missing: boolean;
 }
@@ -267,12 +286,17 @@ export interface VaultChanges {
 /** Subscribes to changes made on disk outside the app. */
 export async function onVaultChanged(cb: (c: VaultChanges) => void): Promise<() => void> {
   if (!inTauri) {
-    const handler = (e: Event) => cb((e as CustomEvent<VaultChanges>).detail);
+    const handler = (e: Event) => {
+      const payload = (e as CustomEvent<VaultChanges>).detail;
+      if (isCurrentSession(payload.session)) cb(payload);
+    };
     window.addEventListener("mock-vault-changed", handler);
     return () => window.removeEventListener("mock-vault-changed", handler);
   }
   const { listen } = await import("@tauri-apps/api/event");
-  return listen<VaultChanges>("vault-changed", (e) => cb(e.payload));
+  return listen<VaultChanges>("vault-changed", (e) => {
+    if (isCurrentSession(e.payload.session)) cb(e.payload);
+  });
 }
 
 /** Streams the chat's answers: one event at a time, with the run it belongs to. */
@@ -291,9 +315,14 @@ export async function onChatEvent(cb: (run: number, event: ChatEvent) => void): 
 
 export const onTesseraChanged = (cb: () => void) => listenTo<void>("tessera-changed", cb);
 /** The vault's history database changed: an agent proposed or withdrew a change, or one was decided. */
-export const onHistoryChanged = (cb: () => void) => listenTo<void>("history-changed", cb);
+export const onHistoryChanged = (cb: () => void) =>
+  listenTo<VaultSession | undefined>("history-changed", (session) => {
+    if (isCurrentSession(session)) cb();
+  });
 export const onPlannerChanged = (cb: (change: PlannerChanged) => void) =>
-  listenTo<PlannerChanged>("planner-changed", cb);
+  listenTo<PlannerChanged>("planner-changed", (change) => {
+    if (isCurrentSession(change.session)) cb(change);
+  });
 
 /** Subscribes to changes of the app's settings file (e.g. an agent added a bookmark). */
 export async function onSettingsChanged(cb: () => void): Promise<() => void> {

@@ -2,6 +2,7 @@
 // by another process (the MCP server or the CLI) into the vault's history database; the app watches
 // that database and reloads them when it changes (`history-changed`).
 
+import { vaultOperation } from "./vaultSession";
 import { create } from "zustand";
 import { api, inTauri, onHistoryChanged } from "../ipc/api";
 import type { Proposal } from "../ipc/types";
@@ -18,8 +19,10 @@ export const useReview = create<ReviewState>((set, get) => ({
   pending: [],
   initialized: false,
   refresh: async () => {
+    const current = vaultOperation();
     try {
       const next = await api.proposals(false);
+      if (!current()) return;
       const prev = get().pending;
       const arrived = get().initialized && next.some((p) => !prev.some((old) => old.id === p.id));
       // Keep the same array when nothing changed, so subscribers don't re-render.
@@ -31,6 +34,7 @@ export const useReview = create<ReviewState>((set, get) => ({
       if (arrived && inTauri) {
         void import("@tauri-apps/api/window")
           .then(async ({ getCurrentWindow, UserAttentionType }) => {
+            if (!current()) return;
             const win = getCurrentWindow();
             if (!(await win.isFocused())) await win.requestUserAttention(UserAttentionType.Informational);
           })

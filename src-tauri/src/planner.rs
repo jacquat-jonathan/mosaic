@@ -9,10 +9,11 @@ use mosaic_core::planner::{
 };
 use serde::Serialize;
 use std::sync::Arc;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 #[derive(Clone, Serialize)]
 pub(crate) struct PlannerChanged {
+    session: crate::VaultSession,
     root: String,
     revision: i64,
     affected_ids: Vec<String>,
@@ -23,9 +24,13 @@ pub(crate) fn changed(
     workspace: &Arc<Workspace>,
     affected_ids: Vec<String>,
 ) -> CmdResult<()> {
+    let Some(session) = app.state::<AppState>().session_for(workspace) else {
+        return Ok(());
+    };
     app.emit(
         "planner-changed",
         PlannerChanged {
+            session,
             root: workspace.vault.root().display().to_string(),
             revision: workspace.planner.summary()?.revision,
             affected_ids,
@@ -507,6 +512,7 @@ mod event_contract_tests {
         app.emit(
             "planner-changed",
             PlannerChanged {
+                session: crate::VaultSession::mock(),
                 root: "/mock/vault".into(),
                 revision: 1,
                 affected_ids: vec!["task-1".into()],

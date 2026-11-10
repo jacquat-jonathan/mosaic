@@ -87,7 +87,8 @@ export function CalendarView(props: { initialMode?: CalendarMode }) {
 }
 
 function AvailableCalendarView({ initialMode }: { initialMode?: CalendarMode }) {
-  const root = useVault((state) => state.vault?.root) ?? "",
+  const vault = useVault((state) => state.vault);
+  const root = vault?.root ?? "",
     sunday = useSettings((state) => state.weekStart === "sunday");
   const [mode, setModeState] = useState<CalendarMode>(initialMode ?? storedMode),
     [anchor, setAnchor] = useState(() => atNoon(new Date())),
@@ -134,7 +135,7 @@ function AvailableCalendarView({ initialMode }: { initialMode?: CalendarMode }) 
   }, [mode, loading, error]);
   const live = useRef(true),
     loadVersion = useRef(0);
-  const current = useCallback(() => live.current && root === useVault.getState().vault?.root, [root]);
+  const current = useCallback(() => live.current && vault === useVault.getState().vault, [vault]);
   useEffect(() => {
     live.current = true;
     return () => {

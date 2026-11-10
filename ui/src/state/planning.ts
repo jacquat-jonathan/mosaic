@@ -1,3 +1,4 @@
+import { vaultOperation } from "./vaultSession";
 import { create } from "zustand";
 import { useUi } from "./ui";
 import { dayStamp } from "../daily";
@@ -29,13 +30,14 @@ export const usePlanning = create<Planning>((set, get) => ({
     set({ root, views, selectedDay: dayStamp() });
   },
   async create() {
+    const current = vaultOperation();
     const root = get().root;
     const title = await useUi.getState().askText({ title: "Planning view name", value: "", placeholder: "My project" });
-    if (!title?.trim()) return;
+    if (!title?.trim() || !current()) return;
     const query = await useUi
       .getState()
       .askText({ title: "Task query", value: "task:open", placeholder: "task:open tag:project" });
-    if (!query?.trim() || root !== get().root) return;
+    if (!query?.trim() || root !== get().root || !current()) return;
     const id = crypto.randomUUID();
     const views = [...get().views, { id, title: title.trim(), query: query.trim() }];
     try {

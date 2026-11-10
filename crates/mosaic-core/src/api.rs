@@ -550,17 +550,49 @@ impl Workspace {
     /// files are indexed in batches that each take it briefly, so a write made meanwhile (an
     /// autosave) waits for one batch at most.
     pub fn sync(&self, mut progress: impl FnMut(usize, usize)) -> Result<SyncStats> {
-        self.reconcile(&mut progress, false)
+        self.reconcile(&mut progress, false, &mut || true)
+            .map(|stats| stats.expect("unconditional sync cannot be cancelled"))
+    }
+
+    /// Stops obsolete background indexing between batches. A cancelled scan never marks the
+    /// index fully synchronized or healthy; completed batches remain consistent and the next
+    /// sync resumes.
+    pub fn sync_cancellable(
+        &self,
+        mut progress: impl FnMut(usize, usize),
+        mut current: impl FnMut() -> bool,
+    ) -> Result<Option<SyncStats>> {
+        self.reconcile(&mut progress, false, &mut current)
     }
 
     /// Re-reads every file even when size and mtime did not change. Retains the last consistent
     /// index during each batch and removes entries for files no longer present.
     pub fn rebuild_index(&self, mut progress: impl FnMut(usize, usize)) -> Result<SyncStats> {
-        self.reconcile(&mut progress, true)
+        self.reconcile(&mut progress, true, &mut || true)
+            .map(|stats| stats.expect("unconditional rebuild cannot be cancelled"))
     }
 
-    fn reconcile(&self, progress: &mut impl FnMut(usize, usize), full: bool) -> Result<SyncStats> {
+    /// Cancellable form of [`Workspace::rebuild_index`]; see [`Workspace::sync_cancellable`].
+    pub fn rebuild_index_cancellable(
+        &self,
+        mut progress: impl FnMut(usize, usize),
+        mut current: impl FnMut() -> bool,
+    ) -> Result<Option<SyncStats>> {
+        self.reconcile(&mut progress, true, &mut current)
+    }
+
+    /// `Ok(None)` means `current` reported the scan obsolete. Health then stays `Rebuilding`
+    /// without a freshness token, so this workspace never advertises a partial scan as synced.
+    fn reconcile(
+        &self,
+        progress: &mut impl FnMut(usize, usize),
+        full: bool,
+        current: &mut impl FnMut() -> bool,
+    ) -> Result<Option<SyncStats>> {
         let _sync = self.sync_lock.lock().unwrap_or_else(|p| p.into_inner());
+        if !current() {
+            return Ok(None);
+        }
         let (generation, token) = {
             let index = self.index();
             let mut health = self.health.lock().unwrap_or_else(|p| p.into_inner());
@@ -579,9 +611,15 @@ impl Workspace {
             }
             let plan = SyncPlan::new(&self.vault, known)?;
             for batch in plan.batches() {
+                if !current() {
+                    return Ok(None);
+                }
                 progress(batch.done, plan.total);
                 self.index()
                     .apply_sync(&self.vault, batch.changed, batch.removed)?;
+            }
+            if !current() {
+                return Ok(None);
             }
             progress(plan.total, plan.total);
             let index = self.index();
@@ -598,7 +636,7 @@ impl Workspace {
             } else {
                 health.snapshot.status = IndexStatus::Degraded;
             }
-            Ok(plan.stats)
+            Ok(Some(plan.stats))
         })();
         if let Err(e) = &result {
             self.index_failed(&self.index(), IndexProblem::Scan, e.code());
@@ -1935,6 +1973,32 @@ mod tests {
             std::fs::read_to_string(d.path().join(".mosaic/vault.json")).unwrap(),
             "{ half"
         );
+    }
+
+    #[test]
+    fn cancelled_sync_stops_between_batches_and_can_resume() {
+        let (d, v) = fixture();
+        for i in 0..600 {
+            std::fs::write(
+                d.path().join(format!("cancel{i}.md")),
+                format!("# Cancel{i}"),
+            )
+            .unwrap();
+        }
+        let w = Workspace::new(v, Index::in_memory().unwrap());
+        let calls = std::cell::Cell::new(0);
+        let result = w
+            .sync_cancellable(|_, _| calls.set(calls.get() + 1), || calls.get() == 0)
+            .unwrap();
+        assert!(result.is_none());
+        assert_eq!(calls.get(), 1);
+        let synced = |w: &Workspace| w.health.lock().unwrap().synced_token.is_some();
+        assert!(!synced(&w));
+        assert_ne!(w.index_health().status, IndexStatus::Healthy);
+        w.sync(|_, _| {}).unwrap();
+        assert!(synced(&w));
+        assert_eq!(w.index_health().status, IndexStatus::Healthy);
+        assert_eq!(w.search("Cancel599", 5).unwrap()[0].path, "cancel599.md");
     }
 
     #[test]

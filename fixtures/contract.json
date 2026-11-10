@@ -1,75 +1,799 @@
 {
-  "about": "Command scenarios shared by crates/mosaic-core/tests/contract.rs (the real core) and ui/src/ipc/contract.test.ts (the browser mock). Both run every step and check the same expectations, so the mock can't quietly behave differently from the app. Steps call commands by their Tauri name with the UI's argument names. `expect` lists fields the result must have (other fields are ignored); `error` is the expected error code; `$last.<field>` is that field of the previous result; `$proposal` is the id of the last agent proposal. `agent_proposes` is an agent writing to a folder under review.",
+  "about": "Command scenarios shared by crates/mosaic-core/tests/contract.rs (the real core) and ui/src/ipc/contract.test.ts (the browser mock). Both run every step and check the same expectations, so the mock can't quietly behave differently from the app. Steps call commands by their Tauri name with the UI's argument names. `expect` lists fields the result must have (other fields are ignored); `error` is the expected error code; `$last.<field>` is that field of the previous result; `$proposal` is the id of the last agent proposal. `agent_proposes` is an agent writing to a folder under review. Each scenario starts empty. Nested objects/arrays resolve $last.path and $saved.name.path; save captures an immutable successful result. Failed calls leave last unchanged. expect recursively matches a subset (array lengths exact); result matches the whole value. actor:agent uses scenario rules. external_directory deterministically replaces an indexed backlink after the initial scan to test partial failure.",
   "scenarios": [
     {
       "name": "a write needs the file's current hash",
-      "files": { "Contract/Write/Note.md": "one" },
+      "files": {
+        "Contract/Write/Note.md": "one"
+      },
       "steps": [
-        { "cmd": "read_file", "args": { "path": "Contract/Write/Note.md" }, "expect": { "content": "one" } },
         {
-          "cmd": "write_file",
-          "args": { "path": "Contract/Write/Note.md", "content": "two", "expectedHash": "$last.hash", "root": null },
-          "expect": { "path": "Contract/Write/Note.md" }
+          "cmd": "read_file",
+          "args": {
+            "path": "Contract/Write/Note.md"
+          },
+          "expect": {
+            "content": "one"
+          }
         },
         {
           "cmd": "write_file",
-          "args": { "path": "Contract/Write/Note.md", "content": "three", "expectedHash": "stale", "root": null },
+          "args": {
+            "path": "Contract/Write/Note.md",
+            "content": "two",
+            "expectedHash": "$last.hash",
+            "root": null
+          },
+          "expect": {
+            "path": "Contract/Write/Note.md"
+          }
+        },
+        {
+          "cmd": "write_file",
+          "args": {
+            "path": "Contract/Write/Note.md",
+            "content": "three",
+            "expectedHash": "stale",
+            "root": null
+          },
           "error": "conflict"
         },
-        { "cmd": "read_file", "args": { "path": "Contract/Write/Note.md" }, "expect": { "content": "two" } }
+        {
+          "cmd": "read_file",
+          "args": {
+            "path": "Contract/Write/Note.md"
+          },
+          "expect": {
+            "content": "two"
+          }
+        }
       ]
     },
     {
       "name": "creating a file that exists is refused",
-      "files": { "Contract/Create/Taken.md": "x" },
+      "files": {
+        "Contract/Create/Taken.md": "x"
+      },
       "steps": [
         {
           "cmd": "create_file",
-          "args": { "path": "Contract/Create/Taken.md", "content": "y", "root": null },
+          "args": {
+            "path": "Contract/Create/Taken.md",
+            "content": "y",
+            "root": null
+          },
           "error": "already_exists"
         },
         {
           "cmd": "create_file",
-          "args": { "path": "Contract/Create/New.md", "content": "y", "root": null },
-          "expect": { "path": "Contract/Create/New.md" }
+          "args": {
+            "path": "Contract/Create/New.md",
+            "content": "y",
+            "root": null
+          },
+          "expect": {
+            "path": "Contract/Create/New.md"
+          }
         }
       ]
     },
     {
       "name": "a rename moves the file and rewrites links to it",
-      "files": { "Contract/Rename/Old name.md": "# Old", "Contract/Rename/Links.md": "See [[Old name]]." },
+      "files": {
+        "Contract/Rename/Old name.md": "# Old",
+        "Contract/Rename/Links.md": "See [[Old name]]."
+      },
       "steps": [
         {
           "cmd": "rename_path",
-          "args": { "from": "Contract/Rename/Old name.md", "to": "Contract/Rename/New name.md" },
-          "expect": { "path": "Contract/Rename/New name.md", "updated_links_in": ["Contract/Rename/Links.md"] }
+          "args": {
+            "from": "Contract/Rename/Old name.md",
+            "to": "Contract/Rename/New name.md"
+          },
+          "expect": {
+            "path": "Contract/Rename/New name.md",
+            "updated_links_in": [
+              "Contract/Rename/Links.md"
+            ]
+          }
         },
-        { "cmd": "read_file", "args": { "path": "Contract/Rename/Links.md" }, "expect": { "content": "See [[New name]]." } },
-        { "cmd": "read_file", "args": { "path": "Contract/Rename/Old name.md" }, "error": "not_found" }
+        {
+          "cmd": "read_file",
+          "args": {
+            "path": "Contract/Rename/Links.md"
+          },
+          "expect": {
+            "content": "See [[New name]]."
+          }
+        },
+        {
+          "cmd": "read_file",
+          "args": {
+            "path": "Contract/Rename/Old name.md"
+          },
+          "error": "not_found"
+        }
       ]
     },
     {
       "name": "accepting an agent's proposal applies it",
-      "files": { "Contract/Review/Draft.md": "old" },
+      "files": {
+        "Contract/Review/Draft.md": "old"
+      },
       "steps": [
-        { "agent_proposes": { "path": "Contract/Review/Draft.md", "content": "new" } },
-        { "cmd": "read_file", "args": { "path": "Contract/Review/Draft.md" }, "expect": { "content": "old" } },
+        {
+          "agent_proposes": {
+            "path": "Contract/Review/Draft.md",
+            "content": "new"
+          }
+        },
+        {
+          "cmd": "read_file",
+          "args": {
+            "path": "Contract/Review/Draft.md"
+          },
+          "expect": {
+            "content": "old"
+          }
+        },
         {
           "cmd": "accept_proposal",
-          "args": { "id": "$proposal", "force": null, "content": null },
+          "args": {
+            "id": "$proposal",
+            "force": null,
+            "content": null
+          },
           "result": "Contract/Review/Draft.md"
         },
-        { "cmd": "read_file", "args": { "path": "Contract/Review/Draft.md" }, "expect": { "content": "new" } },
-        { "cmd": "accept_proposal", "args": { "id": "$proposal", "force": null, "content": null }, "error": "invalid" }
+        {
+          "cmd": "read_file",
+          "args": {
+            "path": "Contract/Review/Draft.md"
+          },
+          "expect": {
+            "content": "new"
+          }
+        },
+        {
+          "cmd": "accept_proposal",
+          "args": {
+            "id": "$proposal",
+            "force": null,
+            "content": null
+          },
+          "error": "invalid"
+        }
       ]
     },
     {
       "name": "rejecting an agent's proposal leaves the file",
-      "files": { "Contract/Reject/Draft.md": "kept" },
+      "files": {
+        "Contract/Reject/Draft.md": "kept"
+      },
       "steps": [
-        { "agent_proposes": { "path": "Contract/Reject/Draft.md", "content": "dropped" } },
-        { "cmd": "reject_proposal", "args": { "id": "$proposal", "reason": "not now" }, "result": null },
-        { "cmd": "read_file", "args": { "path": "Contract/Reject/Draft.md" }, "expect": { "content": "kept" } }
+        {
+          "agent_proposes": {
+            "path": "Contract/Reject/Draft.md",
+            "content": "dropped"
+          }
+        },
+        {
+          "cmd": "reject_proposal",
+          "args": {
+            "id": "$proposal",
+            "reason": "not now"
+          },
+          "result": null
+        },
+        {
+          "cmd": "read_file",
+          "args": {
+            "path": "Contract/Reject/Draft.md"
+          },
+          "expect": {
+            "content": "kept"
+          }
+        }
+      ]
+    },
+    {
+      "name": "planner rejects stale nested input without losing the current edit",
+      "files": {},
+      "steps": [
+        {
+          "cmd": "planner_create_task",
+          "args": {
+            "input": {
+              "title": "First",
+              "description": "",
+              "status": "new",
+              "epic_id": null,
+              "parent_id": null,
+              "due_date": null,
+              "estimate_minutes": null
+            }
+          },
+          "expect": {
+            "title": "First",
+            "revision": 1
+          },
+          "save": "original"
+        },
+        {
+          "cmd": "planner_update_task",
+          "args": {
+            "id": "$saved.original.id",
+            "input": {
+              "expected_revision": "$saved.original.revision",
+              "title": "Second",
+              "clear_due_date": false,
+              "clear_estimate": false
+            }
+          },
+          "expect": {
+            "title": "Second",
+            "revision": 2
+          },
+          "save": "current"
+        },
+        {
+          "cmd": "planner_update_task",
+          "args": {
+            "id": "$saved.original.id",
+            "input": {
+              "expected_revision": "$saved.original.revision",
+              "title": "Lost",
+              "clear_due_date": false,
+              "clear_estimate": false
+            }
+          },
+          "error": "conflict"
+        },
+        {
+          "cmd": "planner_tasks",
+          "args": {
+            "includeArchived": false,
+            "includeTrashed": false
+          },
+          "expect": [
+            {
+              "id": "$saved.original.id",
+              "title": "Second",
+              "revision": 2
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "planner lifecycle revisions and archived visibility",
+      "files": {},
+      "steps": [
+        {
+          "cmd": "planner_create_task",
+          "args": {
+            "input": {
+              "title": "Lifecycle",
+              "description": "",
+              "status": "new",
+              "epic_id": null,
+              "parent_id": null,
+              "due_date": null,
+              "estimate_minutes": null
+            }
+          },
+          "save": "task"
+        },
+        {
+          "cmd": "planner_trash_task",
+          "args": {
+            "id": "$saved.task.id",
+            "expectedRevision": "$saved.task.revision"
+          },
+          "error": "invalid"
+        },
+        {
+          "cmd": "planner_complete_task",
+          "args": {
+            "id": "$saved.task.id",
+            "expectedRevision": "$saved.task.revision",
+            "allowIncompleteSubtasks": false,
+            "futureSessions": "cancel"
+          },
+          "expect": {
+            "status": "done",
+            "revision": 2
+          },
+          "save": "task"
+        },
+        {
+          "cmd": "planner_reopen_task",
+          "args": {
+            "id": "$saved.task.id",
+            "expectedRevision": "$saved.task.revision"
+          },
+          "expect": {
+            "status": "new",
+            "revision": 3
+          },
+          "save": "task"
+        },
+        {
+          "cmd": "planner_archive_task",
+          "args": {
+            "id": "$saved.task.id",
+            "expectedRevision": "$saved.task.revision"
+          },
+          "expect": {
+            "revision": 4
+          },
+          "save": "task"
+        },
+        {
+          "cmd": "planner_tasks",
+          "args": {
+            "includeArchived": false,
+            "includeTrashed": false
+          },
+          "result": []
+        },
+        {
+          "cmd": "planner_trash_task",
+          "args": {
+            "id": "$saved.task.id",
+            "expectedRevision": "$saved.task.revision"
+          },
+          "expect": {
+            "revision": 5
+          },
+          "save": "task"
+        },
+        {
+          "cmd": "planner_restore_task",
+          "args": {
+            "id": "$saved.task.id",
+            "expectedRevision": "$saved.task.revision"
+          },
+          "expect": {
+            "revision": 6,
+            "archived_at": null,
+            "trashed_at": null
+          },
+          "save": "task"
+        },
+        {
+          "cmd": "planner_tasks",
+          "args": {
+            "includeArchived": false,
+            "includeTrashed": false
+          },
+          "expect": [
+            {
+              "id": "$saved.task.id",
+              "title": "Lifecycle"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "planner parent completion refuses incomplete children",
+      "files": {},
+      "steps": [
+        {
+          "cmd": "planner_create_task",
+          "args": {
+            "input": {
+              "title": "Parent",
+              "description": "",
+              "status": "new",
+              "epic_id": null,
+              "parent_id": null,
+              "due_date": null,
+              "estimate_minutes": null
+            }
+          },
+          "save": "parent"
+        },
+        {
+          "cmd": "planner_create_task",
+          "args": {
+            "input": {
+              "title": "Child",
+              "description": "",
+              "status": "new",
+              "epic_id": null,
+              "parent_id": "$saved.parent.id",
+              "due_date": null,
+              "estimate_minutes": null
+            }
+          },
+          "save": "child"
+        },
+        {
+          "cmd": "planner_complete_task",
+          "args": {
+            "id": "$saved.parent.id",
+            "expectedRevision": "$saved.parent.revision",
+            "allowIncompleteSubtasks": false,
+            "futureSessions": "cancel"
+          },
+          "error": "invalid"
+        },
+        {
+          "cmd": "planner_complete_task",
+          "args": {
+            "id": "$saved.parent.id",
+            "expectedRevision": "$saved.parent.revision",
+            "allowIncompleteSubtasks": true,
+            "futureSessions": "cancel"
+          },
+          "expect": {
+            "status": "done"
+          }
+        }
+      ]
+    },
+    {
+      "name": "template preview hash guards source changes",
+      "files": {
+        "Templates/Basic.md": "# {{title}}"
+      },
+      "steps": [
+        {
+          "cmd": "render_template",
+          "args": {
+            "request": {
+              "path": "Contract/Created.md",
+              "template": "Templates/Basic.md",
+              "timestamp": "2026-11-05T12:00:00+00:00"
+            }
+          },
+          "expect": {
+            "content": "# Created"
+          },
+          "save": "preview"
+        },
+        {
+          "cmd": "write_file",
+          "args": {
+            "path": "Templates/Basic.md",
+            "content": "new source",
+            "root": null
+          }
+        },
+        {
+          "cmd": "create_note",
+          "args": {
+            "request": {
+              "path": "Contract/Created.md",
+              "template": "Templates/Basic.md",
+              "timestamp": "2026-11-05T12:00:00+00:00",
+              "expected_template_hash": "$saved.preview.template_hash"
+            }
+          },
+          "error": "conflict"
+        },
+        {
+          "cmd": "read_file",
+          "args": {
+            "path": "Contract/Created.md"
+          },
+          "error": "not_found"
+        },
+        {
+          "cmd": "render_template",
+          "args": {
+            "request": {
+              "path": "Contract/Created.md",
+              "template": "Templates/Basic.md",
+              "timestamp": "2026-11-05T12:00:00+00:00"
+            }
+          },
+          "save": "latest"
+        },
+        {
+          "cmd": "create_note",
+          "args": {
+            "request": {
+              "path": "Contract/Created.md",
+              "template": "Templates/Basic.md",
+              "timestamp": "2026-11-05T12:00:00+00:00",
+              "expected_template_hash": "$saved.latest.template_hash"
+            }
+          },
+          "expect": {
+            "path": "Contract/Created.md"
+          }
+        },
+        {
+          "cmd": "read_file",
+          "args": {
+            "path": "Contract/Created.md"
+          },
+          "expect": {
+            "content": "new source"
+          }
+        }
+      ]
+    },
+    {
+      "name": "review conflict preserves both user edits and pending proposal",
+      "files": {
+        "Contract/Review/Draft.md": "old"
+      },
+      "steps": [
+        {
+          "agent_proposes": {
+            "path": "Contract/Review/Draft.md",
+            "content": "proposal"
+          }
+        },
+        {
+          "cmd": "write_file",
+          "args": {
+            "path": "Contract/Review/Draft.md",
+            "content": "human",
+            "root": null
+          }
+        },
+        {
+          "cmd": "accept_proposal",
+          "args": {
+            "id": "$proposal",
+            "force": false,
+            "content": null
+          },
+          "error": "conflict"
+        },
+        {
+          "cmd": "read_file",
+          "args": {
+            "path": "Contract/Review/Draft.md"
+          },
+          "expect": {
+            "content": "human"
+          }
+        },
+        {
+          "cmd": "accept_proposal",
+          "args": {
+            "id": "$proposal",
+            "force": true,
+            "content": null
+          },
+          "result": "Contract/Review/Draft.md"
+        },
+        {
+          "cmd": "read_file",
+          "args": {
+            "path": "Contract/Review/Draft.md"
+          },
+          "expect": {
+            "content": "proposal"
+          }
+        }
+      ]
+    },
+    {
+      "name": "agent hidden and read-only boundaries do not restrict the person",
+      "files": {
+        "Secret/Note.md": "secret",
+        "Locked/Note.md": "kept"
+      },
+      "steps": [
+        {
+          "cmd": "read_file",
+          "args": {
+            "path": "Secret/Note.md"
+          },
+          "error": "not_found",
+          "actor": "agent"
+        },
+        {
+          "cmd": "write_file",
+          "args": {
+            "path": "Locked/Note.md",
+            "content": "bad",
+            "root": null
+          },
+          "error": "denied",
+          "actor": "agent"
+        },
+        {
+          "cmd": "read_file",
+          "args": {
+            "path": "Locked/Note.md"
+          },
+          "expect": {
+            "content": "kept"
+          },
+          "actor": "agent"
+        },
+        {
+          "cmd": "write_file",
+          "args": {
+            "path": "Secret/Note.md",
+            "content": "person",
+            "root": null
+          }
+        },
+        {
+          "cmd": "read_file",
+          "args": {
+            "path": "Secret/Note.md"
+          },
+          "expect": {
+            "content": "person"
+          }
+        }
+      ],
+      "rules": [
+        {
+          "path": "Secret",
+          "access": "hidden"
+        },
+        {
+          "path": "Locked",
+          "access": "read-only"
+        }
+      ]
+    },
+    {
+      "name": "query nested tags negative filters ordering and zero limit",
+      "files": {
+        "Contract/A.md": "---\ntags: [work/active]\nstatus: open\n---\nA",
+        "Contract/B.md": "---\ntags: [work, private]\nstatus: open\n---\nB",
+        "Contract/C.md": "---\ntags: [work]\nstatus: closed\n---\nC"
+      },
+      "steps": [
+        {
+          "cmd": "query_notes",
+          "args": {
+            "query": "folder:Contract tag:work -tag:private status=open sort:title"
+          },
+          "expect": {
+            "total": 1,
+            "rows": [
+              {
+                "path": "Contract/A.md"
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "query_notes",
+          "args": {
+            "query": "folder:Contract tag:work limit:0"
+          },
+          "expect": {
+            "total": 3,
+            "rows": []
+          }
+        },
+        {
+          "cmd": "query_notes",
+          "args": {
+            "query": "folder:Contract tag:missing"
+          },
+          "expect": {
+            "total": 0,
+            "rows": []
+          }
+        }
+      ]
+    },
+    {
+      "name": "binary import preserves existing names and treats bytes as binary",
+      "files": {},
+      "steps": [
+        {
+          "cmd": "import_file",
+          "args": {
+            "path": "Contract/café image.png",
+            "bytes": [
+              137,
+              80,
+              78,
+              71,
+              0,
+              255
+            ]
+          },
+          "expect": {
+            "path": "Contract/café image.png"
+          }
+        },
+        {
+          "cmd": "import_file",
+          "args": {
+            "path": "Contract/café image.png",
+            "bytes": [
+              0,
+              1,
+              2
+            ]
+          },
+          "expect": {
+            "path": "Contract/café image 1.png"
+          }
+        },
+        {
+          "cmd": "read_file",
+          "args": {
+            "path": "Contract/café image.png"
+          },
+          "expect": {
+            "content": null,
+            "kind": "image"
+          }
+        },
+        {
+          "cmd": "import_file",
+          "args": {
+            "path": "../escape.png",
+            "bytes": [
+              0
+            ]
+          },
+          "error": "invalid_path"
+        }
+      ]
+    },
+    {
+      "name": "rename reports partial link failures after external replacement",
+      "files": {
+        "Contract/Old.md": "old",
+        "Contract/Good.md": "[[Old]]",
+        "Contract/Broken.md": "[[Old]]"
+      },
+      "steps": [
+        {
+          "external_directory": "Contract/Broken.md"
+        },
+        {
+          "cmd": "rename_path",
+          "args": {
+            "from": "Contract/Old.md",
+            "to": "Contract/New.md"
+          },
+          "expect": {
+            "path": "Contract/New.md",
+            "updated_links_in": [
+              "Contract/Good.md"
+            ],
+            "failed_links_in": [
+              {
+                "path": "Contract/Broken.md"
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "read_file",
+          "args": {
+            "path": "Contract/New.md"
+          },
+          "expect": {
+            "content": "old"
+          }
+        },
+        {
+          "cmd": "read_file",
+          "args": {
+            "path": "Contract/Old.md"
+          },
+          "error": "not_found"
+        },
+        {
+          "cmd": "read_file",
+          "args": {
+            "path": "Contract/Good.md"
+          },
+          "expect": {
+            "content": "[[New]]"
+          }
+        }
       ]
     }
   ]

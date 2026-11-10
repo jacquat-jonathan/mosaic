@@ -7,6 +7,7 @@ import { resolve, join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
 import assert from "node:assert/strict";
+import { releaseNotes, releaseDocument } from "./release-notes.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 const config = JSON.parse(readFileSync(join(root, "src-tauri/tauri.conf.json")));
@@ -28,11 +29,7 @@ assert.equal(run(join(bundle,"Contents/MacOS/mosaic"),["--version"]),`mosaic ${v
 function inspect(dir) { for(const name of readdirSync(dir)) { const path=join(dir,name), stat=lstatSync(path); if(stat.isSymbolicLink()) assert(realpathSync(path).startsWith(bundle+"/"), `Escaping package symlink: ${path}`); else if(stat.isDirectory()) inspect(path); } }
 inspect(bundle);
 const changelog = readFileSync(join(root,"CHANGELOG.md"),"utf8");
-const section = changelog.split(`## ${version} — `)[1];
-assert(section, "Release version needs its CHANGELOG heading before packaging");
-const date = section.split("\n")[0].trim();
-const notes = section.split(/^## /m)[0].split("\n").filter(line=>line.startsWith("- ")).map(line=>line.slice(2));
-assert(notes.length, "Release notes cannot be empty");
+const { date, notes } = releaseNotes(changelog, version);
 const releases = join(root,"target/releases"); mkdirSync(releases,{recursive:true});
 const out = join(releases,`v${version}`); mkdirSync(out); // Refuse to overwrite a previous package.
 const stage = mkdtempSync(join(tmpdir(),"mosaic-dmg-"));
@@ -48,7 +45,7 @@ const { statSync } = await import("node:fs");
 const manifest = Buffer.from(JSON.stringify({version,bundle_id:config.identifier,minimum_macos:"12.0",architectures:["arm64","x86_64"],archive,sha256:archiveHash,size:statSync(join(out,archive)).size,date,notes})+"\n");
 writeFileSync(join(out,"manifest.json"),manifest);
 writeFileSync(join(out,"SHA256SUMS"),`${await sha(join(out,dmg))}  ${dmg}\n${archiveHash}  ${archive}\n`);
-writeFileSync(join(out,"release-notes.md"),notes.map(note=>`- ${note}`).join("\n")+"\n\nDownload the universal DMG, drag Mosaic to Applications, and launch it there. macOS 12+; Intel and Apple Silicon. Ad-hoc signed, not Apple-notarized. See README for the app-specific first-launch approval.\n");
+writeFileSync(join(out,"release-notes.md"),releaseDocument(notes));
 console.log(`Packaged release assets: ${out}`);
 if (process.env.MOSAIC_RELEASE_PRIVATE_KEY || process.env.MOSAIC_RELEASE_KEY_FILE)
   execFileSync(process.execPath, [join(root, "scripts/sign-release.mjs"), out], { stdio: "inherit" });

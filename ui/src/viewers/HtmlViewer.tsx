@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Globe2, Minus, Plus, RotateCcw, ShieldAlert, ShieldCheck, WifiOff } from "lucide-react";
 import type { Buffer } from "../state/workspace";
 import { api, fileUrl, htmlPreviewDocumentUrl } from "../ipc/api";
+import { vaultOperation } from "../state/vaultSession";
 import { parentOf, useVault } from "../state/vault";
 import { errorMessage } from "../ipc/types";
 import { Button, IconButton, Notice, SegmentedControl } from "../design-system/components";
@@ -39,7 +40,7 @@ export function resolveHtmlResource(dir: string, rel: string): string {
 
 /** The preview may read vault assets plus only the external origins explicitly approved by the user. */
 export function htmlPreviewCsp(scripts: boolean, externalOrigins: readonly string[] = []): string {
-  const local = "asset: http://asset.localhost";
+  const local = "mosaic-asset: http://mosaic-asset.localhost";
   const remote = externalOrigins.length ? ` ${externalOrigins.join(" ")}` : "";
   return [
     "default-src 'none'",
@@ -244,6 +245,7 @@ export function HtmlViewer({ buffer }: { buffer: Buffer }) {
   const [mode, setMode] = useState<"preview" | "source">("preview");
   const [, setPermissionRevision] = useState(0);
   const [hashedContent, setHashedContent] = useState<{ content: string; hash: string } | null>(null);
+  const activation = useVault((state) => state.vault);
   const vaultRoot = useVaultPreferences((state) => state.root);
   const vaultScripts = useVaultPreferences((state) => state.value.allow_html_scripts);
   const vaultInternet = useVaultPreferences((state) => state.value.allow_html_internet);
@@ -276,7 +278,8 @@ export function HtmlViewer({ buffer }: { buffer: Buffer }) {
   useEffect(() => {
     if (mode !== "preview") return;
     let live = true;
-    const current = () => live && useVault.getState().vault?.root === vaultRoot;
+    const sameActivation = vaultOperation();
+    const current = () => live && sameActivation();
     setDoc(null);
     setPreviewError(null);
     setLoading(true);
@@ -295,7 +298,7 @@ export function HtmlViewer({ buffer }: { buffer: Buffer }) {
     return () => {
       live = false;
     };
-  }, [buffer.path, content, scripts, internetAllowed, requestedOrigins, mode, retry, vaultRoot]);
+  }, [buffer.path, content, scripts, internetAllowed, requestedOrigins, mode, retry, vaultRoot, activation]);
 
   useEffect(() => setZoom(1), [buffer.path]);
 

@@ -52,6 +52,8 @@ const files = new Map<string, MockFile>();
 const dirs = new Set<string>();
 let opened = false;
 let mockRoot = "/mock/vault";
+let mockGeneration = 0;
+const mockSession = () => ({ root: mockRoot, vault_id: "mock-vault", generation: String(mockGeneration) });
 const templateConfigs = new Map<string, TemplateConfig>();
 let bookmarks: string[] = ["Welcome.md"];
 let updateBuilt = false;
@@ -328,13 +330,17 @@ export function mockPropose(path: string, content: string | null, actor = "claud
   };
   proposals.push(p);
   // Like an agent's MCP server writing the history database.
-  window.dispatchEvent(new CustomEvent("mock-history-changed"));
+  emit("history-changed", mockSession());
   return p.id;
 }
 // Reachable from the browser console (a module imported by URL can be a separate copy after a hot reload).
 (globalThis as { mosaicMock?: object }).mosaicMock = { propose: mockPropose };
 
-const emit = (name: string, detail: unknown) => window.dispatchEvent(new CustomEvent(`mock-${name}`, { detail }));
+const emit = (name: string, detail: unknown) => {
+  if (name === "vault-changed" || name === "planner-changed")
+    detail = { ...(detail as object), session: mockSession() };
+  window.dispatchEvent(new CustomEvent(`mock-${name}`, { detail }));
+};
 
 function updateStatus() {
   return {
@@ -947,8 +953,9 @@ export const mockCommands: typeof commands = {
   openVault: async (path) => {
     const a: Record<string, unknown> = { path };
     opened = true;
+    mockGeneration++;
     mockRoot = String(a.path ?? "/mock/vault");
-    return { root: mockRoot, name: "Mock vault" };
+    return { root: mockRoot, name: "Mock vault", session: mockSession() };
   },
   queryNotes: async (query) => {
     const a: Record<string, unknown> = { query };
@@ -2187,7 +2194,7 @@ export const mockCommands: typeof commands = {
     }
   },
   currentVault: async () => {
-    return opened ? { root: mockRoot, name: "Mock vault" } : null;
+    return opened ? { root: mockRoot, name: "Mock vault", session: mockSession() } : null;
   },
   lastVault: async () => {
     return null;
@@ -2553,7 +2560,7 @@ export const mockCommands: typeof commands = {
         write(v.path, prev.content ?? "");
         track(v.path, "restored", prev.content);
       }
-      window.dispatchEvent(new CustomEvent("mock-vault-changed", { detail: { paths: [v.path] } }));
+      emit("vault-changed", { paths: [v.path], root_missing: false });
       return v.path;
     }
   },
@@ -2570,6 +2577,7 @@ export const mockCommands: typeof commands = {
     const a: Record<string, unknown> = { id };
     throw err("invalid", `there is no unfinished move ${a.id}`);
   },
+  assetPath: async () => notInMock("asset_path"),
   htmlPreviewDocument: async () => notInMock("html_preview_document"),
   search: async (query, limit) => {
     const a: Record<string, unknown> = { query, limit };
@@ -2797,7 +2805,8 @@ const PARAMS: Record<string, [keyof typeof commands, string[]]> = {
   open_in_default_app: ["openInDefaultApp", ["path"]],
   unfinished_renames: ["unfinishedRenames", []],
   fix_links: ["fixLinks", ["id"]],
-  html_preview_document: ["htmlPreviewDocument", ["html"]],
+  asset_path: ["assetPath", ["path", "generation"]],
+  html_preview_document: ["htmlPreviewDocument", ["html", "generation"]],
   search: ["search", ["query", "limit"]],
   backlinks: ["backlinks", ["path"]],
   tags: ["tags", []],

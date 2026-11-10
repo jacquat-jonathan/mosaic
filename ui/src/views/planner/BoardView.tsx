@@ -51,7 +51,8 @@ export function BoardView() {
 
 function AvailableBoardView() {
   const boardId = useId();
-  const root = useVault((state) => state.vault?.root) ?? "";
+  const vault = useVault((state) => state.vault);
+  const root = vault?.root ?? "";
   const [summary, setSummary] = useState<PlannerSummary | null>(null),
     [epics, setEpics] = useState<PlannerEpic[]>([]),
     [tasks, setTasks] = useState<PlannerTask[]>([]);
@@ -73,7 +74,7 @@ function AvailableBoardView() {
     [busy, setBusy] = useState(new Set<string>());
   const mounted = useRef(true),
     loadVersion = useRef(0);
-  const isCurrent = useCallback(() => mounted.current && root === useVault.getState().vault?.root, [root]);
+  const isCurrent = useCallback(() => mounted.current && vault === useVault.getState().vault, [vault]);
   useEffect(() => {
     mounted.current = true;
     return () => {

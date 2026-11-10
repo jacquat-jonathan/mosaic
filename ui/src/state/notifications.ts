@@ -1,3 +1,4 @@
+import { vaultOperation } from "./vaultSession";
 import { create } from "zustand";
 import { api, onPlannerChanged } from "../ipc/api";
 import type { PlannerTask } from "../ipc/types";
@@ -81,10 +82,11 @@ export const useNotifications = create<NotificationState>((set, get) => {
       set({ all: same ? get().all : all });
     },
     async refreshTasks() {
+      const current = vaultOperation();
       const root = get().root;
       try {
         const tasks = await api.plannerTasks();
-        if (get().root !== root) return;
+        if (get().root !== root || !current()) return;
         set({ tasks });
         get().recompute();
       } catch {

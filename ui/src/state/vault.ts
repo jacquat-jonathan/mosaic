@@ -1,3 +1,4 @@
+import { bindVaultSession, vaultOperation } from "./vaultSession";
 import { create } from "zustand";
 import { usePlanning } from "./planning";
 import { useChat, listenToChat } from "./chat";
@@ -102,6 +103,9 @@ interface VaultState {
   toggleBookmarks(paths: string[]): Promise<void>;
 }
 
+let activationRequest = 0;
+let activationQueue: Promise<void> = Promise.resolve();
+
 export const useVault = create<VaultState>((set, get) => {
   const fail = (e: unknown) => {
     set({ error: errorMessage(e) });
@@ -126,70 +130,94 @@ export const useVault = create<VaultState>((set, get) => {
     unfinishedRenames: [],
 
     async openVault(path, options) {
-      const preserve = !!options?.preserveWorkspace;
-      if (preserve && get().vault?.root !== path) return;
-      try {
-        if (!preserve && !(await leaveAllDrafts())) return;
-        const vault = await api.openVault(path);
-        if (preserve) {
-          if (get().vault?.root !== path) return;
-          if (vault.root !== path) throw new Error("The vault root changed while reconnecting.");
-          set({ vault, error: null, offline: false });
-          await loadVaultPreferences(vault.root);
-          if (get().vault?.root !== path) return;
-          await get().refresh();
-          if (get().vault?.root !== path) return;
-          const bookmarks = await api.bookmarks().catch(() => get().bookmarks);
-          if (get().vault?.root !== path) return;
-          set({ bookmarks });
-          await Promise.all(
-            Object.keys(useWorkspace.getState().buffers)
-              .filter((p) => !p.startsWith("mosaic:"))
-              .map((p) => useWorkspace.getState().externalChange(p)),
-          );
-          return;
-        }
-        set({
-          vault,
-          entries: [],
-          expanded: new Set(),
-          renaming: null,
-          error: null,
-          offline: false,
-          selected: new Set(),
-          anchor: null,
-          bookmarks: [],
-          unfinishedRenames: [],
+      // Serialize the whole transition, including draft handling and UI restoration. If a
+      // later native open fails, the UI must still represent the last successful activation.
+      const reconnectFrom = options?.preserveWorkspace ? get().vault : undefined;
+      const pending = activationQueue
+        .catch(() => {})
+        .then(async () => {
+          if (reconnectFrom !== undefined && get().vault !== reconnectFrom) return;
+          const previous = get().vault;
+          const preserve = !!options?.preserveWorkspace;
+          if (preserve && previous?.root !== path) return;
+          const request = ++activationRequest;
+          const requested = () => request === activationRequest;
+          try {
+            if (!preserve && !(await leaveAllDrafts())) return;
+            const vault = await api.openVault(path);
+            if (!requested()) return;
+            if (preserve) {
+              if (!requested() || get().vault !== previous) return;
+              if (vault.root !== path) throw new Error("The vault root changed while reconnecting.");
+              set({ vault, error: null, offline: false });
+              await loadVaultPreferences(vault.root);
+              if (!requested() || get().vault !== vault) return;
+              await get().refresh();
+              if (!requested() || get().vault !== vault) return;
+              const bookmarks = await api.bookmarks().catch(() => get().bookmarks);
+              if (!requested() || get().vault !== vault) return;
+              set({ bookmarks });
+              await Promise.all(
+                Object.keys(useWorkspace.getState().buffers)
+                  .filter((p) => !p.startsWith("mosaic:"))
+                  .map((p) => useWorkspace.getState().externalChange(p)),
+              );
+              return;
+            }
+            set({
+              vault,
+              entries: [],
+              indexing: null,
+              aliases: [],
+              expanded: new Set(),
+              renaming: null,
+              error: null,
+              offline: false,
+              selected: new Set(),
+              anchor: null,
+              bookmarks: [],
+              unfinishedRenames: [],
+            });
+            await loadVaultPreferences(vault.root);
+            if (!requested() || get().vault !== vault) return;
+            await get().refresh();
+            if (!requested() || get().vault !== vault) return;
+            const bookmarks = await api.bookmarks().catch(() => []);
+            if (!requested() || get().vault !== vault) return;
+            set({ bookmarks });
+            void api.mirrorAgents().catch(() => {});
+            useChat.getState().restore(vault.root);
+            usePlanning.getState().restore(vault.root);
+            listenToChat();
+            await useWorkspace.getState().restoreLayout(vault.root);
+            if (!requested() || get().vault !== vault) return;
+            if (prefs().startup === "today") useUi.getState().openView("today");
+            if (
+              prefs().startup === "note" &&
+              vaultPrefs().startup_note &&
+              get().entries.some((e) => e.path === vaultPrefs().startup_note && !e.is_dir)
+            ) {
+              await useWorkspace.getState().open(vaultPrefs().startup_note, { newTab: true });
+            }
+          } catch (e) {
+            if (!requested()) return;
+            const message = errorMessage(e);
+            if (requested()) set({ error: message });
+          }
         });
-        await loadVaultPreferences(vault.root);
-        await get().refresh();
-        set({ bookmarks: await api.bookmarks().catch(() => []) });
-        void api.mirrorAgents().catch(() => {});
-        useChat.getState().restore(vault.root);
-        usePlanning.getState().restore(vault.root);
-        listenToChat();
-        await useWorkspace.getState().restoreLayout(vault.root);
-        if (prefs().startup === "today") useUi.getState().openView("today");
-        if (
-          prefs().startup === "note" &&
-          vaultPrefs().startup_note &&
-          get().entries.some((e) => e.path === vaultPrefs().startup_note && !e.is_dir)
-        ) {
-          await useWorkspace.getState().open(vaultPrefs().startup_note, { newTab: true });
-        }
-      } catch (e) {
-        const message = errorMessage(e);
-        set({ error: message });
-      }
+      activationQueue = pending;
+      await pending;
     },
 
     async refresh() {
+      const current = vaultOperation();
       try {
         const [entries, aliases, unfinishedRenames] = await Promise.all([
           api.list("", true),
           api.aliases().catch(() => []),
           api.unfinishedRenames().catch(() => get().unfinishedRenames),
         ]);
+        if (!current()) return;
         const paths = new Set(entries.map((e) => e.path));
         set((s) => {
           const selected = [...s.selected].every((p) => paths.has(p))
@@ -198,7 +226,7 @@ export const useVault = create<VaultState>((set, get) => {
           return { entries, aliases, unfinishedRenames, revision: s.revision + 1, selected };
         });
       } catch (e) {
-        fail(e);
+        if (current()) fail(e);
       }
     },
 
@@ -219,34 +247,44 @@ export const useVault = create<VaultState>((set, get) => {
     setRenaming: (renaming) => set({ renaming }),
 
     async newFile(dir, stem, ext, content = "") {
+      const current = vaultOperation();
       const path = uniquePath(existing(), dir, stem, ext);
       try {
         await api.create(path, content);
+        if (!current()) return null;
         if (dir) get().toggle(dir, true);
         await get().refresh();
+        if (!current()) return null;
         return path;
       } catch (e) {
+        if (!current()) return null;
         return fail(e);
       }
     },
 
     async newFolder(dir) {
+      const current = vaultOperation();
       const path = uniquePath(existing(), dir, "New folder", "");
       try {
         await api.mkdir(path);
+        if (!current()) return null;
         if (dir) get().toggle(dir, true);
         await get().refresh();
+        if (!current()) return null;
         set({ renaming: path });
         return path;
       } catch (e) {
+        if (!current()) return null;
         return fail(e);
       }
     },
 
     async rename(from, to) {
+      const current = vaultOperation();
       if (from === to) return from;
       try {
         const { path: out, updated_links_in } = await api.rename(from, to);
+        if (!current()) return null;
         // Reload open notes whose links were rewritten (unsaved ones get the conflict prompt).
         for (const p of updated_links_in) {
           const b = useWorkspace.getState().buffers[p];
@@ -260,20 +298,25 @@ export const useVault = create<VaultState>((set, get) => {
         if (bookmarks.some((p, i) => p !== get().bookmarks[i])) void get().setBookmarks(bookmarks);
         get().revealParents(out);
         await get().refresh();
+        if (!current()) return null;
         return out;
       } catch (e) {
+        if (!current()) return null;
         return fail(e);
       }
     },
 
     async fixLinks(id) {
+      const current = vaultOperation();
       try {
         const { updated_links_in, failed_links_in } = await api.fixLinks(id);
+        if (!current()) return false;
         for (const p of updated_links_in) {
           const b = useWorkspace.getState().buffers[p];
           if (b && !b.dirty) void useWorkspace.getState().reload(p);
         }
         await get().refresh();
+        if (!current()) return false;
         if (failed_links_in?.length) {
           set({
             error: `Some links still couldn't be fixed: ${failed_links_in.map((f) => `${f.path} (${f.error})`).join(", ")}`,
@@ -282,17 +325,22 @@ export const useVault = create<VaultState>((set, get) => {
         }
         return true;
       } catch (e) {
+        if (!current()) return false;
         fail(e);
         return false;
       }
     },
 
     async remove(path) {
+      const current = vaultOperation();
       try {
         await api.remove(path);
+        if (!current()) return false;
         await get().refresh();
+        if (!current()) return false;
         return true;
       } catch (e) {
+        if (!current()) return false;
         fail(e);
         return false;
       }
@@ -331,11 +379,14 @@ export const useVault = create<VaultState>((set, get) => {
     clearSelection: () => set({ selected: new Set(), anchor: null, cursor: null }),
 
     async setBookmarks(paths) {
+      const current = vaultOperation();
       const prev = get().bookmarks;
       set({ bookmarks: paths });
       try {
         await api.setBookmarks(paths);
+        if (!current()) return undefined;
       } catch (e) {
+        if (!current()) return undefined;
         set({ bookmarks: prev });
         fail(e);
       }
@@ -354,3 +405,6 @@ export const useVault = create<VaultState>((set, get) => {
     },
   };
 });
+
+// Register lazily to avoid an IPC → vault → settings initialization cycle.
+bindVaultSession(() => useVault.getState().vault);

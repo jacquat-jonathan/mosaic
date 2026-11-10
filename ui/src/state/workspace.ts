@@ -120,11 +120,12 @@ function normalizePaneSizes(panes: Pane[]): Pane[] {
 
 export const useWorkspace = create<WorkspaceState>((set, get) => {
   let epoch = 0;
-  const operationKey = (path: string) => JSON.stringify([epoch, useVault.getState().vault?.root, path]);
+  const operationKey = (path: string) =>
+    JSON.stringify([epoch, useVault.getState().vault?.session, useVault.getState().vault?.root, path]);
   const operation = () => {
     const started = epoch,
-      root = useVault.getState().vault?.root;
-    return () => started === epoch && root === useVault.getState().vault?.root;
+      vault = useVault.getState().vault;
+    return () => started === epoch && vault === useVault.getState().vault;
   };
   const updateBuffer = (path: string, patch: Partial<Buffer>) =>
     set((s) => (s.buffers[path] ? { buffers: { ...s.buffers, [path]: { ...s.buffers[path], ...patch } } } : s));

@@ -44,13 +44,19 @@ test("reconnection preserves unsaved buffers and panes, then reconciles their di
 });
 test("a late reconnect cannot replace a newly selected vault", async () => {
   let finish!: () => void;
+  let begin!: () => void;
+  const started = new Promise<void>((resolve) => {
+    begin = resolve;
+  });
   vi.spyOn(api, "openVault").mockImplementation(
     () =>
       new Promise((resolve) => {
         finish = () => resolve({ root: "/vault", name: "Old" });
+        begin();
       }),
   );
   const pending = useVault.getState().openVault("/vault", { preserveWorkspace: true });
+  await started;
   useVault.setState({ vault: { root: "/other", name: "Other" }, offline: false });
   finish();
   await pending;

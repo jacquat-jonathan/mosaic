@@ -1,4 +1,5 @@
 // Chats are stored per vault in app storage. Events target their originating chat even when tabs change.
+import { vaultOperation } from "./vaultSession";
 import { create } from "zustand";
 import { prefs } from "./settings";
 import { api, onChatEvent } from "../ipc/api";
@@ -146,6 +147,7 @@ export const useChat = create<ChatState>((set, get) => ({
     const c = get().chats[id];
     if (!c || c.run !== null) return;
     const root = get().root;
+    const current = vaultOperation();
     pending.add(id);
     get().update(id, {
       items: [...c.items, { kind: "user", text: message, context, agent, selection, model }],
@@ -155,7 +157,7 @@ export const useChat = create<ChatState>((set, get) => ({
     });
     try {
       const run = await api.chatSend(message, c.session, context, active, agent, selection, model);
-      if (get().root !== root || !get().chats[id] || get().chats[id].run !== -1) {
+      if (!current() || get().root !== root || !get().chats[id] || get().chats[id].run !== -1) {
         void api.chatStop(run);
         return;
       }
@@ -163,11 +165,13 @@ export const useChat = create<ChatState>((set, get) => ({
       for (const e of early.get(run) ?? []) get().apply(run, e);
       early.delete(run);
     } catch (e) {
-      if (get().root === root && get().chats[id])
+      if (current() && get().root === root && get().chats[id])
         get().update(id, { run: null, items: [...get().chats[id].items, { kind: "error", text: errorMessage(e) }] });
     } finally {
-      pending.delete(id);
-      if (!pending.size) early.clear();
+      if (current()) {
+        pending.delete(id);
+        if (!pending.size) early.clear();
+      }
     }
   },
   stop(id) {

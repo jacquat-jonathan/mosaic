@@ -1,0 +1,6 @@
+{
+  "index-progress": { "done": 2, "total": 3, "finished": false },
+  "vault-changed": { "paths": ["Note.md"], "root_missing": false },
+  "history-changed": null,
+  "planner-changed": { "root": "/mock/vault", "revision": 1, "affected_ids": ["task-1"] }
+}

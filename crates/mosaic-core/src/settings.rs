@@ -230,11 +230,15 @@ impl Settings {
 
     pub fn save(&self) -> std::io::Result<()> {
         let dir = app_support_dir().ok_or_else(|| std::io::Error::other("HOME not set"))?;
-        std::fs::create_dir_all(&dir)?;
+        self.save_in(&dir)
+    }
+
+    fn save_in(&self, dir: &Path) -> std::io::Result<()> {
+        std::fs::create_dir_all(dir)?;
         let json = serde_json::to_vec_pretty(self).map_err(std::io::Error::other)?;
         // Atomic: the app and agents (CLI/MCP) both write this file, and a half-written one would
         // load as defaults and lose every setting on the next save.
-        let mut tmp = tempfile::NamedTempFile::new_in(&dir)?;
+        let mut tmp = tempfile::NamedTempFile::new_in(dir)?;
         std::io::Write::write_all(&mut tmp, &json)?;
         tmp.persist(dir.join(SETTINGS_FILE)).map_err(|e| e.error)?;
         Ok(())
@@ -242,8 +246,23 @@ impl Settings {
 
     /// Loads, applies `change`, and saves only if something changed.
     pub fn update(change: impl FnOnce(&mut Settings) -> bool) -> std::io::Result<()> {
+        Self::try_update(|settings| Ok(((), change(settings))))
+    }
+
+    /// Fallible read-modify-write. Failed mutations leave the original file untouched.
+    pub fn try_update<T>(
+        change: impl FnOnce(&mut Settings) -> std::io::Result<(T, bool)>,
+    ) -> std::io::Result<T> {
         let dir = app_support_dir().ok_or_else(|| std::io::Error::other("HOME not set"))?;
-        std::fs::create_dir_all(&dir)?;
+        Self::try_update_in(&dir, change)
+    }
+
+    /// Explicit-directory variant for isolated callers and tests.
+    pub fn try_update_in<T>(
+        dir: &Path,
+        change: impl FnOnce(&mut Settings) -> std::io::Result<(T, bool)>,
+    ) -> std::io::Result<T> {
+        std::fs::create_dir_all(dir)?;
         let lock = std::fs::OpenOptions::new()
             .create(true)
             .truncate(false)
@@ -251,8 +270,12 @@ impl Settings {
             .write(true)
             .open(dir.join("settings.lock"))?;
         lock.lock()?;
-        let mut s = Settings::try_load()?;
-        if change(&mut s) { s.save() } else { Ok(()) }
+        let mut s = Settings::try_load_in(dir)?;
+        let (result, changed) = change(&mut s)?;
+        if changed {
+            s.save_in(dir)?;
+        }
+        Ok(result)
     }
 
     /// Records a vault as the most recently opened one.
@@ -315,6 +338,45 @@ impl Settings {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn fallible_mutation_preserves_unreadable_and_rejected_state() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(SETTINGS_FILE);
+        std::fs::write(&path, "{broken").unwrap();
+        assert!(Settings::try_update_in(dir.path(), |_| Ok(((), true))).is_err());
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "{broken");
+        std::fs::write(&path, "{}").unwrap();
+        let result: std::io::Result<()> = Settings::try_update_in(dir.path(), |s| {
+            s.other.insert("changed".into(), serde_json::json!(true));
+            Err(std::io::Error::other("invalid metadata"))
+        });
+        assert!(result.is_err());
+        assert_eq!(std::fs::read_to_string(path).unwrap(), "{}");
+    }
+
+    #[test]
+    fn concurrent_settings_mutations_keep_other_writers_fields() {
+        let dir = tempfile::tempdir().unwrap();
+        let barrier = std::sync::Barrier::new(4);
+        std::thread::scope(|scope| {
+            for id in 0..4 {
+                let barrier = &barrier;
+                let path = dir.path();
+                scope.spawn(move || {
+                    barrier.wait();
+                    Settings::try_update_in(path, |settings| {
+                        settings
+                            .other
+                            .insert(format!("writer-{id}"), serde_json::json!(id));
+                        Ok(((), true))
+                    })
+                    .unwrap();
+                });
+            }
+        });
+        assert_eq!(Settings::try_load_in(dir.path()).unwrap().other.len(), 4);
+    }
+
     #[test]
     fn old_run_history_gains_empty_detail_fields() {
         let run: super::AgentRun = serde_json::from_str(r#"{"id":1,"agent":"review","title":"Review","started":1,"finished":2,"late":false,"status":"done","answer":"OK","error":null,"proposals":1,"changes":["Edited note"]}"#).unwrap();

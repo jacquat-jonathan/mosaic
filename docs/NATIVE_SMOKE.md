@@ -21,7 +21,7 @@ Updater tests use fixture Ed25519 keys to reject unsigned/modified/wrong-key man
 | Planner corruption/recovery (02) | Adapter fixtures in PR 02 | Run native failure/recovery journey after 02 integration |
 | Session asset revocation (03/06) | Protocol/security fixtures in PR 06 | Extend native journey to old-URL rejection and HTML relative assets after integration |
 
-The asset journey calls the application `fileUrl` helper rather than hardcoding a protocol, so it exercises the session protocol when merged with 06. The baseline does not yet offer partial planner availability or asset revocation; this branch cannot honestly claim those later integrations pass. Add their native scenarios when composing the branches. CLI/MCP and ordinary UI coverage continue independently.
+The asset journey calls the application `fileUrl` helper rather than hardcoding a protocol, so it exercises the session protocol when merged with 06. The integrated baseline offers partial planner availability, covered by adapter tests; the native corruption/recovery cases still require the scenarios in the matrix. Session/asset revocation is not yet in this main baseline, so this branch does not claim those later integrations pass. Add their native scenarios when composing the branches. CLI/MCP and ordinary UI coverage continue independently.
 
 ## Local reference validation
 

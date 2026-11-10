@@ -17,6 +17,8 @@ pub enum Error {
     NotText(String),
     #[error("{0}")]
     Invalid(String),
+    #[error("{message}")]
+    Planner { code: &'static str, message: String },
     /// Refused by the vault's agent permissions (a read-only or hidden folder).
     #[error("not allowed: {0}")]
     Denied(String),
@@ -38,6 +40,7 @@ impl Error {
             Error::NotText(_) => "not_text",
             Error::Invalid(_) => "invalid",
             Error::Denied(_) => "denied",
+            Error::Planner { code, .. } => code,
             Error::Io { .. } => "io",
         }
     }

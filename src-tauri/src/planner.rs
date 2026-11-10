@@ -486,3 +486,36 @@ pub(crate) fn planner_restore_backup(path: String) -> CmdResult<String> {
     PlannerStore::restore_last_backup(std::path::Path::new(&path))
         .map(|restored| restored.display().to_string())
 }
+
+#[cfg(test)]
+mod event_contract_tests {
+    use super::*;
+    use tauri::Listener;
+    #[test]
+    fn planner_event_matches_shared_wire_fixture() {
+        let fixture: serde_json::Value =
+            serde_json::from_str(include_str!("../../fixtures/events.json")).unwrap();
+        let app = tauri::test::mock_builder()
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .unwrap();
+        let received = std::sync::Arc::new(std::sync::Mutex::new(None));
+        let observed = received.clone();
+        app.listen("planner-changed", move |event| {
+            *observed.lock().unwrap() =
+                Some(serde_json::from_str::<serde_json::Value>(event.payload()).unwrap())
+        });
+        app.emit(
+            "planner-changed",
+            PlannerChanged {
+                root: "/mock/vault".into(),
+                revision: 1,
+                affected_ids: vec!["task-1".into()],
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            *received.lock().unwrap(),
+            Some(fixture["planner-changed"].clone())
+        );
+    }
+}

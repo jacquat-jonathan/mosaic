@@ -27,6 +27,8 @@ import { useWorkspace } from "./state/workspace";
 import { contextKind, isSpecialTab } from "./views/specialTabs";
 import { startAttention } from "./state/attention";
 import { startNotifications } from "./state/notifications";
+import { startIndexHealth } from "./state/indexHealth";
+import { IndexHealthNotice } from "./views/IndexHealthNotice";
 import { WorkspaceNotices } from "./views/WorkspaceNotices";
 import { useReview } from "./state/review";
 
@@ -71,9 +73,10 @@ export function App() {
     keep(
       onIndexProgress((p) => {
         useVault.setState({ indexing: p.finished ? null : { done: p.done, total: p.total } });
-        if (p.finished) void useVault.getState().refresh();
+        if (p.finished && !p.failed) void useVault.getState().refresh();
       }),
     );
+    keep(startIndexHealth());
     keep(startVaultSync());
     keep(startBookmarkSync());
     keep(
@@ -199,6 +202,7 @@ function Main() {
         )}
         <main className="main">
           <WorkspaceNotices />
+          <IndexHealthNotice />
           <Workspace />
         </main>
         {right && contextKind(active) && (

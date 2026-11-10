@@ -54,6 +54,8 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: Test release invariants with disposable repositories
+        run: node --test scripts/tests/release-invariants.test.mjs
       - name: Check TypeScript
         run: pnpm --dir ui lint
       - name: Check formatting and lint

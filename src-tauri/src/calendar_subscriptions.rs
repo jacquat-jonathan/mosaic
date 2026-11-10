@@ -36,6 +36,10 @@ struct Subscription {
     last_success: Option<String>,
     last_error: Option<String>,
     cache_file: String,
+    #[serde(default)]
+    revision: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    secret_id: Option<String>,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -76,25 +80,71 @@ fn cache_directory(app: &AppHandle) -> CmdResult<PathBuf> {
     Ok(path)
 }
 
-fn load(_app: &AppHandle) -> CmdResult<SubscriptionStore> {
-    let settings = Settings::load();
-    let Some(value) = settings.other.get(SETTINGS_KEY) else {
-        return Ok(SubscriptionStore::default());
-    };
-    serde_json::from_value(value.clone()).map_err(|error| {
-        Error::Invalid(format!(
-            "calendar subscription metadata is invalid: {error}"
-        ))
-    })
+fn decode(settings: &Settings) -> CmdResult<SubscriptionStore> {
+    match settings.other.get(SETTINGS_KEY) {
+        None => Ok(SubscriptionStore::default()),
+        Some(value) => serde_json::from_value(value.clone()).map_err(|error| {
+            Error::Invalid(format!(
+                "calendar subscription metadata is invalid: {error}"
+            ))
+        }),
+    }
 }
 
-fn save(_app: &AppHandle, store: &SubscriptionStore) -> CmdResult<()> {
-    let value = serde_json::to_value(store).map_err(|error| Error::Invalid(error.to_string()))?;
-    Settings::update(|settings| {
-        settings.other.insert(SETTINGS_KEY.into(), value);
-        true
-    })
-    .map_err(|error| io_error("settings.json", error))
+fn load(_app: &AppHandle) -> CmdResult<SubscriptionStore> {
+    decode(&Settings::try_load().map_err(|e| io_error("settings.json", e))?)
+}
+
+fn mutate<T>(change: impl FnOnce(&mut SubscriptionStore) -> CmdResult<T>) -> CmdResult<T> {
+    // Settings::try_update holds the cross-process lock through decoding, mutation and persistence.
+    Settings::try_update(|settings| mutate_settings(settings, change))
+        .map_err(|e| io_error("settings.json", e))?
+}
+
+fn mutate_settings<T>(
+    settings: &mut Settings,
+    change: impl FnOnce(&mut SubscriptionStore) -> CmdResult<T>,
+) -> std::io::Result<(CmdResult<T>, bool)> {
+    // Domain failures retain their wire error codes and do not persist partially mutated state.
+    let result = (|| {
+        let mut store = decode(settings)?;
+        let result = change(&mut store)?;
+        let value = serde_json::to_value(store).map_err(|e| Error::Invalid(e.to_string()))?;
+        Ok((result, value))
+    })();
+    match result {
+        Ok((result, value)) => {
+            settings.other.insert(SETTINGS_KEY.into(), value);
+            Ok((Ok(result), true))
+        }
+        Err(error) => Ok((Err(error), false)),
+    }
+}
+
+/// Commit only download-owned fields, provided this is still the feed/version that was fetched.
+fn merge_refresh(
+    store: &mut SubscriptionStore,
+    key: &str,
+    before: &Subscription,
+    fetched: &Subscription,
+) -> bool {
+    let Some(current) = store
+        .vaults
+        .get_mut(key)
+        .and_then(|items| items.iter_mut().find(|s| s.id == before.id))
+    else {
+        return false;
+    };
+    if current.revision != before.revision || current.cache_file != before.cache_file {
+        return false;
+    }
+    current.etag = fetched.etag.clone();
+    current.last_modified = fetched.last_modified.clone();
+    current.last_success = fetched.last_success.clone();
+    current.last_error = fetched.last_error.clone();
+    current.cache_file = fetched.cache_file.clone();
+    current.revision += 1;
+    true
 }
 
 fn vault_key(state: &State<AppState>) -> CmdResult<String> {
@@ -221,7 +271,12 @@ async fn refresh_one(
     if !force && !due(subscription) {
         return Ok(());
     }
-    let url = get_secret(&subscription.id)?;
+    let url = get_secret(
+        subscription
+            .secret_id
+            .as_deref()
+            .unwrap_or(&subscription.id),
+    )?;
     let parsed = normalized_url(&url)?;
     let client = crate::http::client(Duration::from_secs(15))
         .map_err(|_| Error::Invalid("could not initialize calendar download".into()))?;
@@ -273,11 +328,17 @@ async fn refresh_one(
     let content = std::str::from_utf8(&bytes)
         .map_err(|_| Error::Invalid("calendar feed is not UTF-8".into()))?;
     validate_ical(content, "UTC")?;
-    let path = cache_path(app, subscription)?;
-    let temporary = path.with_extension("ics.tmp");
-    fs::write(&temporary, &bytes)
-        .map_err(|error| io_error(temporary.display().to_string(), error))?;
-    fs::rename(&temporary, &path).map_err(|error| io_error(path.display().to_string(), error))?;
+    let directory = cache_directory(app)?;
+    let mut temporary = tempfile::Builder::new()
+        .prefix("feed-")
+        .suffix(".ics")
+        .tempfile_in(&directory)
+        .map_err(|e| io_error(directory.display().to_string(), e))?;
+    std::io::Write::write_all(&mut temporary, &bytes).map_err(|e| io_error("calendar cache", e))?;
+    let (_, path) = temporary
+        .keep()
+        .map_err(|e| io_error("calendar cache", e.error))?;
+    subscription.cache_file = path.file_name().unwrap().to_string_lossy().into_owned();
     subscription.etag = etag;
     subscription.last_modified = last_modified;
     subscription.last_success = Some(Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true));
@@ -345,18 +406,27 @@ pub(crate) async fn add_calendar_subscription(
         last_success: None,
         last_error: None,
         cache_file: format!("{id}.ics"),
+        revision: 0,
+        secret_id: None,
     };
     let refresh = refresh_one(&app, &mut subscription, true).await;
     if let Err(error) = refresh {
         subscription.last_error = Some(error.to_string());
     }
-    let mut store = load(&app)?;
-    store
-        .vaults
-        .entry(key)
-        .or_default()
-        .push(subscription.clone());
-    save(&app, &store)?;
+    if let Err(error) = mutate(|store| {
+        store
+            .vaults
+            .entry(key)
+            .or_default()
+            .push(subscription.clone());
+        Ok(())
+    }) {
+        delete_secret(&id);
+        if let Ok(path) = cache_path(&app, &subscription) {
+            let _ = fs::remove_file(path);
+        }
+        return Err(error);
+    }
     view(&app, &subscription)
 }
 
@@ -380,41 +450,59 @@ pub(crate) fn update_calendar_subscription(
         ));
     }
     let key = vault_key(&state)?;
-    let mut store = load(&app)?;
-    let subscription = store
-        .vaults
-        .get_mut(&key)
-        .and_then(|items| items.iter_mut().find(|item| item.id == id))
-        .ok_or_else(|| Error::NotFound(format!("calendar subscription/{id}")))?;
-    // An omitted URL preserves the Keychain entry. Never send stored feed credentials to the UI.
     let replacement = url
         .filter(|url| !url.trim().is_empty())
         .map(|url| normalized_url(&url))
         .transpose()?;
-    let previous_cache = cache_path(&app, subscription)?;
-    let previous_url = if let Some(url) = &replacement {
-        let previous = get_secret(&id)?;
-        set_secret(&id, url.as_str())?;
-        Some(previous)
+    // Stage credentials under a new key outside the metadata lock. Publishing the key with the
+    // feed revision is atomic; a failed commit cannot roll back another writer's credentials.
+    static NEXT_SECRET: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let replacement_key = if let Some(url) = &replacement {
+        let key = format!(
+            "{id}-{}-{}",
+            Utc::now().timestamp_nanos_opt().unwrap_or_default(),
+            NEXT_SECRET.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        );
+        set_secret(&key, url.as_str())?;
+        Some(key)
     } else {
         None
     };
-    if replacement.is_some() {
-        invalidate_feed(subscription);
-    }
-    subscription.name = name.trim().to_string();
-    subscription.color = color;
-    subscription.visible = visible;
-    subscription.refresh_minutes = refresh_minutes;
-    let result = subscription.clone();
-    if let Err(error) = save(&app, &store) {
-        if let Some(previous) = previous_url {
-            set_secret(&id, &previous)?;
+    let mut previous_secret = None;
+    let mut previous_cache = None;
+    let result = mutate(|store| {
+        let subscription = store
+            .vaults
+            .get_mut(&key)
+            .and_then(|items| items.iter_mut().find(|item| item.id == id))
+            .ok_or_else(|| Error::NotFound(format!("calendar subscription/{id}")))?;
+        if let Some(key) = &replacement_key {
+            previous_secret = Some(subscription.secret_id.clone().unwrap_or_else(|| id.clone()));
+            previous_cache = Some(subscription.cache_file.clone());
+            subscription.secret_id = Some(key.clone());
+            invalidate_feed(subscription);
+            subscription.revision += 1;
         }
-        return Err(error);
+        subscription.name = name.trim().to_string();
+        subscription.color = color;
+        subscription.visible = visible;
+        subscription.refresh_minutes = refresh_minutes;
+        Ok(subscription.clone())
+    });
+    let result = match result {
+        Ok(result) => result,
+        Err(error) => {
+            if let Some(key) = replacement_key {
+                delete_secret(&key);
+            }
+            return Err(error);
+        }
+    };
+    if let Some(key) = previous_secret {
+        delete_secret(&key);
     }
-    if replacement.is_some() {
-        let _ = fs::remove_file(previous_cache);
+    if let Some(file) = previous_cache {
+        let _ = fs::remove_file(cache_directory(&app)?.join(file));
     }
     view(&app, &result)
 }
@@ -439,19 +527,20 @@ pub(crate) fn remove_calendar_subscription(
     id: String,
 ) -> CmdResult<()> {
     let key = vault_key(&state)?;
-    let mut store = load(&app)?;
-    let items = store.vaults.entry(key).or_default();
-    let index = items
-        .iter()
-        .position(|item| item.id == id)
-        .ok_or_else(|| Error::NotFound(format!("calendar subscription/{id}")))?;
-    let subscription = items.remove(index);
+    let subscription = mutate(|store| {
+        let items = store.vaults.entry(key).or_default();
+        let index = items
+            .iter()
+            .position(|item| item.id == id)
+            .ok_or_else(|| Error::NotFound(format!("calendar subscription/{id}")))?;
+        Ok(items.remove(index))
+    })?;
+    delete_secret(subscription.secret_id.as_deref().unwrap_or(&id));
     let path = cache_path(&app, &subscription)?;
     if path.is_file() {
         fs::remove_file(&path).map_err(|error| io_error(path.display().to_string(), error))?;
     }
-    delete_secret(&id);
-    save(&app, &store)
+    Ok(())
 }
 
 #[tauri::command]
@@ -462,22 +551,30 @@ pub(crate) async fn refresh_calendar_subscriptions(
     force: bool,
 ) -> CmdResult<Vec<SubscriptionView>> {
     let key = vault_key(&state)?;
-    let mut store = load(&app)?;
-    let items = store.vaults.entry(key).or_default();
-    for subscription in items.iter_mut() {
-        if !subscription.visible && !force {
+    let store = load(&app)?;
+    for before in store.vaults.get(&key).into_iter().flatten() {
+        if (!before.visible && !force) || (!force && !due(before)) {
             continue;
         }
-        if let Err(error) = refresh_one(&app, subscription, force).await {
-            subscription.last_error = Some(error.to_string());
+        let mut fetched = before.clone();
+        if let Err(error) = refresh_one(&app, &mut fetched, force).await {
+            fetched.last_error = Some(error.to_string());
         }
+        let committed = mutate(|store| Ok(merge_refresh(store, &key, before, &fetched)));
+        let accepted = committed.as_ref().is_ok_and(|accepted| *accepted);
+        if fetched.cache_file != before.cache_file {
+            let obsolete = if accepted { before } else { &fetched };
+            let _ = fs::remove_file(cache_path(&app, obsolete)?);
+        }
+        committed?;
     }
-    let result = items
-        .iter()
-        .map(|subscription| view(&app, subscription))
-        .collect::<CmdResult<Vec<_>>>()?;
-    save(&app, &store)?;
-    Ok(result)
+    load(&app)?
+        .vaults
+        .get(&key)
+        .into_iter()
+        .flatten()
+        .map(|s| view(&app, s))
+        .collect()
 }
 
 #[tauri::command(async)]
@@ -541,6 +638,134 @@ fn cached_overlays(
 mod tests {
     use super::*;
 
+    fn subscription(id: &str) -> Subscription {
+        Subscription {
+            id: id.into(),
+            name: "Original".into(),
+            color: "blue".into(),
+            visible: true,
+            refresh_minutes: 30,
+            etag: None,
+            last_modified: None,
+            last_success: None,
+            last_error: None,
+            cache_file: format!("{id}.ics"),
+            revision: 0,
+            secret_id: None,
+        }
+    }
+
+    #[test]
+    fn rejected_calendar_mutations_keep_error_codes_and_original_state() {
+        let dir = tempfile::tempdir().unwrap();
+        Settings::try_update_in(dir.path(), |settings| {
+            let mut store = SubscriptionStore::default();
+            store
+                .vaults
+                .insert("vault".into(), vec![subscription("one")]);
+            settings
+                .other
+                .insert(SETTINGS_KEY.into(), serde_json::to_value(store)?);
+            Ok(((), true))
+        })
+        .unwrap();
+        let original = fs::read(dir.path().join("settings.json")).unwrap();
+        let rejected: CmdResult<()> = Settings::try_update_in(dir.path(), |settings| {
+            mutate_settings(settings, |store| {
+                store.vaults.clear();
+                Err(Error::NotFound("calendar subscription/missing".into()))
+            })
+        })
+        .unwrap();
+        assert_eq!(rejected.unwrap_err().code(), "not_found");
+        assert_eq!(
+            fs::read(dir.path().join("settings.json")).unwrap(),
+            original
+        );
+
+        let mut malformed = Settings::default();
+        malformed
+            .other
+            .insert(SETTINGS_KEY.into(), serde_json::json!({"vaults": false}));
+        let (result, changed) = mutate_settings(&mut malformed, |_| Ok(())).unwrap();
+        assert!(!changed);
+        assert_eq!(result.unwrap_err().code(), "invalid");
+    }
+
+    #[test]
+    fn old_metadata_keeps_its_existing_keychain_identity() {
+        let mut value = serde_json::to_value(subscription("legacy")).unwrap();
+        value.as_object_mut().unwrap().remove("revision");
+        value.as_object_mut().unwrap().remove("secret_id");
+        let decoded: Subscription = serde_json::from_value(value).unwrap();
+        assert_eq!(decoded.revision, 0);
+        assert_eq!(
+            decoded.secret_id.as_deref().unwrap_or(&decoded.id),
+            "legacy"
+        );
+    }
+
+    #[test]
+    fn delayed_refresh_preserves_rename_add_and_delete() {
+        let before = subscription("one");
+        let mut fetched = before.clone();
+        fetched.last_success = Some("now".into());
+        fetched.cache_file = "download.ics".into();
+        let mut store = SubscriptionStore::default();
+        store.vaults.insert("vault".into(), vec![before.clone()]);
+        let barrier = std::sync::Barrier::new(2);
+        std::thread::scope(|scope| {
+            let worker = scope.spawn(|| {
+                barrier.wait(); // download started
+                barrier.wait(); // user edits completed
+                fetched
+            });
+            barrier.wait();
+            store.vaults.get_mut("vault").unwrap()[0].name = "Renamed".into();
+            store
+                .vaults
+                .get_mut("vault")
+                .unwrap()
+                .push(subscription("two"));
+            barrier.wait();
+            let fetched = worker.join().unwrap();
+            assert!(merge_refresh(&mut store, "vault", &before, &fetched));
+            assert_eq!(store.vaults["vault"][0].name, "Renamed");
+            assert_eq!(
+                store.vaults["vault"][0].last_success.as_deref(),
+                Some("now")
+            );
+            assert_eq!(store.vaults["vault"][1].id, "two");
+            store.vaults.get_mut("vault").unwrap().remove(0);
+            assert!(!merge_refresh(&mut store, "vault", &before, &fetched));
+            assert_eq!(store.vaults["vault"].len(), 1);
+        });
+    }
+
+    #[test]
+    fn replaced_feed_and_overlapping_refresh_reject_stale_downloads() {
+        let before = subscription("one");
+        let mut fetched = before.clone();
+        fetched.cache_file = "download.ics".into();
+        let mut store = SubscriptionStore::default();
+        store.vaults.insert("vault".into(), vec![before.clone()]);
+        assert!(merge_refresh(&mut store, "vault", &before, &fetched));
+        assert!(!merge_refresh(&mut store, "vault", &before, &fetched));
+        store.vaults.get_mut("vault").unwrap()[0] = before.clone();
+        invalidate_feed(&mut store.vaults.get_mut("vault").unwrap()[0]);
+        assert!(!merge_refresh(&mut store, "vault", &before, &fetched));
+        assert!(store.vaults["vault"][0].last_success.is_none());
+    }
+
+    #[test]
+    fn invalid_subscription_metadata_is_not_defaults() {
+        let mut settings = Settings::default();
+        settings
+            .other
+            .insert(SETTINGS_KEY.into(), serde_json::json!({"vaults": false}));
+        assert!(decode(&settings).is_err());
+    }
+
     #[test]
     fn malformed_cached_calendars_keep_the_list_and_other_calendars_events() {
         let directory = tempfile::tempdir().unwrap();
@@ -554,6 +779,8 @@ mod tests {
             last_modified: None,
             last_success: None,
             last_error: Some("Refresh unavailable; using cache".into()),
+            revision: 0,
+            secret_id: None,
             cache_file: "good.ics".into(),
         };
         let mut items = vec![
@@ -561,6 +788,8 @@ mod tests {
             Subscription {
                 id: "bad".into(),
                 name: "Broken calendar".into(),
+                revision: 0,
+                secret_id: None,
                 cache_file: "bad.ics".into(),
                 last_error: None,
                 ..base.clone()
@@ -568,6 +797,8 @@ mod tests {
             Subscription {
                 id: "corrupt".into(),
                 name: "Corrupt calendar".into(),
+                revision: 0,
+                secret_id: None,
                 cache_file: "corrupt.ics".into(),
                 last_error: None,
                 ..base
@@ -621,6 +852,8 @@ mod tests {
             last_modified: None,
             last_success: None,
             last_error: None,
+            revision: 0,
+            secret_id: None,
             cache_file: "id.ics".into(),
         };
         let encoded = serde_json::to_string(&subscription).unwrap();

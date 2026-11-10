@@ -100,16 +100,18 @@ pub fn start(
                         progress(done, total, false, false);
                     }
                 };
+                // Stops an obsolete scan between batches once this vault is replaced.
+                let current = || !stopped.load(Ordering::Acquire);
                 let result = if full {
-                    ws.rebuild_index(report)
+                    ws.rebuild_index_cancellable(report, current)
                 } else {
-                    ws.sync(report)
+                    ws.sync_cancellable(report, current)
                 };
-                if result.is_ok() {
-                    full = false;
-                }
                 if stopped.load(Ordering::Acquire) {
                     break;
+                }
+                if result.is_ok() {
+                    full = false;
                 }
                 progress(0, 0, true, result.is_err());
                 if ws.index_health().status == IndexStatus::Healthy {

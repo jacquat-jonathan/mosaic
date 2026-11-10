@@ -92,7 +92,7 @@ export function App() {
   if (booting) return <Welcome loading />;
   return (
     <>
-      {vault ? <Main /> : <Welcome />}
+      {vault ? <Main key={vault.session?.generation ?? vault.root} /> : <Welcome />}
       <ContextMenu />
       <ConfirmDialog />
       <PromptDialog />
@@ -115,8 +115,8 @@ function Main() {
   const rightWidth = useUi((s) => s.rightWidth);
   const indexing = useVault((s) => s.indexing);
   const active = useWorkspace((s) => s.panes.find((p) => p.id === s.focused)?.active ?? null);
-  useEffect(() => startAttention(vault.root), [vault.root]);
-  useEffect(() => startNotifications(vault.root), [vault.root]);
+  useEffect(() => startAttention(vault.root), [vault]);
+  useEffect(() => startNotifications(vault.root), [vault]);
   useEffect(() => {
     let current = true;
     void api.updateStatus().then(
@@ -158,7 +158,7 @@ function Main() {
     if (window.matchMedia("(max-width: 800px)").matches) useUi.setState({ leftSidebar: false });
   }, [active]);
   // Agents' proposals arrive from another process: check for them while this vault is open.
-  useEffect(() => useReview.getState().watch(), [vault.root]);
+  useEffect(() => useReview.getState().watch(), [vault]);
   return (
     <div className={`shell ${left ? "" : "no-left"}`}>
       <WindowChrome vaultName={vault.name} version={version} />

@@ -26,7 +26,7 @@ impl Host {
             &support.path().join("history.db"),
         );
         let state = AppState::default();
-        *state.ws.write().unwrap() = Some(Arc::new(ws));
+        state.install(Arc::new(ws));
         let app = mock_builder()
             .manage(state)
             .invoke_handler(tauri::generate_handler![
@@ -185,9 +185,11 @@ fn event_payloads_serialize_through_tauri_emitter() {
             ))
         });
     }
+    let session = crate::VaultSession::mock();
     app.emit(
         "index-progress",
         IndexProgress {
+            session: session.clone(),
             done: 2,
             total: 3,
             finished: false,
@@ -197,13 +199,16 @@ fn event_payloads_serialize_through_tauri_emitter() {
     .unwrap();
     app.emit(
         "vault-changed",
-        mosaic_core::watch::Changes {
-            paths: vec!["Note.md".into()],
-            root_missing: false,
+        crate::VaultChanges {
+            session: session.clone(),
+            changes: mosaic_core::watch::Changes {
+                paths: vec!["Note.md".into()],
+                root_missing: false,
+            },
         },
     )
     .unwrap();
-    app.emit("history-changed", ()).unwrap();
+    app.emit("history-changed", &session).unwrap();
     for (name, payload) in received.lock().unwrap().iter() {
         assert_eq!(payload, &fixture[name]);
     }

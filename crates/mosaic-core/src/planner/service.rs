@@ -8,8 +8,17 @@ use crate::error::{Error, Result};
 use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
+/// A stable, machine-readable explanation of partial workspace availability.
+#[derive(Clone, Debug, serde::Serialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+pub struct PlannerUnavailable {
+    pub code: String,
+    pub message: String,
+    pub can_restore: bool,
+}
+
 pub struct PlannerService {
-    store: OnceLock<std::result::Result<Mutex<PlannerStore>, String>>,
+    store: OnceLock<std::result::Result<Mutex<PlannerStore>, PlannerUnavailable>>,
     /// The vault whose `.mosaic/planner.sqlite3` this is; `None`: in memory (tests).
     root: Option<PathBuf>,
     /// Who changes the planner through this service, stamped on every activity entry.
@@ -31,6 +40,16 @@ impl PlannerService {
         self.store().map(drop)
     }
 
+    /// Opening a planner is optional for note access. Failed stores remain disabled until the
+    /// workspace is reopened, so recovery never replaces a database with a live connection.
+    pub fn unavailable(&self) -> Option<PlannerUnavailable> {
+        let _ = self.open();
+        self.store
+            .get()
+            .and_then(|result| result.as_ref().err())
+            .cloned()
+    }
+
     /// Who acts through this service: `source` is `app`, `cli` or `agent`; `actor` the agent's name.
     pub(crate) fn set_actor_context(&self, source: Option<&str>, actor: Option<&str>) {
         let mut context = self.context.lock().unwrap_or_else(|p| p.into_inner());
@@ -50,7 +69,20 @@ impl PlannerService {
                 None => PlannerStore::in_memory(),
             }
             .map(Mutex::new)
-            .map_err(|e| e.to_string())
+            .map_err(|e| PlannerUnavailable {
+                code: match e.code() {
+                    "planner_corrupt" => "planner_corrupt",
+                    "planner_newer_schema" => "planner_newer_schema",
+                    _ => "planner_unavailable",
+                }
+                .into(),
+                message: e.to_string(),
+                can_restore: e.code() == "planner_corrupt"
+                    && self
+                        .root
+                        .as_ref()
+                        .is_some_and(|root| super::schema::backup_available(root)),
+            })
         });
         match store {
             Ok(m) => {
@@ -63,7 +95,14 @@ impl PlannerService {
                 guard.set_activity_context(&source, actor.as_deref())?;
                 Ok(guard)
             }
-            Err(e) => Err(Error::Invalid(format!("the planner is unavailable: {e}"))),
+            Err(e) => Err(Error::Planner {
+                code: match e.code.as_str() {
+                    "planner_corrupt" => "planner_corrupt",
+                    "planner_newer_schema" => "planner_newer_schema",
+                    _ => "planner_unavailable",
+                },
+                message: format!("the planner is unavailable: {}", e.message),
+            }),
         }
     }
 }

@@ -88,6 +88,7 @@ export const commands = {
 	name: string,
 	/**  Set when undo history and proposals can't be saved for this vault (shown as a banner). */
 	history_warning?: string | null,
+	planner_unavailable?: PlannerUnavailable | null,
 } | null>("current_vault"),
 	lastVault: () => __TAURI_INVOKE<string | null>("last_vault"),
 	listDir: (dir: string, recursive: boolean) => __TAURI_INVOKE<Entry[]>("list_dir", { dir, recursive }),
@@ -686,6 +687,13 @@ export type PlannerTask = {
 	trashed_at: string | null,
 };
 
+/**  A stable, machine-readable explanation of partial workspace availability. */
+export type PlannerUnavailable = {
+	code: string,
+	message: string,
+	can_restore: boolean,
+};
+
 /**  A change an agent proposed in a folder under review. */
 export type Proposal = {
 	id: number,
@@ -1002,6 +1010,7 @@ export type VaultInfo_Deserialize = {
 	name: string,
 	/**  Set when undo history and proposals can't be saved for this vault (shown as a banner). */
 	history_warning: string | null,
+	planner_unavailable: PlannerUnavailable | null,
 };
 
 export type VaultInfo_Serialize = {
@@ -1009,6 +1018,7 @@ export type VaultInfo_Serialize = {
 	name: string,
 	/**  Set when undo history and proposals can't be saved for this vault (shown as a banner). */
 	history_warning?: string | null,
+	planner_unavailable?: PlannerUnavailable | null,
 };
 
 export type VaultPreferences = {

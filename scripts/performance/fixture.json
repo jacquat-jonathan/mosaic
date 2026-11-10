@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "core": { "notes": 5000, "folders": 50, "wordsPerNote": 60, "searchesPerRepetition": 20, "burstEdits": 100, "concurrentIndexers": 2, "editsPerIndexer": 20, "profile": "release", "database": "fresh per repetition" },
+  "browser": { "backend": "in-memory mock", "server": "Vite development", "notes": 1000, "burstEdits": 50, "repetitions": 5, "viewport": "1280x900", "browser": "Chrome" },
+  "budget": { "mode": "reporting-only", "relativeIncrease": 0.25, "minimumTimingDeltaMs": 5, "minimumSizeDeltaBytes": 1024, "minimumTimingSamples": 5 }
+}

@@ -37,7 +37,11 @@ if (import.meta.env.DEV) {
           window.dispatchEvent(new Event("mock-settings-changed"));
         },
         external(paths: string[]) {
-          window.dispatchEvent(new CustomEvent("mock-vault-changed", { detail: { paths, root_missing: false } }));
+          window.dispatchEvent(
+            new CustomEvent("mock-vault-changed", {
+              detail: { paths, root_missing: false, session: vault.useVault.getState().vault?.session },
+            }),
+          );
         },
       },
     });

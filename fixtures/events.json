@@ -1,6 +1,11 @@
 {
-  "index-progress": { "done": 2, "total": 3, "finished": false, "failed": false },
-  "vault-changed": { "paths": ["Note.md"], "root_missing": false },
-  "history-changed": null,
-  "planner-changed": { "root": "/mock/vault", "revision": 1, "affected_ids": ["task-1"] }
+  "index-progress": { "session": { "vault_id": "mock-vault", "root": "/mock/vault", "generation": "0" }, "done": 2, "total": 3, "finished": false, "failed": false },
+  "vault-changed": { "session": { "vault_id": "mock-vault", "root": "/mock/vault", "generation": "0" }, "paths": ["Note.md"], "root_missing": false },
+  "history-changed": { "vault_id": "mock-vault", "root": "/mock/vault", "generation": "0" },
+  "planner-changed": {
+    "session": { "vault_id": "mock-vault", "root": "/mock/vault", "generation": "0" },
+    "root": "/mock/vault",
+    "revision": 1,
+    "affected_ids": ["task-1"]
+  }
 }

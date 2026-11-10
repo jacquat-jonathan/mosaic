@@ -68,7 +68,9 @@ test("a vault internet default permits listed origins without enabling scripts, 
   expect(publishedPolicy()).toContain("script-src 'none'");
   fireEvent.click(screen.getByRole("button", { name: "Internet blocked for this page" }));
   await waitFor(() =>
-    expect(publishedPolicy()).toContain("connect-src data: asset: http://asset.localhost https://cdn.example.com"),
+    expect(publishedPolicy()).toContain(
+      "connect-src data: mosaic-asset: http://mosaic-asset.localhost https://cdn.example.com",
+    ),
   );
   expect(publishedPolicy()).toContain("script-src 'none'");
 });

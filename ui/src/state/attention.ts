@@ -1,3 +1,4 @@
+import { vaultOperation } from "./vaultSession";
 import { create } from "zustand";
 import { api, inTauri, onTesseraChanged, onVaultChanged } from "../ipc/api";
 import { vaultPrefs } from "./vaultPreferences";
@@ -35,9 +36,10 @@ export const useAttention = create<Attention>((set) => ({
   unseenFailureIds: [],
   async refresh() {
     const current = generation;
+    const sameVault = vaultOperation();
     try {
       const [status, agents, claude] = await Promise.all([api.tesseraStatus(), api.agents(), api.chatCheck()]);
-      if (generation !== current) return;
+      if (generation !== current || !sameVault()) return;
       const failures = status.runs.filter((r) => r.status === "failed").map((r) => r.id);
       const arrived = initialized && failures.some((id) => !knownFailures.has(id));
       knownFailures = new Set(failures);
@@ -57,7 +59,7 @@ export const useAttention = create<Attention>((set) => ({
         unseenFailureIds: failures.filter((id) => !seenFailures.has(id)),
       });
     } catch (e) {
-      if (generation === current) set({ error: errorMessage(e) });
+      if (generation === current && sameVault()) set({ error: errorMessage(e) });
     }
   },
   markFailuresSeen(ids) {

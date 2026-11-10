@@ -83,12 +83,14 @@ export function errorMessage(e: unknown): string {
 export type ChatEvent = B.ChatEvent;
 
 export interface PlannerChanged {
+  session?: import("../state/vaultSession").VaultSession;
   root: string;
   revision: number;
   affected_ids: string[];
 }
 
 export interface IndexProgress {
+  session?: import("../state/vaultSession").VaultSession;
   failed?: boolean;
   done: number;
   total: number;

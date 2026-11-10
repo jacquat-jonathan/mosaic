@@ -669,7 +669,8 @@ test("iCalendar import keeps readable events and explains skipped entries", asyn
   await openCalendar(page);
   const chooser = page.waitForEvent("filechooser");
   await page.getByRole("button", { name: "Import iCalendar file", exact: true }).click();
-  const day = new Date().toISOString().slice(0, 10).replaceAll("-", "");
+  // Use the page's fixed calendar clock, not the runner's, so the event lands on the shown day.
+  const day = await page.evaluate(() => new Date().toISOString().slice(0, 10).replaceAll("-", ""));
   const content = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",

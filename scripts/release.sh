@@ -16,12 +16,21 @@ newer "$version" "$current" || { echo "$version isn't newer than the current ver
 [[ -z "$(git status --porcelain --untracked-files=no)" ]] || { echo "Commit or stash your changes first." >&2; exit 1; }
 git rev-parse -q --verify "refs/tags/v$version" >/dev/null && { echo "Tag v$version already exists." >&2; exit 1; }
 
-# The Unreleased section must say what changed: at least one bullet before the next heading.
-notes="$(awk '/^## Unreleased/{on=1; next} /^## /{on=0} on && /^- /' CHANGELOG.md)"
+# Preparation may add release notes, but may not smuggle unmerged source into a release.
+git symbolic-ref -q HEAD >/dev/null || { echo "Prepare on a branch, not detached HEAD." >&2; exit 1; }
+main="$(git rev-parse refs/remotes/origin/main)"
+remote_main="$(git ls-remote origin refs/heads/main | cut -f1)"
+[[ "$main" == "$remote_main" ]] || { echo "origin/main is stale; fetch first." >&2; exit 1; }
+git merge-base --is-ancestor "$main" HEAD || { echo "Start from updated origin/main." >&2; exit 1; }
+[[ -z "$(git diff --name-only "$main" HEAD -- . ':!CHANGELOG.md')" ]] || { echo "Unmerged source changes: only release-note preparation may differ from main." >&2; exit 1; }
+remote_tag="$(git ls-remote origin "refs/tags/v$version")"
+[[ -z "$remote_tag" ]] || { echo "Remote tag already exists." >&2; exit 1; }
+
+notes="$(node scripts/release-notes.mjs CHANGELOG.md Unreleased)"
 [[ -n "$notes" ]] || { echo "CHANGELOG.md has nothing under \"## Unreleased\". Describe the changes first." >&2; exit 1; }
 
 today="$(date +%Y-%m-%d)"
-perl -0pi -e "s/^## Unreleased\n/## Unreleased\n\n## $version — $today\n/m" CHANGELOG.md
+perl -0pi -e "s/^## Unreleased[ \t]*\r?\n/## Unreleased\n\n## $version — $today\n/m" CHANGELOG.md
 # Keep a blank line before every release heading, however the notes were added.
 perl -0pi -e 's/([^\n])\n(## )/$1\n\n$2/g' CHANGELOG.md
 perl -0pi -e "s/(\[workspace\.package\]\n(?:[^\[].*\n)*?)version = \"[^\"]*\"/\${1}version = \"$version\"/" Cargo.toml

@@ -7,6 +7,7 @@ import { createHash, createPrivateKey, createPublicKey, sign, verify } from "nod
 import { readFileSync, writeFileSync, statSync, existsSync } from "node:fs";
 import { resolve, join } from "node:path";
 import assert from "node:assert/strict";
+import { releaseNotes, releaseDocument } from "./release-notes.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 const config = JSON.parse(readFileSync(join(root, "src-tauri/tauri.conf.json"), "utf8"));
@@ -35,6 +36,12 @@ const manifest = JSON.parse(bytes);
 const archive = `Mosaic-${version}-universal.tar.gz`;
 const dmg = `Mosaic-${version}-universal.dmg`;
 assert.equal(manifest.version, version, "manifest version");
+const sourceNotes = releaseNotes(readFileSync(join(root, "CHANGELOG.md"), "utf8"), version);
+assert.deepEqual(manifest.notes, sourceNotes.notes, "manifest notes differ from source changelog");
+assert.equal(manifest.date, sourceNotes.date, "manifest date differs from source changelog");
+assert.equal(manifest.minimum_macos, "12.0", "manifest minimum macOS");
+assert.deepEqual(manifest.architectures, ["arm64", "x86_64"], "manifest architectures");
+assert.equal(readFileSync(join(dir, "release-notes.md"), "utf8"), releaseDocument(sourceNotes.notes), "publication notes differ from source changelog");
 assert.equal(manifest.bundle_id, config.identifier, "manifest bundle id");
 assert.equal(manifest.archive, archive, "manifest archive name");
 assert.equal(manifest.sha256, sha(join(dir, archive)), "the archive doesn't match its manifest");

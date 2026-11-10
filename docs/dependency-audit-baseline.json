@@ -23,12 +23,14 @@
       "cvss_vector": "CVSS:4.0/AV:L/AC:L/AT:N/PR:N/UI:P/VC:H/VI:N/VA:N/SC:N/SI:N/SA:N",
       "severity": "Not numerically scored by this JSON report; assess the advisory before release",
       "owner": "jacquat-jonathan",
-      "disposition": "fix-required",
+      "disposition": "fixed",
       "dependency_paths": [
         "mosaic-app -> mosaic-core -> rusqlite 0.40.2 -> libsqlite3-sys 0.38.2",
         "mosaic-cli -> mosaic-core -> rusqlite 0.40.2 -> libsqlite3-sys 0.38.2"
       ],
-      "reachability": "Target graph confirmed; advisory-specific feature/function reachability still requires maintainer assessment"
+      "reachability": "Target graph confirmed; advisory-specific feature/function reachability still requires maintainer assessment",
+      "resolved_version": "0.39.1",
+      "resolution": "Patched dependency update; validated by the resolution_scan below. Original version and dependency paths above describe the initial failing baseline."
     },
     {
       "id": "RUSTSEC-2026-0457",
@@ -40,11 +42,13 @@
       "cvss_vector": null,
       "severity": "Not numerically scored by this JSON report; assess the advisory before release",
       "owner": "jacquat-jonathan",
-      "disposition": "fix-required",
+      "disposition": "fixed",
       "dependency_paths": [
         "mosaic-cli -> rmcp 3.5.0"
       ],
-      "reachability": "Target graph confirmed; advisory-specific feature/function reachability still requires maintainer assessment"
+      "reachability": "Target graph confirmed; advisory-specific feature/function reachability still requires maintainer assessment",
+      "resolved_version": "3.9.0",
+      "resolution": "Patched dependency update; validated by the resolution_scan below. Original version and dependency paths above describe the initial failing baseline."
     },
     {
       "id": "RUSTSEC-2026-0462",
@@ -56,11 +60,13 @@
       "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:N/A:H",
       "severity": "Not numerically scored by this JSON report; assess the advisory before release",
       "owner": "jacquat-jonathan",
-      "disposition": "fix-required",
+      "disposition": "fixed",
       "dependency_paths": [
         "mosaic-cli -> rmcp 3.5.0"
       ],
-      "reachability": "Target graph confirmed; advisory-specific feature/function reachability still requires maintainer assessment"
+      "reachability": "Target graph confirmed; advisory-specific feature/function reachability still requires maintainer assessment",
+      "resolved_version": "3.9.0",
+      "resolution": "Patched dependency update; validated by the resolution_scan below. Original version and dependency paths above describe the initial failing baseline."
     },
     {
       "id": "RUSTSEC-2026-0461",
@@ -72,11 +78,13 @@
       "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
       "severity": "Not numerically scored by this JSON report; assess the advisory before release",
       "owner": "jacquat-jonathan",
-      "disposition": "fix-required",
+      "disposition": "fixed",
       "dependency_paths": [
         "mosaic-cli -> rmcp 3.5.0"
       ],
-      "reachability": "Target graph confirmed; advisory-specific feature/function reachability still requires maintainer assessment"
+      "reachability": "Target graph confirmed; advisory-specific feature/function reachability still requires maintainer assessment",
+      "resolved_version": "3.9.0",
+      "resolution": "Patched dependency update; validated by the resolution_scan below. Original version and dependency paths above describe the initial failing baseline."
     },
     {
       "id": "RUSTSEC-2026-0382",
@@ -89,13 +97,15 @@
       "cvss_vector": null,
       "severity": "Not numerically scored by this JSON report; assess the advisory before release",
       "owner": "jacquat-jonathan",
-      "disposition": "fix-required",
+      "disposition": "fixed",
       "dependency_paths": [
         "mosaic-app -> reqwest 0.12.28 -> hyper-rustls 0.27.10 -> rustls 0.23.46 -> rustls-webpki 0.103.15",
         "mosaic-app -> reqwest 0.12.28 -> rustls 0.23.46 -> rustls-webpki 0.103.15",
         "mosaic-app -> reqwest 0.12.28 -> tokio-rustls 0.26.6 -> rustls 0.23.46 -> rustls-webpki 0.103.15"
       ],
-      "reachability": "Target graph confirmed; advisory-specific feature/function reachability still requires maintainer assessment"
+      "reachability": "Target graph confirmed; advisory-specific feature/function reachability still requires maintainer assessment",
+      "resolved_version": "0.103.16",
+      "resolution": "Patched dependency update; validated by the resolution_scan below. Original version and dependency paths above describe the initial failing baseline."
     },
     {
       "id": "RUSTSEC-2026-0381",
@@ -107,12 +117,14 @@
       "cvss_vector": null,
       "severity": "Not numerically scored by this JSON report; assess the advisory before release",
       "owner": "jacquat-jonathan",
-      "disposition": "fix-required",
+      "disposition": "fixed",
       "dependency_paths": [
         "mosaic-app -> reqwest 0.12.28 -> hyper-rustls 0.27.10 -> webpki-roots 1.0.9",
         "mosaic-app -> reqwest 0.12.28 -> webpki-roots 1.0.9"
       ],
-      "reachability": "Target graph confirmed; advisory-specific feature/function reachability still requires maintainer assessment"
+      "reachability": "Target graph confirmed; advisory-specific feature/function reachability still requires maintainer assessment",
+      "resolved_version": "1.0.10",
+      "resolution": "Patched dependency update; validated by the resolution_scan below. Original version and dependency paths above describe the initial failing baseline."
     }
   ],
   "warnings": [
@@ -188,5 +200,27 @@
       "disposition": "investigate-and-update-parent",
       "cvss_vector": null
     }
-  ]
+  ],
+  "resolution_scan": {
+    "date": "2026-11-10",
+    "scanner": "cargo-audit 0.22.2",
+    "database": {
+      "advisory-count": 1446,
+      "last-commit": "28d73fc95e5972af3403225a217def57dcaba3c4",
+      "last-updated": "2026-11-10T14:45:03+01:00"
+    },
+    "cargo_lock_sha256": "87ee41ecaaedcbfb8ef5047a716f587e9d7667a257f40756f918e2e8599be0a6",
+    "tool_status": {
+      "cargo_audit": 0,
+      "pnpm_audit": 0
+    },
+    "rust_vulnerability_count": 0,
+    "node_findings": 0,
+    "warnings": {
+      "unmaintained": 5,
+      "unsound": 2,
+      "yanked": 1
+    },
+    "suppressed_advisories": []
+  }
 }

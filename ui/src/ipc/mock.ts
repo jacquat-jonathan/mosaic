@@ -45,6 +45,7 @@ import { fillTemplate } from "../daily";
 interface MockFile {
   content: string;
   mtime: number;
+  unreadable?: boolean;
 }
 
 const files = new Map<string, MockFile>();
@@ -790,6 +791,59 @@ function seed() {
 }
 seed();
 
+/** Isolated fixture world: unlike browser startup this contains no sample notes or planner state. */
+export function resetMock() {
+  files.clear();
+  dirs.clear();
+  templateConfigs.clear();
+  vaultPreferences.clear();
+  versions.length = 0;
+  proposals.length = 0;
+  plannerTasks.length = 0;
+  plannerEpics.length = 0;
+  plannerEvents.length = 0;
+  plannerWorkSessions.length = 0;
+  plannerActivities.length = 0;
+  plannerEventExceptions.clear();
+  importedIcal.clear();
+  plannerRevision = 0;
+  plannerId = 0;
+  agentRules = [];
+  bookmarks = [];
+  nextVersion = 1;
+  chatRuns = 0;
+  mockCalendarSubscriptions.length = 0;
+  tesseraRuns.length = 0;
+  tesseraPausedAgents.length = 0;
+  tesseraPaused = false;
+  tesseraMaxDepth = 3;
+  opened = false;
+  mockRoot = "/mock/vault";
+  for (const timer of updateTimers) clearTimeout(timer);
+  updateTimers = [];
+  updateBuilt = false;
+  updateRunning = false;
+}
+
+/** An external replacement after indexing: keep the indexed backlink, but reads now fail. */
+export function mockExternalDirectory(path: string) {
+  const file = files.get(norm(path));
+  if (!file) throw err("not_found", path);
+  file.unreadable = true;
+}
+
+/** Source boundary used by agent fixtures; ordinary UI commands intentionally bypass agent rules. */
+export async function mockAgentInvoke(cmd: string, args: Record<string, unknown>) {
+  if (cmd !== "read_file" && cmd !== "write_file") throw err("invalid", "Agent fixture supports read/write only");
+  const path = norm(args.path);
+  const access = agentRules
+    .filter((r) => path === r.path || path.startsWith(`${r.path}/`))
+    .sort((a, b) => b.path.length - a.path.length)[0]?.access;
+  if (access === "hidden") throw err(cmd === "read_file" ? "not_found" : "denied", "Unavailable path");
+  if (access === "read-only" && cmd !== "read_file") throw err("denied", "Read-only path");
+  return mockInvoke(cmd, args);
+}
+
 function addParents(p: string) {
   const parts = p.split("/");
   for (let i = 1; i < parts.length; i++) dirs.add(parts.slice(0, i).join("/"));
@@ -885,6 +939,11 @@ function notInMock(cmd: string): never {
 /** The mock backend: one function per command in ./bindings.ts, so the compiler checks every
  * result against the Rust types and fails when a command is added, renamed or removed. */
 export const mockCommands: typeof commands = {
+  indexHealth: async () => ({ status: "healthy", watching: true, diagnostic: null }),
+  rebuildIndex: async () => {
+    emit("index-health", { root: mockRoot, health: { status: "healthy", watching: true, diagnostic: null } });
+    return null;
+  },
   openVault: async (path) => {
     const a: Record<string, unknown> = { path };
     opened = true;
@@ -908,7 +967,7 @@ export const mockCommands: typeof commands = {
         `${m[1]}${a.done ? "x" : " "}${a.done ? m[3] : m[3].replace(/\s*<!--\s*mosaic:state=done\s*-->/g, "")}`;
       f.content = lines.join("\n");
       f.mtime = Date.now();
-      emit("vault-changed", { paths: [path] });
+      emit("vault-changed", { paths: [path], root_missing: false });
       return { path, hash: hash(f.content) };
     }
   },
@@ -926,7 +985,7 @@ export const mockCommands: typeof commands = {
       lines[i] = `${m[1]}${a.next === "done" ? "x" : " "}${m[3]}${annotatedTask(m[4], a.next as WorkflowState)}`;
       write(String(a.path), lines.join("\n"));
       track(String(a.path), "edited", lines.join("\n"));
-      emit("vault-changed", { paths: [path] });
+      emit("vault-changed", { paths: [path], root_missing: false });
       return { path, hash: hash(files.get(path)!.content) };
     }
   },
@@ -2085,7 +2144,7 @@ export const mockCommands: typeof commands = {
     if (accepted === null) files.delete(p.path);
     else write(p.path, accepted);
     track(p.path, p.action, accepted, { source: "agent", actor: p.actor });
-    emit("vault-changed", { paths: [p.path] });
+    emit("vault-changed", { paths: [p.path], root_missing: false });
     Object.assign(p, { status: "accepted", reason: null, decided: Date.now() });
     return p.path;
   },
@@ -2143,6 +2202,7 @@ export const mockCommands: typeof commands = {
       const p = norm(a.path);
       const f = files.get(p);
       if (!f) throw err("not_found", `not found: ${p}`);
+      if (f.unreadable) throw err("io", "Indexed file became a directory");
       const kind = kindOf(p);
       const text = !["image", "pdf", "other"].includes(kind);
       const out: FileContent = {
@@ -2363,6 +2423,7 @@ export const mockCommands: typeof commands = {
       const after = fileEntries();
       const back = (p: string) => (p === to ? from : p.startsWith(`${to}/`) ? `${from}${p.slice(to.length)}` : p);
       const updated: string[] = [];
+      const failed: { path: string; error: string }[] = [];
       for (const [path, f] of files) {
         if (!path.toLowerCase().endsWith(".md")) continue;
         const text = f.content.replace(/(!?\[\[)([^\]\n]+)(\]\])/g, (whole, open, inner, close) => {
@@ -2372,12 +2433,21 @@ export const mockCommands: typeof commands = {
           return `${open}${linkTextFor(move(old), after, path)}${inner.slice(inner.indexOf(target) + target.length)}${close}`;
         });
         if (text !== f.content) {
+          if (f.unreadable) {
+            failed.push({ path, error: "io: indexed file became a directory" });
+            continue;
+          }
           write(path, text);
           track(path, "edited", text);
           updated.push(path);
         }
       }
-      return { path: to, updated_links_in: updated, review: null };
+      return {
+        path: to,
+        updated_links_in: updated,
+        ...(failed.length ? { failed_links_in: failed } : {}),
+        review: null,
+      };
     }
   },
   deletePath: async (path) => {
@@ -2612,6 +2682,8 @@ export const mockCommands: typeof commands = {
 /** Parameter order of each command, to call `mockCommands` with an arguments object. */
 const PARAMS: Record<string, [keyof typeof commands, string[]]> = {
   open_vault: ["openVault", ["path"]],
+  index_health: ["indexHealth", ["root"]],
+  rebuild_index: ["rebuildIndex", ["root"]],
   query_notes: ["queryNotes", ["query"]],
   set_task: ["setTask", ["path", "line", "text", "done"]],
   set_task_workflow: ["setTaskWorkflow", ["path", "line", "text", "expectedState", "next"]],
@@ -2751,7 +2823,7 @@ export async function mockInvoke(cmd: string, a: Record<string, unknown>): Promi
     case "import_file": {
       // Binary files are kept as data: URLs, like the mock's sample images.
       const p = norm(a.path);
-      const bytes = a.bytes as Uint8Array;
+      const bytes = new Uint8Array(a.bytes as ArrayLike<number>);
       const kind = kindOf(p);
       const content = ["image", "pdf", "other"].includes(kind)
         ? `data:${kind === "pdf" ? "application/pdf" : `image/${p.split(".").pop()}`};base64,${btoa(Array.from(bytes, (b) => String.fromCharCode(b)).join(""))}`

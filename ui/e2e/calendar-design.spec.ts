@@ -1,4 +1,5 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
+import { test } from "./calendar-clock";
 import { openMockVault } from "./mock-vault";
 async function openCalendar(page: Page, route = "today", withSession = false, withParent = false) {
   await page.goto("/");
@@ -848,7 +849,7 @@ for (const scale of [1, 1.5]) {
 }
 
 test.describe("current-time indicator", () => {
-  test.use({ timezoneId: "Europe/Zurich" });
+  test.use({ timezoneId: "Europe/Zurich", calendarNow: null });
   for (const route of ["today", "week"]) {
     for (const scale of [1, 1.5]) {
       test(`now line tracks time in ${route} at ${scale}x scale`, async ({ page }, testInfo) => {

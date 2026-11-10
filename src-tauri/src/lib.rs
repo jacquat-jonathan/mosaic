@@ -2,8 +2,11 @@
 
 mod calendar_subscriptions;
 mod chat;
+#[cfg(test)]
+mod contract_tests;
 mod html_preview;
 mod http;
+mod indexing;
 mod planner;
 mod tessera;
 mod update;
@@ -26,7 +29,7 @@ type CmdResult<T> = Result<T, Error>;
 #[derive(Default)]
 pub(crate) struct AppState {
     ws: RwLock<Option<Arc<Workspace>>>,
-    watcher: Mutex<Option<mosaic_core::watch::Watcher>>,
+    watcher: Mutex<Option<indexing::Monitor>>,
     /// Reports proposals and history written by agents (MCP servers, the CLI) as `history-changed`.
     history_watcher: Mutex<Option<mosaic_core::watch::Watcher>>,
     /// Reports planner writes made by agents or other Mosaic processes as `planner-changed`.
@@ -51,6 +54,8 @@ struct VaultInfo {
     /// Set when undo history and proposals can't be saved for this vault (shown as a banner).
     #[serde(skip_serializing_if = "Option::is_none")]
     history_warning: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    planner_unavailable: Option<mosaic_core::planner::PlannerUnavailable>,
 }
 
 #[derive(Serialize, Clone)]
@@ -58,6 +63,7 @@ struct IndexProgress {
     done: usize,
     total: usize,
     finished: bool,
+    failed: bool,
 }
 
 fn info(ws: &Workspace) -> VaultInfo {
@@ -69,6 +75,7 @@ fn info(ws: &Workspace) -> VaultInfo {
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default(),
         history_warning: ws.history_warning(),
+        planner_unavailable: ws.planner.unavailable(),
     }
 }
 
@@ -76,7 +83,6 @@ fn info(ws: &Workspace) -> VaultInfo {
 #[specta::specta]
 fn open_vault(app: AppHandle, state: State<AppState>, path: String) -> CmdResult<VaultInfo> {
     let ws = Workspace::open(&path)?;
-    ws.planner.open()?;
     activate(app, &state, ws)
 }
 
@@ -93,6 +99,7 @@ fn create_vault(parent: String, name: String) -> CmdResult<VaultInfo> {
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default(),
         history_warning: None,
+        planner_unavailable: None,
     })
 }
 
@@ -117,44 +124,111 @@ fn activate(app: AppHandle, state: &AppState, ws: Workspace) -> CmdResult<VaultI
         })
         .ok()
         .flatten();
+    let out = info(&ws);
     let planner_events = app.clone();
     let planner_ws = ws.clone();
     *state.planner_watcher.lock().expect("watcher lock poisoned") =
-        mosaic_core::watch::watch_planner(ws.vault.root(), move || {
-            let _ = planner::changed(&planner_events, &planner_ws, Vec::new());
-        })
-        .ok();
-    let out = info(&ws);
+        if out.planner_unavailable.is_none() {
+            mosaic_core::watch::watch_planner(ws.vault.root(), move || {
+                let _ = planner::changed(&planner_events, &planner_ws, Vec::new());
+            })
+            .ok()
+        } else {
+            None
+        };
     *state.ws.write().expect("workspace lock poisoned") = Some(ws.clone());
     tessera::reset_events(&app, &ws);
     tessera::start_scheduler(app.clone());
 
-    // External changes (AI, CLI, other editors) are pushed to the UI as they happen.
+    // One owner handles startup, errors and bounded reconciliation. Every callback checks the
+    // active Workspace, so dropping the monitor on switch cannot publish late old-vault results.
     let events = app.clone();
     let event_ws = ws.clone();
-    let watcher = mosaic_core::watch::watch(ws.clone(), move |changes| {
-        tessera::vault_changed(&events, &event_ws, &changes.paths);
-        let _ = events.emit("vault-changed", changes);
-    })
-    .ok();
-    *state.watcher.lock().expect("watcher lock poisoned") = watcher;
-
-    // Index in the background; the UI shows progress and search uses the last consistent index.
-    std::thread::spawn(move || {
-        let emit = |done, total, finished| {
-            let _ = app.emit(
-                "index-progress",
-                IndexProgress {
-                    done,
-                    total,
-                    finished,
-                },
-            );
-        };
-        let _ = ws.sync(|done, total| emit(done, total, false));
-        emit(0, 0, true);
-    });
+    let progress_app = app.clone();
+    let progress_ws = ws.clone();
+    let health_ws = ws.clone();
+    let monitor = indexing::start(
+        ws,
+        move |changes| {
+            if !is_active(&events, &event_ws) {
+                return;
+            }
+            tessera::vault_changed(&events, &event_ws, &changes.paths);
+            let _ = events.emit("vault-changed", changes);
+        },
+        move |done, total, finished, failed| {
+            if is_active(&progress_app, &progress_ws) {
+                let _ = progress_app.emit(
+                    "index-progress",
+                    IndexProgress {
+                        done,
+                        total,
+                        finished,
+                        failed,
+                    },
+                );
+            }
+        },
+        move |health| {
+            if is_active(&app, &health_ws) {
+                let _ = app.emit(
+                    "index-health",
+                    IndexHealthEvent {
+                        root: health_ws.vault.root().display().to_string(),
+                        health,
+                    },
+                );
+            }
+        },
+    );
+    *state.watcher.lock().expect("watcher lock poisoned") = Some(monitor);
     Ok(out)
+}
+
+fn is_active(app: &AppHandle, ws: &Arc<Workspace>) -> bool {
+    app.state::<AppState>()
+        .get()
+        .is_ok_and(|active| Arc::ptr_eq(&active, ws))
+}
+
+#[derive(Serialize, Clone)]
+struct IndexHealthEvent {
+    root: String,
+    health: mosaic_core::index_health::IndexHealth,
+}
+
+#[tauri::command(async)]
+#[specta::specta]
+fn index_health(
+    state: State<AppState>,
+    root: String,
+) -> CmdResult<mosaic_core::index_health::IndexHealth> {
+    let ws = state.get()?;
+    if ws.vault.root().to_string_lossy() != root {
+        return Err(Error::Invalid("vault changed".into()));
+    }
+    Ok(ws.index_health())
+}
+
+/// Requests an asynchronous full reindex. Does not reopen the vault or replace editor buffers.
+#[tauri::command(async)]
+#[specta::specta]
+fn rebuild_index(state: State<AppState>, root: String) -> CmdResult<()> {
+    let ws = state.ws.read().expect("workspace lock poisoned");
+    if ws
+        .as_ref()
+        .is_none_or(|ws| ws.vault.root().to_string_lossy() != root)
+    {
+        return Err(Error::Invalid("vault changed".into()));
+    }
+    state
+        .watcher
+        .lock()
+        .expect("watcher lock poisoned")
+        .as_ref()
+        .ok_or_else(|| Error::Invalid("index watcher is unavailable; reconnect the vault".into()))?
+        .request_rebuild();
+    Ok(())
 }
 
 #[derive(Serialize, specta::Type)]
@@ -724,6 +798,8 @@ pub(crate) fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
         .dangerously_cast_bigints_to_number()
         .commands(tauri_specta::collect_commands![
             open_vault,
+            index_health,
+            rebuild_index,
             query_notes,
             set_task,
             set_task_workflow,
@@ -929,5 +1005,98 @@ mod bindings_tests {
             current == fresh,
             "ui/src/ipc/bindings.ts is out of date: run MOSAIC_WRITE_BINDINGS=1 cargo test -p mosaic-app bindings_are_current"
         );
+    }
+}
+
+#[cfg(test)]
+mod planner_availability_tests {
+    use super::*;
+
+    fn assert_notes_work(ws: &Workspace) {
+        ws.files.create("available.md", "before").unwrap();
+        ws.files.write("available.md", "after", None).unwrap();
+        assert_eq!(
+            ws.files.read("available.md").unwrap().content.as_deref(),
+            Some("after")
+        );
+        assert!(ws.planner.summary().is_err());
+        assert!(
+            ws.planner
+                .create_task(mosaic_core::planner::CreateTask {
+                    title: "must not be saved".into(),
+                    description: String::new(),
+                    epic_id: None,
+                    parent_id: None,
+                    status: mosaic_core::planner::TaskStatus::New,
+                    due_date: None,
+                    estimate_minutes: None,
+                })
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn corrupt_planner_without_backup_does_not_block_notes() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join(".mosaic")).unwrap();
+        let database = dir.path().join(".mosaic/planner.sqlite3");
+        std::fs::write(&database, "damaged database").unwrap();
+        let ws = Workspace::open(dir.path()).unwrap();
+        let failure = info(&ws).planner_unavailable.unwrap();
+        assert_eq!(failure.code, "planner_corrupt");
+        assert!(!failure.can_restore);
+        assert_notes_work(&ws);
+        assert_eq!(
+            std::fs::read_to_string(database).unwrap(),
+            "damaged database"
+        );
+    }
+
+    #[test]
+    fn recoverable_planner_keeps_notes_available_and_preserves_damage_on_restore() {
+        let dir = tempfile::tempdir().unwrap();
+        drop(mosaic_core::planner::PlannerStore::open(dir.path()).unwrap());
+        let database = dir.path().join(".mosaic/planner.sqlite3");
+        std::fs::copy(&database, dir.path().join(".mosaic/planner-backup.sqlite3")).unwrap();
+        std::fs::write(&database, "damaged database").unwrap();
+        let ws = Workspace::open(dir.path()).unwrap();
+        let failure = info(&ws).planner_unavailable.unwrap();
+        assert_eq!(failure.code, "planner_corrupt");
+        assert!(failure.can_restore);
+        assert_notes_work(&ws);
+        let preserved =
+            mosaic_core::planner::PlannerStore::restore_last_backup(dir.path()).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(preserved).unwrap(),
+            "damaged database"
+        );
+        let reopened = Workspace::open(dir.path()).unwrap();
+        assert!(info(&reopened).planner_unavailable.is_none());
+        assert_eq!(
+            reopened
+                .files
+                .read("available.md")
+                .unwrap()
+                .content
+                .as_deref(),
+            Some("after")
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn inaccessible_planner_does_not_block_notes() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        drop(mosaic_core::planner::PlannerStore::open(dir.path()).unwrap());
+        let database = dir.path().join(".mosaic/planner.sqlite3");
+        std::fs::set_permissions(&database, std::fs::Permissions::from_mode(0o000)).unwrap();
+        let ws = Workspace::open(dir.path()).unwrap();
+        let failure = info(&ws).planner_unavailable;
+        std::fs::set_permissions(&database, std::fs::Permissions::from_mode(0o600)).unwrap();
+        let failure = failure.expect("test must run as an unprivileged user");
+        assert_eq!(failure.code, "planner_unavailable");
+        assert!(!failure.can_restore);
+        assert_notes_work(&ws);
     }
 }

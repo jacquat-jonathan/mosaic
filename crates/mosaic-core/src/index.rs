@@ -478,22 +478,70 @@ impl Index {
         Some(db.with_extension("db.watched"))
     }
 
-    /// Records that a watcher is keeping this index current. Called every few seconds by the
-    /// app; other processes (the MCP server) then skip their own walk of the vault.
-    pub fn mark_watched(&self) {
-        if let Some(p) = self.heartbeat_path()
-            && let Ok(f) = std::fs::File::options().create(true).append(true).open(p)
-        {
-            let _ = f.set_modified(std::time::SystemTime::now());
+    /// Invalidation epoch shared with other app/CLI processes. Heartbeats include this token;
+    /// an old watcher cannot resurrect freshness after another process fails to update the index.
+    pub(crate) fn freshness_token(&self) -> Result<String> {
+        let Some(db) = &self.path else {
+            return Ok(String::new());
+        };
+        let path = db.with_extension("db.dirty");
+        match std::fs::read_to_string(&path) {
+            Ok(token) => Ok(token),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
+            Err(e) => Err(Error::io("index freshness", e)),
         }
     }
 
-    /// Whether a watcher marked this index within `age`.
+    pub(crate) fn clear_watch(&self) {
+        if let Some(path) = self.heartbeat_path() {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+
+    pub(crate) fn invalidate_watch(&self) {
+        self.clear_watch();
+        if let Some(db) = &self.path {
+            let _ = self.write_marker(
+                &db.with_extension("db.dirty"),
+                &uuid::Uuid::new_v4().to_string(),
+            );
+        }
+    }
+
+    fn write_marker(&self, path: &Path, token: &str) -> std::io::Result<()> {
+        use std::io::Write;
+        let mut tmp = tempfile::NamedTempFile::new_in(path.parent().expect("index parent"))?;
+        tmp.write_all(token.as_bytes())?;
+        tmp.persist(path).map_err(|e| e.error)?;
+        Ok(())
+    }
+
+    pub(crate) fn mark_watched_token(&self, token: &str) -> Result<()> {
+        if self.freshness_token()? != token {
+            return Err(Error::Invalid("index requires reconciliation".into()));
+        }
+        if let Some(p) = self.heartbeat_path() {
+            self.write_marker(&p, token)
+                .map_err(|e| Error::io("index heartbeat", e))?;
+        }
+        Ok(())
+    }
+
+    /// Whether a watcher marked this index within `age`, with the current invalidation epoch.
     pub fn watched_within(&self, age: std::time::Duration) -> bool {
-        self.heartbeat_path()
-            .and_then(|p| std::fs::metadata(p).ok()?.modified().ok())
+        let Some(path) = self.heartbeat_path() else {
+            return false;
+        };
+        let fresh = std::fs::metadata(&path)
+            .ok()
+            .and_then(|m| m.modified().ok())
             .and_then(|t| t.elapsed().ok())
-            .is_some_and(|e| e < age)
+            .is_some_and(|e| e < age);
+        fresh
+            && std::fs::read_to_string(path)
+                .ok()
+                .zip(self.freshness_token().ok())
+                .is_some_and(|(watched, current)| watched == current)
     }
 
     /// `None` for an in-memory index.
@@ -656,7 +704,10 @@ impl Index {
         for e in changed {
             match vault.stat(&e.path) {
                 Ok(now) if !now.is_dir => Self::index_entry(&tx, vault, &now)?,
-                _ => Self::delete_rows(&tx, &e.path)?,
+                Ok(_) | Err(Error::NotFound(_)) | Err(Error::InvalidPath(_)) => {
+                    Self::delete_rows(&tx, &e.path)?
+                }
+                Err(error) => return Err(error),
             }
         }
         for path in removed {
@@ -724,10 +775,15 @@ impl Index {
         Self::delete_rows(tx, &e.path)?;
         let kind = e.kind.unwrap_or(FileKind::Other);
         let text = if kind.is_text() && e.size <= MAX_INDEXED_BYTES {
-            vault
-                .read_bytes(&e.path)
-                .ok()
-                .and_then(|b| String::from_utf8(b).ok())
+            // Invalid UTF-8 is a non-text file; an unreadable text file is an index failure.
+            // Do not store its metadata as successfully indexed and skip it on every later scan.
+            match vault.read_bytes(&e.path) {
+                Ok(bytes) => String::from_utf8(bytes).ok(),
+                Err(Error::NotFound(_)) => {
+                    return Self::delete_rows(tx, &e.path);
+                }
+                Err(error) => return Err(error),
+            }
         } else {
             None
         };
@@ -1275,6 +1331,14 @@ pub(crate) mod tests {
         );
     }
 
+    // PERFORMANCE WORKLOAD BEGIN search
+    fn perf_metric(name: &str, elapsed: std::time::Duration) {
+        eprintln!(
+            "MOSAIC_PERF {}",
+            serde_json::json!({"name": name, "unit": "ms", "value": elapsed.as_secs_f64() * 1000.0})
+        );
+    }
+
     /// Run with `cargo test --release -p mosaic-core -- --ignored bench`.
     #[test]
     #[ignore]
@@ -1299,21 +1363,45 @@ pub(crate) mod tests {
             fs::write(folder.join(format!("Note {i}.md")), body).unwrap();
         }
         let v = Vault::open(dir.path()).unwrap();
-        let mut idx = Index::open_at(&dir.path().join("../idx-bench.db")).unwrap();
+        let database = tempfile::tempdir().unwrap();
+        let mut idx = Index::open_at(&database.path().join("index.db")).unwrap();
         let t = std::time::Instant::now();
         idx.sync(&v, |_, _| {}).unwrap();
-        eprintln!("initial index of 5000 notes: {:?}", t.elapsed());
+        perf_metric("core.cold_index_5000", t.elapsed());
+        let t = std::time::Instant::now();
+        idx.sync(&v, |_, _| {}).unwrap();
+        perf_metric("core.warm_index_5000", t.elapsed());
         let t = std::time::Instant::now();
         let hits = idx.search("charlie golf", 50).unwrap();
         let took = t.elapsed();
         eprintln!("search: {took:?}, {} hits", hits.len());
         assert!(!hits.is_empty());
-        assert!(took < std::time::Duration::from_secs(1));
+        if std::env::var_os("MOSAIC_PERF_REPORT").is_none() {
+            assert!(took < std::time::Duration::from_secs(1));
+        }
+        perf_metric("core.search_5000", took);
+        for _ in 0..19 {
+            let t = std::time::Instant::now();
+            assert_eq!(idx.search("charlie golf", 50).unwrap().len(), hits.len());
+            perf_metric("core.search_5000", t.elapsed());
+        }
+        for i in 0..100 {
+            fs::write(
+                dir.path().join(format!("f{}/Note {i}.md", i % 50)),
+                format!("# Note {i}\n\nuniquebursttoken {i}"),
+            )
+            .unwrap();
+        }
+        let t = std::time::Instant::now();
+        idx.sync(&v, |_, _| {}).unwrap();
+        perf_metric("core.burst_100_sync", t.elapsed());
+        assert_eq!(idx.search("uniquebursttoken", 200).unwrap().len(), 100);
         let t = std::time::Instant::now();
         let b = idx.backlinks("f0/Note 0.md").unwrap();
         eprintln!("backlinks: {:?} ({} hits)", t.elapsed(), b.len());
-        let _ = fs::remove_file(dir.path().join("../idx-bench.db"));
     }
+
+    // PERFORMANCE WORKLOAD END search
 
     /// A temporary vault holding exactly `files`, indexed.
     fn vault_with(files: &[(&str, &str)]) -> (tempfile::TempDir, Index) {
@@ -1406,6 +1494,7 @@ pub(crate) mod tests {
         assert_eq!(one_line(&long).chars().count(), 201);
     }
 
+    // PERFORMANCE WORKLOAD BEGIN concurrent
     /// The app and the CLI index the same vault at once (two connections to one database, as two
     /// processes have): neither may fail with "database is locked", and both see the same result.
     /// Run with `scripts/bench.sh`.
@@ -1426,7 +1515,8 @@ pub(crate) mod tests {
             )
             .unwrap();
         }
-        let db = dir.path().join("../shared-index.db");
+        let database = tempfile::tempdir().unwrap();
+        let db = database.path().join("index.db");
         let t = std::time::Instant::now();
         let handles: Vec<_> = (0..2)
             .map(|n| {
@@ -1455,6 +1545,7 @@ pub(crate) mod tests {
             "two indexers, 5000 notes, 20 concurrent edit+sync rounds each: {:?}",
             t.elapsed()
         );
+        perf_metric("core.concurrent_indexers_5000_40_edits", t.elapsed());
         let check = Index::open_at(&db).unwrap();
         assert_eq!(
             check.search("round", 10).unwrap().len(),
@@ -1463,4 +1554,5 @@ pub(crate) mod tests {
         );
         let _ = fs::remove_file(&db);
     }
+    // PERFORMANCE WORKLOAD END concurrent
 }

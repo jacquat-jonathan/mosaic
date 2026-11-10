@@ -167,14 +167,12 @@ struct WorkflowAgent {
 
 /// The scheduler's state for a vault, in `vaults/<id>/tessera-state.json` (not settings.json, which
 /// it used to rewrite every 30 s).
-fn config(root: &Path) -> TesseraSettings {
-    VaultState::open(root)
-        .map(|state| state.tessera())
-        .unwrap_or_default()
+fn config(root: &Path) -> CmdResult<TesseraSettings> {
+    VaultState::open(root)?.tessera()
 }
 
-fn save(root: &Path, value: TesseraSettings) -> CmdResult<()> {
-    VaultState::open(root)?.set_tessera(&value)
+fn update<T>(root: &Path, change: impl FnOnce(&mut TesseraSettings) -> T) -> CmdResult<T> {
+    VaultState::open(root)?.update_tessera(change)
 }
 
 fn running_key(root: &Path, agent: &str) -> String {
@@ -203,7 +201,7 @@ pub fn tessera_status(
     tessera: State<TesseraState>,
 ) -> CmdResult<TesseraStatus> {
     let ws = state.get()?;
-    let mut cfg = config(ws.vault.root());
+    let mut cfg = config(ws.vault.root())?;
     {
         let transcripts = tessera.transcripts.lock().expect("tessera transcript lock");
         for run in &mut cfg.runs {
@@ -245,9 +243,7 @@ pub fn tessera_status(
 #[specta::specta]
 pub fn tessera_pause_all(app: AppHandle, state: State<AppState>, paused: bool) -> CmdResult<()> {
     let ws = state.get()?;
-    let mut cfg = config(ws.vault.root());
-    cfg.paused = paused;
-    save(ws.vault.root(), cfg)?;
+    update(ws.vault.root(), |cfg| cfg.paused = paused)?;
     if !paused {
         drain_queue(&app, &ws);
     }
@@ -263,12 +259,12 @@ pub fn tessera_pause_agent(
     paused: bool,
 ) -> CmdResult<()> {
     let ws = state.get()?;
-    let mut cfg = config(ws.vault.root());
-    cfg.paused_agents.retain(|n| n != &name);
-    if paused {
-        cfg.paused_agents.push(name);
-    }
-    save(ws.vault.root(), cfg)?;
+    update(ws.vault.root(), |cfg| {
+        cfg.paused_agents.retain(|n| n != &name);
+        if paused {
+            cfg.paused_agents.push(name);
+        }
+    })?;
     if !paused {
         drain_queue(&app, &ws);
     }
@@ -284,9 +280,7 @@ pub fn tessera_set_max_chain_depth(state: State<AppState>, depth: u8) -> CmdResu
         ));
     }
     let ws = state.get()?;
-    let mut cfg = config(ws.vault.root());
-    cfg.max_chain_depth = depth;
-    save(ws.vault.root(), cfg)
+    update(ws.vault.root(), |cfg| cfg.max_chain_depth = depth)
 }
 
 #[tauri::command(async)]
@@ -460,10 +454,14 @@ fn tick(app: &AppHandle, startup: bool) {
     };
     let root = ws.vault.root().to_path_buf();
     let now = Local::now();
-    let mut cfg = config(&root);
+    let Ok(cfg) = update(&root, |cfg| {
+        let previous = cfg.clone();
+        cfg.last_checked = cfg.last_checked.max(now.timestamp());
+        previous
+    }) else {
+        return;
+    };
     if cfg.last_checked == 0 {
-        cfg.last_checked = now.timestamp();
-        let _ = save(&root, cfg);
         return;
     }
     let last = Local
@@ -471,9 +469,7 @@ fn tick(app: &AppHandle, startup: bool) {
         .single()
         .unwrap_or(now);
     let paused = cfg.paused;
-    let paused_agents = cfg.paused_agents.clone();
-    cfg.last_checked = now.timestamp();
-    let _ = save(&root, cfg);
+    let paused_agents = cfg.paused_agents;
     if paused {
         return;
     }
@@ -511,7 +507,9 @@ fn new_id(app: &AppHandle, prefix: &str) -> String {
 }
 
 fn dispatch_created(app: &AppHandle, ws: &Arc<mosaic_core::Workspace>, path: &str, chain: Chain) {
-    let cfg = config(ws.vault.root());
+    let Ok(cfg) = config(ws.vault.root()) else {
+        return;
+    };
     if cfg.paused {
         return;
     }
@@ -542,7 +540,9 @@ fn enqueue_event(
     path: String,
     chain: Chain,
 ) {
-    let cfg = config(ws.vault.root());
+    let Ok(cfg) = config(ws.vault.root()) else {
+        return;
+    };
     let key = format!("{agent}\0created\0{path}");
     let reason = {
         let state = app.state::<TesseraState>();
@@ -601,7 +601,9 @@ fn enqueue_event(
 
 fn drain_queue(app: &AppHandle, ws: &Arc<mosaic_core::Workspace>) {
     loop {
-        let cfg = config(ws.vault.root());
+        let Ok(cfg) = config(ws.vault.root()) else {
+            return;
+        };
         if cfg.paused {
             return;
         }
@@ -679,34 +681,34 @@ fn record_skipped(
         .unwrap_or_else(|| agent.to_string());
     let now = Local::now().timestamp();
     let id = run_id(app);
-    let mut cfg = config(root);
-    cfg.runs.insert(
-        0,
-        AgentRun {
-            id,
-            agent: agent.into(),
-            title,
-            started: now,
-            finished: Some(now),
-            late: false,
-            trigger: Some(trigger.into()),
-            trigger_path: Some(path.into()),
-            chain_id: Some(chain.id.clone()),
-            chain_depth: Some(chain.depth),
-            model: None,
-            attempts: 0,
-            status: "skipped".into(),
-            answer: String::new(),
-            error: Some(reason),
-            proposals: 0,
-            changes: Vec::new(),
-            changed_paths: Vec::new(),
-            proposal_ids: Vec::new(),
-            transcript: RunTranscript::default(),
-        },
-    );
-    cfg.runs.truncate(100);
-    let _ = save(root, cfg);
+    let _ = update(root, |cfg| {
+        cfg.runs.insert(
+            0,
+            AgentRun {
+                id,
+                agent: agent.into(),
+                title,
+                started: now,
+                finished: Some(now),
+                late: false,
+                trigger: Some(trigger.into()),
+                trigger_path: Some(path.into()),
+                chain_id: Some(chain.id.clone()),
+                chain_depth: Some(chain.depth),
+                model: None,
+                attempts: 0,
+                status: "skipped".into(),
+                answer: String::new(),
+                error: Some(reason),
+                proposals: 0,
+                changes: Vec::new(),
+                changed_paths: Vec::new(),
+                proposal_ids: Vec::new(),
+                transcript: RunTranscript::default(),
+            },
+        );
+        cfg.runs.truncate(100);
+    });
     let _ = app.emit("tessera-changed", ());
 }
 
@@ -758,34 +760,34 @@ fn spawn(
     let _ = ws.mirror_agents();
     let root = ws.vault.root().to_path_buf();
     let id = run_id(app);
-    let mut cfg = config(&root);
-    cfg.runs.insert(
-        0,
-        AgentRun {
-            id,
-            agent: agent.name.clone(),
-            title: agent.title.clone(),
-            started: Local::now().timestamp(),
-            finished: None,
-            late: cause.late(),
-            trigger: Some(cause.label()),
-            trigger_path: cause.path().map(str::to_string),
-            chain_id: cause.chain().map(|c| c.id.clone()),
-            chain_depth: cause.chain().map(|c| c.depth),
-            model: agent.model.clone(),
-            attempts: 1,
-            status: "running".into(),
-            answer: String::new(),
-            error: None,
-            proposals: 0,
-            changes: Vec::new(),
-            changed_paths: Vec::new(),
-            proposal_ids: Vec::new(),
-            transcript: RunTranscript::default(),
-        },
-    );
-    cfg.runs.truncate(100);
-    save(&root, cfg)?;
+    update(&root, |cfg| {
+        cfg.runs.insert(
+            0,
+            AgentRun {
+                id,
+                agent: agent.name.clone(),
+                title: agent.title.clone(),
+                started: Local::now().timestamp(),
+                finished: None,
+                late: cause.late(),
+                trigger: Some(cause.label()),
+                trigger_path: cause.path().map(str::to_string),
+                chain_id: cause.chain().map(|c| c.id.clone()),
+                chain_depth: cause.chain().map(|c| c.depth),
+                model: agent.model.clone(),
+                attempts: 1,
+                status: "running".into(),
+                answer: String::new(),
+                error: None,
+                proposals: 0,
+                changes: Vec::new(),
+                changed_paths: Vec::new(),
+                proposal_ids: Vec::new(),
+                transcript: RunTranscript::default(),
+            },
+        );
+        cfg.runs.truncate(100);
+    })?;
     let _ = app.emit("tessera-changed", ());
 
     let handle = app.clone();
@@ -827,25 +829,25 @@ fn spawn(
             std::thread::sleep(Duration::from_secs(u64::from(attempts)));
         };
 
-        let mut cfg = config(&root);
-        if let Some(run) = cfg.runs.iter_mut().find(|r| r.id == id) {
-            run.finished = Some(Local::now().timestamp());
-            run.status = if output.error.is_some() {
-                "failed"
-            } else {
-                "done"
+        let _ = update(&root, |cfg| {
+            if let Some(run) = cfg.runs.iter_mut().find(|r| r.id == id) {
+                run.finished = Some(Local::now().timestamp());
+                run.status = if output.error.is_some() {
+                    "failed"
+                } else {
+                    "done"
+                }
+                .into();
+                run.answer = output.answer;
+                run.error = output.error;
+                run.proposals = output.proposals;
+                run.changes = output.changes;
+                run.changed_paths = output.changed_paths;
+                run.proposal_ids = output.proposal_ids;
+                run.attempts = attempts;
+                run.transcript = transcript;
             }
-            .into();
-            run.answer = output.answer;
-            run.error = output.error;
-            run.proposals = output.proposals;
-            run.changes = output.changes;
-            run.changed_paths = output.changed_paths;
-            run.proposal_ids = output.proposal_ids;
-            run.attempts = attempts;
-            run.transcript = transcript;
-        }
-        let _ = save(&root, cfg);
+        });
         handle
             .state::<TesseraState>()
             .transcripts
@@ -869,11 +871,11 @@ fn spawn(
 }
 
 fn update_attempts(root: &Path, id: u64, attempts: u8) {
-    let mut cfg = config(root);
-    if let Some(run) = cfg.runs.iter_mut().find(|r| r.id == id) {
-        run.attempts = attempts;
-    }
-    let _ = save(root, cfg);
+    let _ = update(root, |cfg| {
+        if let Some(run) = cfg.runs.iter_mut().find(|r| r.id == id) {
+            run.attempts = attempts;
+        }
+    });
 }
 
 fn launch(

@@ -528,3 +528,20 @@ describe("planner calendar container", () => {
     expect((childProps.importWizard as { fileName: string }).fileName).toBe("B.ics");
   });
 });
+
+it("disables planning controls when activation reports an unavailable planner", () => {
+  useVault.setState({
+    vault: {
+      root: "/vault",
+      name: "Vault",
+      planner_unavailable: {
+        code: "planner_corrupt",
+        message: "Database damaged",
+        can_restore: false,
+      },
+    },
+  });
+  render(<CalendarView />);
+  expect(screen.getByText(/Your notes remain available/)).toBeTruthy();
+  expect(screen.queryByRole("button", { name: /New task|New event|New epic/ })).toBeNull();
+});

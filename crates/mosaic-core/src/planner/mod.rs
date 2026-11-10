@@ -23,7 +23,7 @@ pub use ical::{
     IcalImportCandidate, IcalImportPreview, IcalImportResult, OverlayOccurrence,
     overlay_occurrences, validate_ical,
 };
-pub use service::PlannerService;
+pub use service::{PlannerService, PlannerUnavailable};
 
 pub const SCHEMA_VERSION: i64 = 3;
 
@@ -603,6 +603,15 @@ pub(super) fn now() -> String {
 }
 
 pub(super) fn sql_error(error: rusqlite::Error) -> Error {
+    if matches!(
+        error.sqlite_error_code(),
+        Some(rusqlite::ErrorCode::DatabaseCorrupt | rusqlite::ErrorCode::NotADatabase)
+    ) {
+        return Error::Planner {
+            code: "planner_corrupt",
+            message: error.to_string(),
+        };
+    }
     Error::Io {
         path: "planner".into(),
         source: std::io::Error::other(error.to_string()),

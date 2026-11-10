@@ -7,6 +7,9 @@ import { invoke as __TAURI_INVOKE } from "@tauri-apps/api/core";
 /** Commands */
 export const commands = {
 	openVault: (path: string) => __TAURI_INVOKE<VaultInfo_Serialize>("open_vault", { path }),
+	indexHealth: (root: string) => __TAURI_INVOKE<IndexHealth>("index_health", { root }),
+	/**  Requests an asynchronous full reindex. Does not reopen the vault or replace editor buffers. */
+	rebuildIndex: (root: string) => __TAURI_INVOKE<null>("rebuild_index", { root }),
 	queryNotes: (query: string) => __TAURI_INVOKE<QueryResult_Serialize>("query_notes", { query }),
 	setTask: (path: string, line: number, text: string, done: boolean) => __TAURI_INVOKE<Written_Serialize>("set_task", { path, line, text, done }),
 	setTaskWorkflow: (path: string, line: number, text: string, expectedState: string, next: string) => __TAURI_INVOKE<Written_Serialize>("set_task_workflow", { path, line, text, expectedState, next }),
@@ -88,6 +91,7 @@ export const commands = {
 	name: string,
 	/**  Set when undo history and proposals can't be saved for this vault (shown as a banner). */
 	history_warning?: string | null,
+	planner_unavailable?: PlannerUnavailable | null,
 } | null>("current_vault"),
 	lastVault: () => __TAURI_INVOKE<string | null>("last_vault"),
 	listDir: (dir: string, recursive: boolean) => __TAURI_INVOKE<Entry[]>("list_dir", { dir, recursive }),
@@ -558,6 +562,22 @@ export type IcalImportResult = {
 	skipped_duplicates: string[],
 };
 
+export type IndexDiagnostic = {
+	problem: IndexProblem,
+	error_code: string,
+	occurred_at_ms: number,
+};
+
+export type IndexHealth = {
+	status: IndexStatus,
+	watching: boolean,
+	diagnostic: IndexDiagnostic | null,
+};
+
+export type IndexProblem = "watcher_start" | "watcher_event" | "refresh" | "scan" | "freshness";
+
+export type IndexStatus = "healthy" | "rebuilding" | "degraded";
+
 export type LinkStyle = "wiki" | "markdown";
 
 /**  A note that mentions another note's title or alias without linking to it. */
@@ -684,6 +704,13 @@ export type PlannerTask = {
 	completed_at: string | null,
 	archived_at: string | null,
 	trashed_at: string | null,
+};
+
+/**  A stable, machine-readable explanation of partial workspace availability. */
+export type PlannerUnavailable = {
+	code: string,
+	message: string,
+	can_restore: boolean,
 };
 
 /**  A change an agent proposed in a folder under review. */
@@ -1002,6 +1029,7 @@ export type VaultInfo_Deserialize = {
 	name: string,
 	/**  Set when undo history and proposals can't be saved for this vault (shown as a banner). */
 	history_warning: string | null,
+	planner_unavailable: PlannerUnavailable | null,
 };
 
 export type VaultInfo_Serialize = {
@@ -1009,6 +1037,7 @@ export type VaultInfo_Serialize = {
 	name: string,
 	/**  Set when undo history and proposals can't be saved for this vault (shown as a banner). */
 	history_warning?: string | null,
+	planner_unavailable?: PlannerUnavailable | null,
 };
 
 export type VaultPreferences = {

@@ -234,23 +234,33 @@ impl Vault {
         Some(parts.join("/"))
     }
 
-    fn entry(&self, rel: String, abs: &Path) -> Option<Entry> {
-        let meta = fs::metadata(abs).ok()?; // follows symlinks
-        if fs::symlink_metadata(abs).ok()?.file_type().is_symlink() {
-            let real = fs::canonicalize(abs).ok()?;
+    fn entry(&self, rel: String, abs: &Path) -> Result<Option<Entry>> {
+        // A disappeared entry is harmless during a walk, but an unreadable entry is not a
+        // deletion. In particular, index reconciliation must not erase its previous rows.
+        let meta = match fs::metadata(abs) {
+            Ok(meta) => meta,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(Error::io(&rel, error)),
+        };
+        if fs::symlink_metadata(abs)
+            .map_err(|e| Error::io(&rel, e))?
+            .file_type()
+            .is_symlink()
+        {
+            let real = fs::canonicalize(abs).map_err(|e| Error::io(&rel, e))?;
             if !real.starts_with(&self.root) {
-                return None;
+                return Ok(None);
             }
         }
         let name = rel.rsplit('/').next().unwrap_or(&rel).to_string();
-        Some(Entry {
+        Ok(Some(Entry {
             kind: (!meta.is_dir()).then(|| FileKind::of(abs)),
             is_dir: meta.is_dir(),
             size: if meta.is_dir() { 0 } else { meta.len() },
             mtime: mtime_ms(&meta),
             name,
             path: rel,
-        })
+        }))
     }
 
     /// Lists a folder: folders first, then files, each sorted case-insensitively.
@@ -271,21 +281,24 @@ impl Vault {
         depth: usize,
     ) -> Result<()> {
         let rd = fs::read_dir(abs).map_err(|e| Error::io(rel, e))?;
-        let mut entries: Vec<Entry> = rd
-            .filter_map(|e| e.ok())
-            .filter_map(|e| {
-                let name = e.file_name().into_string().ok()?;
-                if is_hidden(&name) {
-                    return None;
-                }
-                let child_rel = if rel.is_empty() {
-                    name
-                } else {
-                    format!("{rel}/{name}")
-                };
-                self.entry(child_rel, &e.path())
-            })
-            .collect();
+        let mut entries = Vec::new();
+        for child in rd {
+            let child = child.map_err(|e| Error::io(rel, e))?;
+            let Ok(name) = child.file_name().into_string() else {
+                continue;
+            };
+            if is_hidden(&name) {
+                continue;
+            }
+            let child_rel = if rel.is_empty() {
+                name
+            } else {
+                format!("{rel}/{name}")
+            };
+            if let Some(entry) = self.entry(child_rel, &child.path())? {
+                entries.push(entry);
+            }
+        }
         entries.sort_by(|a, b| {
             b.is_dir
                 .cmp(&a.is_dir)
@@ -306,7 +319,7 @@ impl Vault {
     pub fn stat(&self, rel: &str) -> Result<Entry> {
         let norm = normalize(rel)?;
         let abs = self.resolve(&norm)?;
-        self.entry(norm.clone(), &abs).ok_or(Error::NotFound(norm))
+        self.entry(norm.clone(), &abs)?.ok_or(Error::NotFound(norm))
     }
 
     pub fn exists(&self, rel: &str) -> bool {

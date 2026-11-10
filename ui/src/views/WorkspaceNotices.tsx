@@ -1,3 +1,4 @@
+import { PlannerUnavailable } from "./planner/PlannerUnavailable";
 import { useEffect, useId, useRef, useState } from "react";
 import { Button, Notice } from "../design-system/components";
 import { errorMessage } from "../ipc/types";
@@ -55,7 +56,8 @@ export function WorkspaceNotices() {
       }
     }
   };
-  if (!vault || (!offline && !vault.history_warning && !renames.length && !error)) return null;
+  if (!vault || (!offline && !vault.history_warning && !vault.planner_unavailable && !renames.length && !error))
+    return null;
   return (
     <DesignSystemScope
       id={id}
@@ -64,6 +66,7 @@ export function WorkspaceNotices() {
       aria-label="Workspace notices"
       aria-busy={!!pending}
     >
+      {vault.planner_unavailable && <PlannerUnavailable key={vault.root} />}
       {offline && (
         <Notice tone="warning" role="alert">
           <span>

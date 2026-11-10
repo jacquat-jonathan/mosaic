@@ -63,6 +63,8 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Test coverage policy and feedback
         run: python3 -m unittest discover -s scripts/tests -p 'test_coverage_feedback.py'
+      - name: Test release invariants with disposable repositories
+        run: node --test scripts/tests/release-invariants.test.mjs
       - name: Check TypeScript
         run: pnpm --dir ui lint
       - name: Check formatting and lint

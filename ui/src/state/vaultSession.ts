@@ -28,3 +28,10 @@ export function isCurrentSession(session?: VaultSession): boolean {
         active.vault_id === session.vault_id
     : !session;
 }
+
+/** Expected generation for native asset requests; stale render work cannot mint a new grant. */
+export function assetGeneration(): string {
+  const generation = activeVault()?.session?.generation;
+  if (!generation) throw new Error("No active asset session");
+  return generation;
+}

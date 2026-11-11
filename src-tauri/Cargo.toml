@@ -25,7 +25,7 @@ tauri = { version = "2.12", features = [] }
 tauri-plugin-dialog = "2.8"
 tauri-plugin-opener = "2"
 ed25519-dalek = "2.2"
-base64 = "0.22"
+base64 = "0.23"
 sha2 = "0.11"
 uuid = { version = "1", features = ["v4"] }
 percent-encoding = "2"

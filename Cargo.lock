@@ -2804,7 +2804,7 @@ dependencies = [
 name = "mosaic-app"
 version = "0.28.0"
 dependencies = [
- "base64 0.22.1",
+ "base64 0.23.1",
  "chrono",
  "ed25519-dalek",
  "encoding_rs",

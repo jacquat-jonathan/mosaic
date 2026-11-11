@@ -39,6 +39,11 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Cmd {
+    /// Create an unencrypted recovery bundle, preview, or restore into a NEW vault.
+    Backup {
+        #[command(subcommand)]
+        action: BackupCmd,
+    },
     /// Discover templates and the default for a destination note.
     Templates {
         #[arg(long = "for")]
@@ -353,6 +358,26 @@ fn print<T: Serialize>(json: bool, value: &T, human: impl FnOnce(&T) -> String) 
     Ok(())
 }
 
+#[derive(Subcommand)]
+enum BackupCmd {
+    /// Snapshot notes/planner. Private history, rules, workflows and settings are opt-in.
+    Create {
+        destination: PathBuf,
+        #[arg(long)]
+        include_private_state: bool,
+    },
+    /// Validate checksums and preview conflicts. Add --apply to create the NEW vault.
+    Restore {
+        bundle: PathBuf,
+        destination: PathBuf,
+        #[arg(long)]
+        apply: bool,
+        /// Restore private state too; workflows remain paused until explicitly resumed.
+        #[arg(long)]
+        include_private_state: bool,
+    },
+}
+
 fn main() {
     let cli = Cli::parse();
     let json = cli.json;
@@ -375,6 +400,70 @@ fn main() {
 }
 
 fn run(cli: Cli) -> Result<()> {
+    if let Cmd::Backup { action } = &cli.cmd {
+        if !cli.may_change.is_empty() {
+            bail!("backup operations are unavailable to restricted workflow invocations");
+        }
+        let support =
+            mosaic_core::settings::app_support_dir().context("Application Support unavailable")?;
+        return match action {
+            BackupCmd::Create {
+                destination,
+                include_private_state,
+            } => {
+                let root = vault_path(cli.vault)?;
+                let result = mosaic_core::backup::create(
+                    &root,
+                    destination,
+                    &support,
+                    mosaic_core::backup::BackupOptions {
+                        include_private_state: *include_private_state,
+                    },
+                )?;
+                print(cli.json, &result, |m| {
+                    format!(
+                        "Created unencrypted backup: {} files.\n{}",
+                        m.files.len(),
+                        m.warnings.join("\n")
+                    )
+                })
+            }
+            BackupCmd::Restore {
+                bundle,
+                destination,
+                apply,
+                include_private_state,
+            } => {
+                if *apply {
+                    let result = mosaic_core::backup::restore(
+                        bundle,
+                        destination,
+                        &support,
+                        *include_private_state,
+                    )?;
+                    print(cli.json, &result, |r| {
+                        format!(
+                            "Restored new vault: {}\n{}",
+                            r.destination.display(),
+                            r.warnings.join("\n")
+                        )
+                    })
+                } else {
+                    let preview = mosaic_core::backup::preview(bundle, destination)?;
+                    print(cli.json, &preview, |p| {
+                        format!(
+                            "Dry run: {} files, {} bytes. Can restore: {}.\n{}\n{}\nUse --apply to create the new vault; private state requires --include-private-state.",
+                            p.files,
+                            p.bytes,
+                            p.can_restore,
+                            p.conflicts.join("\n"),
+                            p.warnings.join("\n")
+                        )
+                    })
+                }
+            }
+        };
+    }
     if let Cmd::SwapApps { staged, installed } = &cli.cmd {
         mosaic_core::app_install::swap_apps(staged, installed)?;
         return Ok(());
@@ -807,6 +896,7 @@ fn run(cli: Cli) -> Result<()> {
             serde_json::to_string_pretty(p).expect("preferences")
         }),
         Cmd::Guide => unreachable!(),
+        Cmd::Backup { .. } => unreachable!(),
         Cmd::SwapApps { .. } => unreachable!(),
         Cmd::Mcp => unreachable!("served above"),
     }

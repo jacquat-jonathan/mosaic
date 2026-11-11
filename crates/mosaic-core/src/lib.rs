@@ -3,6 +3,7 @@
 pub mod agents;
 pub mod api;
 pub mod app_install;
+pub mod backup;
 pub mod chat;
 pub mod days;
 pub mod error;

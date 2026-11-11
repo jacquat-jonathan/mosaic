@@ -1,0 +1,623 @@
+{
+  "run_id": "42266372502",
+  "attempt": 1,
+  "source": "8768b4bb32327f142a6b7018048f81b55ba92e16",
+  "url": "https://github.com/jacquat-jonathan/mosaic/actions/runs/42266372502",
+  "jobs": [
+    {
+      "name": "E2E WebKit (2/2)",
+      "id": 128059253123,
+      "conclusion": "success",
+      "runner_name": "GitHub Actions 1000000710",
+      "labels": [
+        "macos-15"
+      ],
+      "duration_seconds": 750.0,
+      "cache": {
+        "classification": "warm",
+        "hits": [
+          "Cache hit for: node-cache-macOS-arm64-pnpm-e4b17bad431a6e0126f80f4f46641660008f3080e5b1fbd839b383673f204613",
+          "Cache restored successfully"
+        ],
+        "misses": []
+      },
+      "observed_test_retry_lines": [],
+      "logs_available": true,
+      "steps": [
+        {
+          "name": "Set up job",
+          "conclusion": "success",
+          "duration_seconds": 2.0
+        },
+        {
+          "name": "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "conclusion": "success",
+          "duration_seconds": 2.0
+        },
+        {
+          "name": "Run pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413",
+          "conclusion": "success",
+          "duration_seconds": 3.0
+        },
+        {
+          "name": "Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+          "conclusion": "success",
+          "duration_seconds": 27.0
+        },
+        {
+          "name": "Install dependencies",
+          "conclusion": "success",
+          "duration_seconds": 5.0
+        },
+        {
+          "name": "Install Playwright video encoder",
+          "conclusion": "success",
+          "duration_seconds": 1.0
+        },
+        {
+          "name": "Install WebKit test browser",
+          "conclusion": "success",
+          "duration_seconds": 12.0
+        },
+        {
+          "name": "Run E2E shard",
+          "conclusion": "success",
+          "duration_seconds": 680.0
+        },
+        {
+          "name": "Upload E2E failure diagnostics",
+          "conclusion": "skipped",
+          "duration_seconds": 0
+        },
+        {
+          "name": "Upload E2E coverage maps",
+          "conclusion": "success",
+          "duration_seconds": 7.0
+        },
+        {
+          "name": "Post Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+          "conclusion": "success",
+          "duration_seconds": 0
+        },
+        {
+          "name": "Post Run pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413",
+          "conclusion": "success",
+          "duration_seconds": 1.0
+        },
+        {
+          "name": "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "conclusion": "success",
+          "duration_seconds": 1.0
+        },
+        {
+          "name": "Complete job",
+          "conclusion": "success",
+          "duration_seconds": 5.0
+        }
+      ]
+    },
+    {
+      "name": "E2E Chrome (1/2)",
+      "id": 128059253486,
+      "conclusion": "success",
+      "runner_name": "GitHub Actions 1000000711",
+      "labels": [
+        "macos-15"
+      ],
+      "duration_seconds": 567.0,
+      "cache": {
+        "classification": "warm",
+        "hits": [
+          "Cache hit for: node-cache-macOS-arm64-pnpm-e4b17bad431a6e0126f80f4f46641660008f3080e5b1fbd839b383673f204613",
+          "Cache restored successfully"
+        ],
+        "misses": []
+      },
+      "observed_test_retry_lines": [],
+      "logs_available": true,
+      "steps": [
+        {
+          "name": "Set up job",
+          "conclusion": "success",
+          "duration_seconds": 3.0
+        },
+        {
+          "name": "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "conclusion": "success",
+          "duration_seconds": 3.0
+        },
+        {
+          "name": "Run pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413",
+          "conclusion": "success",
+          "duration_seconds": 2.0
+        },
+        {
+          "name": "Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+          "conclusion": "success",
+          "duration_seconds": 25.0
+        },
+        {
+          "name": "Install dependencies",
+          "conclusion": "success",
+          "duration_seconds": 4.0
+        },
+        {
+          "name": "Install Playwright video encoder",
+          "conclusion": "success",
+          "duration_seconds": 2.0
+        },
+        {
+          "name": "Install WebKit test browser",
+          "conclusion": "skipped",
+          "duration_seconds": 0
+        },
+        {
+          "name": "Run E2E shard",
+          "conclusion": "success",
+          "duration_seconds": 518.0
+        },
+        {
+          "name": "Upload E2E failure diagnostics",
+          "conclusion": "skipped",
+          "duration_seconds": 0
+        },
+        {
+          "name": "Upload E2E coverage maps",
+          "conclusion": "success",
+          "duration_seconds": 1.0
+        },
+        {
+          "name": "Post Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+          "conclusion": "success",
+          "duration_seconds": 0
+        },
+        {
+          "name": "Post Run pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413",
+          "conclusion": "success",
+          "duration_seconds": 1.0
+        },
+        {
+          "name": "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "conclusion": "success",
+          "duration_seconds": 0
+        },
+        {
+          "name": "Complete job",
+          "conclusion": "success",
+          "duration_seconds": 5.0
+        }
+      ]
+    },
+    {
+      "name": "E2E Chrome (2/2)",
+      "id": 128059253518,
+      "conclusion": "success",
+      "runner_name": "GitHub Actions 1000000712",
+      "labels": [
+        "macos-15"
+      ],
+      "duration_seconds": 601.0,
+      "cache": {
+        "classification": "warm",
+        "hits": [
+          "Cache hit for: node-cache-macOS-arm64-pnpm-e4b17bad431a6e0126f80f4f46641660008f3080e5b1fbd839b383673f204613",
+          "Cache restored successfully"
+        ],
+        "misses": []
+      },
+      "observed_test_retry_lines": [],
+      "logs_available": true,
+      "steps": [
+        {
+          "name": "Set up job",
+          "conclusion": "success",
+          "duration_seconds": 3.0
+        },
+        {
+          "name": "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "conclusion": "success",
+          "duration_seconds": 3.0
+        },
+        {
+          "name": "Run pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413",
+          "conclusion": "success",
+          "duration_seconds": 2.0
+        },
+        {
+          "name": "Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+          "conclusion": "success",
+          "duration_seconds": 25.0
+        },
+        {
+          "name": "Install dependencies",
+          "conclusion": "success",
+          "duration_seconds": 4.0
+        },
+        {
+          "name": "Install Playwright video encoder",
+          "conclusion": "success",
+          "duration_seconds": 2.0
+        },
+        {
+          "name": "Install WebKit test browser",
+          "conclusion": "skipped",
+          "duration_seconds": 0
+        },
+        {
+          "name": "Run E2E shard",
+          "conclusion": "success",
+          "duration_seconds": 545.0
+        },
+        {
+          "name": "Upload E2E failure diagnostics",
+          "conclusion": "skipped",
+          "duration_seconds": 0
+        },
+        {
+          "name": "Upload E2E coverage maps",
+          "conclusion": "success",
+          "duration_seconds": 6.0
+        },
+        {
+          "name": "Post Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+          "conclusion": "success",
+          "duration_seconds": 0
+        },
+        {
+          "name": "Post Run pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413",
+          "conclusion": "success",
+          "duration_seconds": 0
+        },
+        {
+          "name": "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "conclusion": "success",
+          "duration_seconds": 1.0
+        },
+        {
+          "name": "Complete job",
+          "conclusion": "success",
+          "duration_seconds": 7.0
+        }
+      ]
+    },
+    {
+      "name": "E2E WebKit (1/2)",
+      "id": 128059253567,
+      "conclusion": "success",
+      "runner_name": "GitHub Actions 1000000714",
+      "labels": [
+        "macos-15"
+      ],
+      "duration_seconds": 629.0,
+      "cache": {
+        "classification": "warm",
+        "hits": [
+          "Cache hit for: node-cache-macOS-arm64-pnpm-e4b17bad431a6e0126f80f4f46641660008f3080e5b1fbd839b383673f204613",
+          "Cache restored successfully"
+        ],
+        "misses": []
+      },
+      "observed_test_retry_lines": [],
+      "logs_available": true,
+      "steps": [
+        {
+          "name": "Set up job",
+          "conclusion": "success",
+          "duration_seconds": 3.0
+        },
+        {
+          "name": "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "conclusion": "success",
+          "duration_seconds": 3.0
+        },
+        {
+          "name": "Run pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413",
+          "conclusion": "success",
+          "duration_seconds": 2.0
+        },
+        {
+          "name": "Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+          "conclusion": "success",
+          "duration_seconds": 21.0
+        },
+        {
+          "name": "Install dependencies",
+          "conclusion": "success",
+          "duration_seconds": 4.0
+        },
+        {
+          "name": "Install Playwright video encoder",
+          "conclusion": "success",
+          "duration_seconds": 1.0
+        },
+        {
+          "name": "Install WebKit test browser",
+          "conclusion": "success",
+          "duration_seconds": 9.0
+        },
+        {
+          "name": "Run E2E shard",
+          "conclusion": "success",
+          "duration_seconds": 577.0
+        },
+        {
+          "name": "Upload E2E failure diagnostics",
+          "conclusion": "skipped",
+          "duration_seconds": 0
+        },
+        {
+          "name": "Upload E2E coverage maps",
+          "conclusion": "success",
+          "duration_seconds": 1.0
+        },
+        {
+          "name": "Post Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+          "conclusion": "success",
+          "duration_seconds": 0
+        },
+        {
+          "name": "Post Run pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413",
+          "conclusion": "success",
+          "duration_seconds": 0
+        },
+        {
+          "name": "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "conclusion": "success",
+          "duration_seconds": 1.0
+        },
+        {
+          "name": "Complete job",
+          "conclusion": "success",
+          "duration_seconds": 5.0
+        }
+      ]
+    },
+    {
+      "name": "UI checks",
+      "id": 128059253624,
+      "conclusion": "success",
+      "runner_name": "GitHub Actions 1000000713",
+      "labels": [
+        "macos-15"
+      ],
+      "duration_seconds": 165.0,
+      "cache": {
+        "classification": "warm",
+        "hits": [
+          "Cache hit for: node-cache-macOS-arm64-pnpm-e4b17bad431a6e0126f80f4f46641660008f3080e5b1fbd839b383673f204613",
+          "Cache restored successfully"
+        ],
+        "misses": []
+      },
+      "observed_test_retry_lines": [],
+      "logs_available": true,
+      "steps": [
+        {
+          "name": "Set up job",
+          "conclusion": "success",
+          "duration_seconds": 1.0
+        },
+        {
+          "name": "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "conclusion": "success",
+          "duration_seconds": 3.0
+        },
+        {
+          "name": "Run pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413",
+          "conclusion": "success",
+          "duration_seconds": 3.0
+        },
+        {
+          "name": "Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+          "conclusion": "success",
+          "duration_seconds": 23.0
+        },
+        {
+          "name": "Install dependencies",
+          "conclusion": "success",
+          "duration_seconds": 3.0
+        },
+        {
+          "name": "Check TypeScript",
+          "conclusion": "success",
+          "duration_seconds": 3.0
+        },
+        {
+          "name": "Check formatting and lint",
+          "conclusion": "success",
+          "duration_seconds": 1.0
+        },
+        {
+          "name": "Run unit and component tests with coverage",
+          "conclusion": "success",
+          "duration_seconds": 117.0
+        },
+        {
+          "name": "Upload unit coverage maps",
+          "conclusion": "success",
+          "duration_seconds": 7.0
+        },
+        {
+          "name": "Post Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+          "conclusion": "success",
+          "duration_seconds": 0
+        },
+        {
+          "name": "Post Run pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413",
+          "conclusion": "success",
+          "duration_seconds": 1.0
+        },
+        {
+          "name": "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "conclusion": "success",
+          "duration_seconds": 0
+        },
+        {
+          "name": "Complete job",
+          "conclusion": "success",
+          "duration_seconds": 1.0
+        }
+      ]
+    },
+    {
+      "name": "Rust",
+      "id": 128059253635,
+      "conclusion": "success",
+      "runner_name": "GitHub Actions 1000000715",
+      "labels": [
+        "macos-15"
+      ],
+      "duration_seconds": 124.0,
+      "cache": {
+        "classification": "warm",
+        "hits": [
+          "Cache hit for: v0-rust-rust-Darwin-arm64-fc985acc-dc312573",
+          "Cache restored successfully",
+          "Restored from cache key \"v0-rust-rust-Darwin-arm64-fc985acc-dc312573\" full match: true."
+        ],
+        "misses": []
+      },
+      "observed_test_retry_lines": [],
+      "logs_available": true,
+      "steps": [
+        {
+          "name": "Set up job",
+          "conclusion": "success",
+          "duration_seconds": 2.0
+        },
+        {
+          "name": "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "conclusion": "success",
+          "duration_seconds": 2.0
+        },
+        {
+          "name": "Run dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8",
+          "conclusion": "success",
+          "duration_seconds": 3.0
+        },
+        {
+          "name": "Run Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0",
+          "conclusion": "success",
+          "duration_seconds": 36.0
+        },
+        {
+          "name": "Install Rust coverage tool",
+          "conclusion": "success",
+          "duration_seconds": 1.0
+        },
+        {
+          "name": "Check Rust",
+          "conclusion": "success",
+          "duration_seconds": 72.0
+        },
+        {
+          "name": "Upload Rust coverage",
+          "conclusion": "success",
+          "duration_seconds": 2.0
+        },
+        {
+          "name": "Post Run Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0",
+          "conclusion": "success",
+          "duration_seconds": 1.0
+        },
+        {
+          "name": "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "conclusion": "success",
+          "duration_seconds": 0
+        },
+        {
+          "name": "Complete job",
+          "conclusion": "success",
+          "duration_seconds": 1.0
+        }
+      ]
+    },
+    {
+      "name": "UI coverage",
+      "id": 128065723739,
+      "conclusion": "success",
+      "runner_name": "GitHub Actions 1000000726",
+      "labels": [
+        "macos-15"
+      ],
+      "duration_seconds": 65.0,
+      "cache": {
+        "classification": "warm",
+        "hits": [
+          "Cache hit for: node-cache-macOS-arm64-pnpm-e4b17bad431a6e0126f80f4f46641660008f3080e5b1fbd839b383673f204613",
+          "Cache restored successfully"
+        ],
+        "misses": []
+      },
+      "observed_test_retry_lines": [],
+      "logs_available": true,
+      "steps": [
+        {
+          "name": "Set up job",
+          "conclusion": "success",
+          "duration_seconds": 3.0
+        },
+        {
+          "name": "Require all UI checks and E2E shards to pass",
+          "conclusion": "success",
+          "duration_seconds": 0
+        },
+        {
+          "name": "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "conclusion": "success",
+          "duration_seconds": 3.0
+        },
+        {
+          "name": "Run pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413",
+          "conclusion": "success",
+          "duration_seconds": 2.0
+        },
+        {
+          "name": "Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+          "conclusion": "success",
+          "duration_seconds": 23.0
+        },
+        {
+          "name": "Install dependencies",
+          "conclusion": "success",
+          "duration_seconds": 5.0
+        },
+        {
+          "name": "Download unit and E2E coverage maps",
+          "conclusion": "success",
+          "duration_seconds": 4.0
+        },
+        {
+          "name": "Report and enforce combined UI coverage",
+          "conclusion": "success",
+          "duration_seconds": 19.0
+        },
+        {
+          "name": "Upload UI coverage",
+          "conclusion": "success",
+          "duration_seconds": 2.0
+        },
+        {
+          "name": "Post Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+          "conclusion": "success",
+          "duration_seconds": 0
+        },
+        {
+          "name": "Post Run pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413",
+          "conclusion": "success",
+          "duration_seconds": 0
+        },
+        {
+          "name": "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "conclusion": "success",
+          "duration_seconds": 1.0
+        },
+        {
+          "name": "Complete job",
+          "conclusion": "success",
+          "duration_seconds": 1.0
+        }
+      ]
+    }
+  ]
+}

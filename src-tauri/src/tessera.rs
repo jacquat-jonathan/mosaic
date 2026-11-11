@@ -2,7 +2,7 @@
 //! app is open. Results and queue/chain safety state live outside the vault.
 
 use crate::{AppState, chat};
-use chrono::{Local, TimeZone};
+use chrono::Local;
 use mosaic_core::Error;
 use mosaic_core::agents::{Agent, EventTrigger};
 use mosaic_core::chat::{
@@ -11,8 +11,11 @@ use mosaic_core::chat::{
 };
 use mosaic_core::settings::{AgentRun, TesseraSettings};
 use mosaic_core::vault_state::VaultState;
+use mosaic_core::workflow::{
+    Chain, QueuedRun, RunCause, RunHost, RunOutput, WorkflowQueue, run_with_retry, scheduled_runs,
+};
 use serde::Serialize;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
@@ -25,114 +28,13 @@ use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 type CmdResult<T> = Result<T, Error>;
-const MAX_QUEUE: usize = 100;
-const MAX_CHAIN_RUNS: usize = 20;
-const CHAIN_TTL: Duration = Duration::from_secs(30 * 60);
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-struct Chain {
-    id: String,
-    depth: u8,
-}
-
-#[derive(Clone, Debug)]
-enum RunCause {
-    Manual,
-    Schedule {
-        text: String,
-        late: bool,
-    },
-    Event {
-        trigger: String,
-        path: String,
-        chain: Chain,
-        test: bool,
-    },
-}
-
-impl RunCause {
-    fn label(&self) -> String {
-        match self {
-            Self::Manual => "Manual".into(),
-            Self::Schedule { text, .. } => format!("Scheduled: {text}"),
-            Self::Event {
-                trigger,
-                path,
-                test,
-                ..
-            } => format!("{}{} · {path}", if *test { "Test: " } else { "" }, trigger),
-        }
-    }
-
-    fn path(&self) -> Option<&str> {
-        match self {
-            Self::Event { path, .. } => Some(path),
-            _ => None,
-        }
-    }
-
-    fn chain(&self) -> Option<&Chain> {
-        match self {
-            Self::Event { chain, .. } => Some(chain),
-            _ => None,
-        }
-    }
-
-    fn late(&self) -> bool {
-        matches!(self, Self::Schedule { late: true, .. })
-    }
-
-    fn request(&self) -> Option<String> {
-        match self {
-            Self::Event {
-                trigger,
-                path,
-                test,
-                ..
-            } => Some(format!(
-                "{}This workflow was triggered because `{path}` matched `{trigger}`. Read the note's latest content before acting. The triggering note is the subject of this run.",
-                if *test {
-                    "This is a test trigger using an existing note. "
-                } else {
-                    ""
-                }
-            )),
-            _ => None,
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-struct QueuedRun {
-    root: PathBuf,
-    agent: String,
-    cause: RunCause,
-}
-
-struct ChainState {
-    seen: HashSet<String>,
-    runs: usize,
-    touched: Instant,
-}
-
-impl ChainState {
-    fn new() -> Self {
-        Self {
-            seen: HashSet::new(),
-            runs: 0,
-            touched: Instant::now(),
-        }
-    }
-}
-
 #[derive(Default)]
 struct EventState {
     root: PathBuf,
     known: HashSet<String>,
-    queue: VecDeque<QueuedRun>,
+    queue: WorkflowQueue,
     /// A workflow registers the chain before its create tool runs; the watcher consumes it.
     origins: HashMap<String, Chain>,
-    chains: HashMap<String, ChainState>,
 }
 
 #[derive(Default)]
@@ -218,11 +120,7 @@ pub fn tessera_status(
         .map(|a| WorkflowAgent {
             paused: cfg.paused_agents.contains(&a.name),
             running: running.contains(&running_key(ws.vault.root(), &a.name)),
-            queued: events
-                .queue
-                .iter()
-                .filter(|q| q.root == ws.vault.root() && q.agent == a.name)
-                .count(),
+            queued: events.queue.count(ws.vault.root(), &a.name),
             error: trigger_error(&a),
             name: a.name,
             title: a.title,
@@ -461,39 +359,8 @@ fn tick(app: &AppHandle, startup: bool) {
     }) else {
         return;
     };
-    if cfg.last_checked == 0 {
-        return;
-    }
-    let last = Local
-        .timestamp_opt(cfg.last_checked, 0)
-        .single()
-        .unwrap_or(now);
-    let paused = cfg.paused;
-    let paused_agents = cfg.paused_agents;
-    if paused {
-        return;
-    }
-    for agent in ws.agents().unwrap_or_default() {
-        let Some(text) = &agent.schedule else {
-            continue;
-        };
-        if paused_agents.contains(&agent.name) {
-            continue;
-        }
-        let Ok(schedule) = mosaic_core::schedule::parse(text) else {
-            continue;
-        };
-        if mosaic_core::schedule::due(&schedule, last, now) {
-            let _ = start_agent(
-                app,
-                &ws,
-                &agent.name,
-                RunCause::Schedule {
-                    text: text.clone(),
-                    late: startup,
-                },
-            );
-        }
+    for (name, cause) in scheduled_runs(&ws.agents().unwrap_or_default(), &cfg, now, startup) {
+        let _ = start_agent(app, &ws, &name, cause);
     }
 }
 
@@ -543,35 +410,11 @@ fn enqueue_event(
     let Ok(cfg) = config(ws.vault.root()) else {
         return;
     };
-    let key = format!("{agent}\0created\0{path}");
     let reason = {
         let state = app.state::<TesseraState>();
         let mut events = state.events.lock().expect("tessera event lock");
-        events
-            .chains
-            .retain(|_, chain| chain.touched.elapsed() < CHAIN_TTL);
-        let queue_full = events.queue.len() >= MAX_QUEUE;
-        let guard = events
-            .chains
-            .entry(chain.id.clone())
-            .or_insert_with(ChainState::new);
-        guard.touched = Instant::now();
-        if chain.depth > cfg.max_chain_depth {
-            Some(format!(
-                "Suppressed at workflow-chain depth {} (maximum {}).",
-                chain.depth, cfg.max_chain_depth
-            ))
-        } else if guard.runs >= MAX_CHAIN_RUNS {
-            Some(format!(
-                "Suppressed after {MAX_CHAIN_RUNS} runs in the same workflow chain."
-            ))
-        } else if !guard.seen.insert(key) {
-            Some("Suppressed a repeated workflow/event/path in the same chain.".into())
-        } else if queue_full {
-            Some(format!("Event queue is full ({MAX_QUEUE} runs)."))
-        } else {
-            guard.runs += 1;
-            events.queue.push_back(QueuedRun {
+        events.queue.enqueue(
+            QueuedRun {
                 root: ws.vault.root().to_path_buf(),
                 agent: agent.clone(),
                 cause: RunCause::Event {
@@ -580,9 +423,10 @@ fn enqueue_event(
                     chain: chain.clone(),
                     test: false,
                 },
-            });
-            None
-        }
+            },
+            cfg.max_chain_depth,
+            Instant::now(),
+        )
     };
     if let Some(reason) = reason {
         record_skipped(
@@ -616,12 +460,9 @@ fn drain_queue(app: &AppHandle, ws: &Arc<mosaic_core::Workspace>) {
         let job = {
             let state = app.state::<TesseraState>();
             let mut events = state.events.lock().expect("tessera event lock");
-            let position = events.queue.iter().position(|job| {
-                job.root == ws.vault.root()
-                    && !cfg.paused_agents.contains(&job.agent)
-                    && !running.contains(&running_key(&job.root, &job.agent))
-            });
-            position.and_then(|i| events.queue.remove(i))
+            events.queue.next(ws.vault.root(), &cfg, |root, agent| {
+                running.contains(&running_key(root, agent))
+            })
         };
         let Some(job) = job else { break };
         if let Err(error) = start_agent(app, ws, &job.agent, job.cause.clone()) {
@@ -639,7 +480,7 @@ fn drain_queue(app: &AppHandle, ws: &Arc<mosaic_core::Workspace>) {
                     .lock()
                     .expect("tessera event lock")
                     .queue
-                    .push_front(job);
+                    .requeue(job);
                 break;
             }
             if let RunCause::Event {
@@ -793,59 +634,19 @@ fn spawn(
     let handle = app.clone();
     let key = running_key(&root, &agent.name);
     std::thread::spawn(move || {
-        let mut attempts = 0u8;
-        let mut transcript = RunTranscript::default();
-        let output = loop {
-            attempts += 1;
-            if attempts > 1 {
-                transcript.push(ChatEvent::Text {
-                    text: format!("*Retrying · attempt {attempts} of 3*"),
-                });
-            }
-            update_attempts(&root, id, attempts);
-            let result = launch(&claude, &mosaic, &root, &agent, &cause)
-                .map(|child| collect_child(&handle, child, &cause, id, &mut transcript))
-                .unwrap_or_else(|e| RunOutput {
-                    error: Some(e),
-                    ..RunOutput::default()
-                });
-            if let Some(error) = &result.error
-                && !matches!(transcript.events.last(), Some(ChatEvent::Done { error: Some(e), .. }) if e == error)
-            {
-                transcript.push(ChatEvent::Done {
-                    session_id: None,
-                    cost_usd: None,
-                    error: Some(error.clone()),
-                });
-            }
-            publish_transcript(&handle, id, &transcript);
-            let retry = attempts < 3
-                && result.changes.is_empty()
-                && result.proposals == 0
-                && result.error.as_deref().is_some_and(transient_failure);
-            if !retry {
-                break result;
-            }
-            std::thread::sleep(Duration::from_secs(u64::from(attempts)));
-        };
+        let completed = run_with_retry(&mut DesktopRun {
+            app: &handle,
+            root: &root,
+            claude: &claude,
+            mosaic: &mosaic,
+            agent: &agent,
+            cause: &cause,
+            id,
+        });
 
         let _ = update(&root, |cfg| {
             if let Some(run) = cfg.runs.iter_mut().find(|r| r.id == id) {
-                run.finished = Some(Local::now().timestamp());
-                run.status = if output.error.is_some() {
-                    "failed"
-                } else {
-                    "done"
-                }
-                .into();
-                run.answer = output.answer;
-                run.error = output.error;
-                run.proposals = output.proposals;
-                run.changes = output.changes;
-                run.changed_paths = output.changed_paths;
-                run.proposal_ids = output.proposal_ids;
-                run.attempts = attempts;
-                run.transcript = transcript;
+                completed.apply_to(run, Local::now().timestamp());
             }
         });
         handle
@@ -1056,75 +857,31 @@ fn remove_origin(app: &AppHandle, path: &str, chain_id: &str) {
     }
 }
 
-fn transient_failure(error: &str) -> bool {
-    let e = error.to_ascii_lowercase();
-    [
-        "couldn't start",
-        "exited before completing",
-        "connection",
-        "temporar",
-        "timed out",
-        "timeout",
-        "overloaded",
-        "unavailable",
-        "rate limit",
-        "broken pipe",
-    ]
-    .iter()
-    .any(|needle| e.contains(needle))
+/// Tauri/process/storage adapter; retry and result-transition decisions live in mosaic-core.
+struct DesktopRun<'a> {
+    app: &'a AppHandle,
+    root: &'a Path,
+    claude: &'a Path,
+    mosaic: &'a Path,
+    agent: &'a Agent,
+    cause: &'a RunCause,
+    id: u64,
 }
 
-#[derive(Default)]
-struct RunOutput {
-    answer: String,
-    error: Option<String>,
-    proposals: usize,
-    changes: Vec<String>,
-    changed_paths: Vec<String>,
-    proposal_ids: Vec<i64>,
-    write_tools: HashMap<String, (String, Option<String>)>,
-}
-
-impl RunOutput {
-    fn apply(&mut self, event: ChatEvent) {
-        match event {
-            ChatEvent::Text { text } => {
-                if !self.answer.is_empty() {
-                    self.answer.push('\n');
-                }
-                self.answer.push_str(&text);
-            }
-            ChatEvent::ToolDone { id, error, review } => {
-                if let Some(proposal) = review {
-                    self.proposals += 1;
-                    if !self.proposal_ids.contains(&proposal) {
-                        self.proposal_ids.push(proposal);
-                    }
-                }
-                if let Some((summary, path)) = self.write_tools.remove(&id)
-                    && error.is_none()
-                {
-                    self.changes.push(summary);
-                    if review.is_none()
-                        && let Some(path) = path
-                        && !self.changed_paths.contains(&path)
-                    {
-                        self.changed_paths.push(path);
-                    }
-                }
-            }
-            ChatEvent::Tool {
-                id,
-                summary,
-                path,
-                writes: true,
-                ..
-            } => {
-                self.write_tools.insert(id, (summary, path));
-            }
-            ChatEvent::Done { error: e, .. } => self.error = e,
-            _ => {}
-        }
+impl RunHost for DesktopRun<'_> {
+    fn record_attempt(&mut self, attempt: u8) {
+        update_attempts(self.root, self.id, attempt);
+    }
+    fn attempt(&mut self, transcript: &mut RunTranscript) -> RunOutput {
+        launch(self.claude, self.mosaic, self.root, self.agent, self.cause)
+            .map(|child| collect_child(self.app, child, self.cause, self.id, transcript))
+            .unwrap_or_else(RunOutput::failed)
+    }
+    fn publish(&mut self, transcript: &RunTranscript) {
+        publish_transcript(self.app, self.id, transcript);
+    }
+    fn wait(&mut self, delay: Duration) {
+        std::thread::sleep(delay);
     }
 }
 
@@ -1134,119 +891,7 @@ mod tests {
     use mosaic_core::{Vault, Workspace, index::Index};
 
     #[test]
-    fn run_cause_preserves_the_trigger_subject_and_chain() {
-        let manual = RunCause::Manual;
-        assert_eq!(manual.label(), "Manual");
-        assert!(manual.path().is_none());
-        assert!(manual.chain().is_none());
-        assert!(manual.request().is_none());
-        assert!(!manual.late());
-
-        let schedule = RunCause::Schedule {
-            text: "daily 08:00".into(),
-            late: true,
-        };
-        assert_eq!(schedule.label(), "Scheduled: daily 08:00");
-        assert!(schedule.late());
-        assert!(schedule.path().is_none());
-        assert!(schedule.chain().is_none());
-        assert!(schedule.request().is_none());
-
-        let chain = Chain {
-            id: "root-run".into(),
-            depth: 2,
-        };
-        for test in [false, true] {
-            let event = RunCause::Event {
-                trigger: "created in Inbox/".into(),
-                path: "Inbox/Subject.md".into(),
-                chain: chain.clone(),
-                test,
-            };
-            assert_eq!(event.path(), Some("Inbox/Subject.md"));
-            assert_eq!(event.chain(), Some(&chain));
-            assert!(!event.late());
-            assert_eq!(
-                event.label(),
-                format!(
-                    "{}created in Inbox/ · Inbox/Subject.md",
-                    if test { "Test: " } else { "" }
-                )
-            );
-            let request = event.request().unwrap();
-            assert!(request.contains("`Inbox/Subject.md` matched `created in Inbox/`"));
-            assert!(request.contains("triggering note is the subject"));
-            assert_eq!(request.contains("This is a test trigger"), test);
-        }
-    }
-
-    #[test]
-    fn run_output_keeps_answer_chunks_and_terminal_errors_without_claiming_reads_as_changes() {
-        let mut out = RunOutput::default();
-        out.apply(ChatEvent::Started {
-            session_id: "session".into(),
-            mosaic: true,
-        });
-        for text in ["Read the task history.", "Here is the summary."] {
-            out.apply(ChatEvent::Text { text: text.into() });
-        }
-        out.apply(ChatEvent::Tool {
-            id: "read".into(),
-            summary: "Read Daily".into(),
-            path: Some("Daily.md".into()),
-            writes: false,
-        });
-        out.apply(ChatEvent::ToolDone {
-            id: "read".into(),
-            error: None,
-            review: None,
-        });
-        out.apply(ChatEvent::Done {
-            session_id: Some("session".into()),
-            cost_usd: Some(0.01),
-            error: Some("Connection interrupted".into()),
-        });
-        assert_eq!(out.answer, "Read the task history.\nHere is the summary.");
-        assert_eq!(out.error.as_deref(), Some("Connection interrupted"));
-        assert!(out.changes.is_empty());
-        assert!(out.changed_paths.is_empty());
-        assert!(out.proposal_ids.is_empty());
-    }
-
-    #[test]
-    fn run_details_distinguish_direct_changes_proposals_and_failures() {
-        let mut out = RunOutput::default();
-        for (id, path, error, review) in [
-            ("a", "Changed.md", None, None),
-            ("b", "Proposed.md", None, Some(24)),
-            ("c", "Failed.md", Some("denied".to_string()), None),
-        ] {
-            out.apply(ChatEvent::Tool {
-                id: id.into(),
-                summary: format!("Edited {path}"),
-                path: Some(path.into()),
-                writes: true,
-            });
-            out.apply(ChatEvent::ToolDone {
-                id: id.into(),
-                error,
-                review,
-            });
-        }
-        assert_eq!(out.changed_paths, vec!["Changed.md"]);
-        assert_eq!(out.proposal_ids, vec![24]);
-        assert_eq!(out.proposals, 1);
-        assert_eq!(out.changes.len(), 2);
-        assert!(!out.changes.iter().any(|s| s.contains("Failed")));
-    }
-
-    #[test]
-    fn retry_policy_is_transient_and_creation_detection_is_precise() {
-        assert!(transient_failure("connection unavailable"));
-        assert!(transient_failure(
-            "Claude Code exited before completing the workflow"
-        ));
-        assert!(!transient_failure("permission denied"));
+    fn creation_detection_is_precise() {
         assert!(creation_summary("Created Daily/2026-10-07"));
         assert!(creation_summary("Copied Template to Daily/2026-10-07"));
         assert!(!creation_summary("Added to Daily/2026-10-07"));

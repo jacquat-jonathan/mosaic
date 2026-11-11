@@ -19,6 +19,7 @@ esac
 # smaller CI runners; relaxed coverage-only timeouts account for instrumented module evaluation.
 if [[ "$stage" == "all" || "$stage" == "unit" ]]; then
   VITE_COVERAGE=true pnpm exec vitest run \
+    --reporter=default --reporter=junit --outputFile.junit=coverage/unit-tests.xml \
     --maxWorkers=1 \
     --no-file-parallelism \
     --testTimeout=120000 \
@@ -47,10 +48,13 @@ pnpm exec nyc report \
   --reporter=lcov \
   --reporter=html
 
-minimum="${MOSAIC_UI_COVERAGE_MIN:-70}"
-pnpm exec nyc check-coverage \
-  --temp-dir .nyc_output \
-  --lines "$minimum" \
-  --statements "$minimum" \
-  --branches "$minimum" \
-  --functions "$minimum"
+python3 ../scripts/coverage-report.py coverage/lcov.info --source-root "$PWD" \
+  --label "Merged UI" --output coverage/feedback
+
+threshold_args=()
+for metric in lines statements branches functions; do
+  # Separate assignment makes a rejected override fatal under set -e (not an empty CLI argument).
+  minimum="$(python3 ../scripts/coverage-policy.py ui_merged "$metric" MOSAIC_UI_COVERAGE_MIN)"
+  threshold_args+=("--$metric" "$minimum")
+done
+pnpm exec nyc check-coverage --temp-dir .nyc_output "${threshold_args[@]}"

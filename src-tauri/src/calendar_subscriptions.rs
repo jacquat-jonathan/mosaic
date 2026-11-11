@@ -24,7 +24,7 @@ fn io_error(path: impl Into<String>, source: std::io::Error) -> Error {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 struct Subscription {
     id: String,
     name: String,
@@ -44,7 +44,13 @@ struct Subscription {
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct SubscriptionStore {
+    // Retained unchanged as rollback data for pre-identity versions. New writers use vault_ids.
     vaults: HashMap<String, Vec<Subscription>>,
+    #[serde(default)]
+    vault_ids: HashMap<String, Vec<Subscription>>,
+    // A legacy path is consumed once; a different vault at the same path must not inherit it.
+    #[serde(default)]
+    migrated_paths: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone, Serialize, specta::Type)]
@@ -114,8 +120,9 @@ fn mutate_settings<T>(
     })();
     match result {
         Ok((result, value)) => {
+            let changed = settings.other.get(SETTINGS_KEY) != Some(&value);
             settings.other.insert(SETTINGS_KEY.into(), value);
-            Ok((Ok(result), true))
+            Ok((Ok(result), changed))
         }
         Err(error) => Ok((Err(error), false)),
     }
@@ -129,7 +136,7 @@ fn merge_refresh(
     fetched: &Subscription,
 ) -> bool {
     let Some(current) = store
-        .vaults
+        .vault_ids
         .get_mut(key)
         .and_then(|items| items.iter_mut().find(|s| s.id == before.id))
     else {
@@ -148,7 +155,51 @@ fn merge_refresh(
 }
 
 fn vault_key(state: &State<AppState>) -> CmdResult<String> {
-    Ok(state.get()?.vault.root().display().to_string())
+    let ws = state.get()?;
+    let root = ws.vault.root();
+    let identity = mosaic_core::vault_id::identify(root)?;
+    let previous = mosaic_core::vault_id::migration_roots(root)?;
+    mutate(|store| migrate_identity(store, &identity.id, root, &previous))?;
+    Ok(identity.id)
+}
+
+/// Atomically claim legacy records, preserving their exact metadata and credential references.
+/// Conflicting candidates are never merged or exposed in an error message.
+fn migrate_identity(
+    store: &mut SubscriptionStore,
+    id: &str,
+    root: &Path,
+    previous: &[PathBuf],
+) -> CmdResult<()> {
+    if store.vault_ids.contains_key(id) {
+        return Ok(());
+    }
+    let paths: Vec<String> = std::iter::once(root)
+        .chain(previous.iter().map(PathBuf::as_path))
+        .map(|path| path.to_string_lossy().into_owned())
+        .filter(|path| !store.migrated_paths.contains_key(path))
+        .collect();
+    let mut selected: Option<Vec<Subscription>> = None;
+    for path in &paths {
+        if let Some(items) = store.vaults.get(path) {
+            if selected.as_ref().is_some_and(|selected| selected != items) {
+                return Err(Error::Invalid(
+                    "calendar subscription migration has conflicting legacy records; metadata was preserved, resolve the legacy records before retrying".into(),
+                ));
+            }
+            selected = Some(items.clone());
+        }
+    }
+    for path in paths {
+        if store.vaults.contains_key(&path) {
+            store.migrated_paths.insert(path, id.to_owned());
+        }
+    }
+    // An empty entry is intentional: deleting the last subscription must not re-import old data.
+    store
+        .vault_ids
+        .insert(id.to_owned(), selected.unwrap_or_default());
+    Ok(())
 }
 
 fn cache_path(app: &AppHandle, subscription: &Subscription) -> CmdResult<PathBuf> {
@@ -354,7 +405,7 @@ pub(crate) fn calendar_subscriptions(
 ) -> CmdResult<Vec<SubscriptionView>> {
     let key = vault_key(&state)?;
     load(&app)?
-        .vaults
+        .vault_ids
         .get(&key)
         .into_iter()
         .flatten()
@@ -415,7 +466,7 @@ pub(crate) async fn add_calendar_subscription(
     }
     if let Err(error) = mutate(|store| {
         store
-            .vaults
+            .vault_ids
             .entry(key)
             .or_default()
             .push(subscription.clone());
@@ -472,7 +523,7 @@ pub(crate) fn update_calendar_subscription(
     let mut previous_cache = None;
     let result = mutate(|store| {
         let subscription = store
-            .vaults
+            .vault_ids
             .get_mut(&key)
             .and_then(|items| items.iter_mut().find(|item| item.id == id))
             .ok_or_else(|| Error::NotFound(format!("calendar subscription/{id}")))?;
@@ -528,7 +579,7 @@ pub(crate) fn remove_calendar_subscription(
 ) -> CmdResult<()> {
     let key = vault_key(&state)?;
     let subscription = mutate(|store| {
-        let items = store.vaults.entry(key).or_default();
+        let items = store.vault_ids.entry(key).or_default();
         let index = items
             .iter()
             .position(|item| item.id == id)
@@ -552,7 +603,7 @@ pub(crate) async fn refresh_calendar_subscriptions(
 ) -> CmdResult<Vec<SubscriptionView>> {
     let key = vault_key(&state)?;
     let store = load(&app)?;
-    for before in store.vaults.get(&key).into_iter().flatten() {
+    for before in store.vault_ids.get(&key).into_iter().flatten() {
         if (!before.visible && !force) || (!force && !due(before)) {
             continue;
         }
@@ -569,7 +620,7 @@ pub(crate) async fn refresh_calendar_subscriptions(
         committed?;
     }
     load(&app)?
-        .vaults
+        .vault_ids
         .get(&key)
         .into_iter()
         .flatten()
@@ -588,7 +639,7 @@ pub(crate) fn calendar_overlay_range(
 ) -> CmdResult<OverlayRange> {
     let key = vault_key(&state)?;
     let store = load(&app)?;
-    let mut items = store.vaults.get(&key).cloned().unwrap_or_default();
+    let mut items = store.vault_ids.get(&key).cloned().unwrap_or_default();
     let occurrences = cached_overlays(&mut items, &cache_directory(&app)?, &from, &to, &timezone);
     Ok(OverlayRange {
         subscriptions: items
@@ -655,13 +706,154 @@ mod tests {
         }
     }
 
+    fn migrate_for_root(store: &mut SubscriptionStore, root: &Path) -> String {
+        let identity = mosaic_core::vault_id::identify(root).unwrap();
+        let previous = mosaic_core::vault_id::migration_roots(root).unwrap();
+        migrate_identity(store, &identity.id, root, &previous).unwrap();
+        identity.id
+    }
+
+    #[test]
+    fn legacy_subscriptions_follow_move_even_after_another_service_identifies_vault() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("original");
+        fs::create_dir(&root).unwrap();
+        let root = fs::canonicalize(root).unwrap();
+        let original_id = mosaic_core::vault_id::identify(&root).unwrap().id;
+        let mut legacy = subscription("retained-keychain-id");
+        legacy.secret_id = Some("replacement-credential".into());
+        let mut store = SubscriptionStore::default();
+        store
+            .vaults
+            .insert(root.display().to_string(), vec![legacy.clone()]);
+        let moved = root.with_file_name("moved");
+        fs::rename(&root, &moved).unwrap();
+        // History/planner activation may confirm the move before calendar metadata is loaded.
+        mosaic_core::vault_id::identify(&moved).unwrap();
+        let id = migrate_for_root(&mut store, &moved);
+        assert_eq!(id, original_id);
+        assert_eq!(store.vault_ids[&id], vec![legacy.clone()]);
+        assert_eq!(store.vaults[&root.display().to_string()], vec![legacy]);
+        store.vault_ids.get_mut(&id).unwrap().clear();
+        let before = serde_json::to_value(&store).unwrap();
+        assert_eq!(migrate_for_root(&mut store, &moved), id);
+        assert_eq!(serde_json::to_value(&store).unwrap(), before);
+    }
+
+    #[test]
+    fn copies_and_reused_paths_do_not_inherit_claimed_calendar_state() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("original");
+        fs::create_dir(&root).unwrap();
+        let root = fs::canonicalize(root).unwrap();
+        let mut store = SubscriptionStore::default();
+        store
+            .vaults
+            .insert(root.display().to_string(), vec![subscription("one")]);
+        let id = migrate_for_root(&mut store, &root);
+        let copy = root.with_file_name("copy");
+        fs::create_dir_all(copy.join(".mosaic")).unwrap();
+        fs::copy(
+            root.join(mosaic_core::vault_id::FILE),
+            copy.join(mosaic_core::vault_id::FILE),
+        )
+        .unwrap();
+        let copy_id = migrate_for_root(&mut store, &copy);
+        assert_ne!(id, copy_id);
+        assert!(store.vault_ids[&copy_id].is_empty());
+        assert!(
+            mosaic_core::vault_id::migration_roots(&copy)
+                .unwrap()
+                .is_empty()
+        );
+        fs::remove_file(root.join(mosaic_core::vault_id::FILE)).unwrap();
+        let replacement_id = migrate_for_root(&mut store, &root);
+        assert_ne!(replacement_id, id);
+        assert!(store.vault_ids[&replacement_id].is_empty());
+        assert_eq!(store.vault_ids[&id][0].id, "one");
+    }
+
+    #[test]
+    fn conflicting_paths_are_atomic_and_retryable_without_leaking_metadata() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = Path::new("/new");
+        let previous = vec![PathBuf::from("/old")];
+        let mut store = SubscriptionStore::default();
+        store
+            .vaults
+            .insert("/new".into(), vec![subscription("one")]);
+        store
+            .vaults
+            .insert("/old".into(), vec![subscription("two")]);
+        Settings::try_update_in(dir.path(), |settings| {
+            settings
+                .other
+                .insert(SETTINGS_KEY.into(), serde_json::to_value(&store)?);
+            Ok(((), true))
+        })
+        .unwrap();
+        let bytes = fs::read(dir.path().join("settings.json")).unwrap();
+        let result = Settings::try_update_in(dir.path(), |settings| {
+            mutate_settings(settings, |store| {
+                migrate_identity(store, "id", root, &previous)
+            })
+        })
+        .unwrap();
+        let error = result.unwrap_err().to_string();
+        assert!(!error.contains("/new") && !error.contains("/old"));
+        assert_eq!(fs::read(dir.path().join("settings.json")).unwrap(), bytes);
+        // Explicitly resolve the disagreement; both matching legacy records are claimed together.
+        store
+            .vaults
+            .insert("/old".into(), vec![subscription("one")]);
+        migrate_identity(&mut store, "id", root, &previous).unwrap();
+        assert_eq!(store.vault_ids["id"].len(), 1);
+        assert_eq!(store.migrated_paths.len(), 2);
+    }
+
+    #[test]
+    fn concurrent_migration_claims_legacy_path_only_once() {
+        let dir = tempfile::tempdir().unwrap();
+        Settings::try_update_in(dir.path(), |settings| {
+            let mut store = SubscriptionStore::default();
+            store
+                .vaults
+                .insert("/vault".into(), vec![subscription("one")]);
+            settings
+                .other
+                .insert(SETTINGS_KEY.into(), serde_json::to_value(store)?);
+            Ok(((), true))
+        })
+        .unwrap();
+        let barrier = std::sync::Barrier::new(2);
+        std::thread::scope(|scope| {
+            for id in ["first", "second"] {
+                let barrier = &barrier;
+                let dir = dir.path();
+                scope.spawn(move || {
+                    barrier.wait();
+                    Settings::try_update_in(dir, |settings| {
+                        mutate_settings(settings, |store| {
+                            migrate_identity(store, id, Path::new("/vault"), &[])
+                        })
+                    })
+                    .unwrap()
+                    .unwrap();
+                });
+            }
+        });
+        let store = decode(&Settings::try_load_in(dir.path()).unwrap()).unwrap();
+        assert_eq!(store.vault_ids.values().map(Vec::len).sum::<usize>(), 1);
+        assert_eq!(store.migrated_paths.len(), 1);
+    }
+
     #[test]
     fn rejected_calendar_mutations_keep_error_codes_and_original_state() {
         let dir = tempfile::tempdir().unwrap();
         Settings::try_update_in(dir.path(), |settings| {
             let mut store = SubscriptionStore::default();
             store
-                .vaults
+                .vault_ids
                 .insert("vault".into(), vec![subscription("one")]);
             settings
                 .other
@@ -672,7 +864,7 @@ mod tests {
         let original = fs::read(dir.path().join("settings.json")).unwrap();
         let rejected: CmdResult<()> = Settings::try_update_in(dir.path(), |settings| {
             mutate_settings(settings, |store| {
-                store.vaults.clear();
+                store.vault_ids.clear();
                 Err(Error::NotFound("calendar subscription/missing".into()))
             })
         })
@@ -712,7 +904,7 @@ mod tests {
         fetched.last_success = Some("now".into());
         fetched.cache_file = "download.ics".into();
         let mut store = SubscriptionStore::default();
-        store.vaults.insert("vault".into(), vec![before.clone()]);
+        store.vault_ids.insert("vault".into(), vec![before.clone()]);
         let barrier = std::sync::Barrier::new(2);
         std::thread::scope(|scope| {
             let worker = scope.spawn(|| {
@@ -721,24 +913,24 @@ mod tests {
                 fetched
             });
             barrier.wait();
-            store.vaults.get_mut("vault").unwrap()[0].name = "Renamed".into();
+            store.vault_ids.get_mut("vault").unwrap()[0].name = "Renamed".into();
             store
-                .vaults
+                .vault_ids
                 .get_mut("vault")
                 .unwrap()
                 .push(subscription("two"));
             barrier.wait();
             let fetched = worker.join().unwrap();
             assert!(merge_refresh(&mut store, "vault", &before, &fetched));
-            assert_eq!(store.vaults["vault"][0].name, "Renamed");
+            assert_eq!(store.vault_ids["vault"][0].name, "Renamed");
             assert_eq!(
-                store.vaults["vault"][0].last_success.as_deref(),
+                store.vault_ids["vault"][0].last_success.as_deref(),
                 Some("now")
             );
-            assert_eq!(store.vaults["vault"][1].id, "two");
-            store.vaults.get_mut("vault").unwrap().remove(0);
+            assert_eq!(store.vault_ids["vault"][1].id, "two");
+            store.vault_ids.get_mut("vault").unwrap().remove(0);
             assert!(!merge_refresh(&mut store, "vault", &before, &fetched));
-            assert_eq!(store.vaults["vault"].len(), 1);
+            assert_eq!(store.vault_ids["vault"].len(), 1);
         });
     }
 
@@ -748,13 +940,13 @@ mod tests {
         let mut fetched = before.clone();
         fetched.cache_file = "download.ics".into();
         let mut store = SubscriptionStore::default();
-        store.vaults.insert("vault".into(), vec![before.clone()]);
+        store.vault_ids.insert("vault".into(), vec![before.clone()]);
         assert!(merge_refresh(&mut store, "vault", &before, &fetched));
         assert!(!merge_refresh(&mut store, "vault", &before, &fetched));
-        store.vaults.get_mut("vault").unwrap()[0] = before.clone();
-        invalidate_feed(&mut store.vaults.get_mut("vault").unwrap()[0]);
+        store.vault_ids.get_mut("vault").unwrap()[0] = before.clone();
+        invalidate_feed(&mut store.vault_ids.get_mut("vault").unwrap()[0]);
         assert!(!merge_refresh(&mut store, "vault", &before, &fetched));
-        assert!(store.vaults["vault"][0].last_success.is_none());
+        assert!(store.vault_ids["vault"][0].last_success.is_none());
     }
 
     #[test]

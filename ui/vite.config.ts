@@ -5,6 +5,7 @@ import { transformAsync } from "@babel/core";
 import babelIstanbul from "babel-plugin-istanbul";
 import fs from "node:fs";
 import path from "node:path";
+import coveragePolicy from "../coverage-policy.json";
 
 /**
  * Serves Excalidraw's fonts from the bundle instead of its default CDN (the app never touches the
@@ -87,9 +88,8 @@ export default defineConfig({
       exclude: ["src/**/*.test.{ts,tsx}", "src/ipc/bindings.ts"],
       reporter: ["text", "json", "json-summary", "lcov", "html"],
       reportsDirectory: "coverage",
-      // Keep the all-source baseline from regressing and raise these floors as component and
-      // workflow coverage grows.
-      thresholds: { lines: 29, statements: 29, branches: 25, functions: 24 },
+      // Direct `vitest --coverage` is unit-only, not the merged CI gate.
+      thresholds: coveragePolicy.ui_unit,
     },
   },
 });

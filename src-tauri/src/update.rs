@@ -243,23 +243,7 @@ pub fn finish_update(app: AppHandle, state: State<UpdateState>) -> CmdResult<()>
     let error_file = install_error_file().ok_or_else(|| invalid("HOME isn't set."))?;
     // An atomic exchange keeps the installed path present throughout. Retain the old bundle;
     // restore it if LaunchServices refuses to open the replacement. Every step is logged.
-    let script = r#"pid=$1 src=$2 dest=$3 log=$4 err=$5 backup=$6 helper=$7
-mkdir -p "$(dirname "$log")" "$(dirname "$err")"
-exec >>"$log" 2>&1
-echo "== $(date): installing $src into $dest"
-while kill -0 "$pid" 2>/dev/null; do sleep 0.2; done
-fail() { echo "FAILED: $1"; printf '%s\n' "Couldn't install the new build ($1). Details in $log" >"$err"; }
-if ! "$helper" swap-apps "$src" "$dest"; then
-  fail "exchanging the apps; installed app unchanged"
-else
-  rm -f "$err"
-  if ! mv "$src" "$backup"; then backup=$src; fi
-  echo "installed; previous version retained at $backup"
-fi
-if ! open "$dest"; then
-  fail "launching the update; restoring the previous app"
-  if [ -d "$backup" ]; then "$helper" swap-apps "$backup" "$dest" && open "$dest"; fi
-fi"#;
+    let script = include_str!("update/install-helper.sh");
     Command::new("/bin/sh")
         .arg("-c")
         .arg(script)
@@ -298,5 +282,73 @@ mod tests {
         assert_eq!(parse_version("1.0"), None);
         assert_eq!(parse_version("1.0.0.0"), None);
         assert_eq!(parse_version("Unreleased"), None);
+    }
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod native_smoke_tests {
+    use super::*;
+    #[test]
+    fn failed_launch_rolls_back_fixture_install_and_preserves_vault() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = tempfile::tempdir().unwrap();
+        let apps = root.path().join("Applications");
+        let stage = apps.join(".mosaic-install-smoke");
+        let next = stage.join("Next.app");
+        let dest = apps.join("Mosaic.app");
+        let backup = stage.join("Previous.app");
+        for (path, version) in [(&next, "new"), (&dest, "old")] {
+            std::fs::create_dir_all(path.join("Contents")).unwrap();
+            std::fs::write(path.join("Contents/Info.plist"), "<?xml version=\"1.0\"?><plist version=\"1.0\"><dict><key>CFBundleIdentifier</key><string>dev.jona.mosaic</string></dict></plist>").unwrap();
+            std::fs::write(path.join("version"), version).unwrap();
+        }
+        let note = root.path().join("note.md");
+        std::fs::write(&note, "keep me").unwrap();
+        // Tiny helper uses this test binary's dedicated swap-only subprocess entry, not a mock swap.
+        let helper = stage.join("helper");
+        std::fs::write(&helper, format!("#!/bin/sh\nexport MOSAIC_SMOKE_SWAP_FROM=\"$2\" MOSAIC_SMOKE_SWAP_TO=\"$3\"\nexec '{}' --exact update::native_smoke_tests::fixture_swap_subprocess --nocapture\n",std::env::current_exe().unwrap().display())).unwrap();
+        std::fs::set_permissions(&helper, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let bin = root.path().join("bin");
+        std::fs::create_dir(&bin).unwrap();
+        let open = bin.join("open");
+        std::fs::write(&open,"#!/bin/sh\n# Reject only the new fixture; allow reopening the restored fixture.\n[ \"$(cat \"$1/version\")\" = old ]\n").unwrap();
+        std::fs::set_permissions(open, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let log = root.path().join("install.log");
+        let error = root.path().join("error.txt");
+        let status = Command::new("/bin/sh")
+            .args([
+                "-c",
+                include_str!("update/install-helper.sh"),
+                "fixture-update",
+                "99999999",
+            ])
+            .arg(&next)
+            .arg(&dest)
+            .arg(&log)
+            .arg(&error)
+            .arg(&backup)
+            .arg(&helper)
+            .env("PATH", format!("{}:/usr/bin:/bin", bin.display()))
+            .status()
+            .unwrap();
+        assert!(status.success());
+        assert_eq!(
+            std::fs::read_to_string(dest.join("version")).unwrap(),
+            "old"
+        );
+        assert_eq!(std::fs::read_to_string(note).unwrap(), "keep me");
+        let log_text = std::fs::read_to_string(log).unwrap();
+        println!("{log_text}");
+        assert!(log_text.contains("restoring the previous app"));
+        assert!(error.exists());
+    }
+    #[test]
+    fn fixture_swap_subprocess() {
+        let Some(from) = std::env::var_os("MOSAIC_SMOKE_SWAP_FROM") else {
+            return;
+        };
+        let to = std::env::var_os("MOSAIC_SMOKE_SWAP_TO").unwrap();
+        mosaic_core::app_install::swap_apps(std::path::Path::new(&from), std::path::Path::new(&to))
+            .unwrap();
     }
 }

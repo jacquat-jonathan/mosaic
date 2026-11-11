@@ -56,6 +56,12 @@ export function App() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!booting && import.meta.env.VITE_NATIVE_SMOKE === "1") {
+      void import("./nativeSmoke").then(({ runNativeSmoke }) => runNativeSmoke());
+    }
+  }, [booting]);
+
   useShortcuts();
 
   useEffect(() => {
@@ -76,7 +82,7 @@ export function App() {
     keep(
       startUpdateListeners().then((off) => {
         if (cancelled) return off;
-        const stop = startAutomaticUpdates();
+        const stop = import.meta.env.VITE_NATIVE_SMOKE === "1" ? () => {} : startAutomaticUpdates();
         return () => {
           stop();
           off();

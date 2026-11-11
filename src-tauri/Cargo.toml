@@ -4,6 +4,10 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+# Test-only command surface; never enable for a release artifact.
+native-smoke = []
+
 [lib]
 name = "mosaic_app_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]

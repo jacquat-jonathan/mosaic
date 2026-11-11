@@ -8,6 +8,8 @@ mod contract_tests;
 mod html_preview;
 mod http;
 mod indexing;
+#[cfg(feature = "native-smoke")]
+mod native_smoke;
 mod planner;
 mod tessera;
 mod update;
@@ -993,6 +995,8 @@ pub(crate) fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
 }
 
 pub fn run() {
+    #[cfg(feature = "native-smoke")]
+    native_smoke::validate_environment().expect("native smoke requires isolated roots");
     #[cfg(target_os = "macos")]
     enable_webkit_spellcheck();
     tauri::Builder::default()
@@ -1021,6 +1025,11 @@ pub fn run() {
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {
                 window_state::restore(&window);
+                #[cfg(feature = "native-smoke")]
+                {
+                    window.show()?;
+                    window.set_focus()?;
+                }
             }
             // Agents change bookmarks through the CLI/MCP, which write settings.json directly.
             let handle = app.handle().clone();
@@ -1040,7 +1049,18 @@ pub fn run() {
             let typed = specta_builder().invoke_handler();
             let raw: Box<dyn Fn(tauri::ipc::Invoke) -> bool + Send + Sync> =
                 Box::new(tauri::generate_handler![import_file]);
+            #[cfg(feature = "native-smoke")]
+            let smoke: Box<dyn Fn(tauri::ipc::Invoke) -> bool + Send + Sync> =
+                Box::new(tauri::generate_handler![
+                    native_smoke::smoke_context,
+                    native_smoke::smoke_external,
+                    native_smoke::smoke_report
+                ]);
             move |invoke| {
+                #[cfg(feature = "native-smoke")]
+                if invoke.message.command().starts_with("smoke_") {
+                    return smoke(invoke);
+                }
                 if invoke.message.command() == "import_file" {
                     raw(invoke)
                 } else {

@@ -7,7 +7,7 @@ vi.mock("../ipc/api", async (original) => ({
   ...(await original<typeof import("../ipc/api")>()),
   fileUrl: mocks.fileUrl,
 }));
-vi.mock("pdfjs-dist", () => ({ GlobalWorkerOptions: {}, getDocument: mocks.getDocument }));
+vi.mock("./pdfEngine", () => ({ pdfjs: { getDocument: mocks.getDocument } }));
 import { PdfViewer } from "./PdfViewer";
 afterEach(() => {
   cleanup();

@@ -259,6 +259,31 @@ features. The new Plan UI never silently mixes them with planner objects.
 - External updates and deletions replace the normalized overlay cache. Mosaic never sends requests that
   modify the source.
 
+
+### iCalendar compatibility
+
+Calendar files and subscriptions use the same tolerant parser. A malformed event is skipped with a
+warning while readable events remain available. Invalid documents and feeds with only unreadable
+events fail without replacing the last successful cache. A complete empty calendar is valid and
+clears an overlay. File-import warnings appear before selection; subscription warnings appear in
+source settings.
+
+| Input | Behavior |
+| --- | --- |
+| Event details | Import `UID`, `SUMMARY`, `DESCRIPTION`, `LOCATION`, `URL` / `CONFERENCE`, `ATTENDEE`, and `COLOR`. A missing UID gets a deterministic identifier for duplicate detection. |
+| Dates | Import UTC, floating times, all-day `VALUE=DATE`, `DTEND`, and `DURATION` (weeks/days/hours/minutes/seconds). A timed event without an end has zero duration; an all-day event defaults to one day. Nominal days and exact hours remain distinct over DST. |
+| Timezones | Resolve IANA IDs, Windows IDs, vendor-prefixed IANA IDs, `X-WR-TIMEZONE`, and `VTIMEZONE` aliases with `X-LIC-LOCATION`. Unresolvable custom timezone rules use the calendar/default timezone with a warning. |
+| Recurrence | Support daily, weekly, monthly, yearly, hourly, minutely and secondly rules, `COUNT`, `UNTIL`, `INTERVAL`, `WKST`, and the RFC 5545 `BY*` parts. Support `RDATE` lists and periods, `EXDATE` lists, and detached `RECURRENCE-ID` changes/cancellations. Exclusions survive local import and export. Expansion is bounded. |
+| Revisions and cancellations | Use `SEQUENCE`, `LAST-MODIFIED`, and `DTSTAMP` to choose event revisions; honor `STATUS:CANCELLED` and calendar `METHOD:CANCEL`, including cancellation records without `DTSTART`. |
+| Encoding and syntax | Accept CRLF/LF/CR line endings, UTF-8 BOMs, folded lines, escaped text, quoted parameter values, and case-insensitive property/parameter names. Network feeds also decode BOM-marked UTF-16 and declared character sets, and accept compressed responses. |
+| Optional metadata | Ignore unsupported `ATTACH`, `CATEGORIES`, `CLASS`, `COMMENT`, `CONTACT`, `CREATED`, `GEO`, `ORGANIZER`, `PRIORITY`, `RELATED-TO`, `RESOURCES`, `TRANSP`, and other optional or vendor properties without failing the event. They are not retained in local event exports. |
+| Nested/other components | Ignore `VALARM` contents without confusing alarm fields with event fields. `VTODO`, `VJOURNAL`, `VFREEBUSY`, and other components do not become planner events. |
+| Legacy/unsupported semantics | Warn for `EXRULE`, multiple `RRULE` properties, `RANGE=THISANDFUTURE`, and unreadable recurrence rules. Keep the first occurrence if a rule cannot be interpreted. These warnings do not abort readable events. |
+| HTML subscription links | Resolve published Outlook `.html` views to their `.ics` feed, or follow a unique HTTPS/webcal calendar link advertised by an HTML page. Reject ambiguous pages and explain when a direct feed is needed. Retry HTTP 417 once with compatible request headers. Login-only or JavaScript-only pages require the provider's direct subscription link. |
+
+Reference: [RFC 5545](https://www.rfc-editor.org/rfc/rfc5545). Importing an event does not reproduce
+provider-specific reminders, permissions, attachments, or invitation workflows.
+
 ## Milestones
 
 Each milestone is a reviewable batch merged into `dev` only after its own checks pass.

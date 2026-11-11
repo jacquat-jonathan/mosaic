@@ -665,6 +665,42 @@ test("iCalendar import preserves selection, duplicate controls and focus", async
   await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(page.getByRole("button", { name: "Import iCalendar file", exact: true })).toBeFocused();
 });
+test("iCalendar import keeps readable events and explains skipped entries", async ({ page }) => {
+  await openCalendar(page);
+  const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "Import iCalendar file", exact: true }).click();
+  // Use the page's fixed calendar clock, not the runner's, so the event lands on the shown day.
+  const day = await page.evaluate(() => new Date().toISOString().slice(0, 10).replaceAll("-", ""));
+  const content = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "BEGIN:VEVENT",
+    "UID:broken-entry",
+    "DTSTART:invalid",
+    "END:VEVENT",
+    "BEGIN:VEVENT",
+    "UID:readable-entry",
+    "SUMMARY:Readable meeting",
+    `DTSTART:${day}T120000Z`,
+    `DTEND:${day}T130000Z`,
+    "X-UNKNOWN:value",
+    "BEGIN:VALARM",
+    "SUMMARY:Alarm title",
+    "TRIGGER:-PT5M",
+    "END:VALARM",
+    "END:VEVENT",
+    "END:VCALENDAR",
+  ].join("\r\n");
+  await (await chooser).setFiles({ name: "partial.ics", mimeType: "text/calendar", buffer: Buffer.from(content) });
+  const dialog = page.getByRole("dialog", { name: "Import calendar events", exact: true });
+  await expect(dialog.getByText("Some calendar data needs attention")).toBeVisible();
+  await expect(dialog.getByText(/Skipped event 1/)).toBeVisible();
+  await expect(dialog.getByRole("checkbox", { name: /^Readable meeting/ })).toBeChecked();
+  await dialog.getByRole("button", { name: "Import 1 events", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.locator(".planner-timed-item.event", { hasText: "Readable meeting" })).toBeVisible();
+});
+
 test("iCalendar import shares themes and fits scaled narrow windows", async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });

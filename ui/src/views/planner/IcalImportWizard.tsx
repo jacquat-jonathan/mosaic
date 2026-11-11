@@ -84,6 +84,16 @@ export function IcalImportWizard({
           <strong>{selected.size}</strong> of {preview.candidates.length} events selected
           {preview.duplicates ? ` · ${preview.duplicates} already imported` : ""}
         </div>
+        {!!preview.warnings?.length && (
+          <Notice tone="warning">
+            <strong>Some calendar data needs attention</strong>
+            <ul>
+              {preview.warnings.map((warning, index) => (
+                <li key={index}>{warning}</li>
+              ))}
+            </ul>
+          </Notice>
+        )}
         <div className="calendar-import-list">
           {preview.candidates.map((item) => (
             <label key={item.key} className={item.duplicate ? "duplicate" : ""}>

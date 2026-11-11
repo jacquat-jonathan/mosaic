@@ -31,10 +31,12 @@ uuid = { version = "1", features = ["v4"] }
 percent-encoding = "2"
 libc = "0.2"
 tempfile = "3.27.0"
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["brotli", "deflate", "gzip", "rustls-tls"] }
 tauri-specta = { version = "=2.0.0-rc.25", features = ["derive", "typescript"] }
 specta = { version = "=2.0.0-rc.25", features = ["derive", "serde_json"] }
 specta-typescript = "=0.0.12"
+scraper = { version = "0.24", default-features = false }
+encoding_rs = "0.8"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2-foundation = { version = "0.3", features = ["NSUserDefaults", "NSString"] }

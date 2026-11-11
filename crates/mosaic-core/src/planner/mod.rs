@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 pub use ical::{
-    IcalImportCandidate, IcalImportPreview, IcalImportResult, OverlayOccurrence,
+    IcalImportCandidate, IcalImportPreview, IcalImportResult, OverlayOccurrence, ical_warnings,
     overlay_occurrences, validate_ical,
 };
 pub use service::{PlannerService, PlannerUnavailable};

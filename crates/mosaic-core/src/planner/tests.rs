@@ -1198,13 +1198,13 @@ fn one_unsupported_recurrence_never_rejects_the_whole_feed() {
             "{rule}"
         );
     }
-    // A rule that is still unsupported is skipped; the other events survive.
+    // An invalid rule keeps its first event and does not hide other events.
     let feed = wrap(
         event("good", "")
-            + &event("bad", "RRULE:FREQ=DAILY;BYSETPOS=1\r\n")
+            + &event("bad", "RRULE:FREQ=DAILY;BYSETPOS=0\r\n")
             + &event("yearly", "RRULE:FREQ=YEARLY\r\n"),
     );
-    assert_eq!(validate_ical(&feed, "UTC").unwrap(), 2);
+    assert_eq!(validate_ical(&feed, "UTC").unwrap(), 3);
     let store = in_memory();
     let preview = store.preview_ical_import("feed", &feed, "UTC").unwrap();
     let mut uids = preview
@@ -1213,10 +1213,16 @@ fn one_unsupported_recurrence_never_rejects_the_whole_feed() {
         .map(|c| c.source_uid.as_str())
         .collect::<Vec<_>>();
     uids.sort();
-    assert_eq!(uids, vec!["good", "yearly"]);
+    assert_eq!(uids, vec!["bad", "good", "yearly"]);
+    assert!(
+        preview
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("recurrence"))
+    );
     let occurrences =
         overlay_occurrences(&feed, "s", "S", None, "2026-11-03", "2026-11-03", "UTC").unwrap();
-    assert_eq!(occurrences.len(), 2);
+    assert_eq!(occurrences.len(), 3);
 }
 
 #[test]

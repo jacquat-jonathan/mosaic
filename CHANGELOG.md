@@ -13,6 +13,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 - **Image actions on right-click:** clicking an embedded image keeps it rendered. Open, copy, reset its size or edit its Markdown source from the context menu; keyboard users can open that menu with Shift+F10.
 
 - **Icons that match their purpose:** Templates, Calendar & links, Connections & safety, and Workspace settings have distinct icons. Workspace tabs match their destination, and runs awaiting review use an eye instead of the queued-status clock.
+- **More reliable calendar imports:** import readable events even when a feed contains unfamiliar fields or broken entries, with warnings explaining skipped or adjusted data. Calendar imports now handle more recurrence rules, durations, timezone formats, and recurrence exceptions.
+- **Calendar web links:** published Outlook calendar pages and pages advertising an ICS subscription can resolve to their calendar feed. Downloads retry HTTP 417 responses with compatible headers and explain when a direct subscription link is needed.
 
 ## 0.28.0 — 2026-11-04
 

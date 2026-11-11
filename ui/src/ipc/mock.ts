@@ -206,7 +206,8 @@ function mockIcalPreview(content: string, sourceKind: string): IcalImportPreview
   if (content.length > 10 * 1024 * 1024) throw err("invalid", "iCalendar input is larger than 10 MB");
   if (!/BEGIN:VCALENDAR/i.test(content)) throw err("invalid", "input is not an iCalendar document");
   const blocks = content.replace(/\r\n[ \t]/g, "").match(/BEGIN:VEVENT[\s\S]*?END:VEVENT/gi) ?? [];
-  if (!blocks.length) throw err("invalid", "iCalendar document has no events");
+  if (!/END:VCALENDAR/i.test(content)) throw err("invalid", "input is not a complete iCalendar document");
+  const warnings: string[] = [];
   const value = (block: string, name: string) =>
     new RegExp(`^${name}(?:;[^:]*)?:(.*)$`, `mi`).exec(block)?.[1].trim() ?? null;
   const dateValue = (raw: string, allDay: boolean) => {
@@ -216,54 +217,63 @@ function mockIcalPreview(content: string, sourceKind: string): IcalImportPreview
       `${cleaned.slice(0, 4)}-${cleaned.slice(4, 6)}-${cleaned.slice(6, 8)}T${cleaned.slice(9, 11)}:${cleaned.slice(11, 13)}:${cleaned.slice(13, 15)}${raw.endsWith("Z") ? "Z" : ""}`,
     ).toISOString();
   };
-  const candidates = blocks.map((block, index) => {
-    const uid = value(block, "UID") ?? `event-${index}`,
-      recurrence_id = value(block, "RECURRENCE-ID") ?? "",
-      startRaw = value(block, "DTSTART");
-    if (!startRaw) throw err("invalid", `VEVENT ${uid} is missing DTSTART`);
-    const all_day = startRaw.length === 8,
-      endRaw =
-        value(block, "DTEND") ??
-        (all_day ? startRaw : new Date(Date.parse(dateValue(startRaw, false)) + 3600000).toISOString()),
-      start_value = dateValue(startRaw, all_day),
-      end_value = /^\d{8}(?:T|$)/.test(endRaw) ? dateValue(endRaw, all_day) : endRaw,
-      key = `${uid}\0${recurrence_id}`,
-      event: CreatePlannerEvent = {
-        title: value(block, "SUMMARY") ?? "Untitled event",
-        description: value(block, "DESCRIPTION") ?? "",
-        location: value(block, "LOCATION") ?? "",
-        meeting_url: value(block, "URL"),
-        participants: [],
-        epic_id: null,
-        color: null,
-        all_day,
-        start_value,
-        end_value,
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
-        recurrence_rule: value(block, "RRULE"),
-      };
-    return {
-      key,
-      source_uid: uid,
-      recurrence_id,
-      title: event.title,
-      all_day,
-      start_value,
-      end_value,
-      timezone: event.timezone,
-      recurrence_rule: event.recurrence_rule ?? null,
-      duplicate: importedIcal.has(`${sourceKind}:${key}`),
-      event,
-      excluded_occurrences: [],
-      recurrence_key: null,
-      recurrence_timezone: null,
-    };
+  const candidates = blocks.flatMap((rawBlock, index) => {
+    const block = rawBlock.replace(/BEGIN:VALARM[\s\S]*?END:VALARM/gi, "");
+    try {
+      const uid = value(block, "UID") ?? `event-${index}`,
+        recurrence_id = value(block, "RECURRENCE-ID") ?? "",
+        startRaw = value(block, "DTSTART");
+      if (!startRaw) throw err("invalid", `VEVENT ${uid} is missing DTSTART`);
+      const all_day = startRaw.length === 8,
+        endRaw =
+          value(block, "DTEND") ??
+          (all_day
+            ? new Date(Date.parse(`${dateValue(startRaw, true)}T00:00:00Z`) + 86400000).toISOString().slice(0, 10)
+            : dateValue(startRaw, false)),
+        start_value = dateValue(startRaw, all_day),
+        end_value = /^\d{8}(?:T|$)/.test(endRaw) ? dateValue(endRaw, all_day) : endRaw,
+        key = `${uid}\0${recurrence_id}`,
+        event: CreatePlannerEvent = {
+          title: value(block, "SUMMARY") ?? "Untitled event",
+          description: value(block, "DESCRIPTION") ?? "",
+          location: value(block, "LOCATION") ?? "",
+          meeting_url: value(block, "URL"),
+          participants: [],
+          epic_id: null,
+          color: null,
+          all_day,
+          start_value,
+          end_value,
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+          recurrence_rule: value(block, "RRULE"),
+        };
+      return [
+        {
+          key,
+          source_uid: uid,
+          recurrence_id,
+          title: event.title,
+          all_day,
+          start_value,
+          end_value,
+          timezone: event.timezone,
+          recurrence_rule: event.recurrence_rule ?? null,
+          duplicate: importedIcal.has(`${sourceKind}:${key}`),
+          event,
+        },
+      ];
+    } catch (reason) {
+      warnings.push(`Skipped event ${index + 1}: ${String(reason)}`);
+      return [];
+    }
   });
+  if (blocks.length && !candidates.length) throw err("invalid", "iCalendar document has no readable events");
   return {
     planner_revision: plannerRevision,
     source_kind: sourceKind,
     candidates,
     duplicates: candidates.filter((item) => item.duplicate).length,
+    warnings,
   };
 }
 

@@ -556,6 +556,7 @@ export type IcalImportPreview = {
 	source_kind: string,
 	candidates: IcalImportCandidate[],
 	duplicates: number,
+	warnings?: string[],
 };
 
 export type IcalImportResult = {

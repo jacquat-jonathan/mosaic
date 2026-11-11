@@ -23,7 +23,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: '24'
+          node-version-file: .nvmrc
       - name: Validate exact release source and green main merge
         env:
           GH_TOKEN: ${{ github.token }}
@@ -53,19 +53,23 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: '24'
+          node-version-file: .nvmrc
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-        with:
-          version: '12'
+      - name: Read pinned Rust version
+        id: rust-version
+        run: echo "version=$(sed -n 's/^channel = "\(.*\)"/\1/p' rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master, 2026-09-11
         with:
-          toolchain: stable
+          toolchain: ${{ steps.rust-version.outputs.version }}
           targets: aarch64-apple-darwin,x86_64-apple-darwin
           components: clippy,rustfmt
       - id: version
         run: echo "version=$(node -p 'JSON.parse(require("fs").readFileSync("src-tauri/tauri.conf.json")).version')" >> "$GITHUB_OUTPUT"
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: |
+          bash scripts/check-toolchain.sh node
+          pnpm install --frozen-lockfile
+          git diff --exit-code -- Cargo.lock pnpm-lock.yaml
       - name: Install WebKit test browser
         run: pnpm --dir ui exec playwright install webkit
       - name: Test before publishing
@@ -74,6 +78,15 @@ jobs:
         run: bash scripts/install.sh --universal --build-only
       - name: Package (unsigned)
         run: node scripts/package-release.mjs
+      - name: Record build inputs and artifact digests
+        run: node scripts/build-inputs.mjs "target/releases/v${{ steps.version.outputs.version }}" target/build-inputs.json
+      - name: Upload build input record
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: build-inputs
+          path: target/build-inputs.json
+          if-no-files-found: error
+          retention-days: 90
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-assets
@@ -103,7 +116,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: '24'
+          node-version-file: .nvmrc
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: release-assets

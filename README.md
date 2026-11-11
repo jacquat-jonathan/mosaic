@@ -95,9 +95,9 @@ Prerequisites:
 
 - macOS 12 or later.
 - Xcode command line tools: `xcode-select --install`.
-- Rust: <https://rustup.rs>, or Homebrew `rustup`.
-- Node 24 or later (the current UI build requires a modern Node runtime).
-- pnpm: `corepack enable pnpm`.
+- Rust: <https://rustup.rs>, or Homebrew `rustup`; the checkout selects `rust-toolchain.toml`.
+- Node: the exact version in `.nvmrc` (`nvm install && nvm use`).
+- pnpm: `corepack enable pnpm`; `package.json` pins its exact version. See [build inputs](docs/BUILD_INPUTS.md) and [dependency triage](docs/DEPENDENCIES.md).
 
 ```sh
 git clone https://github.com/jacquat-jonathan/mosaic.git
@@ -249,7 +249,7 @@ custom source fields; saving configures the workflow without running or unpausin
 ## Develop
 
 ```sh
-pnpm install
+pnpm install --frozen-lockfile
 pnpm dev               # run the app with hot reload
 scripts/check.sh       # formatting, lint, Rust/Vitest tests, and Chrome + WebKit user workflows
 pnpm coverage          # all-source Rust/UI reports; CI enforces the current coverage floors

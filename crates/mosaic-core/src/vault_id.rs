@@ -17,6 +17,9 @@ struct Stored {
     id: String,
     /// The vault folder when the id was last confirmed.
     root: PathBuf,
+    /// Previous locations retained until app-specific path-keyed migrations have run.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    migration_roots: Vec<PathBuf>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -41,13 +44,14 @@ fn read(root: &Path) -> Result<Option<Stored>> {
 
 /// Writes the file. With `first`, only if there's none yet: when two processes open a new vault
 /// at once, one id wins and both use it.
-fn write(root: &Path, id: &str, first: bool) -> Result<()> {
+fn write(root: &Path, id: &str, first: bool, migration_roots: &[PathBuf]) -> Result<()> {
     let path = root.join(FILE);
     let dir = path.parent().expect("a folder");
     std::fs::create_dir_all(dir).map_err(|e| Error::io(dir.display().to_string(), e))?;
     let json = serde_json::to_vec_pretty(&Stored {
         id: id.to_string(),
         root: root.to_path_buf(),
+        migration_roots: migration_roots.to_vec(),
     })
     .map_err(|e| Error::Invalid(e.to_string()))?;
     // Written whole, then renamed: a half-written file would orphan the history.
@@ -70,7 +74,7 @@ fn write(root: &Path, id: &str, first: bool) -> Result<()> {
 /// can't parse: that is reported, so the history isn't silently replaced.
 pub fn identify(root: &Path) -> Result<VaultIdentity> {
     let Some(stored) = read(root)? else {
-        write(root, &uuid::Uuid::new_v4().to_string(), true)?;
+        write(root, &uuid::Uuid::new_v4().to_string(), true, &[])?;
         let id = read(root)?
             .ok_or_else(|| Error::Invalid(format!("{FILE} disappeared")))?
             .id;
@@ -92,18 +96,31 @@ pub fn identify(root: &Path) -> Result<VaultIdentity> {
         .is_some_and(|other| other.id == stored.id);
     if original_still_there {
         let id = uuid::Uuid::new_v4().to_string();
-        write(root, &id, false)?;
+        write(root, &id, false, &[])?;
         Ok(VaultIdentity {
             id,
             moved_from: None,
         })
     } else {
-        write(root, &stored.id, false)?;
+        let mut migration_roots = stored.migration_roots;
+        if !migration_roots.contains(&stored.root) {
+            migration_roots.push(stored.root.clone());
+        }
+        write(root, &stored.id, false, &migration_roots)?;
         Ok(VaultIdentity {
             id: stored.id,
             moved_from: Some(stored.root),
         })
     }
+}
+
+/// Recorded previous locations for conservative migration of path-keyed application metadata.
+/// Call after `identify`: copies start with an empty lineage, and moved vaults retain their lineage
+/// across repeated opens (another subsystem may have already consumed `moved_from`).
+pub fn migration_roots(root: &Path) -> Result<Vec<PathBuf>> {
+    Ok(read(root)?
+        .map(|stored| stored.migration_roots)
+        .unwrap_or_default())
 }
 
 /// The vault's id as `identify` would return it, without writing anything into the vault: `None`
@@ -188,6 +205,27 @@ mod tests {
         assert_eq!(after.id, first.id);
         assert_eq!(after.moved_from.as_deref(), Some(a.as_path()));
         assert_eq!(identify(&moved).unwrap().moved_from, None);
+    }
+
+    #[test]
+    fn migration_locations_survive_reopens_and_are_not_inherited_by_copies() {
+        let d = tempfile::tempdir().unwrap();
+        let a = folder(d.path(), "A");
+        identify(&a).unwrap();
+        let b = d.path().join("B");
+        std::fs::rename(&a, &b).unwrap();
+        identify(&b).unwrap();
+        identify(&b).unwrap();
+        assert_eq!(migration_roots(&b).unwrap(), vec![a.clone()]);
+        let c = d.path().join("C");
+        std::fs::rename(&b, &c).unwrap();
+        identify(&c).unwrap();
+        assert_eq!(migration_roots(&c).unwrap(), vec![a, b]);
+        let copy = folder(d.path(), "Copy");
+        std::fs::create_dir_all(copy.join(".mosaic")).unwrap();
+        std::fs::copy(c.join(FILE), copy.join(FILE)).unwrap();
+        identify(&copy).unwrap();
+        assert!(migration_roots(&copy).unwrap().is_empty());
     }
 
     #[test]

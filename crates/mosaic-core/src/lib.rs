@@ -28,6 +28,7 @@ pub mod vault;
 pub mod vault_id;
 pub mod vault_state;
 pub mod watch;
+pub mod workflow;
 
 pub use api::{FileService, LinkService, Workspace};
 pub use error::{Error, Result};

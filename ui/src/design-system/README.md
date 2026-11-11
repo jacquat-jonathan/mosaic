@@ -50,20 +50,20 @@ review page. They are not new application typography or layout requirements.
 
 ## Files and boundaries
 
-| File | Purpose |
-| --- | --- |
-| `tokens.css` | Opt-in theme, color, spacing, type, shape, and motion variables |
-| `controls.css` | Styles for candidate controls under a `.mosaic-ds` ancestor |
-| `components.tsx` | Stateless/controlled React building blocks; no store, IPC, or vault dependencies |
-| `index.ts` | Gallery barrel exports and stylesheet imports |
-| `patterns.tsx`, `patterns.css` | Candidate workflow cards, run ledgers/logs, transcript messages, composer, changes, and diffs |
-| `ProductExamples.tsx` | Interactive product patterns using local sample data, without app stores or a backend |
-| `planning.tsx`, `planning.css` | Reusable Board and Calendar presentation components using shared foundation tokens |
-| `PlanningExamples.tsx` | Interactive Board and Calendar gallery compositions using only local sample data |
-| `IconCatalog.tsx` | Searchable catalog of every canonical icon in the installed Lucide package |
-| `gallery.tsx`, `gallery.css` | Isolated review page with local demonstration state |
-| `../../design-system.html` | Separate HTML entry |
-| `../../vite.design-system.config.ts` | Separate preview/build configuration |
+| File                                 | Purpose                                                                                       |
+| ------------------------------------ | --------------------------------------------------------------------------------------------- |
+| `tokens.css`                         | Opt-in theme, color, spacing, type, shape, and motion variables                               |
+| `controls.css`                       | Styles for candidate controls under a `.mosaic-ds` ancestor                                   |
+| `components.tsx`                     | Stateless/controlled React building blocks; no store, IPC, or vault dependencies              |
+| `index.ts`                           | Gallery barrel exports and stylesheet imports                                                 |
+| `patterns.tsx`, `patterns.css`       | Candidate workflow cards, run ledgers/logs, transcript messages, composer, changes, and diffs |
+| `ProductExamples.tsx`                | Interactive product patterns using local sample data, without app stores or a backend         |
+| `planning.tsx`, `planning.css`       | Reusable Board and Calendar presentation components using shared foundation tokens            |
+| `PlanningExamples.tsx`               | Interactive Board and Calendar gallery compositions using only local sample data              |
+| `IconCatalog.tsx`                    | Searchable catalog of every canonical icon in the installed Lucide package                    |
+| `gallery.tsx`, `gallery.css`         | Isolated review page with local demonstration state                                           |
+| `../../design-system.html`           | Separate HTML entry                                                                           |
+| `../../vite.design-system.config.ts` | Separate preview/build configuration                                                          |
 
 All tokens use the `--mds-` prefix. All component styles use `mds-` classes and are scoped
 under `.mosaic-ds`. They do not redefine legacy variables or generic app element styles.
@@ -288,27 +288,27 @@ interface type size is increased by 1px: body text is now 14px, supporting text 
 metadata 13px, captions 12.5px, and dialog/panel titles 16/17px. The font stacks and hierarchy
 are unchanged. The gallery's own annotations also use larger type.
 
-| Foundation / pattern | Existing source | Candidate representation |
-| --- | --- | --- |
-| Light/dark palette | `:root`, system dark media query, explicit `[data-theme="dark"]` | `--mds-surface`, `--mds-text`, `--mds-accent`, etc. |
-| UI and monospace font stacks | `--font-ui`, `--font-mono` | `--mds-font-ui`, `--mds-font-mono` |
-| 13px UI, 12.5px hint, 12px metadata, 11.5px caption, 15/16px headings | Root, `.setting-hint`, `.badge`, `.settings-nav h2`, `.modal h2`, `.settings-head h2` | Named type tokens, increased by 1px in this candidate |
-| Spacing 2, 4, 6, 8, 10, 12, 14, 16, 20, 24px | Buttons, menus, settings, inputs, modals | `--mds-space-1` through `--mds-space-10` |
-| 5/6/7/8/12px radii | Menu items, buttons, segmented controls, menus, modals | Named radius tokens |
-| Quiet, outlined, primary, destructive buttons | `button`, `.secondary`, `.primary`, `.danger` | Five `Button` variants |
-| Text fields | `.text-input` | Labelled `TextField`, retaining 7px / 10px padding |
-| Switch 36 × 20px, 16px thumb, 150ms motion | `.toggle` | `Switch` |
-| Segmented appearance | `.segmented` and its later cascade overrides | `SegmentedControl` |
-| Settings rows and hints | `.setting-row`, `.setting-text`, `.setting-hint` | `SettingRow` |
-| Metadata and notice surfaces | `.badge`, `.notice`, `.notice.warn`, `.notice.error` | `Badge`, `Notice` |
-| Menu and dialog surfaces | `.menu`, `.modal-backdrop`, `.modal`, `--shadow` | `MenuButton`, `Dialog` |
-| Iconography | Existing `lucide-react` dependency and 16px interface icons | Searchable catalog with exact canonical import names and 16/20/24px previews |
-| Workflow cards | `views/Workflows.tsx`, `.workflow-card`, `.workflow-grid` | `WorkflowCard`, `StatusLabel` |
-| Runs ledger and detail | `views/Workflows.tsx`, `.run-ledger-*`, `.run-*` | `RunsTable`, `RunPanel`, eight explicit status labels |
-| Completed/review status colors | `.ledger-status.done`, `.ledger-status.review` | Existing light/dark green and amber as `--mds-success`, `--mds-review` |
-| Chat and tool activity | `views/ChatPanel.tsx`, `views/Transcript.tsx`, `.chat-*` | `TranscriptMessage`, `ToolActivity`, `ChatComposer` |
-| Activity and review queue | `views/ActivityPanel.tsx`, `.activity-*` | `ChangeRow`, review-first example, undo actions |
-| Review diff | `views/ReviewModal.tsx`, `.diff`, `.diff-add`, `.diff-del` | `DiffView` with the existing translucent add/remove colors |
+| Foundation / pattern                                                  | Existing source                                                                       | Candidate representation                                                     |
+| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| Light/dark palette                                                    | `:root`, system dark media query, explicit `[data-theme="dark"]`                      | `--mds-surface`, `--mds-text`, `--mds-accent`, etc.                          |
+| UI and monospace font stacks                                          | `--font-ui`, `--font-mono`                                                            | `--mds-font-ui`, `--mds-font-mono`                                           |
+| 13px UI, 12.5px hint, 12px metadata, 11.5px caption, 15/16px headings | Root, `.setting-hint`, `.badge`, `.settings-nav h2`, `.modal h2`, `.settings-head h2` | Named type tokens, increased by 1px in this candidate                        |
+| Spacing 2, 4, 6, 8, 10, 12, 14, 16, 20, 24px                          | Buttons, menus, settings, inputs, modals                                              | `--mds-space-1` through `--mds-space-10`                                     |
+| 5/6/7/8/12px radii                                                    | Menu items, buttons, segmented controls, menus, modals                                | Named radius tokens                                                          |
+| Quiet, outlined, primary, destructive buttons                         | `button`, `.secondary`, `.primary`, `.danger`                                         | Five `Button` variants                                                       |
+| Text fields                                                           | `.text-input`                                                                         | Labelled `TextField`, retaining 7px / 10px padding                           |
+| Switch 36 × 20px, 16px thumb, 150ms motion                            | `.toggle`                                                                             | `Switch`                                                                     |
+| Segmented appearance                                                  | `.segmented` and its later cascade overrides                                          | `SegmentedControl`                                                           |
+| Settings rows and hints                                               | `.setting-row`, `.setting-text`, `.setting-hint`                                      | `SettingRow`                                                                 |
+| Metadata and notice surfaces                                          | `.badge`, `.notice`, `.notice.warn`, `.notice.error`                                  | `Badge`, `Notice`                                                            |
+| Menu and dialog surfaces                                              | `.menu`, `.modal-backdrop`, `.modal`, `--shadow`                                      | `MenuButton`, `Dialog`                                                       |
+| Iconography                                                           | Existing `lucide-react` dependency and 16px interface icons                           | Searchable catalog with exact canonical import names and 16/20/24px previews |
+| Workflow cards                                                        | `views/Workflows.tsx`, `.workflow-card`, `.workflow-grid`                             | `WorkflowCard`, `StatusLabel`                                                |
+| Runs ledger and detail                                                | `views/Workflows.tsx`, `.run-ledger-*`, `.run-*`                                      | `RunsTable`, `RunPanel`, eight explicit status labels                        |
+| Completed/review status colors                                        | `.ledger-status.done`, `.ledger-status.review`                                        | Existing light/dark green and amber as `--mds-success`, `--mds-review`       |
+| Chat and tool activity                                                | `views/ChatPanel.tsx`, `views/Transcript.tsx`, `.chat-*`                              | `TranscriptMessage`, `ToolActivity`, `ChatComposer`                          |
+| Activity and review queue                                             | `views/ActivityPanel.tsx`, `.activity-*`                                              | `ChangeRow`, review-first example, undo actions                              |
+| Review diff                                                           | `views/ReviewModal.tsx`, `.diff`, `.diff-add`, `.diff-del`                            | `DiffView` with the existing translucent add/remove colors                   |
 
 The spacing scale names common existing values. Optical values like 5px menu padding and
 7px primary-button padding stay as they are. Buttons preserve their variant-specific padding
@@ -404,12 +404,14 @@ The gallery and the first application pilot share these primitives. For subseque
 import { Button, SettingRow, Switch, TextField } from "./design-system";
 
 <div className="mosaic-ds" data-theme="light">
-  <Button variant="primary" onClick={createNote}>New note</Button>
+  <Button variant="primary" onClick={createNote}>
+    New note
+  </Button>
   <TextField label="Title" value={title} onChange={(event) => setTitle(event.target.value)} />
   <SettingRow label="Hidden files" hint="Show dotfiles in the file tree.">
     <Switch label="Hidden files" checked={hidden} onCheckedChange={setHidden} />
   </SettingRow>
-</div>
+</div>;
 ```
 
 `data-theme` supports `light`, `dark`, and `system` (or omission for system). Place the class
@@ -595,11 +597,9 @@ shared tokens and readable details/shortcuts. Arrow/Home/End/type-ahead keys nav
 items, Right/Left enters/leaves submenus, and Escape/Tab restores the opener. Positioning
 accounts for interface zoom; narrow submenus stay within the viewport.
 
-
 Global error toasts use shared notices and an accessible dismiss action. Long messages wrap,
 automatic expiry pauses during hover/focus, and manual dismissal restores prior focus. Error
 replacement and timer cleanup prevent an older timeout from clearing a newer message.
-
 
 `viewers/canvas/CanvasEditor.tsx` adopts `DocumentToolbar`, shared view choices/actions,
 and scoped React Flow navigation controls. The nonmodal shape palette stays draggable,
@@ -607,41 +607,34 @@ uses shared controls and readable groups, fits the scaled viewport, and restores
 on dismissal. Newly created shapes retain editor focus. Reduced motion disables fit
 animations; canvas nodes, note previews, geometry, and source rendering stay outside scopes.
 
-
 Graphviz diagrams opt into shared `DocumentToolbar` controls, labelled Graph/Source choices,
 error notices, and a keyboard-scrollable preview. DOT source editing, rendering, and theme
 redraws remain intact. Charts now adopt the same shared controls and notices in their separate migration.
-
 
 `viewers/ExcalidrawEditor.tsx` adopts shared Drawing/Source controls and loading/error
 notices around Excalidraw. View changes re-parse the current source; invalid JSON returns
 to editable Source and can be repaired. Excalidraw's own rendering and tool controls remain
 owned by the specialized engine, including its existing theme and saving behavior.
 
-
 Vega-Lite charts adopt shared Chart/Source controls, rendering/error notices, and a
 keyboard-scrollable preview. Local vault data, JSON editing, error recovery and theme
 redraws remain intact. Both `RenderedSourceViewer` consumers are migrated, so its temporary
 legacy-control branch is removed; SVG/document typography stays owned by the renderer.
-
 
 `viewers/CsvEditor.tsx` adopts shared Table/Source choices, metadata, and row/column actions.
 Editable cells have explicit labels and keyboard context menus; CSV delimiter, newline,
 quoting, cell editing, and renderer typography remain intact. Wide table data scrolls locally
 while toolbar actions wrap in narrow panes.
 
-
 `viewers/PdfViewer.tsx` adopts readable page metadata and shared loading/error/retry states.
 Page canvases retain PDF.js rendering, resize to their pane, expose labelled busy states,
 and keep lazy loading. File reads guard their vault/lifetime; failed files and pages can be
 retried. Compact embedded previews retain their existing page limits and scrolling.
 
-
 `viewers/ImageViewer.tsx` adopts shared loading/error/retry states around the existing
 image renderer. Decode failures remain explicit, retries refresh local URLs, and late reads
 guard the active vault/lifetime. The labelled preview supports keyboard focus while image
 fit, source bytes, and document rendering remain intact.
-
 
 `viewers/HtmlViewer.tsx` adopts shared Preview/Source, zoom/script/internet actions, and
 readable consent/loading/error notices. Internet decisions remain tied to the exact page
@@ -649,30 +642,25 @@ content and vault; scripts stay independently controlled. Failed previews can be
 and late prepared documents cannot publish after closing or vault changes. The iframe and
 its document typography remain outside the design-system scope.
 
-
 `viewers/CodeEditor.tsx` adopts shared loading/read-only notices and scoped CodeMirror
 search/replace controls. CodeMirror owns its panel markup and keyboard/search model; the
 adapter uses foundation tokens for fields, actions, checkboxes, focus and responsive wrapping.
 The source scroller retains the configured code font at 13px, line-number preferences,
 syntax loading/fallbacks, and editing/save behavior.
 
-
 The final audit migrates `views/ConflictBar.tsx` to shared notices, actions, and the wide
 comparison/diff dialog. Failed comparisons are explicit and retryable, pending decisions
 block duplicates/dismissal, and resolution returns to its owning editor pane. Explicit
 Discard removes a deleted file's in-memory draft from every pane without writing it.
-
 
 `views/WorkspaceNotices.tsx` adopts shared offline/history/link-repair banners, serialized
 actions, readable wrapping, local scrolling and focus return. Reconnect explicitly preserves
 the current workspace and non-file drafts, refreshes vault metadata, and reconciles existing
 buffers with disk; it no longer restores a fresh layout over unsaved text.
 
-
 `viewers/UnsupportedFile.tsx` and file loading adopt shared notices/actions, readable
 wrapping and pending states. External launches serialize and late refusals stay tied to the
 selected file/vault. Backend restrictions for programs/installers remain in force.
-
 
 ## Board and Calendar component inventory
 

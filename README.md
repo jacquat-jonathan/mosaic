@@ -262,7 +262,8 @@ The browser workflows use the in-memory mock vault; they cover user-visible UI b
 packaged Tauri process or real disk. Rust integration tests cover the core, CLI/MCP and filesystem
 watchers. Install the optional local test browser once with `pnpm --dir ui exec playwright install webkit`.
 Install coverage support with `cargo install cargo-llvm-cov --locked --version 0.9.1`; reports are
-written to `coverage/rust.lcov` and `ui/coverage/`.
+written to `coverage/rust.lcov` and `ui/coverage/`. The [coverage policy](docs/COVERAGE.md)
+defines unit-only versus merged floors, domain/changed-line reports and CI timing evidence.
 
 PR/main CI runs **UI checks** (TypeScript, Biome and unit/component tests) alongside four
 **E2E** jobs: two shards each for Chrome and WebKit. **UI coverage** waits for all of them,

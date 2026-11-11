@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { api } from "../ipc/api";
 import { useUi } from "../state/ui";
@@ -20,7 +20,8 @@ test("tag errors remain distinct from empty loads and can be retried", async () 
   expect((await screen.findByRole("alert")).textContent).toContain("Tag index unavailable");
   fireEvent.click(screen.getByRole("button", { name: "Retry tags" }));
   const tag = await screen.findByRole("button", { name: "Search #project/active · 3 notes" });
-  expect(document.activeElement).toBe(tag);
+  // Focus moves in an effect after the list renders, so wait for it rather than racing it.
+  await waitFor(() => expect(document.activeElement).toBe(tag));
   fireEvent.click(tag);
   expect(useUi.getState().searchQuery).toBe("tag:project/active");
 });

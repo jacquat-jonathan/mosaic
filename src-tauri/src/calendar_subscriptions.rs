@@ -1120,7 +1120,9 @@ mod tests {
             );
             // Conditional requests are only safe for the resource that produced the cache.
             assert_eq!(
-                store.vault_ids["vault"][0].validator_resource_hash.as_deref(),
+                store.vault_ids["vault"][0]
+                    .validator_resource_hash
+                    .as_deref(),
                 Some("resource")
             );
             assert_eq!(store.vault_ids["vault"][1].id, "two");

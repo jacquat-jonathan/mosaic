@@ -13,7 +13,7 @@ anyhow.workspace = true
 base64 = "0.23.1"
 clap = { version = "4.6.7", features = ["derive", "env"] }
 mosaic-core.workspace = true
-resvg = "0.48.1"
+resvg = "0.49.0"
 rmcp = { version = "3.9", features = ["server", "transport-io", "macros"] }
 schemars = "1"
 serde = { workspace = true, features = ["derive"] }

@@ -14,16 +14,16 @@ export function TagsPanel() {
   const [loading, setLoading] = useState(true);
   const [problem, setProblem] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
-  const retryFocus = useRef(false);
+  const [retryFocus, setRetryFocus] = useState(false);
   const first = useRef<HTMLButtonElement>(null);
   const retry = useRef<HTMLButtonElement>(null);
   const summary = useRef<HTMLParagraphElement>(null);
   useEffect(() => {
-    if (!loading && retryFocus.current) {
+    if (!loading && retryFocus) {
       (problem ? retry.current : (first.current ?? summary.current))?.focus({ preventScroll: true });
-      retryFocus.current = false;
+      setRetryFocus(false);
     }
-  }, [loading, problem]);
+  }, [loading, problem, retryFocus]);
   useEffect(() => {
     let live = true;
     setLoading(true);
@@ -59,7 +59,10 @@ export function TagsPanel() {
             ref={retry}
             variant="secondary"
             onClick={() => {
-              retryFocus.current = true;
+              // State, not a ref: the failed load's pending effect must not consume this request,
+              // and loading must be true in the same commit so this load's failure can't either.
+              setRetryFocus(true);
+              setLoading(true);
               setAttempt((value) => value + 1);
             }}
           >

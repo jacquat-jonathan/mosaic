@@ -26,6 +26,27 @@ test("tag errors remain distinct from empty loads and can be retried", async () 
   expect(useUi.getState().searchQuery).toBe("tag:project/active");
 });
 
+test("a retry click before the failure's effects flush still focuses the loaded tags", async () => {
+  vi.spyOn(api, "tags")
+    .mockRejectedValueOnce(new Error("Tag index unavailable"))
+    .mockResolvedValueOnce([{ tag: "project/active", count: 3 }]);
+  // A mutation observer runs right after React commits the failure, before its passive effects run.
+  const clicked = new Promise<void>((done) => {
+    const observer = new MutationObserver(() => {
+      const retry = screen.queryByRole("button", { name: "Retry tags" });
+      if (!retry) return;
+      observer.disconnect();
+      fireEvent.click(retry);
+      done();
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+  });
+  render(<TagsPanel />);
+  await clicked;
+  const tag = await screen.findByRole("button", { name: "Search #project/active · 3 notes" });
+  await waitFor(() => expect(document.activeElement).toBe(tag));
+});
+
 test("a late tag result cannot overwrite a newer revision", async () => {
   let resolve!: (value: { tag: string; count: number }[]) => void;
   vi.spyOn(api, "tags")

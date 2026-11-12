@@ -53,7 +53,8 @@ test("creates and opens a named vault and reports recoverable creation failures"
   const create = screen.getByRole("button", { name: "Create new vault…" });
   fireEvent.click(create);
   expect((await screen.findByRole("alert")).textContent).toBe("Folder exists");
-  expect(document.activeElement).toBe(create);
+  // The alert can appear before the passive effect that restores focus has run, so wait for it.
+  await waitFor(() => expect(document.activeElement).toBe(create));
   fireEvent.click(create);
   await waitFor(() => expect(useVault.getState().openVault).toHaveBeenCalledWith("/parent/New vault"));
   expect(ipc.api.createVault).toHaveBeenLastCalledWith("/parent", "New vault");

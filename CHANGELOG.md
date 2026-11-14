@@ -4,17 +4,21 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
-- **Clearer task activity:** every planner task history entry now says who made the change (you, the command line or an AI agent and its name), exactly which fields changed from what to what, and why when it was a consequence of another change. AI agents read the same history through `planner_task_history`, including a one-line text form of each entry. Older entries stay readable.
-
+- **Notifications:** a bell in the left bar shows an unread count and opens a Notifications view with items awaiting review, finished or failed workflows, and tasks due within two days or overdue. It is also available as "Open notifications" in the command palette.
+- **Every skipped version's notes when updating:** updating across several versions now shows the changelog of each version in between, not only the newest one.
 - **More color themes:** choose Classic, Paper, Forest, Ocean or Dusk in Appearance, with light/dark previews. Palettes follow System mode across notes and app controls; use the theme accent or choose your own color.
-
-- **HTML preview defaults per vault:** optionally allow listed external sites without approving each page. Script permission stays separate, and individual pages can still block internet access for the session.
-
-- **Image actions on right-click:** clicking an embedded image keeps it rendered. Open, copy, reset its size or edit its Markdown source from the context menu; keyboard users can open that menu with Shift+F10.
-
-- **Icons that match their purpose:** Templates, Calendar & links, Connections & safety, and Workspace settings have distinct icons. Workspace tabs match their destination, and runs awaiting review use an eye instead of the queued-status clock.
-- **More reliable calendar imports:** import readable events even when a feed contains unfamiliar fields or broken entries, with warnings explaining skipped or adjusted data. Calendar imports now handle more recurrence rules, durations, timezone formats, and recurrence exceptions.
+- **Clearer task activity:** every planner task history entry now says who made the change (you, the command line or an AI agent and its name), exactly which fields changed from what to what, and why when it was a consequence of another change. AI agents read the same history through `planner_task_history`, including a one-line text form of each entry. Older entries stay readable.
+- **More reliable calendar imports:** import readable events even when a feed contains unfamiliar fields or broken entries, with warnings explaining skipped or adjusted data. Imports handle yearly and counted recurrences, recurrence exceptions and overrides, more durations and timezone formats, events ending at midnight, and recurring events across daylight-saving changes. Failed refreshes keep the last working events.
 - **Calendar web links:** published Outlook calendar pages and pages advertising an ICS subscription can resolve to their calendar feed. Downloads retry HTTP 417 responses with compatible headers and explain when a direct subscription link is needed.
+- **Calendars follow moved vaults:** subscriptions are attached to the vault itself rather than its folder path, so moving or renaming a vault folder keeps its calendars.
+- **Vault backups from the command line:** `mosaic backup` creates a checksummed recovery bundle that includes Mosaic's history and, optionally, private settings. Restores are previewed first and always go into a new vault; workflows come back paused and calendars ask to reconnect their credentials.
+- **Notes stay available when the planner can't open:** a damaged or unsupported planner database no longer blocks the vault. Notes remain editable while Board and Calendar show the problem and offer to restore from a backup or retry.
+- **Search tells you when it is out of date:** if file watching or indexing fails, Mosaic retries automatically and shows a warning offering a full rebuild, without reopening the vault or losing unsaved notes.
+- **HTML preview defaults per vault:** optionally allow listed external sites without approving each page. Script permission stays separate, and individual pages can still block internet access for the session.
+- **Image actions on right-click:** clicking an embedded image keeps it rendered. Open, copy, reset its size or edit its Markdown source from the context menu; keyboard users can open that menu with Shift+F10.
+- **Icons that match their purpose:** Templates, Calendar & links, Connections & safety, and Workspace settings have distinct icons. Workspace tabs match their destination, and runs awaiting review use an eye instead of the queued-status clock.
+- **Safer renames and deletes:** renaming a note to a name containing `#`, `(`, `)` or similar keeps every link to it working, a case-only rename can no longer overwrite a different file on case-sensitive drives, and iCloud files that aren't downloaded can be moved to the Trash.
+- **Fewer edge-case glitches:** headings ending in `#` keep it, empty frontmatter is reused when setting properties, manual workflows with empty frontmatter save correctly, links resolve to the same note in the app and the command line, and switching vaults can no longer apply a late result from the previous one.
 
 ## 0.28.0 — 2026-11-04
 

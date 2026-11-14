@@ -11,10 +11,12 @@ use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+#[cfg(target_os = "macos")]
 use std::process::Command;
 use std::time::Duration;
 use tauri::{AppHandle, Manager, State};
 
+#[cfg(target_os = "macos")]
 const SERVICE: &str = "com.mosaic.calendar-subscription";
 const SETTINGS_KEY: &str = "calendar_subscriptions";
 const MAX_FEED_BYTES: usize = 10 * 1024 * 1024;

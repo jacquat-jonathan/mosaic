@@ -76,11 +76,14 @@ No GitHub token is embedded in Mosaic. See the official [login instructions](htt
 
 ## 3. Configure the protected signing secret once
 
-Releases are built and signed by two jobs in `.github/workflows/release.yml`:
+Releases are tested, built and signed by jobs in `.github/workflows/release.yml`:
 
-- **`build`** (macOS) installs every dependency, runs `scripts/check.sh`, builds the universal
-  app and packages the **unsigned** assets. It gets no secrets and can't publish.
-- **`sign`** (Linux) runs in the GitHub **environment** `release`, which holds the signing key.
+- **`rust`**, **`ui`** and **`e2e`** (macOS) run the checks of `scripts/check.sh` in parallel, split
+  like `check.yml` (E2E as Chrome/WebKit × 2 shards, without coverage). They get no secrets.
+- **`build`** (macOS), alongside the tests, installs every dependency, builds the universal app and
+  packages the **unsigned** assets. It gets no secrets and can't publish.
+- **`sign`** (Linux) starts only after every test job and the build pass. It runs in the GitHub
+  **environment** `release`, which holds the signing key.
   It installs nothing and doesn't run anything the build produced: `scripts/sign-release.mjs` (Node
   built-ins only) checks the archive against `manifest.json` and `SHA256SUMS`, writes
   `manifest.sig` and publishes. A reviewer approves each run before it gets the key.

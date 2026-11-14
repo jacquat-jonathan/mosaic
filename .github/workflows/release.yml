@@ -34,8 +34,120 @@ jobs:
       - id: source
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
-  # Installs every npm and Cargo dependency and runs their build scripts and tests, so it gets no
-  # secrets and can't publish. Its output is the unsigned release assets.
+  # The checks of scripts/check.sh, split into parallel jobs like check.yml (without coverage).
+  # Like build, they get no secrets; sign waits for all of them before it touches the key.
+  rust:
+    name: Rust
+    needs: preflight
+    runs-on: macos-15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.preflight.outputs.source }}
+          fetch-depth: 0
+      - name: Read pinned Rust version
+        id: rust-version
+        run: echo "version=$(sed -n 's/^channel = "\(.*\)"/\1/p' rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master, 2026-09-11
+        with:
+          toolchain: ${{ steps.rust-version.outputs.version }}
+          components: clippy,rustfmt
+      - name: Check Rust
+        run: bash scripts/check-rust.sh
+      - name: Verify lockfiles unchanged
+        if: always()
+        run: git diff --exit-code -- Cargo.lock pnpm-lock.yaml
+
+  ui:
+    name: UI checks
+    needs: preflight
+    runs-on: macos-15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.preflight.outputs.source }}
+          fetch-depth: 0
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Install dependencies
+        run: |
+          bash scripts/check-toolchain.sh node
+          pnpm install --frozen-lockfile
+          git diff --exit-code -- Cargo.lock pnpm-lock.yaml
+      - name: Test release invariants with disposable repositories
+        run: node --test scripts/tests/release-invariants.test.mjs
+      - name: Check TypeScript
+        run: pnpm --dir ui lint
+      - name: Check formatting and lint
+        run: pnpm --dir ui exec biome ci .
+      - name: Run unit and component tests
+        run: pnpm --dir ui test
+      - name: Verify lockfiles unchanged
+        if: always()
+        run: git diff --exit-code -- Cargo.lock pnpm-lock.yaml
+
+  e2e:
+    name: E2E ${{ matrix.browser == 'chrome' && 'Chrome' || 'WebKit' }} (${{ matrix.shard }}/2)
+    needs: preflight
+    runs-on: macos-15
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chrome, webkit]
+        shard: [1, 2]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.preflight.outputs.source }}
+          fetch-depth: 0
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Install dependencies
+        run: |
+          bash scripts/check-toolchain.sh node
+          pnpm install --frozen-lockfile
+          git diff --exit-code -- Cargo.lock pnpm-lock.yaml
+      # Video recording needs FFmpeg even when Chrome comes preinstalled on the runner.
+      - name: Install Playwright video encoder
+        run: pnpm --dir ui exec playwright install ffmpeg
+      - name: Install WebKit test browser
+        if: matrix.browser == 'webkit'
+        run: pnpm --dir ui exec playwright install webkit
+      - name: Run E2E shard
+        run: pnpm --dir ui e2e --project=${{ matrix.browser }} --shard=${{ matrix.shard }}/2
+      - name: Verify lockfiles unchanged
+        if: always()
+        run: git diff --exit-code -- Cargo.lock pnpm-lock.yaml
+      - name: Upload E2E failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-e2e-failures-${{ matrix.browser }}-${{ matrix.shard }}
+          path: |
+            ui/playwright-report/
+            ui/test-results/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # Installs every npm and Cargo dependency and runs their build scripts, so it gets no secrets and
+  # can't publish. Its output is the unsigned release assets. It runs alongside the test jobs.
   build:
     needs: preflight
     runs-on: macos-15
@@ -70,10 +182,6 @@ jobs:
           bash scripts/check-toolchain.sh node
           pnpm install --frozen-lockfile
           git diff --exit-code -- Cargo.lock pnpm-lock.yaml
-      - name: Install WebKit test browser
-        run: pnpm --dir ui exec playwright install webkit
-      - name: Test before publishing
-        run: bash scripts/check.sh
       - name: Build universal app
         run: bash scripts/install.sh --universal --build-only
       - name: Package (unsigned)
@@ -95,10 +203,11 @@ jobs:
           retention-days: 7
 
   # Holds the release signing key, the trust root of every installed Mosaic's updates. It runs in
-  # the protected `release` environment (a reviewer approves each run), installs no dependencies
-  # and never executes what the build produced: sign-release.mjs only checks hashes and signs.
+  # the protected `release` environment (a reviewer approves each run), starts only after every test
+  # job and the build pass, installs no dependencies and never executes what the build produced:
+  # sign-release.mjs only checks hashes and signs.
   sign:
-    needs: [preflight, build]
+    needs: [preflight, rust, ui, e2e, build]
     runs-on: ubuntu-24.04
     environment: release
     permissions:

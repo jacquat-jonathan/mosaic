@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+## 0.29.0 — 2026-11-14
+
 - **Notifications:** a bell in the left bar shows an unread count and opens a Notifications view with items awaiting review, finished or failed workflows, and tasks due within two days or overdue. It is also available as "Open notifications" in the command palette.
 - **Every skipped version's notes when updating:** updating across several versions now shows the changelog of each version in between, not only the newest one.
 - **More color themes:** choose Classic, Paper, Forest, Ocean or Dusk in Appearance, with light/dark previews. Palettes follow System mode across notes and app controls; use the theme accent or choose your own color.

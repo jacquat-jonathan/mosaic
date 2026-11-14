@@ -197,14 +197,15 @@ gh run list --repo "$release_repo" --workflow release.yml --branch "$release_tag
   --json databaseId,headSha,status,conclusion,url
 ```
 
-Choose the new run for the expected `release_commit`. Its `build` job tests the
-exact tagged source, builds the universal app and CLI, verifies the bundle, and
-packages the unsigned DMG, updater archive, manifest, and checksums. It also
+Choose the new run for the expected `release_commit`. Its `rust`, `ui` and four
+`e2e` shard jobs test the exact tagged source in parallel, like `Check` but without
+coverage. Alongside them, its `build` job builds the universal app and CLI, verifies
+the bundle, and packages the unsigned DMG, updater archive, manifest, and checksums. It also
 retains a separate **build-inputs** workflow artifact and summary containing the
 source SHA, actual tool versions, lockfile hashes and artifact digests. This is
 diagnostic metadata, not signed provenance; the five public assets are unchanged.
 
-The `build` job has no release key and cannot publish. A read-only `preflight` job now runs first,
+The test and `build` jobs have no release key and cannot publish; `sign` waits for all of them. A read-only `preflight` job now runs first,
 checking the metadata above, remote tag object/peeled SHA, main reachability and the
 latest successful main `Check` run for the **earliest first-parent main commit containing
 the release**. It requires Rust, UI checks, all four E2E shards and UI coverage; an

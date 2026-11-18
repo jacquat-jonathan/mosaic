@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Send feedback:** a button next to the version at the top right opens a short form to report a bug or suggest an idea. It opens a prefilled GitHub issue in your browser to review and submit, with the app version and OS if you choose; nothing from your vault is included. Submitting needs a GitHub account with access to the Mosaic repository.
+
 ## 0.29.0 — 2026-11-14
 
 - **Notifications:** a bell in the left bar shows an unread count and opens a Notifications view with items awaiting review, finished or failed workflows, and tasks due within two days or overdue. It is also available as "Open notifications" in the command palette.

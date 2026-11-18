@@ -1,6 +1,7 @@
 //! Per-vault state Mosaic keeps outside the vault, next to its history in Application Support,
 //! under the vault's id (see `vault_id`): `vaults/<id>/rules.json` (agents' folder rules),
-//! `bookmarks.json` and `tessera-state.json` (the scheduler's bookkeeping, rewritten every 30 s).
+//! `bookmarks.json`, `tessera-state.json` (the scheduler's bookkeeping, rewritten every 30 s) and
+//! `tessera-requests.json` (runs other processes asked the app to start; see `tessera`).
 //! Kept apart from settings.json, a scheduler write can never touch the rules, and all three follow
 //! a vault that is moved or renamed.
 //!
@@ -10,6 +11,7 @@
 
 use crate::error::{Error, Result};
 use crate::settings::{AgentRule, Settings, TesseraSettings, app_support_dir};
+use crate::tessera::RunRequest;
 use crate::vault_id;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -19,6 +21,7 @@ use unicode_normalization::UnicodeNormalization;
 pub const RULES_FILE: &str = "rules.json";
 pub const BOOKMARKS_FILE: &str = "bookmarks.json";
 pub const TESSERA_FILE: &str = "tessera-state.json";
+pub const REQUESTS_FILE: &str = "tessera-requests.json";
 
 #[derive(Debug, Clone)]
 pub struct VaultState {
@@ -137,6 +140,36 @@ impl VaultState {
             let mut state = self.tessera()?;
             let result = change(&mut state);
             self.write(TESSERA_FILE, &state)?;
+            Ok(result)
+        })
+    }
+
+    /// When the scheduler's state was last written: lets the app notice another process's change
+    /// without reading the whole run history.
+    pub fn tessera_modified(&self) -> Option<std::time::SystemTime> {
+        std::fs::metadata(self.dir.join(TESSERA_FILE))
+            .and_then(|m| m.modified())
+            .ok()
+    }
+
+    /// Runs requested by other processes that the app hasn't picked up yet.
+    pub fn run_requests(&self) -> Result<Vec<RunRequest>> {
+        Ok(self.read(REQUESTS_FILE)?.unwrap_or_default())
+    }
+
+    /// Read, mutate and persist the run requests under the state lock. Not written when the change
+    /// leaves the list as it was, so the app's poll doesn't rewrite the file.
+    pub fn update_run_requests<T>(
+        &self,
+        change: impl FnOnce(&mut Vec<RunRequest>) -> T,
+    ) -> Result<T> {
+        self.locked(|| {
+            let before = self.run_requests()?;
+            let mut list = before.clone();
+            let result = change(&mut list);
+            if list != before {
+                self.write(REQUESTS_FILE, &list)?;
+            }
             Ok(result)
         })
     }

@@ -50,8 +50,9 @@ person chose in a save dialog (`*_export_file`), the MCP tool returns the conten
 
 **Placement.** The logic lives in `mosaic-core`; the Tauri command and the MCP tool are both thin
 wrappers over it. `mosaic-cli` must not depend on `src-tauri`, so a feature whose logic is still in
-`src-tauri` (Tessera) moves into core before it gets MCP tools. Calendar subscriptions already
-moved (`mosaic_core::calendar_subscriptions`, M4a).
+`src-tauri` moves into core before it gets MCP tools. Calendar subscriptions (M4a,
+`mosaic_core::calendar_subscriptions`) and the Tessera control (M7a, `mosaic_core::tessera`) already
+moved.
 
 ## Writes and `--may-change`
 
@@ -119,9 +120,26 @@ rows below from `planned` to the tool names, adds tests, and updates the README 
    add, update, remove, refresh and the overlay range, after the write policy below is settled.
    The app caches feeds in Tauri's app data directory and keeps URLs in the macOS Keychain; the MCP
    server must use the same ones.
-6. **M7 Tessera.** Move the runner from `src-tauri/src/tessera.rs` into core first. Status, run an agent,
-   test an event, pause all or one. An MCP-started run must count as a chained run, so the chain-depth
-   limit applies to it.
+6. **M7 Tessera.** Status, run an agent, test an event, pause all or one. An MCP-started run must
+   count as a chained run, so the chain-depth limit applies to it.
+   - **M7a (done)** moved the control into core, in `mosaic_core::tessera`. The scheduler still runs
+     inside the app, so another process works through the vault's state folder, under its
+     cross-process lock:
+     - `stored_status` and `scheduler_active` read the status;
+     - `pause_all` and `pause_agent` write the pauses straight to `tessera-state.json`;
+     - `request_run` appends to `tessera-requests.json`.
+
+     The app polls every 2 s (`POLL`). It takes the requests into its event queue as
+     `RunCause::Requested`, where they wait while paused and are checked against the chain-depth limit
+     again. A request not taken within 10 minutes (the app was closed or on another vault) is
+     recorded as skipped, not run. It also starts what a resume from another process lets run.
+   - **Chain rule.** A requested run continues the chain of the workflow run that asked for it, one
+     step deeper. The app passes that run's id to its `mosaic mcp` server in `MOSAIC_TESSERA_RUN`
+     (`parent_run_from_env`). Without it, the requested run starts a chain at depth 1. `request_run`
+     refuses a run past the limit, and refuses an unknown parent run. There is no core setter for
+     the limit.
+   - **M7b** adds the tools. It must take `parent_run` only from the environment, never from a tool
+     argument, so an agent can't reset its own depth.
 
 ## Inventory
 
@@ -188,11 +206,11 @@ names in Notes are proposals for the slice, not commitments.
 | `chat_check` | excluded (in-app chat is itself an AI client) | |
 | `chat_send` | excluded (in-app chat is itself an AI client) | |
 | `chat_stop` | excluded (in-app chat is itself an AI client) | |
-| `tessera_status` | planned (M7) | `get_tessera_status`; move into core first |
-| `tessera_run` | planned (M7) | `run_agent`; counts as a chained run |
+| `tessera_status` | planned (M7) | `get_tessera_status`; core: `tessera::stored_status`, `scheduler_active` |
+| `tessera_run` | planned (M7) | `run_agent`; core: `tessera::request_run`, counts as a chained run |
 | `tessera_test_event` | planned (M7) | `test_agent_event` |
-| `tessera_pause_all` | planned (M7) | `pause_agents` |
-| `tessera_pause_agent` | planned (M7) | `pause_agent` |
+| `tessera_pause_all` | planned (M7) | `pause_agents`; core: `tessera::pause_all` |
+| `tessera_pause_agent` | planned (M7) | `pause_agent`; core: `tessera::pause_agent` |
 | `tessera_set_max_chain_depth` | excluded (hard: the agent chain limit is a permission) | |
 | `proposals` | `list_proposals` | an agent sees its own proposals |
 | `proposal_content` | excluded (the person's review diff) | |

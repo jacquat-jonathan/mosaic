@@ -18,7 +18,7 @@ import {
   Globe,
   Network,
 } from "lucide-react";
-import type { Entry, FileKind } from "../ipc/types";
+import { errorMessage, type Entry, type FileKind } from "../ipc/types";
 import { parentOf, useVault } from "../state/vault";
 import { useWorkspace } from "../state/workspace";
 import { useUi, type MenuItem } from "../state/ui";
@@ -47,11 +47,11 @@ import {
 import { api, openInDefaultApp, revealInFinder } from "../ipc/api";
 import { shortcutOf } from "../commands";
 import { kindOf } from "../ipc/kinds";
-import { useVaultPreferences } from "../state/vaultPreferences";
+import { saveVaultPreferences, useVaultPreferences } from "../state/vaultPreferences";
 import { isQuietAttachment } from "../attachments";
 import { treeAutoScrollStep } from "./treeAutoScroll";
 
-import { IconButton } from "../design-system/components";
+import { FOLDER_COLOR_OPTIONS, IconButton } from "../design-system/components";
 import { DesignSystemScope } from "./DesignSystemScope";
 import "./fileTree.css";
 
@@ -416,6 +416,33 @@ async function folderTemplateMenu(folder: string): Promise<MenuItem> {
   }
 }
 
+async function setFolderColor(path: string, color: string) {
+  // Build from the latest preferences, not the ones seen when the menu opened.
+  const next = { ...useVaultPreferences.getState().value.folder_colors };
+  if (color) next[path] = color;
+  else delete next[path];
+  try {
+    await saveVaultPreferences({ folder_colors: next });
+  } catch (e) {
+    useVault.getState().setError(`Couldn't save the folder color: ${errorMessage(e)}`);
+  }
+}
+
+function folderColorMenu(path: string): MenuItem {
+  const current = useVaultPreferences.getState().value.folder_colors[path] ?? "";
+  const label = (value: string, fallback: string) => (value ? fallback : "No color");
+  const shown = FOLDER_COLOR_OPTIONS.find((option) => option.value === current);
+  return {
+    label: "Color",
+    detail: label(current, shown?.label ?? current),
+    children: FOLDER_COLOR_OPTIONS.map((option) => ({
+      label: label(option.value, option.label),
+      checked: option.value === current,
+      action: () => void setFolderColor(path, option.value),
+    })),
+  };
+}
+
 async function singleMenu(entry: Entry): Promise<MenuItem[]> {
   const vault = useVault.getState();
   const bookmarked = vault.bookmarks.includes(entry.path);
@@ -430,6 +457,7 @@ async function singleMenu(entry: Entry): Promise<MenuItem[]> {
           { label: "Expand all", action: () => setExpandedDeep(entry.path, true) },
           { label: "Collapse all", action: () => setExpandedDeep(entry.path, false) },
           template!,
+          folderColorMenu(entry.path),
         ]
       : [
           { label: "Open in new tab", shortcut: "⌥-click", action: () => void ws.open(entry.path, { newTab: true }) },

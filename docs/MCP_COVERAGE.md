@@ -50,7 +50,8 @@ person chose in a save dialog (`*_export_file`), the MCP tool returns the conten
 
 **Placement.** The logic lives in `mosaic-core`; the Tauri command and the MCP tool are both thin
 wrappers over it. `mosaic-cli` must not depend on `src-tauri`, so a feature whose logic is still in
-`src-tauri` (calendar subscriptions, Tessera) moves into core before it gets MCP tools.
+`src-tauri` (Tessera) moves into core before it gets MCP tools. Calendar subscriptions already
+moved (`mosaic_core::calendar_subscriptions`, M4a).
 
 ## Writes and `--may-change`
 
@@ -112,8 +113,12 @@ rows below from `planned` to the tool names, adds tests, and updates the README 
 4. **M6 Links, index and tasks.** Index health and rebuild, Markdown task ticking and workflow state,
    aliases, unlinked mentions and linking them, link repair after interrupted renames, reading an old
    version, AI activity, and `undo_change` (an agent's undo goes through review like any write).
-5. **M4 Calendar subscriptions.** Move the subscription logic from `src-tauri/src/calendar_subscriptions.rs`
-   into core first, then list, add, update, remove, refresh and the overlay range.
+5. **M4 Calendar subscriptions.** M4a moved the subscription logic into core
+   (`mosaic_core::calendar_subscriptions`: storage in settings, feed URLs behind a `SecretStore`,
+   downloads behind a `FeedFetcher`); the Tauri commands are thin wrappers. M4b adds the tools: list,
+   add, update, remove, refresh and the overlay range, after the write policy below is settled.
+   The app caches feeds in Tauri's app data directory and keeps URLs in the macOS Keychain; the MCP
+   server must use the same ones.
 6. **M7 Tessera.** Move the runner from `src-tauri/src/tessera.rs` into core first. Status, run an agent,
    test an event, pause all or one. An MCP-started run must count as a chained run, so the chain-depth
    limit applies to it.
@@ -172,7 +177,7 @@ names in Notes are proposals for the slice, not commitments.
 | `planner_export` | planned (M3) | `export_planner`, returns JSON or CSV |
 | `planner_export_file` | excluded (writes a host file chosen in a save dialog; `export_planner` returns the content) | |
 | `planner_restore_backup` | excluded (replaces the whole planner database; not undoable) | |
-| `calendar_subscriptions` | planned (M4) | `list_calendar_subscriptions`; move into core first |
+| `calendar_subscriptions` | planned (M4) | `list_calendar_subscriptions`; logic is in core (M4a) |
 | `add_calendar_subscription` | planned (M4) | `add_calendar_subscription` |
 | `update_calendar_subscription` | planned (M4) | `update_calendar_subscription` |
 | `remove_calendar_subscription` | planned (M4) | `remove_calendar_subscription` |

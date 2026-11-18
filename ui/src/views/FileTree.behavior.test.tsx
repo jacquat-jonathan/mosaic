@@ -253,6 +253,62 @@ describe("file tree menus and rename editing", () => {
     expect(openSettings).toHaveBeenCalledWith("templates");
   });
 
+  it("sets, clears and reports folder colors from the folder Color submenu", async () => {
+    vi.spyOn(api, "templates").mockResolvedValue({ templates: [], default: { template: null, rule_folder: null } });
+    let stored: Record<string, string> = { Folder: "blue" };
+    const save = vi.spyOn(api, "setVaultPreferences").mockImplementation(async (_root, patch) => {
+      stored = { ...patch.folder_colors };
+    });
+    vi.spyOn(api, "vaultPreferences").mockImplementation(async () => ({
+      ...DEFAULT_VAULT_PREFS,
+      show_attachments_in_tree: false,
+      folder_colors: stored,
+    }));
+    const setError = vi.fn();
+    useVault.setState({ setError });
+    render(<FileTree />);
+    const folder = screen.getByTitle("Folder");
+    const colorMenu = async (title: string) => {
+      useUi.setState({ menu: null });
+      fireEvent.contextMenu(screen.getByTitle(title));
+      await waitFor(() => expect(useUi.getState().menu).not.toBeNull());
+      return useUi.getState().menu!.items.find((item) => item.label === "Color");
+    };
+
+    const menu = (await colorMenu("Folder"))!;
+    expect(menu.detail).toBe("Blue");
+    expect(menu.children!.map((item) => [item.label, item.checked])).toEqual([
+      ["No color", false],
+      ["Red", false],
+      ["Orange", false],
+      ["Green", false],
+      ["Blue", true],
+      ["Purple", false],
+    ]);
+    expect(await colorMenu("Folder/Note.md")).toBeUndefined();
+
+    menu.children!.find((item) => item.label === "Red")!.action!();
+    await waitFor(() => expect(folder.getAttribute("data-folder-color")).toBe("red"));
+    expect(save).toHaveBeenLastCalledWith("/vault", { folder_colors: { Folder: "red" } });
+    expect(folder.getAttribute("aria-label")).toBe("Folder, red folder");
+
+    const sub = (await colorMenu("Folder/Sub"))!;
+    expect(sub.detail).toBe("No color");
+    expect(sub.children!.find((item) => item.checked)!.label).toBe("No color");
+    sub.children!.find((item) => item.label === "Green")!.action!();
+    await waitFor(() => expect(screen.getByTitle("Folder/Sub").getAttribute("data-folder-color")).toBe("green"));
+    expect(save).toHaveBeenLastCalledWith("/vault", { folder_colors: { Folder: "red", "Folder/Sub": "green" } });
+
+    (await colorMenu("Folder"))!.children!.find((item) => item.label === "No color")!.action!();
+    await waitFor(() => expect(folder.hasAttribute("data-folder-color")).toBe(false));
+    expect(save).toHaveBeenLastCalledWith("/vault", { folder_colors: { "Folder/Sub": "green" } });
+
+    save.mockRejectedValueOnce(new Error("disk full"));
+    (await colorMenu("Folder"))!.children!.find((item) => item.label === "Purple")!.action!();
+    await waitFor(() => expect(setError).toHaveBeenCalledWith("Couldn't save the folder color: disk full"));
+    expect(folder.hasAttribute("data-folder-color")).toBe(false);
+  });
+
   it("builds multi-selection menus for files, folders, bookmarks and opens all files", async () => {
     const select = vi.fn();
     const open = vi.fn().mockResolvedValue(undefined);

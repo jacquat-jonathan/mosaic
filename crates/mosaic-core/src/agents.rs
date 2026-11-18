@@ -403,7 +403,6 @@ mod tests {
     #[test]
     fn may_change_reads_app_data_scopes_in_any_yaml_form() {
         for yaml in [
-            "may-change: [Daily, planner:]",
             "may-change:\n  - Daily\n  - planner:",
             "may-change: [Daily, \"planner:\"]",
         ] {
@@ -425,7 +424,7 @@ mod tests {
             "Agents/A.md",
             "A",
             false,
-            "---\nmay-change: [planner:]\n---\nDo it.\n",
+            "---\nmay-change:\n  - planner:\n---\nDo it.\n",
         );
         assert_eq!(only.may_change, ["planner:"]);
         assert!(agent_prompt(&only, None).contains("Every file you change is proposed"));

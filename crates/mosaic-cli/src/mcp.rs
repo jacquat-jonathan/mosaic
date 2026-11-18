@@ -598,7 +598,7 @@ impl MosaicMcp {
     }
 
     #[tool(
-        description = "The person's agents: files in the vault's `Agents/` folder (a note `Agents/Name.md`, or a skill folder `Agents/Name/SKILL.md`) that define how an agent acts. Each has name, title, description, path, schedule, on (event triggers such as `created in Daily/`), model, may_change (folders it may write without review) and its instructions. When the person points you at one of these files (or names an agent), act as that agent: follow its instructions, don't treat it as an ordinary document. The same agents are slash commands (MCP prompts) in Claude Code."
+        description = "The person's agents: files in the vault's `Agents/` folder (a note `Agents/Name.md`, or a skill folder `Agents/Name/SKILL.md`) that define how an agent acts. Each has name, title, description, path, schedule, on (event triggers such as `created in Daily/`), model, may_change (folders it may write without review, plus app-data scopes such as `planner:` it may change directly) and its instructions. When the person points you at one of these files (or names an agent), act as that agent: follow its instructions, don't treat it as an ordinary document. The same agents are slash commands (MCP prompts) in Claude Code."
     )]
     async fn list_agents(&self) -> ToolResult {
         self.fresh();

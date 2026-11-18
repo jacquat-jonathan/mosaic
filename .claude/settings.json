@@ -1,0 +1,11 @@
+{
+  "extraKnownMarketplaces": {
+    "crab-crew": {
+      "source": { "source": "github", "repo": "jacquat-jonathan/crab-crew" }
+    }
+  },
+  "enabledPlugins": {
+    "crab-agents@crab-crew": true,
+    "crab-crew@crab-crew": true
+  }
+}

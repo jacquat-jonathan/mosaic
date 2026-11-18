@@ -1019,3 +1019,249 @@ fn agents_are_prompts_and_days_carry_over() {
         (Some(2), Some("Daily/2026-10-03.md"))
     );
 }
+
+// MCP coverage: docs/MCP_COVERAGE.md maps every Tauri command to an MCP tool, a planned slice or
+// an exclusion. These tests keep that file, the README's tool list and the server in step.
+
+fn repo_file(rel: &str) -> String {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join(rel);
+    std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
+}
+
+/// The text between `<!-- {name}:start -->` and `<!-- {name}:end -->`.
+fn marked<'a>(text: &'a str, name: &str, file: &str) -> &'a str {
+    let (start, end) = (
+        format!("<!-- {name}:start -->"),
+        format!("<!-- {name}:end -->"),
+    );
+    let from = text
+        .find(&start)
+        .unwrap_or_else(|| panic!("{file} has no {start}"))
+        + start.len();
+    let to = from
+        + text[from..]
+            .find(&end)
+            .unwrap_or_else(|| panic!("{file} has no {end}"));
+    &text[from..to]
+}
+
+/// The contents of every `code span` in Markdown text.
+fn code_spans(text: &str) -> Vec<&str> {
+    text.split('`').skip(1).step_by(2).collect()
+}
+
+fn tool_names() -> std::collections::BTreeSet<String> {
+    let dir = fixture();
+    let mut c = Client::start(dir.path());
+    let tools = c.request("tools/list", json!({}));
+    tools["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t["name"].as_str().unwrap().to_string())
+        .collect()
+}
+
+/// The commands `src-tauri/src/lib.rs` registers (every `collect_commands![…]` and
+/// `generate_handler![…]`), by the name the UI invokes: the fn name without its module path.
+fn tauri_commands() -> Vec<String> {
+    let src = repo_file("src-tauri/src/lib.rs");
+    let mut commands = Vec::new();
+    for mac in ["collect_commands![", "generate_handler!["] {
+        for (at, _) in src.match_indices(mac) {
+            // The macro body, up to its matching `]`.
+            let mut depth = 1;
+            let body: String = src[at + mac.len()..]
+                .chars()
+                .take_while(|&ch| {
+                    depth += match ch {
+                        '[' => 1,
+                        ']' => -1,
+                        _ => 0,
+                    };
+                    depth > 0
+                })
+                .collect();
+            // Drop `//` comments, then `#[…]` attributes.
+            let body: String = body
+                .lines()
+                .map(|l| l.split("//").next().unwrap())
+                .collect::<Vec<_>>()
+                .join("\n");
+            let mut plain = String::new();
+            let mut rest = body.as_str();
+            while let Some(i) = rest.find("#[") {
+                plain.push_str(&rest[..i]);
+                let mut depth = 0;
+                let end = rest[i + 1..]
+                    .char_indices()
+                    .find(|&(_, ch)| {
+                        depth += match ch {
+                            '[' => 1,
+                            ']' => -1,
+                            _ => 0,
+                        };
+                        depth == 0
+                    })
+                    .map(|(j, _)| i + 1 + j + 1)
+                    .expect("unclosed attribute");
+                rest = &rest[end..];
+            }
+            plain.push_str(rest);
+            for entry in plain.split(',').map(str::trim).filter(|e| !e.is_empty()) {
+                let name = entry.rsplit("::").next().unwrap();
+                assert!(
+                    name.chars()
+                        .all(|ch| ch.is_ascii_alphanumeric() || ch == '_'),
+                    "unexpected entry {entry:?} in {mac}…] of src-tauri/src/lib.rs"
+                );
+                commands.push(name.to_string());
+            }
+        }
+    }
+    assert!(
+        commands.len() > 100,
+        "found only {} Tauri commands in src-tauri/src/lib.rs; has the registration moved?",
+        commands.len()
+    );
+    commands
+}
+
+#[test]
+fn tauri_commands_are_covered_by_mcp() {
+    const DOC: &str = "docs/MCP_COVERAGE.md";
+    const SLICES: [&str; 6] = ["M2", "M3", "M4", "M5", "M6", "M7"];
+    /// Never MCP tools, whatever later slices do (see the doc's Exclusions).
+    const HARD: [&str; 4] = [
+        "accept_proposal",
+        "reject_proposal",
+        "set_agent_rules",
+        "tessera_set_max_chain_depth",
+    ];
+    let doc = repo_file(DOC);
+    let tools = tool_names();
+    let commands = tauri_commands();
+    let mut problems = Vec::new();
+
+    let mut rows = std::collections::BTreeMap::new();
+    let mut named_tools = std::collections::BTreeSet::new();
+    for line in marked(&doc, "inventory", DOC).lines().map(str::trim) {
+        if !line.starts_with('|') || line.starts_with("|---") || line.starts_with("| Tauri command")
+        {
+            continue;
+        }
+        let cells: Vec<&str> = line.trim_matches('|').split('|').map(str::trim).collect();
+        let (command, status) = match (cells.first(), cells.get(1)) {
+            (Some(c), Some(s)) if c.len() > 2 && c.starts_with('`') && c.ends_with('`') => {
+                (&c[1..c.len() - 1], *s)
+            }
+            _ => {
+                problems.push(format!("{DOC}: can't read inventory row {line:?}"));
+                continue;
+            }
+        };
+        if rows
+            .insert(command.to_string(), status.to_string())
+            .is_some()
+        {
+            problems.push(format!("{DOC}: `{command}` has two rows"));
+        }
+        if let Some(slice) = status.strip_prefix("planned (") {
+            if !SLICES.contains(&slice.trim_end_matches(')')) || !slice.ends_with(')') {
+                problems.push(format!(
+                    "{DOC}: `{command}` is {status:?}; the slice must be one of {SLICES:?}"
+                ));
+            }
+        } else if let Some(reason) = status.strip_prefix("excluded (") {
+            if !reason.ends_with(')') || reason.trim_end_matches(')').trim().is_empty() {
+                problems.push(format!("{DOC}: `{command}` is excluded without a reason"));
+            }
+        } else {
+            let covered = code_spans(status);
+            let rest: String = status.split('`').step_by(2).collect();
+            if covered.is_empty() || rest.chars().any(|ch| ch != ',' && ch != ' ') {
+                problems.push(format!(
+                    "{DOC}: `{command}`'s MCP cell {status:?} must be `tool`[, `tool`], \
+                     planned (M<n>) or excluded (reason)"
+                ));
+            }
+            for tool in covered {
+                if !tools.contains(tool) {
+                    problems.push(format!(
+                        "{DOC}: `{command}` is covered by `{tool}`, which the MCP server doesn't have"
+                    ));
+                }
+                named_tools.insert(tool.to_string());
+            }
+        }
+    }
+
+    let mut seen = std::collections::BTreeSet::new();
+    for command in &commands {
+        if !seen.insert(command) {
+            problems.push(format!("src-tauri/src/lib.rs registers `{command}` twice"));
+        }
+        if !rows.contains_key(command) {
+            problems.push(format!(
+                "Tauri command `{command}` has no row in {DOC}: map it to an MCP tool, \
+                 planned (M<n>) or excluded (reason)"
+            ));
+        }
+    }
+    for command in rows.keys() {
+        if !seen.contains(command) {
+            problems.push(format!(
+                "{DOC} lists `{command}`, which src-tauri/src/lib.rs doesn't register"
+            ));
+        }
+    }
+    for command in HARD {
+        if !rows
+            .get(command)
+            .is_some_and(|s| s.starts_with("excluded (hard:"))
+        {
+            problems.push(format!(
+                "`{command}` must stay a hard exclusion in {DOC}: `excluded (hard: …)`"
+            ));
+        }
+    }
+
+    for line in marked(&doc, "mcp-only", DOC).lines() {
+        if let Some(tool) = code_spans(line).first() {
+            if !tools.contains(*tool) {
+                problems.push(format!(
+                    "{DOC} lists MCP-only tool `{tool}`, which the server doesn't have"
+                ));
+            }
+            named_tools.insert(tool.to_string());
+        }
+    }
+    for tool in &tools {
+        if !named_tools.contains(tool) {
+            problems.push(format!(
+                "MCP tool `{tool}` isn't in {DOC}: name it in the inventory or the MCP-only list"
+            ));
+        }
+    }
+
+    assert!(problems.is_empty(), "{}", problems.join("\n"));
+}
+
+#[test]
+fn readme_lists_every_mcp_tool() {
+    let readme = repo_file("README.md");
+    let listed: std::collections::BTreeSet<String> =
+        code_spans(marked(&readme, "mcp-tools", "README.md"))
+            .into_iter()
+            .map(String::from)
+            .collect();
+    let tools = tool_names();
+    let missing: Vec<_> = tools.difference(&listed).collect();
+    let stale: Vec<_> = listed.difference(&tools).collect();
+    assert!(
+        missing.is_empty() && stale.is_empty(),
+        "README.md's MCP tool list is out of date: add {missing:?}, remove {stale:?}"
+    );
+}

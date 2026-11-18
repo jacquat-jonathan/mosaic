@@ -1916,6 +1916,10 @@ button.secondary {
   height: 0;
   overflow: hidden;
 }
+/* Labels sit over cards (z 0) and the lines under them (z 1, CanvasEditor.tsx's EDGE_Z). */
+.canvas-host .react-flow__edgelabel-renderer {
+  z-index: 2;
+}
 .edge-label,
 .edge-end-label {
   position: absolute;

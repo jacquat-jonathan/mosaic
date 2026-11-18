@@ -1,0 +1,3 @@
+# Mosaic's in-app feedback (the button next to the version) opens issues/new with one of these
+# templates, its label (bug or enhancement) and a prefilled title and body.
+blank_issues_enabled: true

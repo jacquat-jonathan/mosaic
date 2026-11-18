@@ -150,13 +150,27 @@ update those in their original project if they pin a vault. For project-only reg
 }
 ```
 
-The MCP tools are `vault_guide`, `list_files`, `read_file`, `outline`, `search`, `create_file`,
-`edit_file`, `patch_file`, `append_to_file`, `rename`, `copy_file`, `delete_file`, `create_folder`,
-`get_backlinks`, `list_tags`, `query` (notes by tag, frontmatter field, date or links), `list_bookmarks`,
-`add_bookmark`, `remove_bookmark`, `move_files`, `import_file`, `file_history`, `restore_version`,
-`list_proposals`, `withdraw_proposal`, `render` (a PNG of a canvas, so the agent can check what it
-drew), and revision-safe planner tools to list epics, read/create/edit/move/complete/archive/restore
-Board tasks and inspect their full history. Notes are also MCP resources (`mosaic:///Folder/Note.md`). In AI › Connections you can make folders
+The MCP tools (this list is checked against the server by a test):
+
+<!-- mcp-tools:start -->
+- Guide and settings: `vault_guide`, `get_vault_preferences`, `list_agents`.
+- Read: `list_files`, `read_file`, `outline`, `search`, `query` (notes by tag, frontmatter field,
+  date or links), `get_backlinks`, `list_tags`, `render` (a PNG of a canvas, so the agent can check
+  what it drew).
+- Write: `create_file`, `edit_file`, `patch_file`, `append_to_file`, `rename`, `move_files`,
+  `copy_file`, `delete_file`, `create_folder`, `import_file`.
+- Templates: `list_templates`, `render_template`, `create_note`.
+- History and review: `file_history`, `restore_version`, `list_proposals`, `withdraw_proposal`.
+- Bookmarks: `list_bookmarks`, `add_bookmark`, `remove_bookmark`.
+- Markdown tasks: `tasks_by_day`, `carry_over`.
+- Planner (revision-safe Board tasks): `list_planner_epics`, `list_planner_tasks`,
+  `get_planner_task`, `planner_task_history`, `create_planner_task`, `update_planner_task`,
+  `move_planner_task`, `complete_planner_task`, `reopen_planner_task`, `archive_planner_task`,
+  `restore_planner_task`, `trash_planner_task`.
+<!-- mcp-tools:end -->
+
+[MCP coverage](docs/MCP_COVERAGE.md) maps every app feature to its tool, the slice that will add it,
+or why it stays out of MCP. Notes are also MCP resources (`mosaic:///Folder/Note.md`). In AI › Connections you can make folders
 read-only for agents, hide them, or **review** agents' changes there: edits, new files and deletions wait
 under AI activity until you accept or reject them. Edits accept an `expected_hash` so an agent never
 overwrites a newer human edit.
@@ -280,6 +294,7 @@ Layout:
 | `src-tauri` | The desktop app shell (thin commands over the core) |
 | `ui` | React + TypeScript UI (CodeMirror 6, React Flow, Excalidraw, Mermaid, Vega-Lite, Graphviz, pdf.js) |
 | `docs/AGENTS.md` | Guide for AI agents, also served by the MCP server |
+| `docs/MCP_COVERAGE.md` | Which app features MCP covers, plans or excludes (checked by a test) |
 | `docs/PLAN.md` | Implementation plan and milestones |
 
 **Releasing.** Follow the [release runbook](docs/RELEASING.md) for normal releases and failed-release

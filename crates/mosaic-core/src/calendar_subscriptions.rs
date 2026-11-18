@@ -65,7 +65,8 @@ struct SubscriptionStore {
     migrated_paths: HashMap<String, String>,
 }
 
-/// A subscription as the app and agents see it: no URL, no download validators.
+// A subscription as the app and agents see it: no URL, no download validators. (A plain comment:
+// doc comments would change the generated UI bindings.)
 #[derive(Debug, Clone, Serialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct SubscriptionView {
@@ -79,7 +80,7 @@ pub struct SubscriptionView {
     pub has_cache: bool,
 }
 
-/// The subscriptions and their cached events in a date range.
+// The subscriptions and their cached events in a date range.
 #[derive(Debug, Clone, Serialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct OverlayRange {

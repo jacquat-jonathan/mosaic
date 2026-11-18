@@ -33,7 +33,7 @@ import type {
   UpdatePlannerWorkSession,
   Version,
 } from "./types";
-import type { commands, Day, DayTask } from "./bindings";
+import type { commands, Day, DayTask, DesktopState } from "./bindings";
 import { kindOf } from "./kinds";
 import { linkTextFor, parseWikiLink, resolveLink } from "../links";
 import { parse as parseYaml } from "yaml";
@@ -944,6 +944,9 @@ function notInMock(cmd: string): never {
 
 /** The mock backend: one function per command in ./bindings.ts, so the compiler checks every
  * result against the Rust types and fails when a command is added, renamed or removed. */
+const MOCK_DESKTOP_CONFIG = "~/Library/Application Support/Claude/claude_desktop_config.json";
+let mockDesktopState: DesktopState = { state: "not-configured" };
+
 export const mockCommands: typeof commands = {
   indexHealth: async () => ({ status: "healthy", watching: true, diagnostic: null }),
   rebuildIndex: async () => {
@@ -2650,6 +2653,22 @@ export const mockCommands: typeof commands = {
       installed: cmd === "install_cli",
     };
   },
+  aiSetupStatus: async () => ({
+    desktop: { path: MOCK_DESKTOP_CONFIG, state: mockDesktopState },
+    claude_code: [],
+  }),
+  writeClaudeDesktopConfig: async () => {
+    mockDesktopState = { state: "configured" };
+    return { path: MOCK_DESKTOP_CONFIG, state: mockDesktopState };
+  },
+  testMcpConnection: async () => ({
+    ok: true,
+    server_version: "0.0.0-mock",
+    tools: 45,
+    no_vault: null,
+    error: null,
+    stderr: "",
+  }),
   updateStatus: async () => {
     return updateStatus();
   },
@@ -2814,6 +2833,9 @@ const PARAMS: Record<string, [keyof typeof commands, string[]]> = {
   outline: ["outline", ["path"]],
   cli_info: ["cliInfo", []],
   install_cli: ["installCli", []],
+  ai_setup_status: ["aiSetupStatus", []],
+  write_claude_desktop_config: ["writeClaudeDesktopConfig", []],
+  test_mcp_connection: ["testMcpConnection", []],
   update_status: ["updateStatus", []],
   check_updates: ["checkUpdates", []],
   start_update: ["startUpdate", []],

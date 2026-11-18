@@ -9,6 +9,8 @@ struct Client {
     stdin: ChildStdin,
     stdout: BufReader<ChildStdout>,
     next_id: u64,
+    /// Methods of the notifications the server sent, in order.
+    notifications: Vec<String>,
 }
 
 impl Client {
@@ -49,6 +51,7 @@ impl Client {
             stdin,
             stdout,
             next_id: 1,
+            notifications: vec![],
         };
         let init = c.request(
             "initialize",
@@ -88,9 +91,14 @@ impl Client {
                 self.stdout.read_line(&mut line).unwrap() > 0,
                 "server closed stdout"
             );
+            // Clients drop the connection on anything but JSON-RPC on stdout.
             let msg: Value = serde_json::from_str(&line).expect("json line");
+            assert_eq!(msg["jsonrpc"], "2.0", "not JSON-RPC on stdout: {line}");
             if msg["id"] == json!(id) {
                 return msg;
+            }
+            if let Some(method) = msg["method"].as_str() {
+                self.notifications.push(method.to_string());
             }
         }
     }
@@ -560,6 +568,76 @@ fn without_a_vault_it_follows_the_app() {
 }
 
 #[test]
+fn without_any_vault_it_connects_and_picks_up_the_first_one_opened() {
+    let home = tempfile::tempdir().unwrap();
+    let vault = home.path().join("Vault");
+    std::fs::create_dir_all(&vault).unwrap();
+    std::fs::write(vault.join("Zebra.md"), "# Zebra\n\nstripes").unwrap();
+    let settings = home.path().join("settings");
+    // Never opened a vault in the app (no settings.json): the handshake still succeeds.
+    let mut c = Client::start_with(None, &settings, &home.path().join("cache"));
+    let tools = c.request("tools/list", json!({}));
+    assert_eq!(tools["result"]["tools"].as_array().unwrap().len(), 45);
+    let resources = c.request("resources/list", json!({}));
+    assert_eq!(resources["result"]["resources"], json!([]));
+    let (err, msg) = c.call("list_files", json!({}));
+    assert!(err);
+    assert_eq!(msg["code"], "no_vault");
+    assert!(
+        msg["message"]
+            .as_str()
+            .unwrap()
+            .contains("open (or create) a vault")
+    );
+    let (err, _) = c.call("vault_guide", json!({}));
+    assert!(!err, "the guide needs no vault");
+    assert!(c.notifications.is_empty());
+
+    // The human opens a vault in the app: the next call works, indexed, without a restart,
+    // and the client learns that resources and prompts appeared.
+    open_in_app(&settings, &vault);
+    let (err, hits) = c.call("search", json!({ "query": "zebra" }));
+    assert!(!err, "{hits}");
+    assert_eq!(hits[0]["path"], "Zebra.md", "{hits}");
+    assert_eq!(
+        c.notifications,
+        [
+            "notifications/resources/list_changed",
+            "notifications/prompts/list_changed"
+        ]
+    );
+    let resources = c.request("resources/list", json!({}));
+    assert_eq!(resources["result"]["resources"][0]["name"], "Zebra.md");
+    c.call("list_files", json!({}));
+    assert_eq!(c.notifications.len(), 2, "told only once");
+}
+
+#[test]
+fn a_pinned_vault_that_moved_still_connects_and_never_uses_the_apps_vault() {
+    let home = tempfile::tempdir().unwrap();
+    let (moved, app) = (home.path().join("Moved"), home.path().join("App"));
+    std::fs::create_dir_all(&app).unwrap();
+    let settings = home.path().join("settings");
+    open_in_app(&settings, &app);
+    let mut c = Client::start_with(Some(&moved), &settings, &home.path().join("cache"));
+    let (err, msg) = c.call("create_file", json!({ "path": "New.md", "content": "hi" }));
+    assert!(err);
+    assert_eq!(msg["code"], "no_vault");
+    assert!(msg["message"].as_str().unwrap().contains("Moved"), "{msg}");
+    assert!(
+        !app.join("New.md").exists(),
+        "never falls back to the app's vault"
+    );
+
+    // The pinned folder comes back (a drive is mounted again): it's used from the next call.
+    std::fs::create_dir_all(&moved).unwrap();
+    let (err, _) = c.call("create_file", json!({ "path": "New.md", "content": "hi" }));
+    assert!(!err);
+    assert!(moved.join("New.md").exists());
+    assert!(!app.join("New.md").exists());
+}
+
+#[test]
 fn a_pinned_vault_warns_when_the_app_shows_another() {
     let home = tempfile::tempdir().unwrap();
     let (pinned, other) = (home.path().join("Pinned"), home.path().join("Other"));
@@ -1018,4 +1096,39 @@ fn agents_are_prompts_and_days_carry_over() {
         (r["moved"].as_u64(), r["to"].as_str()),
         (Some(2), Some("Daily/2026-10-03.md"))
     );
+}
+
+/// The app's "Test connection" runs this probe against the bundled command, with a GUI-like
+/// environment (no terminal PATH).
+#[test]
+fn the_connection_test_reports_a_working_server_with_and_without_a_vault() {
+    use mosaic_core::mcp_setup::probe;
+    let home = tempfile::tempdir().unwrap();
+    let vault = home.path().join("Vault");
+    std::fs::create_dir_all(&vault).unwrap();
+    let settings = home.path().join("settings");
+    let env = [
+        (
+            "MOSAIC_SETTINGS_DIR".to_string(),
+            settings.display().to_string(),
+        ),
+        (
+            "MOSAIC_CACHE_DIR".to_string(),
+            home.path().join("cache").display().to_string(),
+        ),
+    ];
+    let bin = std::path::Path::new(env!("CARGO_BIN_EXE_mosaic"));
+    let timeout = std::time::Duration::from_secs(30);
+
+    let r = probe(bin, &["mcp".into()], &env, timeout);
+    assert!(r.ok, "{r:?}");
+    assert_eq!(r.tools, 45);
+    assert_eq!(r.server_version.as_deref(), Some(env!("CARGO_PKG_VERSION")));
+    assert!(r.no_vault.unwrap().contains("No Mosaic vault is open"));
+
+    open_in_app(&settings, &vault);
+    let r = probe(bin, &["mcp".into()], &env, timeout);
+    assert!(r.ok, "{r:?}");
+    assert_eq!(r.no_vault, None);
+    assert_eq!(r.error, None);
 }

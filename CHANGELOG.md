@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Claude finds Mosaic reliably:** the Mosaic MCP server now always connects, even before a vault has been opened in Mosaic, or when a vault it was tied to has moved. Its tools then explain what to do, and it picks up the vault as soon as one is open. AI › Connections adds Mosaic to Claude Desktop for you while keeping your other servers. It also lists older Claude Code registrations that hide the current one, with the command to remove each, and **Test connection** checks that the server answers. The Claude Code setup command now replaces an older Mosaic registration instead of silently keeping it.
+
 ## 0.29.0 — 2026-11-14
 
 - **Notifications:** a bell in the left bar shows an unread count and opens a Notifications view with items awaiting review, finished or failed workflows, and tasks due within two days or overdue. It is also available as "Open notifications" in the command palette.

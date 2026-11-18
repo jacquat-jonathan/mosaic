@@ -147,6 +147,12 @@ export const commands = {
 	cliInfo: () => __TAURI_INVOKE<CliInfo>("cli_info"),
 	/**  Symlinks the bundled CLI into ~/.local/bin (no admin rights needed). */
 	installCli: () => __TAURI_INVOKE<CliInfo>("install_cli"),
+	/**  How Mosaic is registered in Claude Desktop and Claude Code (read-only). */
+	aiSetupStatus: () => __TAURI_INVOKE<AiSetupStatus>("ai_setup_status"),
+	/**  Adds (or updates) Mosaic in Claude Desktop's config, keeping its other servers. */
+	writeClaudeDesktopConfig: () => __TAURI_INVOKE<DesktopStatus>("write_claude_desktop_config"),
+	/**  Starts the bundled `mosaic mcp` the way Claude Desktop would and checks the MCP handshake. */
+	testMcpConnection: () => __TAURI_INVOKE<ProbeResult>("test_mcp_connection"),
 	updateStatus: () => __TAURI_INVOKE<UpdateStatus>("update_status"),
 	/**  Asks GitHub for the newest signed release, manually or according to the app update preference. */
 	checkUpdates: () => __TAURI_INVOKE<UpdateCheck>("check_updates"),
@@ -271,6 +277,13 @@ export type AgentRun = {
 	proposal_ids?: number[],
 	/**  Saved answers and tool calls; older runs have no transcript. */
 	transcript?: RunTranscript,
+};
+
+export type AiSetupStatus = {
+	/**  Mosaic's entry in Claude Desktop's config; `None` without a bundled command. */
+	desktop: DesktopStatus | null,
+	/**  Every Claude Code registration named `mosaic`, with what's wrong with each. */
+	claude_code: Registration[],
 };
 
 export type AttachmentLocation = "next-to-note" | "folder";
@@ -427,6 +440,23 @@ export type Days = {
 	days: Day[],
 	/**  Open dated tasks whose day is before `today`. */
 	overdue: DayTask[],
+};
+
+export type DesktopState =
+/**  No config file yet (Claude Desktop not installed, or never configured). */
+{ state: "missing" } |
+/**  The file exists without a `mosaic` server. */
+{ state: "not-configured" } |
+/**  `mosaic` runs exactly the expected command. */
+{ state: "configured" } |
+/**  `mosaic` runs something else (an old path, a pinned vault, a bare `mosaic`). */
+{ state: "different"; entry: ServerEntry } |
+/**  The file isn't valid JSON (Claude Desktop then ignores every server in it). */
+{ state: "invalid"; error: string };
+
+export type DesktopStatus = {
+	path: string,
+	state: DesktopState,
 };
 
 export type DueMarker = {
@@ -716,6 +746,20 @@ export type PlannerUnavailable = {
 	can_restore: boolean,
 };
 
+/**  What a test connection found. */
+export type ProbeResult = {
+	/**  The server started and answered the MCP handshake and the tool list. */
+	ok: boolean,
+	server_version: string | null,
+	tools: number,
+	/**  Connected, but no vault can be opened yet: why, as the agent would be told. */
+	no_vault: string | null,
+	/**  Why it failed, when it did. */
+	error: string | null,
+	/**  The end of what the server wrote to stderr. */
+	stderr: string,
+};
+
 /**  A change an agent proposed in a folder under review. */
 export type Proposal = {
 	id: number,
@@ -808,6 +852,29 @@ export type RecentVault = {
 	exists: boolean,
 };
 
+/**  A Claude Code registration named `mosaic`, with what's wrong with it. */
+export type Registration = {
+	scope: RegistrationScope,
+	/**  The project folder, for local and project registrations. */
+	project: string | null,
+	entry: ServerEntry,
+	problems: RegistrationProblem[],
+};
+
+export type RegistrationProblem =
+/**  A local or project registration: in that folder it hides the user registration. */
+"shadows-user" |
+/**  Tied to one vault with `--vault` or `MOSAIC_VAULT`. */
+"pins-vault" |
+/**  A bare or relative command: apps started from the Dock don't have the terminal's PATH. */
+"not-absolute" |
+/**  The command doesn't exist (an old install location). */
+"command-missing" |
+/**  Runs another program than this app's `mosaic` command. */
+"other-command";
+
+export type RegistrationScope = "user" | "local" | "project";
+
 export type Release = {
 	version: string,
 	date: string,
@@ -855,6 +922,12 @@ export type SearchHit = {
 	/**  Matching excerpt; matched terms are wrapped in `**`. */
 	snippet: string,
 	score: number | null,
+};
+
+/**  A stdio server registration: what the client runs. */
+export type ServerEntry = {
+	command: string,
+	args: string[],
 };
 
 export type SubscriptionView = {

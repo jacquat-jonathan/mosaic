@@ -94,3 +94,18 @@
 .mosaic-ds.connection-settings-entry p {
   margin-top: 0;
 }
+.mosaic-ds.connections-settings .connection-conflict {
+  margin: var(--mds-space-6) 0;
+}
+.mosaic-ds.connections-settings .connection-conflict ul {
+  padding-left: var(--mds-space-10);
+}
+.mosaic-ds.connections-settings .connection-stderr {
+  margin: var(--mds-space-4) 0 0;
+  font: var(--mds-text-small) / var(--mds-leading) var(--font-mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.mosaic-ds.connections-settings .connection-actions {
+  margin: var(--mds-space-6) 0;
+}

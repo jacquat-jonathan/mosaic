@@ -230,6 +230,9 @@ names in Notes are proposals for the slice, not commitments.
 | `absolute_path` | excluded (host paths; MCP uses vault-relative paths) | |
 | `asset_path` | excluded (UI asset URLs) | |
 | `open_in_default_app` | excluded (opens an app on the person's desktop) | |
+| `drag_out_attach` | excluded (window: native drag of tree items out to Finder) | |
+| `drag_out_detach` | excluded (window: native drag of tree items out to Finder) | |
+| `drag_out_end` | excluded (window: native drag of tree items out to Finder) | |
 | `unfinished_renames` | planned (M6) | `list_unfinished_renames` |
 | `fix_links` | planned (M6) | `fix_links` |
 | `html_preview_document` | excluded (UI rendering; agents use `render`) | |

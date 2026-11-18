@@ -131,6 +131,18 @@ export const commands = {
 	 *  "open path" permission: programs, installers and folders are refused (`Vault::openable`).
 	 */
 	openInDefaultApp: (path: string) => __TAURI_INVOKE<null>("open_in_default_app", { path }),
+	/**  Adds the dragged items' files to the drag that just left the window. */
+	dragOutAttach: (paths: string[]) => __TAURI_INVOKE<null>("drag_out_attach", { paths }),
+	/**
+	 *  Restores WebKit's drag data as the drag comes back into the window. `false` when the drag
+	 *  pasteboard now belongs to another drag (this one ended without the UI hearing of it).
+	 */
+	dragOutDetach: () => __TAURI_INVOKE<boolean>("drag_out_detach"),
+	/**
+	 *  The tree drag ended: forgets the saved data without touching the pasteboard, which Finder may
+	 *  still be reading.
+	 */
+	dragOutEnd: () => __TAURI_INVOKE<void>("drag_out_end"),
 	/**  Moves whose link rewrites didn't all finish; the app offers **Fix links** for each. */
 	unfinishedRenames: () => __TAURI_INVOKE<UnfinishedRename[]>("unfinished_renames"),
 	fixLinks: (id: number) => __TAURI_INVOKE<Renamed_Serialize>("fix_links", { id }),

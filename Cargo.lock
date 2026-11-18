@@ -2731,6 +2731,8 @@ dependencies = [
  "encoding_rs",
  "libc",
  "mosaic-core",
+ "objc2",
+ "objc2-app-kit",
  "objc2-foundation",
  "percent-encoding",
  "reqwest 0.12.28",

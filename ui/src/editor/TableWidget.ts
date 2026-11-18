@@ -4,6 +4,7 @@ import { Transaction } from "@codemirror/state";
 import { undo, redo, isolateHistory } from "@codemirror/commands";
 import { useVault } from "../state/vault";
 import { useUi, type MenuItem } from "../state/ui";
+import { treeDragActive, treeDragData } from "../dragOut";
 import { editorContext } from "./context";
 import { MIN_COLUMN_WIDTH, resizeTableColumn, loadTableWidths, saveTableWidths, tableWidthKey } from "./tableWidths";
 import {
@@ -803,8 +804,9 @@ export class TableWidget extends WidgetType {
       event.clipboardData.setData("text/plain", rows.join("\n"));
     });
     table.addEventListener("drop", (event) => {
-      if (view.state.readOnly || dragging || !event.dataTransfer || event.dataTransfer.files.length) return;
-      const text = event.dataTransfer.getData("text/plain");
+      if (view.state.readOnly || dragging || !event.dataTransfer) return;
+      if (event.dataTransfer.files.length && !treeDragActive()) return;
+      const text = treeDragData(event.dataTransfer, "text/plain");
       const cell = (event.target as HTMLElement).closest<HTMLElement>("th,td");
       if (!text || !cell) return;
       event.preventDefault();

@@ -2570,6 +2570,10 @@ export const mockCommands: typeof commands = {
     // The mock's renames always finish.
   },
   openInDefaultApp: async () => notInMock("open_in_default_app"),
+  // Nothing to drag out to outside the app.
+  dragOutAttach: async () => null,
+  dragOutDetach: async () => true,
+  dragOutEnd: async () => {},
   unfinishedRenames: async () => {
     return [];
   },
@@ -2803,6 +2807,9 @@ const PARAMS: Record<string, [keyof typeof commands, string[]]> = {
   undo_change: ["undoChange", ["id"]],
   absolute_path: ["absolutePath", ["path"]],
   open_in_default_app: ["openInDefaultApp", ["path"]],
+  drag_out_attach: ["dragOutAttach", ["paths"]],
+  drag_out_detach: ["dragOutDetach", []],
+  drag_out_end: ["dragOutEnd", []],
   unfinished_renames: ["unfinishedRenames", []],
   fix_links: ["fixLinks", ["id"]],
   asset_path: ["assetPath", ["path", "generation"]],

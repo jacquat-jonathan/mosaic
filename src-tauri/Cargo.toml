@@ -39,7 +39,11 @@ scraper = { version = "0.29", default-features = false }
 encoding_rs = "0.8"
 
 [target.'cfg(target_os = "macos")'.dependencies]
-objc2-foundation = { version = "0.3", features = ["NSUserDefaults", "NSString"] }
+objc2-foundation = { version = "0.3", features = ["NSUserDefaults", "NSString", "NSArray", "NSData"] }
+# Drag pasteboard access for dragging tree items out to Finder (src/drag_out.rs). Pinned to the
+# versions Tauri's own macOS stack already uses.
+objc2 = "=0.6.4"
+objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["std", "NSPasteboard", "NSPasteboardItem"] }
 
 [dev-dependencies]
 tauri = { version = "2.12", features = ["test"] }

@@ -5,6 +5,7 @@ mod calendar_subscriptions;
 mod chat;
 #[cfg(test)]
 mod contract_tests;
+mod drag_out;
 mod html_preview;
 mod http;
 mod indexing;
@@ -976,6 +977,9 @@ pub(crate) fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             absolute_path,
             assets::asset_path,
             open_in_default_app,
+            drag_out::drag_out_attach,
+            drag_out::drag_out_detach,
+            drag_out::drag_out_end,
             unfinished_renames,
             fix_links,
             html_preview::html_preview_document,

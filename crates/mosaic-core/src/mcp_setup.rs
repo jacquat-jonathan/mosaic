@@ -656,7 +656,10 @@ mod tests {
         );
         assert!(!r.ok);
         assert!(
-            r.error.unwrap().contains("other than MCP messages"),
+            r.error
+                .as_deref()
+                .unwrap()
+                .contains("other than MCP messages"),
             "{r:?}"
         );
 

@@ -7,10 +7,10 @@ use mosaic_core::settings::Settings;
 use mosaic_core::{Error, Workspace};
 use rmcp::handler::server::{router::tool::ToolRouter, wrapper::Parameters};
 use rmcp::model::{
-    CallToolResult, ContentBlock, GetPromptRequestParams, GetPromptResponse, GetPromptResult,
-    Implementation, InitializeRequestParams, InitializeResult, ListPromptsResult,
-    ListResourcesResult, PaginatedRequestParams, Prompt, PromptArgument, PromptMessage,
-    ReadResourceRequestParams, ReadResourceResponse, ReadResourceResult, Resource,
+    CallToolRequestParams, CallToolResponse, CallToolResult, ContentBlock, GetPromptRequestParams,
+    GetPromptResponse, GetPromptResult, Implementation, InitializeRequestParams, InitializeResult,
+    ListPromptsResult, ListResourcesResult, PaginatedRequestParams, Prompt, PromptArgument,
+    PromptMessage, ReadResourceRequestParams, ReadResourceResponse, ReadResourceResult, Resource,
     ResourceContents, Role, ServerCapabilities, ServerConfig,
 };
 use rmcp::service::RequestContext;
@@ -436,8 +436,17 @@ pub enum VaultMode {
 
 #[derive(Clone)]
 pub struct MosaicMcp {
-    ws: Arc<RwLock<Arc<Workspace>>>,
+    /// `None` until a vault opens: the server still answers the MCP handshake and lists its tools,
+    /// and tools explain what to do (see `no_vault`). It only ever moves from `None` to `Some`.
+    ws: Arc<RwLock<Option<Arc<Workspace>>>>,
     mode: VaultMode,
+    /// The pinned `--vault` folder, retried while it can't be opened. Never replaced by the app's.
+    pinned: Option<PathBuf>,
+    /// `--may-change`, re-applied when another vault opens.
+    may_change: Option<Vec<String>>,
+    /// Whether clients know about the vault's resources and prompts: true when a vault was open at
+    /// startup, set once they're told it opened later.
+    announced: Arc<std::sync::atomic::AtomicBool>,
     /// The MCP client's name, recorded with every change in the file history.
     actor: Arc<RwLock<Option<String>>>,
     tool_router: ToolRouter<Self>,
@@ -457,10 +466,18 @@ fn app_vault() -> Option<PathBuf> {
 
 #[tool_router(router = tool_router)]
 impl MosaicMcp {
-    pub fn new(ws: Workspace, mode: VaultMode) -> Self {
+    pub fn new(
+        ws: Option<Workspace>,
+        mode: VaultMode,
+        pinned: Option<PathBuf>,
+        may_change: Option<Vec<String>>,
+    ) -> Self {
         Self {
-            ws: Arc::new(RwLock::new(Arc::new(ws))),
+            announced: Arc::new(std::sync::atomic::AtomicBool::new(ws.is_some())),
+            ws: Arc::new(RwLock::new(ws.map(Arc::new))),
             mode,
+            pinned,
+            may_change,
             actor: Arc::new(RwLock::new(None)),
             tool_router: Self::tool_router(),
             last_sync: Default::default(),
@@ -468,23 +485,36 @@ impl MosaicMcp {
     }
 
     /// The workspace for this call, with the folder rules read once for the whole call (see
-    /// `Workspace::freeze_rules`).
+    /// `Workspace::freeze_rules`). Only reached after `call_tool` (or another entry point) has
+    /// checked that a vault is open; the slot never goes back to `None`.
     fn ws(&self) -> mosaic_core::api::RulesFrozen<Arc<Workspace>> {
-        Workspace::frozen(self.workspace())
+        Workspace::frozen(
+            self.workspace()
+                .expect("entry points check for an open vault first"),
+        )
     }
 
-    /// The current workspace. In follow mode, switches first if the app opened another vault.
-    fn workspace(&self) -> Arc<Workspace> {
+    /// The current workspace, if any. In follow mode, switches first if the app opened another
+    /// vault (or opens the app's vault when none was open yet). A pinned server only ever retries
+    /// its own folder.
+    fn workspace(&self) -> Option<Arc<Workspace>> {
         let current = self.ws.read().unwrap_or_else(|p| p.into_inner()).clone();
-        if self.mode == VaultMode::FollowApp
-            && let Some(root) = app_vault()
-            && root != current.vault.root()
+        let wanted = match self.mode {
+            VaultMode::FollowApp => app_vault(),
+            VaultMode::Pinned if current.is_none() => self.pinned.clone(),
+            VaultMode::Pinned => None,
+        };
+        if let Some(root) = wanted
+            && current.as_ref().is_none_or(|c| root != c.vault.root())
             && let Ok(next) = Workspace::open(&root)
         {
-            let next = Arc::new(
-                next.validating()
-                    .with_source(mosaic_core::history::Source::Agent),
-            );
+            let mut next = next
+                .validating()
+                .with_source(mosaic_core::history::Source::Agent);
+            if let Some(only) = &self.may_change {
+                next = next.with_change_allowlist(only.clone());
+            }
+            let next = Arc::new(next);
             if let Some(name) = self
                 .actor
                 .read()
@@ -494,10 +524,47 @@ impl MosaicMcp {
                 next.set_actor(name);
             }
             let _ = next.sync(|_, _| {});
-            *self.ws.write().unwrap_or_else(|p| p.into_inner()) = next.clone();
-            return next;
+            let mut slot = self.ws.write().unwrap_or_else(|p| p.into_inner());
+            // Another call may have switched while this one synced: keep whichever came first.
+            let unchanged = match (&*slot, &current) {
+                (None, None) => true,
+                (Some(a), Some(b)) => Arc::ptr_eq(a, b),
+                _ => false,
+            };
+            if !unchanged {
+                return slot.clone();
+            }
+            *slot = Some(next.clone());
+            return Some(next);
         }
         current
+    }
+
+    /// Opens the vault if it can be opened now. When it opens during this request, tells the
+    /// client (once) that resources and prompts changed: it listed them empty before.
+    async fn open_vault(&self, peer: &rmcp::Peer<RoleServer>) -> Option<Arc<Workspace>> {
+        let ws = self.workspace()?;
+        if !self
+            .announced
+            .swap(true, std::sync::atomic::Ordering::SeqCst)
+        {
+            let _ = peer.notify_resource_list_changed().await;
+            let _ = peer.notify_prompt_list_changed().await;
+        }
+        Some(ws)
+    }
+
+    /// Why no vault is open, and what the human can do about it: returned by every tool but
+    /// `vault_guide` until a vault opens.
+    fn no_vault(&self) -> String {
+        let message = match (&self.mode, &self.pinned) {
+            (VaultMode::Pinned, Some(path)) => format!(
+                "The Mosaic vault this server is pinned to ({}, from --vault or MOSAIC_VAULT) can't be opened: it was moved, renamed or isn't mounted. Ask the human to update the MCP registration: remove `--vault ...` so it follows the vault open in the Mosaic app (the command is in Mosaic › Settings › AI › Connections), or point it at the vault's current folder.",
+                path.display()
+            ),
+            _ => "No Mosaic vault is open yet. Ask the human to open (or create) a vault in the Mosaic app; this server picks it up on the next call, without restarting.".to_string(),
+        };
+        serde_json::json!({ "code": "no_vault", "message": message }).to_string()
     }
 
     /// A warning when a pinned vault isn't the one the human is looking at in the app.
@@ -505,7 +572,7 @@ impl MosaicMcp {
         if self.mode != VaultMode::Pinned {
             return None;
         }
-        let root = self.ws().vault.root().to_path_buf();
+        let root = self.workspace()?.vault.root().to_path_buf();
         let app = app_vault()?;
         (app != root).then(|| {
             format!(
@@ -1124,13 +1191,30 @@ impl MosaicMcp {
 
 #[tool_handler(router = self.tool_router)]
 impl ServerHandler for MosaicMcp {
+    /// Every tool is listed even without a vault, so clients connect and the agent learns why
+    /// calls fail (`no_vault`). `vault_guide` needs no vault.
+    async fn call_tool(
+        &self,
+        request: CallToolRequestParams,
+        context: RequestContext<RoleServer>,
+    ) -> Result<CallToolResponse, ErrorData> {
+        if request.name != "vault_guide" && self.open_vault(&context.peer).await.is_none() {
+            return Ok(CallToolResult::error(vec![ContentBlock::text(self.no_vault())]).into());
+        }
+        let tcc = rmcp::handler::server::tool::ToolCallContext::new(self, request, context);
+        self.tool_router.call(tcc).await
+    }
+
     /// Every note as an MCP resource (`mosaic:///Folder/Note.md`), so clients can attach notes as
     /// context without a tool call. Hidden folders (Settings › AI) are left out.
     async fn list_resources(
         &self,
         _request: Option<PaginatedRequestParams>,
-        _context: RequestContext<RoleServer>,
+        context: RequestContext<RoleServer>,
     ) -> Result<ListResourcesResult, ErrorData> {
+        if self.open_vault(&context.peer).await.is_none() {
+            return Ok(ListResourcesResult::with_all_items(vec![]));
+        }
         let entries = self
             .ws()
             .files
@@ -1154,8 +1238,11 @@ impl ServerHandler for MosaicMcp {
     async fn read_resource(
         &self,
         request: ReadResourceRequestParams,
-        _context: RequestContext<RoleServer>,
+        context: RequestContext<RoleServer>,
     ) -> Result<ReadResourceResponse, ErrorData> {
+        if self.open_vault(&context.peer).await.is_none() {
+            return Err(ErrorData::resource_not_found(self.no_vault(), None));
+        }
         let path = resource_path(&request.uri).ok_or_else(|| {
             ErrorData::invalid_params(format!("not a Mosaic note URI: {}", request.uri), None)
         })?;
@@ -1177,8 +1264,11 @@ impl ServerHandler for MosaicMcp {
     async fn list_prompts(
         &self,
         _request: Option<PaginatedRequestParams>,
-        _context: RequestContext<RoleServer>,
+        context: RequestContext<RoleServer>,
     ) -> Result<ListPromptsResult, ErrorData> {
+        if self.open_vault(&context.peer).await.is_none() {
+            return Ok(ListPromptsResult::with_all_items(vec![]));
+        }
         let agents = self
             .ws()
             .agents()
@@ -1200,8 +1290,11 @@ impl ServerHandler for MosaicMcp {
     async fn get_prompt(
         &self,
         request: GetPromptRequestParams,
-        _context: RequestContext<RoleServer>,
+        context: RequestContext<RoleServer>,
     ) -> Result<GetPromptResponse, ErrorData> {
+        if self.open_vault(&context.peer).await.is_none() {
+            return Err(ErrorData::invalid_params(self.no_vault(), None));
+        }
         let agent = self
             .ws()
             .agent(&request.name)
@@ -1227,24 +1320,36 @@ impl ServerHandler for MosaicMcp {
         context: RequestContext<RoleServer>,
     ) -> Result<InitializeResult, ErrorData> {
         let name = request.client_info.name.clone();
-        self.ws().set_actor(&name);
+        // A vault opened later picks the name up in `workspace()`.
+        if let Some(ws) = self.workspace() {
+            ws.set_actor(&name);
+        }
         *self.actor.write().unwrap_or_else(|p| p.into_inner()) = Some(name);
         context.peer.set_peer_info(request.clone());
         self.negotiate_initialize(&request)
     }
 
     fn get_info(&self) -> ServerConfig {
-        let root = self.ws().vault.root().display().to_string();
-        let which = match self.mode {
-            VaultMode::FollowApp => format!(
+        let root = self
+            .workspace()
+            .map(|ws| ws.vault.root().display().to_string());
+        let which = match (self.mode, root) {
+            (VaultMode::FollowApp, Some(root)) => format!(
                 "the vault open in the Mosaic app (now {root}; it follows when the human switches vaults)"
             ),
-            VaultMode::Pinned => format!("the Mosaic vault at {root}"),
+            (VaultMode::FollowApp, None) => "the vault open in the Mosaic app (none is open yet: until the human opens one, tools explain what to do)".to_string(),
+            (VaultMode::Pinned, Some(root)) => format!("the Mosaic vault at {root}"),
+            (VaultMode::Pinned, None) => format!(
+                "the Mosaic vault at {} (it can't be opened now: tools explain what to do)",
+                self.pinned.as_deref().unwrap_or(std::path::Path::new("?")).display()
+            ),
         };
         ServerConfig::new(ServerCapabilities::builder()
                 .enable_tools()
                 .enable_resources()
+                .enable_resources_list_changed()
                 .enable_prompts()
+                .enable_prompts_list_changed()
                 .build())
             .with_server_info(Implementation::new("mosaic", env!("CARGO_PKG_VERSION")))
             .with_instructions(format!(
@@ -1254,8 +1359,15 @@ impl ServerHandler for MosaicMcp {
     }
 }
 
-pub async fn serve(ws: Workspace, mode: VaultMode) -> anyhow::Result<()> {
-    let service = MosaicMcp::new(ws, mode)
+/// Serves even when no vault can be opened (`ws` is `None`): a client that can't complete the
+/// handshake only reports "failed to connect", while tools can tell the agent what's wrong.
+pub async fn serve(
+    ws: Option<Workspace>,
+    mode: VaultMode,
+    pinned: Option<PathBuf>,
+    may_change: Option<Vec<String>>,
+) -> anyhow::Result<()> {
+    let service = MosaicMcp::new(ws, mode, pinned, may_change)
         .serve(rmcp::transport::stdio())
         .await?;
     service.waiting().await?;

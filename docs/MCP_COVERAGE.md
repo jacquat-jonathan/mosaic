@@ -90,7 +90,7 @@ the decision on the open question below before it ships.
 - *Not undoable*: `planner_restore_backup` replaces the whole planner database.
 - *The person's review screen*: `proposal_content`, `proposal_base`.
 - *App or window plumbing*: printing, opening in another app, host paths, asset URLs, HTML preview,
-  updates, the CLI installer.
+  updates, the CLI installer, setting up and testing AI clients (Connections).
 - *Chat*: the in-app chat is itself an AI client; an agent talking to it over MCP has no use.
 - *Agent skill mirror*: `mirror_agents` rewrites the `.claude/skills` an agent is loaded with; the app
   runs it.
@@ -243,6 +243,9 @@ names in Notes are proposals for the slice, not commitments.
 | `outline` | `outline` | |
 | `cli_info` | excluded (CLI installer) | |
 | `install_cli` | excluded (CLI installer; writes outside the vault) | |
+| `ai_setup_status` | excluded (AI client setup: reads Claude's own config files) | |
+| `write_claude_desktop_config` | excluded (AI client setup; writes outside the vault) | |
+| `test_mcp_connection` | excluded (AI client setup: starts this MCP server to check it) | |
 | `update_status` | excluded (app updates) | |
 | `check_updates` | excluded (app updates) | |
 | `start_update` | excluded (app updates) | |

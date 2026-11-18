@@ -17,5 +17,8 @@ export const APP_THEME_TOKENS = Object.fromEntries(
     success: "success",
     review: "review",
     "shadow-floating": "shadow",
+    overlay: "overlay",
+    "diff-add": "diff-add",
+    "diff-remove": "diff-remove",
   }).map(([token, app]) => [`--mds-${token}`, `var(--${app})`]),
 );

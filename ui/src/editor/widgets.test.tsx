@@ -118,6 +118,14 @@ test("note and canvas embeds cover resolved, missing and failed content", async 
   canvas.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, metaKey: true }));
   expect(context.openLink).toHaveBeenCalledWith("Diagram", true);
   expect(new CanvasEmbedWidget("Diagram.canvas", "Diagram", context).estimatedHeight).toBe(240);
+  // Turning High contrast on or off redraws embedded diagrams with the new colours.
+  const before = new CanvasEmbedWidget("Diagram.canvas", "Diagram", context, false);
+  document.documentElement.dataset.colorTheme = "high-contrast";
+  const after = new CanvasEmbedWidget("Diagram.canvas", "Diagram", context, false);
+  const block = new RenderedBlockWidget("coverage-sync", "diagram", context, false);
+  delete document.documentElement.dataset.colorTheme;
+  expect(after.eq(before)).toBe(false);
+  expect(block.eq(new RenderedBlockWidget("coverage-sync", "diagram", context, false))).toBe(false);
   expect(stripFrontmatter("---\na: 1\n---\nBody")).toBe("Body");
   expect(stripFrontmatter("Body")).toBe("Body");
 });

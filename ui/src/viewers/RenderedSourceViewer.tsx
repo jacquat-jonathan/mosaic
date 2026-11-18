@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { Buffer } from "../state/workspace";
-import { useDark } from "../theme";
+import { useVisualTheme } from "../theme";
 import { CodeEditor } from "./CodeEditor";
 import { Notice, SegmentedControl } from "../design-system/components";
 import { DocumentToolbar } from "./Toolbar";
@@ -20,7 +20,7 @@ export function RenderedSourceViewer({
   const [rendering, setRendering] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const host = useRef<HTMLDivElement>(null);
-  const dark = useDark();
+  const visual = useVisualTheme();
 
   useEffect(() => {
     if (mode !== "view" || !host.current) return;
@@ -46,8 +46,8 @@ export function RenderedSourceViewer({
       live = false;
       clearTimeout(t);
     };
-    // `dark`: charts and graphs bake the theme into their SVG, so they redraw when it changes.
-  }, [buffer.content, mode, render, dark]);
+    // `visual`: charts and graphs bake the theme into their SVG, so they redraw when it changes.
+  }, [buffer.content, mode, render, visual]);
 
   const options = [
     { value: "view" as const, label },

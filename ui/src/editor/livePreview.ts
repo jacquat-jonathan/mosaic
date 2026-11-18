@@ -13,7 +13,7 @@ import { Decoration, EditorView, ViewPlugin, type DecorationSet, type ViewUpdate
 import { syntaxTree } from "@codemirror/language";
 import type { SyntaxNode } from "@lezer/common";
 import { editorContext, type EditorContext } from "./context";
-import { onDarkChange } from "../theme";
+import { onVisualThemeChange } from "../theme";
 import { parseWikiLink, linkLabel } from "../links";
 import { kindOf } from "../ipc/kinds";
 import { blockRenderers } from "./blocks";
@@ -569,7 +569,7 @@ const linkClicks = EditorView.domEventHandlers({
 
 /** Redraws diagrams when the theme flips, since they bake their colours in. */
 const themeRedraw = ViewPlugin.define((view) => {
-  const stop = onDarkChange(() => view.dispatch({ effects: refreshPreview.of(null) }));
+  const stop = onVisualThemeChange(() => view.dispatch({ effects: refreshPreview.of(null) }));
   return { destroy: stop };
 });
 

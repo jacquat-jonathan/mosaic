@@ -41,6 +41,11 @@ describe("settings", () => {
       accent: "green",
     });
     expect(sanitize({ colorTheme: "forest", accent: "theme" }).colorTheme).toBe("forest");
+    expect(sanitize({ colorTheme: "high-contrast", accent: "amber" })).toMatchObject({
+      colorTheme: "high-contrast",
+      accent: "amber",
+    });
+    expect(sanitize({ colorTheme: "High contrast" }).colorTheme).toBe("classic");
     expect(sanitize({ colorTheme: "unknown", accent: "unknown" })).toMatchObject({
       colorTheme: "classic",
       accent: "theme",

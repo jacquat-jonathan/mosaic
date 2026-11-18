@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { isDark, onDarkChange } from "./theme";
+import { isDark, onDarkChange, onVisualThemeChange, visualTheme } from "./theme";
 
 afterEach(() => {
   delete document.documentElement.dataset.theme;
+  delete document.documentElement.dataset.colorTheme;
   vi.unstubAllGlobals();
 });
 
@@ -56,5 +57,33 @@ describe("effective colour scheme", () => {
 
     stop();
     expect(removeEventListener).toHaveBeenCalledWith("change", expect.any(Function));
+  });
+
+  it("tells diagrams to redraw when High contrast is turned on or off, not for other palettes", () => {
+    const root = document.documentElement;
+    root.dataset.theme = "light";
+    const dark = vi.fn();
+    const visual = vi.fn();
+    const stopDark = onDarkChange(dark);
+    const stopVisual = onVisualThemeChange(visual);
+
+    root.dataset.colorTheme = "forest";
+    window.dispatchEvent(new Event("mosaic-theme"));
+    expect(visual).not.toHaveBeenCalled();
+    root.dataset.colorTheme = "high-contrast";
+    window.dispatchEvent(new Event("mosaic-theme"));
+    expect(visual).toHaveBeenLastCalledWith("high-contrast-light");
+    root.dataset.theme = "dark";
+    window.dispatchEvent(new Event("mosaic-theme"));
+    expect(visual).toHaveBeenLastCalledWith("high-contrast-dark");
+    root.dataset.colorTheme = "classic";
+    window.dispatchEvent(new Event("mosaic-theme"));
+    expect(visual).toHaveBeenLastCalledWith("dark");
+    expect(visualTheme()).toBe("dark");
+    // The plain scheme listener only hears the light → dark flip.
+    expect(dark).toHaveBeenCalledTimes(1);
+
+    stopDark();
+    stopVisual();
   });
 });

@@ -87,6 +87,38 @@ test("window strip follows themes, retains native drag regions and fits narrow w
   await expect(page.locator(".settings-workspace")).not.toHaveClass(/mosaic-ds/);
 });
 
+test("feedback button next to the version opens a prefilled GitHub issue", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open folder…", exact: true }).click();
+  await page.evaluate(() => {
+    (window as unknown as { opened: string[] }).opened = [];
+    window.open = (url) => {
+      (window as unknown as { opened: string[] }).opened.push(String(url));
+      return null;
+    };
+  });
+  const strip = page.getByRole("banner", { name: "Window title", exact: true });
+  const button = strip.getByRole("button", { name: "Feedback", exact: true });
+  await expect(button).toBeInViewport();
+  await button.click();
+  const dialog = page.getByRole("dialog", { name: "Send feedback", exact: true });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByLabel("Title")).toBeFocused();
+  await dialog.getByRole("radio", { name: "Idea", exact: true }).check({ force: true });
+  await dialog.getByLabel("Title").fill("Board view");
+  await dialog.getByLabel("Message").fill("Columns & cards");
+  await dialog.getByRole("button", { name: "Open in GitHub", exact: true }).click();
+  await expect(dialog).toBeHidden();
+  await expect(button).toBeFocused();
+  const [url] = await page.evaluate(() => (window as unknown as { opened: string[] }).opened);
+  const query = new URL(url).searchParams;
+  expect(url).toMatch(/^https:\/\/github\.com\/jacquat-jonathan\/mosaic\/issues\/new\?/);
+  expect(query.get("labels")).toBe("enhancement");
+  expect(query.get("title")).toBe("Board view");
+  expect(query.get("body")).toContain("Columns & cards");
+  expect(query.get("body")).toContain("- Mosaic: v0.1.0");
+});
+
 test("destination rail preserves keyboard activation sidebar toggling and accessible attention counts", async ({
   page,
 }) => {

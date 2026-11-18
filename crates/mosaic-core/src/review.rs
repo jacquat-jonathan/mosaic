@@ -969,37 +969,6 @@ mod tests {
     }
 
     #[test]
-    fn reopening_another_vault_keeps_the_allowlist() {
-        let (dir, _app, agent) = setup();
-        let agent = agent.with_change_allowlist(vec!["Allowed".into(), "planner:".into()]);
-        let second = tempfile::tempdir().unwrap();
-        std::fs::write(second.path().join("Free.md"), "free\n").unwrap();
-        let next = agent.reopen(second.path()).unwrap();
-        assert_eq!(
-            next.change_allowlist(),
-            Some(vec!["Allowed".into(), "planner:".into()])
-        );
-        assert_eq!(next.actor().as_deref(), Some("claude-code"));
-        assert_eq!(next.source(), Source::Agent);
-        assert!(
-            next.files
-                .write("Free.md", "changed\n", None)
-                .unwrap()
-                .review
-                .is_some()
-        );
-        assert_eq!(
-            std::fs::read_to_string(second.path().join("Free.md")).unwrap(),
-            "free\n"
-        );
-        assert!(matches!(
-            next.files.add_bookmark("Free.md"),
-            Err(Error::Denied(_))
-        ));
-        drop(dir);
-    }
-
-    #[test]
     fn person_can_accept_selected_text_hunks() {
         let (dir, app, agent) = setup();
         let w = agent

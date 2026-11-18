@@ -113,31 +113,49 @@ Downloaded or transferred builds may need the first-launch approval described ab
 
 ## Connect AI
 
-In the app, open **AI › Connections**. It installs the CLI and
-shows the exact commands for your vault. Or set it up by hand:
+Mosaic gives AI tools the same abilities you have in your vault through the `mosaic` MCP server.
+It is not a network server: each client starts its own local copy over stdio, with
+`/Applications/Mosaic.app/Contents/MacOS/mosaic mcp`.
 
-**Claude Code**
+The easiest setup is in the app: open **AI › Connections**. It shows the commands with the
+correct path for your install, adds Mosaic to Claude Desktop for you, lists older registrations
+that get in the way, and **Test connection** starts the server the way Claude does and checks
+that it answers. To set it up by hand, follow the steps below. If Mosaic.app isn't in
+/Applications, use your path instead. **Always use the absolute path**: apps started from the
+Dock, including Claude Desktop, don't have your terminal's `PATH`, so a bare `mosaic` isn't found.
+
+The server works on the vault open in Mosaic and follows when you switch vaults, even in sessions
+already running. When the app is closed, it uses the last vault you had open. If no vault has
+been opened yet, the server still connects, and its tools ask you to open one. It picks the vault
+up without a restart.
+
+### Claude Code
+
+Run once, in any terminal:
 
 ```sh
-claude mcp add --scope user mosaic -- /Applications/Mosaic.app/Contents/MacOS/mosaic mcp
+claude mcp remove --scope user mosaic >/dev/null 2>&1; claude mcp add --scope user mosaic -- /Applications/Mosaic.app/Contents/MacOS/mosaic mcp
 ```
 
-This registers Mosaic privately for your user in **all Claude Code projects**, not just the folder
-where you run the command. Start a new Claude session and check `/mcp`. The absolute bundled path
-also works when a client doesn't inherit your terminal's PATH. If Mosaic is installed elsewhere,
-use the path shown in Connections.
+`--scope user` makes Mosaic available in **all your projects**, private to you. The first part removes
+an older Mosaic registration for all projects, because `claude mcp add` refuses to replace an
+existing one and keeps the old entry. Check it with `claude mcp get mosaic` (it should say
+`Connected`), or with `/mcp` in a new Claude session.
 
-Without `--vault` (and without a `MOSAIC_VAULT` environment override), the server works on the vault
-selected in the Mosaic app and follows when you switch vaults, even in already-running sessions
-from other projects. When the app is closed, it uses the last selected vault. This is not a network
-server: each client starts a local stdio process. To tie it to one vault, use
-`mosaic --vault "/path/to/vault" mcp`; it then warns the agent when the app shows another vault.
+A registration named `mosaic` in a single project (`--scope local`, or `--scope project` in that
+project's `.mcp.json`) takes priority over the one for all projects. In that project, Claude Code
+uses the older entry. Connections lists these registrations. To remove one, run this in that project:
+`claude mcp remove --scope local mosaic` (or `--scope project`).
 
-Existing local/project registrations named `mosaic` override the user registration. Remove or
-update those in their original project if they pin a vault. For project-only registration use
-`--scope local` instead of `--scope user`; the default when scope is omitted is local.
+### Claude Desktop
 
-**Claude Desktop**: add this to `~/Library/Application Support/Claude/claude_desktop_config.json`:
+In **AI › Connections**, quit Claude Desktop, choose **Add Mosaic to Claude Desktop**, then open
+Claude Desktop again. Mosaic keeps your other servers, and the previous file is saved as
+`claude_desktop_config.json.bak`.
+
+To set it up by hand, open Claude Desktop's settings › Developer › **Edit Config**, or edit
+`~/Library/Application Support/Claude/claude_desktop_config.json`. Add `mosaic` inside
+`mcpServers`, next to any servers already there:
 
 ```json
 {
@@ -150,7 +168,42 @@ update those in their original project if they pin a vault. For project-only reg
 }
 ```
 
-The MCP tools (this list is checked against the server by a test):
+Then quit Claude Desktop completely (Claude › Quit, not just closing the window) and open it again.
+Mosaic shows up under the connectors in the chat box.
+
+### One vault only
+
+To tie a client to one vault, add `--vault "/path/to/vault"` before `mcp` (for example
+`… mosaic --vault "/Users/me/Notes" mcp`). The agent is warned when Mosaic shows another vault.
+If that folder is moved or renamed, the server still connects, but its tools say the vault can't
+be opened until you update the registration.
+
+### Troubleshooting
+
+- **Claude says it can't find Mosaic, or `claude mcp get mosaic` shows `Failed to connect`.** Run
+  **Test connection** in AI › Connections, or run the command yourself:
+  `/Applications/Mosaic.app/Contents/MacOS/mosaic mcp` should wait silently for input (press
+  Ctrl-C to stop it). An error there names the problem.
+- **`command not found` / `ENOENT`.** The registration uses a bare `mosaic` or an old path.
+  Re-run the setup above with the absolute path.
+- **Claude Code still uses an old setup.** Run `claude mcp get mosaic` in the project you work in.
+  If it shows `Local config` or `Project config`, remove that registration (see above). If it shows
+  `--vault` with a folder that no longer exists, re-run the setup command.
+- **Claude Desktop doesn't show Mosaic.** The config file must be valid JSON with a single
+  `mcpServers` object. If the file is invalid, Claude Desktop ignores every server in it, and
+  Connections says so. Quit and reopen Claude Desktop after each change. Its logs are in
+  `~/Library/Logs/Claude/mcp*.log` (`tail -n 50 -f ~/Library/Logs/Claude/mcp*.log`).
+- **Tools answer "No Mosaic vault is open yet".** Open or create a vault in Mosaic. The next tool
+  call uses it. If notes don't appear as attachable resources, restart the client.
+- **Slow first start on a large vault.** The server updates the search index before it answers.
+  For a large vault that has never been opened in Mosaic, open it in the app once first. If needed,
+  allow Claude Code more time with `MCP_TIMEOUT=60000 claude`.
+- **After updating Mosaic**, restart Claude Desktop and start new Claude Code sessions, so they run
+  the new server.
+
+### Tools
+
+The server has 45 tools (this list is checked against the server by a test):
 
 <!-- mcp-tools:start -->
 - Guide and settings: `vault_guide`, `get_vault_preferences`, `list_agents`.
@@ -169,11 +222,12 @@ The MCP tools (this list is checked against the server by a test):
   `restore_planner_task`, `trash_planner_task`.
 <!-- mcp-tools:end -->
 
-[MCP coverage](docs/MCP_COVERAGE.md) maps every app feature to its tool, the slice that will add it,
-or why it stays out of MCP. Notes are also MCP resources (`mosaic:///Folder/Note.md`). In AI › Connections you can make folders
-read-only for agents, hide them, or **review** agents' changes there: edits, new files and deletions wait
-under AI activity until you accept or reject them. Edits accept an `expected_hash` so an agent never
-overwrites a newer human edit.
+Each agent in `Agents/` is also an MCP prompt (`/mosaic:<name>` in Claude Code), and notes are MCP
+resources (`mosaic:///Folder/Note.md`). [MCP coverage](docs/MCP_COVERAGE.md) maps every app feature
+to its tool, the slice that will add it, or why it stays out of MCP. In AI › Connections you can make
+folders read-only for agents or hide them. You can also have agents' changes in a folder
+**reviewed**: edits, new files and deletions wait under AI activity until you accept or reject them.
+Edits accept an `expected_hash`, so an agent never overwrites a newer edit of yours.
 
 **Command line**
 

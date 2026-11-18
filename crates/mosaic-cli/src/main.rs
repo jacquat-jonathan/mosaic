@@ -218,6 +218,59 @@ enum BookmarkCmd {
     Remove { path: String },
 }
 
+/// `mosaic mcp` always completes the MCP handshake, even when no vault can be opened (none open
+/// in the app yet, or a pinned `--vault` that moved): clients would otherwise only say "failed to
+/// connect". Its tools then explain what to do, and the vault opens as soon as it can.
+/// `--may-change` entries ending in `:` name app data (`planner:`); an unknown one allows nothing.
+fn warn_unknown_scopes(may_change: &[String]) {
+    for entry in may_change {
+        if mosaic_core::api::is_scope_entry(entry)
+            && mosaic_core::api::AppScope::parse(entry).is_none()
+        {
+            eprintln!(
+                "warning: --may-change {entry} names no known app data (known: {}); it allows nothing",
+                mosaic_core::api::AppScope::ALL
+                    .map(|s| format!("{}:", s.name()))
+                    .join(", ")
+            );
+        }
+    }
+}
+
+fn serve_mcp(vault: Option<PathBuf>, mode: mcp::VaultMode, may_change: Vec<String>) -> Result<()> {
+    let root = vault.clone().or_else(|| Settings::load().last_vault);
+    let ws = match root.as_deref().map(Workspace::open) {
+        Some(Ok(ws)) => {
+            let mut ws = ws.validating().with_source(Source::Agent);
+            if !may_change.is_empty() {
+                ws = ws.with_change_allowlist(may_change.clone());
+            }
+            // The index is shared with the app (WAL); an incremental sync keeps results current.
+            // A failure here is retried before index-backed calls, so it must not stop the server.
+            if let Err(e) = ws.sync(|_, _| {}) {
+                eprintln!("mosaic: indexing the vault failed, retrying on use: {e}");
+            }
+            Some(ws)
+        }
+        Some(Err(e)) => {
+            eprintln!(
+                "mosaic: can't open vault {}: {e}",
+                root.unwrap_or_default().display()
+            );
+            None
+        }
+        None => {
+            eprintln!("mosaic: no vault open in the Mosaic app yet; waiting for one");
+            None
+        }
+    };
+    let may_change = (!may_change.is_empty()).then_some(may_change);
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?;
+    rt.block_on(mcp::serve(ws, mode, vault, may_change))
+}
+
 fn vault_path(flag: Option<PathBuf>) -> Result<PathBuf> {
     if let Some(p) = flag {
         return Ok(p);
@@ -477,6 +530,10 @@ fn run(cli: Cli) -> Result<()> {
     } else {
         mcp::VaultMode::FollowApp
     };
+    warn_unknown_scopes(&cli.may_change);
+    if matches!(cli.cmd, Cmd::Mcp) {
+        return serve_mcp(cli.vault, mode, cli.may_change);
+    }
     let root = vault_path(cli.vault)?;
     let source = if matches!(cli.cmd, Cmd::Mcp) {
         Source::Agent
@@ -488,18 +545,6 @@ fn run(cli: Cli) -> Result<()> {
         .validating()
         .with_source(source);
     if !cli.may_change.is_empty() {
-        for entry in &cli.may_change {
-            if mosaic_core::api::is_scope_entry(entry)
-                && mosaic_core::api::AppScope::parse(entry).is_none()
-            {
-                eprintln!(
-                    "warning: --may-change {entry} names no known app data (known: {}); it allows nothing",
-                    mosaic_core::api::AppScope::ALL
-                        .map(|s| format!("{}:", s.name()))
-                        .join(", ")
-                );
-            }
-        }
         ws = ws.with_change_allowlist(cli.may_change.clone());
     }
     let json = cli.json;
@@ -515,16 +560,9 @@ fn run(cli: Cli) -> Result<()> {
             | Cmd::Outline { .. }
             | Cmd::Rename { .. }
             | Cmd::Move { .. }
-            | Cmd::Mcp
     );
     if needs_index {
         ws.sync(|_, _| {})?;
-    }
-    if matches!(cli.cmd, Cmd::Mcp) {
-        let rt = tokio::runtime::Builder::new_multi_thread()
-            .enable_all()
-            .build()?;
-        return rt.block_on(mcp::serve(ws, mode));
     }
     // A command is one agent request: its folder rules are read once (see `freeze_rules`).
     let _rules = ws.freeze_rules();

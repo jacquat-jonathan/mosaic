@@ -5,6 +5,7 @@ mod calendar_subscriptions;
 mod chat;
 #[cfg(test)]
 mod contract_tests;
+mod drag_out;
 mod html_preview;
 mod http;
 mod indexing;
@@ -843,6 +844,60 @@ fn install_cli() -> CmdResult<CliInfo> {
     Ok(cli_info())
 }
 
+#[derive(Serialize, specta::Type)]
+struct AiSetupStatus {
+    /// Mosaic's entry in Claude Desktop's config; `None` without a bundled command.
+    desktop: Option<mosaic_core::mcp_setup::DesktopStatus>,
+    /// Every Claude Code registration named `mosaic`, with what's wrong with each.
+    claude_code: Vec<mosaic_core::mcp_setup::Registration>,
+}
+
+fn desktop_target() -> CmdResult<(PathBuf, mosaic_core::mcp_setup::ServerEntry)> {
+    let cli = bundled_cli()
+        .ok_or_else(|| Error::Invalid("the mosaic command isn't bundled in this build".into()))?;
+    let path = mosaic_core::mcp_setup::claude_desktop_config_path().ok_or_else(|| {
+        Error::Invalid("can't tell where Claude Desktop keeps its settings".into())
+    })?;
+    Ok((path, mosaic_core::mcp_setup::ServerEntry::for_cli(&cli)))
+}
+
+/// How Mosaic is registered in Claude Desktop and Claude Code (read-only).
+#[tauri::command(async)]
+#[specta::specta]
+fn ai_setup_status() -> AiSetupStatus {
+    use mosaic_core::mcp_setup::*;
+    let cli = bundled_cli();
+    AiSetupStatus {
+        desktop: desktop_target()
+            .ok()
+            .map(|(path, entry)| desktop_status(&path, &entry)),
+        claude_code: claude_code_config_path()
+            .map(|config| claude_code_registrations(&config, cli.as_deref()))
+            .unwrap_or_default(),
+    }
+}
+
+/// Adds (or updates) Mosaic in Claude Desktop's config, keeping its other servers.
+#[tauri::command(async)]
+#[specta::specta]
+fn write_claude_desktop_config() -> CmdResult<mosaic_core::mcp_setup::DesktopStatus> {
+    let (path, entry) = desktop_target()?;
+    mosaic_core::mcp_setup::write_desktop_config(&path, &entry)
+}
+
+/// Starts the bundled `mosaic mcp` the way Claude Desktop would and checks the MCP handshake.
+#[tauri::command(async)]
+#[specta::specta]
+fn test_mcp_connection() -> CmdResult<mosaic_core::mcp_setup::ProbeResult> {
+    let (_, entry) = desktop_target()?;
+    Ok(mosaic_core::mcp_setup::probe(
+        std::path::Path::new(&entry.command),
+        &entry.args,
+        &[],
+        std::time::Duration::from_secs(20),
+    ))
+}
+
 /// WebKit's "check spelling while typing" is off unless this default is set, and it's read once,
 /// before the first web view exists. With it on, each editor's `spellcheck` attribute (Settings ›
 /// Spellcheck) decides. WebKit only checks words as they're typed, never text already there.
@@ -976,6 +1031,9 @@ pub(crate) fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             absolute_path,
             assets::asset_path,
             open_in_default_app,
+            drag_out::drag_out_attach,
+            drag_out::drag_out_detach,
+            drag_out::drag_out_end,
             unfinished_renames,
             fix_links,
             html_preview::html_preview_document,
@@ -986,6 +1044,9 @@ pub(crate) fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             outline,
             cli_info,
             install_cli,
+            ai_setup_status,
+            write_claude_desktop_config,
+            test_mcp_connection,
             update::update_status,
             update::check_updates,
             update::start_update,

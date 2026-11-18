@@ -8,6 +8,7 @@ import { useVault } from "../state/vault";
 import { DEFAULT_VAULT_PREFS, useVaultPreferences } from "../state/vaultPreferences";
 import { useWorkspace } from "../state/workspace";
 import { displayName, FileTree, kindIcon } from "./FileTree";
+import { treeDragActive } from "../dragOut";
 
 const entry = (path: string, is_dir = false, kind: FileKind = "markdown"): Entry => ({
   path,
@@ -408,6 +409,25 @@ describe("tree drag behavior", () => {
     expect(folderDt.dropEffect).toBe("none");
     fireEvent.dragLeave(screen.getByTitle("Folder/Sub"), { dataTransfer: folderDt });
     fireEvent.dragEnd(screen.getByTitle("Folder"), { dataTransfer: folderDt });
+  });
+
+  it("still moves a tree drag back from outside the window whose files hide its own data", async () => {
+    const select = vi.fn((path: string) => useVault.setState({ selected: new Set([path]) }));
+    const rename = vi.fn().mockImplementation(async (_from: string, to: string) => to);
+    useVault.setState({ selected: new Set(), select, rename });
+    render(<FileTree />);
+    const note = screen.getByTitle("Folder/Note.md");
+    fireEvent.dragStart(note, { dataTransfer: transfer() });
+    expect(treeDragActive()).toBe(true);
+    // What WebKit shows while the drag carries the files it took to Finder (dragOut.ts).
+    const returning = transfer(["Files"]);
+    const sub = screen.getByTitle("Folder/Sub");
+    fireEvent.dragOver(sub, { dataTransfer: returning });
+    expect(returning.dropEffect).toBe("move");
+    fireEvent.drop(sub, { dataTransfer: returning });
+    await waitFor(() => expect(rename).toHaveBeenCalledWith("Folder/Note.md", "Folder/Sub/Note.md"));
+    fireEvent.dragEnd(note, { dataTransfer: returning });
+    expect(treeDragActive()).toBe(false);
   });
 
   it("ignores unrelated drags and runs hover-open and auto-scroll cleanup", () => {

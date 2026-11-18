@@ -371,11 +371,6 @@ impl Vault {
         self.validate.store(on, Ordering::Relaxed);
     }
 
-    /// Whether writes are validated (see `set_validate`).
-    pub fn validates(&self) -> bool {
-        self.validate.load(Ordering::Relaxed)
-    }
-
     fn check_content(&self, norm: &str, content: &str) -> Result<()> {
         if self.validate.load(Ordering::Relaxed) {
             crate::validate::check(norm, content)

@@ -50,7 +50,7 @@ person chose in a save dialog (`*_export_file`), the MCP tool returns the conten
 
 **Placement.** The logic lives in `mosaic-core`; the Tauri command and the MCP tool are both thin
 wrappers over it. `mosaic-cli` must not depend on `src-tauri`, so a feature whose logic is still in
-`src-tauri` (calendar subscriptions, Tessera) moves into core before it gets MCP tools.
+`src-tauri` (calendar subscriptions) moves into core before it gets MCP tools.
 
 ## Writes and `--may-change`
 
@@ -81,8 +81,9 @@ form's "Can change Board and calendar" switch writes `planner:` into the agent's
 `Workspace::with_change_allowlist` parses the scopes, `Context::check_app_write(AppScope::…)` refuses,
 and every `PlannerService` write goes through `write_store()`, which refuses before touching the
 database (the test `every_planner_write_goes_through_write_store` fails if a new planner write uses
-`store()`). Front ends that switch vaults use `Workspace::reopen`, which carries the source, agent
-name, validation and allowlist over; the MCP server's follow mode does.
+`store()`). The MCP server keeps its `--may-change` list and applies it to every workspace it opens
+(at startup, on the lazy first open, and on each follow-mode switch); a front end that opens a vault
+for an agent must do the same.
 
 **Rule for new slices.**
 
@@ -116,7 +117,7 @@ name, validation and allowlist over; the MCP server's follow mode does.
 - *Not undoable*: `planner_restore_backup` replaces the whole planner database.
 - *The person's review screen*: `proposal_content`, `proposal_base`.
 - *App or window plumbing*: printing, opening in another app, host paths, asset URLs, HTML preview,
-  updates, the CLI installer.
+  updates, the CLI installer, setting up and testing AI clients (Connections).
 - *Chat*: the in-app chat is itself an AI client; an agent talking to it over MCP has no use.
 - *Agent skill mirror*: `mirror_agents` rewrites the `.claude/skills` an agent is loaded with; the app
   runs it.
@@ -140,9 +141,26 @@ rows below from `planned` to the tool names, adds tests, and updates the README 
    version, AI activity, and `undo_change` (an agent's undo goes through review like any write).
 5. **M4 Calendar subscriptions.** Move the subscription logic from `src-tauri/src/calendar_subscriptions.rs`
    into core first, then list, add, update, remove, refresh and the overlay range.
-6. **M7 Tessera.** Move the runner from `src-tauri/src/tessera.rs` into core first. Status, run an agent,
-   test an event, pause all or one. An MCP-started run must count as a chained run, so the chain-depth
-   limit applies to it.
+6. **M7 Tessera.** Status, run an agent, test an event, pause all or one. An MCP-started run must
+   count as a chained run, so the chain-depth limit applies to it.
+   - **M7a (done)** moved the control into core, in `mosaic_core::tessera`. The scheduler still runs
+     inside the app, so another process works through the vault's state folder, under its
+     cross-process lock:
+     - `stored_status` and `scheduler_active` read the status;
+     - `pause_all` and `pause_agent` write the pauses straight to `tessera-state.json`;
+     - `request_run` appends to `tessera-requests.json`.
+
+     The app polls every 2 s (`POLL`). It takes the requests into its event queue as
+     `RunCause::Requested`, where they wait while paused and are checked against the chain-depth limit
+     again. A request not taken within 10 minutes (the app was closed or on another vault) is
+     recorded as skipped, not run. It also starts what a resume from another process lets run.
+   - **Chain rule.** A requested run continues the chain of the workflow run that asked for it, one
+     step deeper. The app passes that run's id to its `mosaic mcp` server in `MOSAIC_TESSERA_RUN`
+     (`parent_run_from_env`). Without it, the requested run starts a chain at depth 1. `request_run`
+     refuses a run past the limit, and refuses an unknown parent run. There is no core setter for
+     the limit.
+   - **M7b** adds the tools. It must take `parent_run` only from the environment, never from a tool
+     argument, so an agent can't reset its own depth.
 
 ## Inventory
 
@@ -209,11 +227,11 @@ names in Notes are proposals for the slice, not commitments.
 | `chat_check` | excluded (in-app chat is itself an AI client) | |
 | `chat_send` | excluded (in-app chat is itself an AI client) | |
 | `chat_stop` | excluded (in-app chat is itself an AI client) | |
-| `tessera_status` | planned (M7) | `get_tessera_status`; move into core first |
-| `tessera_run` | planned (M7) | `run_agent`; counts as a chained run |
+| `tessera_status` | planned (M7) | `get_tessera_status`; core: `tessera::stored_status`, `scheduler_active` |
+| `tessera_run` | planned (M7) | `run_agent`; core: `tessera::request_run`, counts as a chained run |
 | `tessera_test_event` | planned (M7) | `test_agent_event` |
-| `tessera_pause_all` | planned (M7) | `pause_agents` |
-| `tessera_pause_agent` | planned (M7) | `pause_agent` |
+| `tessera_pause_all` | planned (M7) | `pause_agents`; core: `tessera::pause_all` |
+| `tessera_pause_agent` | planned (M7) | `pause_agent`; core: `tessera::pause_agent` |
 | `tessera_set_max_chain_depth` | excluded (hard: the agent chain limit is a permission) | |
 | `proposals` | `list_proposals` | an agent sees its own proposals |
 | `proposal_content` | excluded (the person's review diff) | |
@@ -256,6 +274,9 @@ names in Notes are proposals for the slice, not commitments.
 | `absolute_path` | excluded (host paths; MCP uses vault-relative paths) | |
 | `asset_path` | excluded (UI asset URLs) | |
 | `open_in_default_app` | excluded (opens an app on the person's desktop) | |
+| `drag_out_attach` | excluded (window: native drag of tree items out to Finder) | |
+| `drag_out_detach` | excluded (window: native drag of tree items out to Finder) | |
+| `drag_out_end` | excluded (window: native drag of tree items out to Finder) | |
 | `unfinished_renames` | planned (M6) | `list_unfinished_renames` |
 | `fix_links` | planned (M6) | `fix_links` |
 | `html_preview_document` | excluded (UI rendering; agents use `render`) | |
@@ -266,6 +287,9 @@ names in Notes are proposals for the slice, not commitments.
 | `outline` | `outline` | |
 | `cli_info` | excluded (CLI installer) | |
 | `install_cli` | excluded (CLI installer; writes outside the vault) | |
+| `ai_setup_status` | excluded (AI client setup: reads Claude's own config files) | |
+| `write_claude_desktop_config` | excluded (AI client setup; writes outside the vault) | |
+| `test_mcp_connection` | excluded (AI client setup: starts this MCP server to check it) | |
 | `update_status` | excluded (app updates) | |
 | `check_updates` | excluded (app updates) | |
 | `start_update` | excluded (app updates) | |

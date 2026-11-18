@@ -73,6 +73,10 @@ export const api = {
   fixLinks: (id: number) => cmd.fixLinks(id),
   remove: (path: string) => cmd.deletePath(path),
   absolutePath: (path: string) => cmd.absolutePath(path),
+  /** Drag-out to Finder (dragOut.ts): adds, restores and forgets the tree drag's files. */
+  dragOutAttach: (paths: string[]) => cmd.dragOutAttach(paths),
+  dragOutDetach: () => cmd.dragOutDetach(),
+  dragOutEnd: () => cmd.dragOutEnd(),
   search: (query: string, limit = 50) => cmd.search(query, limit),
   /** Notes matching a structured query (crates/mosaic-core/src/query.rs). */
   query: (query: string) => cmd.queryNotes(query),
@@ -195,6 +199,9 @@ export const api = {
   aliases: () => cmd.aliases(),
   cliInfo: () => cmd.cliInfo(),
   installCli: () => cmd.installCli(),
+  aiSetupStatus: () => cmd.aiSetupStatus(),
+  writeClaudeDesktopConfig: () => cmd.writeClaudeDesktopConfig(),
+  testMcpConnection: () => cmd.testMcpConnection(),
   updateStatus: () => cmd.updateStatus(),
   checkUpdates: () => cmd.checkUpdates(),
   fileHistory: (path: string) => cmd.fileHistory(path),

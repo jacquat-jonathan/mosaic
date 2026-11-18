@@ -29,6 +29,12 @@ pub enum RunCause {
         chain: Chain,
         test: bool,
     },
+    /// Asked for by another process (an MCP client) through `tessera::request_run`. Always part of
+    /// a chain, so the chain-depth limit applies to it like an agent-created note.
+    Requested {
+        chain: Chain,
+        request: u64,
+    },
 }
 
 impl RunCause {
@@ -42,6 +48,7 @@ impl RunCause {
                 test,
                 ..
             } => format!("{}{} · {path}", if *test { "Test: " } else { "" }, trigger),
+            Self::Requested { .. } => "Requested".into(),
         }
     }
 
@@ -54,7 +61,7 @@ impl RunCause {
 
     pub fn chain(&self) -> Option<&Chain> {
         match self {
-            Self::Event { chain, .. } => Some(chain),
+            Self::Event { chain, .. } | Self::Requested { chain, .. } => Some(chain),
             _ => None,
         }
     }
@@ -230,8 +237,13 @@ impl WorkflowQueue {
     }
 
     pub fn enqueue(&mut self, job: QueuedRun, max_depth: u8, now: Instant) -> Option<String> {
-        let RunCause::Event { path, chain, .. } = &job.cause else {
-            return Some("Only event workflows enter the event queue.".into());
+        // Dedup per chain: one run per workflow and created path, one requested run per workflow.
+        let (key, chain) = match &job.cause {
+            RunCause::Event { path, chain, .. } => {
+                (format!("{}\0created\0{path}", job.agent), chain)
+            }
+            RunCause::Requested { chain, .. } => (format!("{}\0requested", job.agent), chain),
+            _ => return Some("Only event and requested runs enter the queue.".into()),
         };
         self.chains
             .retain(|_, c| now.saturating_duration_since(c.touched) < CHAIN_TTL);
@@ -245,7 +257,6 @@ impl WorkflowQueue {
                 touched: now,
             });
         guard.touched = now;
-        let key = format!("{}\0created\0{path}", job.agent);
         if chain.depth > max_depth {
             Some(format!(
                 "Suppressed at workflow-chain depth {} (maximum {}).",

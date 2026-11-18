@@ -38,6 +38,7 @@ import { highlightSelectionMatches, search, searchKeymap } from "@codemirror/sea
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { languages } from "@codemirror/language-data";
 import { tags as t } from "@lezer/highlight";
+import { treeDragActive, treeDragData } from "../dragOut";
 import { editorContext, type EditorContext } from "./context";
 import { livePreview } from "./livePreview";
 import "./blocks"; // registers the diagram renderers used by code blocks
@@ -232,6 +233,21 @@ const finderDrop = EditorView.domEventHandlers({
   },
   drop(e, view) {
     if (!e.dataTransfer || view.state.readOnly) return false;
+    if (treeDragActive() && !e.dataTransfer.types.includes("text/plain")) {
+      // A tree drag back from outside the window, its links hidden by the files it carries
+      // (dragOut.ts): inserted as CodeMirror inserts any dropped text.
+      const text = treeDragData(e.dataTransfer, "text/plain");
+      if (!text) return false;
+      e.preventDefault();
+      const at = view.posAtCoords({ x: e.clientX, y: e.clientY }) ?? view.state.selection.main.head;
+      view.dispatch({
+        changes: { from: at, insert: text },
+        selection: { anchor: at, head: at + text.length },
+        userEvent: "input.drop",
+      });
+      view.focus();
+      return true;
+    }
     const pending = view.state.facet(editorContext).importDrop(e.dataTransfer);
     if (!pending) return false;
     e.preventDefault();

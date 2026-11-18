@@ -110,8 +110,6 @@ pub fn is_scope_entry(entry: &str) -> bool {
 /// A parsed `--may-change` list.
 #[derive(Clone, Debug)]
 struct ChangeAllowlist {
-    /// The entries as given, to carry the same restriction to another workspace (`reopen`).
-    raw: Vec<String>,
     /// Normalized vault paths that may be written directly.
     paths: Vec<String>,
     scopes: Vec<AppScope>,
@@ -125,7 +123,7 @@ impl ChangeAllowlist {
             .filter_map(|p| normalize(p.trim_matches('/')).ok())
             .collect();
         let scopes = raw.iter().filter_map(|e| AppScope::parse(e)).collect();
-        Self { raw, paths, scopes }
+        Self { paths, scopes }
     }
 
     /// Why a write to `scope` is refused, or `None` when it is allowed.
@@ -367,30 +365,6 @@ impl Workspace {
             .unwrap_or_else(|p| p.into_inner()) = Some(ChangeAllowlist::new(entries));
         self.sync_planner_guard();
         self
-    }
-
-    /// The `--may-change` entries this workspace was restricted with, as given.
-    pub fn change_allowlist(&self) -> Option<Vec<String>> {
-        self.change_allowlist
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .as_ref()
-            .map(|a| a.raw.clone())
-    }
-
-    /// Opens another vault for the same caller: same source, agent name, content validation and
-    /// change allowlist. Use it whenever a front end switches vaults, so a restriction can't be
-    /// lost on the way.
-    pub fn reopen(&self, root: impl AsRef<std::path::Path>) -> Result<Self> {
-        let mut next = Self::open(root)?.with_source(self.source());
-        next.vault.set_validate(self.vault.validates());
-        if let Some(name) = self.actor() {
-            next.set_actor(&name);
-        }
-        if let Some(entries) = self.change_allowlist() {
-            next = next.with_change_allowlist(entries);
-        }
-        Ok(next)
     }
 
     /// Hands the planner the refusal for its writes, from the source and allowlist together, so the

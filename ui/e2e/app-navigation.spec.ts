@@ -98,7 +98,7 @@ test("feedback button next to the version opens a prefilled GitHub issue", async
     };
   });
   const strip = page.getByRole("banner", { name: "Window title", exact: true });
-  const button = strip.getByRole("button", { name: "Send feedback", exact: true });
+  const button = strip.getByRole("button", { name: "Feedback", exact: true });
   await expect(button).toBeInViewport();
   await button.click();
   const dialog = page.getByRole("dialog", { name: "Send feedback", exact: true });

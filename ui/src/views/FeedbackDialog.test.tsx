@@ -19,7 +19,7 @@ const openedUrl = () => new URL(mocks.openExternal.mock.calls[0][0] as string);
 test("the window strip's feedback button opens the dialog next to the version", () => {
   render(<WindowChrome vaultName="Vault" version="0.29.0" />);
   expect(screen.getByText("v0.29.0")).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", { name: "Send feedback" }));
+  fireEvent.click(screen.getByRole("button", { name: "Feedback" }));
   const dialog = screen.getByRole("dialog", { name: "Send feedback" });
   // Rendered outside the title strip.
   expect(dialog.closest(".window-chrome")).toBeNull();

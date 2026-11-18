@@ -21,7 +21,8 @@ export function WindowChrome({ vaultName, version }: { vaultName: string; versio
         <IconButton
           ref={button}
           className="window-feedback"
-          label="Send feedback"
+          label="Feedback"
+          title="Send feedback"
           aria-haspopup="dialog"
           onClick={() => setFeedback(true)}
         >

@@ -4,7 +4,8 @@
 import Papa from "papaparse";
 import { api } from "../ipc/api";
 import { parentOf } from "../state/vault";
-import { isDark } from "../theme";
+import { HIGH_CONTRAST, paletteVariables } from "../colorThemes";
+import { isDark, isHighContrast } from "../theme";
 import { sanitizeSvg } from "../sanitizeSvg";
 
 function resolveRelative(fromFile: string, rel: string): string {
@@ -93,7 +94,11 @@ let vizInstance: Promise<import("@viz-js/viz").Viz> | null = null;
 export async function renderGraphviz(source: string, el: HTMLElement): Promise<void> {
   vizInstance ??= import("@viz-js/viz").then((m) => m.instance());
   const viz = await vizInstance;
-  const fg = isDark() ? "#e4e5ea" : "#1d1f26";
+  const fg = isHighContrast()
+    ? paletteVariables(HIGH_CONTRAST, isDark(), "theme").fg
+    : isDark()
+      ? "#e4e5ea"
+      : "#1d1f26";
   const result = viz.render(source, {
     format: "svg",
     graphAttributes: { bgcolor: "transparent", color: fg, fontcolor: fg, fontname: "Helvetica" },

@@ -14,6 +14,7 @@ import {
   type EndName,
   type ShapeName,
 } from "./shapes";
+import { HIGH_CONTRAST, paletteVariables } from "../colorThemes";
 import { iconMarkup } from "./icons";
 import { midpoint, roundedPath, routeAround } from "./route";
 import { timingSvg } from "./timing";
@@ -35,6 +36,11 @@ interface Theme {
 
 const LIGHT: Theme = { bg: "#ffffff", fg: "#1f2328", muted: "#6b7080", stroke: "#8a8f9c", card: "#d0d4dc" };
 const DARK: Theme = { bg: "#1e1f24", fg: "#e6e7ea", muted: "#9a9fad", stroke: "#8a8f9c", card: "#3a3d45" };
+/** The High contrast palette's own colours (colorThemes.ts): solid text and full-strength outlines. */
+function highContrastTheme(dark: boolean): Theme {
+  const c = paletteVariables(HIGH_CONTRAST, dark, "theme");
+  return { bg: c.bg, fg: c.fg, muted: c.muted, stroke: c.fg, card: c.border };
+}
 
 const FONT = 14;
 const LINE = 19;
@@ -299,8 +305,8 @@ function edgeSvg(
   return out;
 }
 
-export function canvasToSvg(doc: CanvasDoc, dark = false): string {
-  const t = dark ? DARK : LIGHT;
+export function canvasToSvg(doc: CanvasDoc, dark = false, highContrast = false): string {
+  const t = highContrast ? highContrastTheme(dark) : dark ? DARK : LIGHT;
   const nodes = doc.nodes;
   if (!nodes.length) {
     return `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="60" viewBox="0 0 200 60"><rect width="200" height="60" fill="${t.bg}"/><text x="100" y="35" text-anchor="middle" font-size="13" fill="${t.muted}" font-family="-apple-system, system-ui, sans-serif">Empty diagram</text></svg>`;

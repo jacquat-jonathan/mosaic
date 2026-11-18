@@ -110,6 +110,11 @@ test("renders every shape, card kind, route, side, label and arrow end in both t
   expect(light).toContain("https://example.test/?a=1&amp;b=2");
   expect(light).not.toContain("not-an-end");
   expect(dark).toContain("#1e1f24");
+  const highContrast = canvasToSvg(doc, true, true);
+  expect(highContrast).toContain('fill="#000000"');
+  expect(highContrast).not.toContain("#1e1f24");
+  expect(highContrast).not.toContain("#8a8f9c");
+  expect(canvasToSvg(doc, false, true)).toContain('fill="#ffffff"');
 });
 
 test("plain text conversion covers aliases, bare links, HTML, blank lines and hard wrapping", () => {

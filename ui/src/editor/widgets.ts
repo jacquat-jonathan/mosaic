@@ -5,7 +5,7 @@ import { renderMath } from "./render";
 import { sanitizeSvg } from "../sanitizeSvg";
 import { editorScope, editorButton } from "./designSystemDom";
 import "./editorControls.css";
-import { isDark } from "../theme";
+import { isDark, isHighContrast } from "../theme";
 import type { EditorContext } from "./context";
 import { imageWithWidth } from "./imageResize";
 import { imageMenu } from "./imageMenu";
@@ -42,11 +42,14 @@ export class RenderedBlockWidget extends WidgetType {
   ) {
     super();
   }
+  /** High contrast redraws diagrams with its own colours, like a scheme change. */
+  readonly highContrast = isHighContrast();
   eq(o: RenderedBlockWidget) {
     return (
       o.lang === this.lang &&
       o.source === this.source &&
       o.dark === this.dark &&
+      o.highContrast === this.highContrast &&
       o.previewKey === this.previewKey &&
       o.sourceRange?.from === this.sourceRange?.from &&
       o.sourceRange?.to === this.sourceRange?.to
@@ -341,8 +344,9 @@ export class CanvasEmbedWidget extends WidgetType {
   ) {
     super();
   }
+  readonly highContrast = isHighContrast();
   eq(o: CanvasEmbedWidget) {
-    return o.path === this.path && o.dark === this.dark;
+    return o.path === this.path && o.dark === this.dark && o.highContrast === this.highContrast;
   }
   toDOM() {
     const el = document.createElement("div");
@@ -355,7 +359,7 @@ export class CanvasEmbedWidget extends WidgetType {
       import("../diagrams/canvasToSvg"),
     ]).then(
       ([text, { parseCanvas }, { canvasToSvg }]) => {
-        el.innerHTML = sanitizeSvg(canvasToSvg(parseCanvas(text), this.dark));
+        el.innerHTML = sanitizeSvg(canvasToSvg(parseCanvas(text), this.dark, this.highContrast));
       },
       (e) => showError(el, e),
     );

@@ -175,7 +175,7 @@ export function AppearanceSettings() {
         <AppearanceRow
           name="accent"
           label="Accent color"
-          hint="Theme default follows the selected palette. Custom colors apply to every palette."
+          hint="Theme default uses the palette's own accent. Blue, Green, Violet and Amber replace it in every palette; High contrast uses stronger shades of them."
         >
           {(control) => (
             <select

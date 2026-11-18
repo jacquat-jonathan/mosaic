@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { COLOR_THEMES } from "../src/colorThemes";
+import { COLOR_THEMES, paletteVariables } from "../src/colorThemes";
 
 const rgb = (hex: string) => `rgb(${[1, 3, 5].map((i) => Number.parseInt(hex.slice(i, i + 2), 16)).join(", ")})`;
 async function openAppearance(page: Page) {
@@ -42,14 +42,15 @@ test("every palette colors notes, navigation, settings and dialogs in both modes
   }
   await appearance.getByRole("button", { name: "Reset Appearance…", exact: true }).click();
   const dialog = page.getByRole("dialog");
-  await expect(dialog).toHaveCSS("background-color", rgb(COLOR_THEMES[4].dark.bg));
+  const last = COLOR_THEMES[COLOR_THEMES.length - 1];
+  await expect(dialog).toHaveCSS("background-color", rgb(last.dark.bg));
   await expect(dialog.getByRole("button", { name: "Reset section", exact: true })).toHaveCSS(
     "color",
-    rgb(COLOR_THEMES[4].dark.text),
+    rgb(last.dark.text),
   );
   await expect
     .poll(() => dialog.evaluate((el) => getComputedStyle(el).getPropertyValue("--mds-on-accent").trim()))
-    .toBe(COLOR_THEMES[4].dark.bg);
+    .toBe(paletteVariables(last.id, true, "theme")["on-accent"]);
   await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
 });
 

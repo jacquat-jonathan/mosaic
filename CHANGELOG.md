@@ -4,6 +4,7 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Claude finds Mosaic reliably:** the Mosaic MCP server now always connects, even before a vault has been opened in Mosaic, or when a vault it was tied to has moved. Its tools then explain what to do, and it picks up the vault as soon as one is open. AI › Connections adds Mosaic to Claude Desktop for you while keeping your other servers. It also lists older Claude Code registrations that hide the current one, with the command to remove each, and **Test connection** checks that the server answers. The Claude Code setup command now replaces an older Mosaic registration instead of silently keeping it.
 - **Send feedback:** a button next to the version at the top right opens a short form to report a bug or suggest an idea. It opens a prefilled GitHub issue in your browser to review and submit, with the app version and OS if you choose; nothing from your vault is included. Submitting needs a GitHub account with access to the Mosaic repository.
 
 ## 0.29.0 — 2026-11-14

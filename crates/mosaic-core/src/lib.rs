@@ -14,6 +14,7 @@ pub mod index;
 pub mod index_health;
 pub mod kind;
 pub mod links;
+pub mod mcp_setup;
 pub mod parse;
 pub mod planner;
 pub mod preferences;

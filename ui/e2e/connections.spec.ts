@@ -33,9 +33,19 @@ test("connection setup and safety choices persist with explicit folder selection
   const connections = page.getByRole("group", { name: "Connections and safety", exact: true });
   await connections.getByRole("button", { name: "Install", exact: true }).click();
   await expect(connections.getByText("Installed", { exact: true })).toBeVisible();
-  await expect(connections.locator(".connection-cli-status")).toBeFocused();
-  await expect(connections.locator("pre").first()).toContainText("claude mcp add --scope user mosaic --");
-  await expect(connections.locator("pre").first()).not.toContainText("--vault");
+  await expect(connections.locator(".connection-cli-tool")).toBeFocused();
+  const claudeCode = connections.getByRole("region", { name: "Run once in any terminal — all your projects" });
+  // Replaces an older registration (`claude mcp add` keeps an existing one) and never pins a vault.
+  await expect(claudeCode.locator("pre")).toContainText(
+    "claude mcp remove --scope user mosaic >/dev/null 2>&1; claude mcp add --scope user mosaic -- /",
+  );
+  await expect(claudeCode.locator("pre")).not.toContainText("--vault");
+  await expect(connections.getByText("Mosaic isn't in Claude Desktop's settings yet.")).toBeVisible();
+  await connections.getByRole("button", { name: "Add Mosaic to Claude Desktop", exact: true }).click();
+  await expect(connections.getByText("Mosaic is set up in Claude Desktop.")).toBeVisible();
+  expect(await mock(page, "ai_setup_status")).toMatchObject({ desktop: { state: { state: "configured" } } });
+  await connections.getByRole("button", { name: "Test connection", exact: true }).click();
+  await expect(connections.getByText("The server works: Claude can connect and use its 45 tools.")).toBeVisible();
   const add = connections.getByRole("button", { name: "Add a folder…", exact: true });
   await add.click();
   await page

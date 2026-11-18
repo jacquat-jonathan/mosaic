@@ -47,6 +47,7 @@ import {
 import { api, openInDefaultApp, revealInFinder } from "../ipc/api";
 import { shortcutOf } from "../commands";
 import { kindOf } from "../ipc/kinds";
+import { endTreeDrag, startTreeDrag, treeDragActive } from "../dragOut";
 import { saveVaultPreferences, useVaultPreferences } from "../state/vaultPreferences";
 import { isQuietAttachment } from "../attachments";
 import { treeAutoScrollStep } from "./treeAutoScroll";
@@ -88,6 +89,9 @@ export function kindIcon(kind: FileKind | null, size = 15) {
 export function displayName(e: { name: string; kind: FileKind | null }) {
   return e.kind === "markdown" ? e.name.replace(/\.(md|markdown)$/i, "") : e.name;
 }
+
+/** A drag from the tree, even one whose own data is hidden by the files it carries back from outside. */
+const isTreeDrag = (dt: DataTransfer) => dt.types.includes(DRAG_TYPE) || treeDragActive();
 
 /** Paths being dragged from the tree (the drag data can't be read during dragover). */
 let dragging: string[] = [];
@@ -235,7 +239,7 @@ export function FileTree() {
   const drop = (dir: string, openOnHover = false) => ({
     onDragOver: (ev: DragEvent) => {
       const finder = isFinderDrag(ev.dataTransfer);
-      if (!finder && !ev.dataTransfer.types.includes(DRAG_TYPE)) return;
+      if (!finder && !isTreeDrag(ev.dataTransfer)) return;
       ev.stopPropagation();
       if (!finder && !dragging.some((p) => canMoveInto(p, dir))) {
         ev.dataTransfer.dropEffect = "none";
@@ -311,7 +315,7 @@ export function FileTree() {
         onContextMenu={onRootMenu}
         onDragOverCapture={(ev) => {
           const finder = isFinderDrag(ev.dataTransfer);
-          if (finder || ev.dataTransfer.types.includes(DRAG_TYPE)) updateAutoScroll(ev.clientY);
+          if (finder || isTreeDrag(ev.dataTransfer)) updateAutoScroll(ev.clientY);
           else stopAutoScroll();
         }}
         onDragLeaveCapture={(ev) => {
@@ -320,6 +324,7 @@ export function FileTree() {
         onDropCapture={stopAutoScroll}
         onDragEnd={() => {
           dragging = [];
+          endTreeDrag();
           stopAutoScroll();
           setDropTarget(null);
           cancelHover();
@@ -591,10 +596,15 @@ function TreeRow({
         const vault = useVault.getState();
         if (!vault.selected.has(entry.path)) vault.select(entry.path, "single");
         dragging = order.filter((p) => useVault.getState().selected.has(p));
-        ev.dataTransfer.setData(DRAG_TYPE, JSON.stringify(dragging));
-        // Dropped into a note, the drag inserts links to the files.
-        ev.dataTransfer.setData("text/plain", dragging.map((p) => (p.includes(".") ? wikilinkFor(p) : p)).join("\n"));
+        const data = {
+          [DRAG_TYPE]: JSON.stringify(dragging),
+          // Dropped into a note, the drag inserts links to the files.
+          "text/plain": dragging.map((p) => (p.includes(".") ? wikilinkFor(p) : p)).join("\n"),
+        };
+        for (const [type, value] of Object.entries(data)) ev.dataTransfer.setData(type, value);
         ev.dataTransfer.effectAllowed = "copyMove";
+        // Out of the window, the drag carries the files too: Finder copies them (dragOut.ts).
+        startTreeDrag(dragging, data, ev.currentTarget);
       }}
       onClick={onClick}
       onAuxClick={(ev) =>

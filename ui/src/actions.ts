@@ -1,5 +1,6 @@
 // User-level actions that touch both the vault tree and open tabs.
 
+import { treeDragActive } from "./dragOut";
 import { useUi } from "./state/ui";
 import { baseName, joinPath, parentOf, topLevel, uniquePath, useVault } from "./state/vault";
 import { useWorkspace } from "./state/workspace";
@@ -376,9 +377,10 @@ export async function newDiagram(dir: string) {
   });
 }
 
-/** Whether a drag carries files from Finder (as opposed to a drag from the tree or of text). */
+/** Whether a drag carries files from Finder (as opposed to a drag from the tree or of text). A tree
+ * drag back from outside the window may still carry its own files (see dragOut.ts): never Finder's. */
 export function isFinderDrag(dt: DataTransfer): boolean {
-  return dt.types.includes("Files");
+  return dt.types.includes("Files") && !treeDragActive();
 }
 
 /** Dropped Finder items. Must be called during the drop event itself: the DataTransfer is emptied once it returns. */

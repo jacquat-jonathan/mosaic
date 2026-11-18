@@ -228,7 +228,7 @@ function ConnectionDetails({ root, name }: { root: string; name: string }) {
       {loading ? (
         <Notice>Checking command-line tool…</Notice>
       ) : info?.path ? (
-        <div className="connection-cli-status" ref={statusRef} tabIndex={-1}>
+        <div className="connection-cli-status connection-cli-tool" ref={statusRef} tabIndex={-1}>
           <Terminal aria-hidden="true" />
           {info.installed ? (
             <>
@@ -423,7 +423,7 @@ function DesktopSetup({
   return (
     <>
       {status && (
-        <div className="connection-cli-status" role="status">
+        <div className="connection-cli-status connection-desktop-status" role="status">
           {state === "configured" && <Badge>Set up</Badge>}
           <span>{desktopSummary(status)}</span>
         </div>

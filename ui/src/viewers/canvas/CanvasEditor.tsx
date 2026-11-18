@@ -133,6 +133,13 @@ function handleFor(n: CanvasNode | undefined, side: Side, offset: unknown): stri
   return handleId(side, nearest);
 }
 
+/**
+ * Connections draw over cards (z 0) and groups / frames (z -1), so a line crossing a card and the
+ * arrowhead at a card's border stay visible. Cards are not lifted when selected (see `<ReactFlow>`),
+ * so a selected card can't cover them either.
+ */
+const EDGE_Z = 1;
+
 function toFlowEdge(e: CanvasEdge, byId: Map<string, CanvasNode>): Edge {
   const from = byId.get(e.fromNode);
   const to = byId.get(e.toNode);
@@ -146,6 +153,7 @@ function toFlowEdge(e: CanvasEdge, byId: Map<string, CanvasNode>): Edge {
     sourceHandle: handleFor(from, e.fromSide ?? fs, e.fromOffset),
     targetHandle: handleFor(to, e.toSide ?? ts, e.toOffset),
     label: e.label,
+    zIndex: EDGE_Z,
     data,
   };
 }
@@ -907,6 +915,8 @@ function CanvasFlow({
         edgeTypes={EDGE_TYPES}
         onNodeMouseEnter={(_e, n) => !presenting && setHovered(n.id)}
         onNodeMouseLeave={() => setHovered(null)}
+        // Selecting a card would otherwise lift it above the connections into it.
+        elevateNodesOnSelect={false}
         nodesDraggable={!presenting}
         nodesConnectable={!presenting}
         elementsSelectable={!presenting}

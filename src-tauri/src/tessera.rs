@@ -10,11 +10,11 @@ use mosaic_core::chat::{
     system_prompt,
 };
 use mosaic_core::settings::{AgentRun, TesseraSettings};
+use mosaic_core::tessera::{self as core, Control, TesseraStatus, trigger_error};
 use mosaic_core::vault_state::VaultState;
 use mosaic_core::workflow::{
     Chain, QueuedRun, RunCause, RunHost, RunOutput, WorkflowQueue, run_with_retry, scheduled_runs,
 };
-use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::os::unix::process::CommandExt;
@@ -44,56 +44,36 @@ pub struct TesseraState {
     running: Mutex<HashSet<String>>,
     transcripts: Mutex<HashMap<u64, RunTranscript>>,
     events: Mutex<EventState>,
-}
-
-#[derive(Serialize, specta::Type)]
-pub struct TesseraStatus {
-    paused: bool,
-    max_chain_depth: u8,
-    agents: Vec<WorkflowAgent>,
-    runs: Vec<AgentRun>,
-}
-
-#[derive(Serialize, specta::Type)]
-struct WorkflowAgent {
-    name: String,
-    title: String,
-    schedule: Option<String>,
-    on: Vec<String>,
-    model: Option<String>,
-    paused: bool,
-    running: bool,
-    queued: usize,
-    error: Option<String>,
+    /// Pauses as last seen, to notice another process's resume (`poll_external`).
+    control: Mutex<Option<(PathBuf, Control, Option<std::time::SystemTime>)>>,
 }
 
 /// The scheduler's state for a vault, in `vaults/<id>/tessera-state.json` (not settings.json, which
-/// it used to rewrite every 30 s).
+/// it used to rewrite every 30 s). Shared with other processes through `mosaic_core::tessera`.
+fn store(root: &Path) -> CmdResult<VaultState> {
+    #[cfg(test)]
+    if let Some(dir) = TEST_STORE.with(|s| s.borrow().clone()) {
+        return VaultState::in_dir(dir);
+    }
+    VaultState::open(root)
+}
+
+// Tests keep the scheduler's state in a temporary folder instead of Application Support.
+#[cfg(test)]
+thread_local! {
+    static TEST_STORE: std::cell::RefCell<Option<PathBuf>> = const { std::cell::RefCell::new(None) };
+}
+
 fn config(root: &Path) -> CmdResult<TesseraSettings> {
-    VaultState::open(root)?.tessera()
+    store(root)?.tessera()
 }
 
 fn update<T>(root: &Path, change: impl FnOnce(&mut TesseraSettings) -> T) -> CmdResult<T> {
-    VaultState::open(root)?.update_tessera(change)
+    store(root)?.update_tessera(change)
 }
 
 fn running_key(root: &Path, agent: &str) -> String {
     format!("{}\0{agent}", root.display())
-}
-
-fn trigger_error(agent: &Agent) -> Option<String> {
-    let mut errors = Vec::new();
-    if let Some(schedule) = &agent.schedule
-        && let Err(e) = mosaic_core::schedule::parse(schedule)
-    {
-        errors.push(e);
-    }
-    for event in &agent.on {
-        if let Err(e) = EventTrigger::parse(event) {
-            errors.push(e);
-        }
-    }
-    (!errors.is_empty()).then(|| errors.join(" · "))
 }
 
 #[tauri::command(async)]
@@ -103,45 +83,26 @@ pub fn tessera_status(
     tessera: State<TesseraState>,
 ) -> CmdResult<TesseraStatus> {
     let ws = state.get()?;
-    let mut cfg = config(ws.vault.root())?;
-    {
+    let root = ws.vault.root();
+    let cfg = {
         let transcripts = tessera.transcripts.lock().expect("tessera transcript lock");
-        for run in &mut cfg.runs {
-            if let Some(transcript) = transcripts.get(&run.id) {
-                run.transcript = transcript.clone();
-            }
-        }
-    }
+        core::with_transcripts(config(root)?, |id| transcripts.get(&id).cloned())
+    };
     let running = tessera.running.lock().expect("tessera lock");
     let events = tessera.events.lock().expect("tessera event lock");
-    let agents = ws
-        .agents()?
-        .into_iter()
-        .map(|a| WorkflowAgent {
-            paused: cfg.paused_agents.contains(&a.name),
-            running: running.contains(&running_key(ws.vault.root(), &a.name)),
-            queued: events.queue.count(ws.vault.root(), &a.name),
-            error: trigger_error(&a),
-            name: a.name,
-            title: a.title,
-            schedule: a.schedule,
-            on: a.on,
-            model: a.model,
-        })
-        .collect();
-    Ok(TesseraStatus {
-        paused: cfg.paused,
-        max_chain_depth: cfg.max_chain_depth,
-        agents,
-        runs: cfg.runs,
-    })
+    core::status(
+        &ws,
+        cfg,
+        |name| running.contains(&running_key(root, name)),
+        |name| events.queue.count(root, name),
+    )
 }
 
 #[tauri::command(async)]
 #[specta::specta]
 pub fn tessera_pause_all(app: AppHandle, state: State<AppState>, paused: bool) -> CmdResult<()> {
     let ws = state.get()?;
-    update(ws.vault.root(), |cfg| cfg.paused = paused)?;
+    core::pause_all(&store(ws.vault.root())?, paused)?;
     if !paused {
         drain_queue(&app, &ws);
     }
@@ -157,18 +118,15 @@ pub fn tessera_pause_agent(
     paused: bool,
 ) -> CmdResult<()> {
     let ws = state.get()?;
-    update(ws.vault.root(), |cfg| {
-        cfg.paused_agents.retain(|n| n != &name);
-        if paused {
-            cfg.paused_agents.push(name);
-        }
-    })?;
+    core::pause_agent(&store(ws.vault.root())?, &name, paused)?;
     if !paused {
         drain_queue(&app, &ws);
     }
     Ok(())
 }
 
+/// Only the app changes the chain-depth limit: `mosaic_core::tessera` has no setter, so another
+/// process (an MCP client) can't raise its own limit.
 #[tauri::command(async)]
 #[specta::specta]
 pub fn tessera_set_max_chain_depth(state: State<AppState>, depth: u8) -> CmdResult<()> {
@@ -331,8 +289,9 @@ pub fn start_scheduler(app: AppHandle) {
         + 1;
     std::thread::spawn(move || {
         tick(&app, true);
+        let mut last_tick = Instant::now();
         loop {
-            std::thread::sleep(Duration::from_secs(30));
+            std::thread::sleep(core::POLL);
             if app
                 .state::<TesseraState>()
                 .generation
@@ -341,9 +300,127 @@ pub fn start_scheduler(app: AppHandle) {
             {
                 break;
             }
-            tick(&app, false);
+            if let Ok(ws) = app.state::<AppState>().get() {
+                poll_external(&app, &ws);
+            }
+            if last_tick.elapsed() >= Duration::from_secs(30) {
+                last_tick = Instant::now();
+                tick(&app, false);
+            }
         }
     });
+}
+
+/// Picks up what other processes (`mosaic mcp`) asked through `mosaic_core::tessera`: run
+/// requests are queued like agent-created events (they wait while paused and count toward the
+/// chain-depth limit), and a resume written by another process starts what was waiting.
+fn poll_external(app: &AppHandle, ws: &Arc<mosaic_core::Workspace>) {
+    let root = ws.vault.root();
+    let tessera = app.state::<TesseraState>();
+    let external = tessera.observe_external(root);
+    for (agent, cause, reason) in external.skipped {
+        record_skipped(app, root, &agent, &cause, reason);
+    }
+    if external.changed {
+        let _ = app.emit("tessera-changed", ());
+        // A resume, or a request taken while nothing is paused, can start what was waiting.
+        drain_queue(app, ws);
+    }
+}
+
+/// What `observe_external` found.
+#[derive(Default)]
+struct External {
+    /// Requests the queue refused (chain-depth limit, repeats, full queue): agent, cause, reason.
+    skipped: Vec<(String, RunCause, String)>,
+    /// Requests were taken or another process changed a pause.
+    changed: bool,
+    /// Something paused before can run now.
+    resumed: bool,
+}
+
+impl TesseraState {
+    /// Takes the pending run requests into the event queue and compares the pauses with the ones
+    /// seen last time. Reads the state file only when it was written since.
+    fn observe_external(&self, root: &Path) -> External {
+        let mut external = External::default();
+        let Ok(state) = store(root) else {
+            return external;
+        };
+        for request in core::take_run_requests(&state).unwrap_or_default() {
+            external.changed = true;
+            let agent = request.agent.clone();
+            if let Err((cause, reason)) = self.queue_requested(root, request) {
+                external.skipped.push((agent, cause, reason));
+            }
+        }
+        let modified = state.tessera_modified();
+        let mut control = self.control.lock().expect("tessera control lock");
+        let unchanged = control
+            .as_ref()
+            .is_some_and(|(r, _, m)| r == root && *m == modified);
+        if !unchanged && let Ok(cfg) = state.tessera() {
+            let next = Control::of(&cfg);
+            if let Some((r, previous, _)) = control.as_ref()
+                && r == root
+                && previous != &next
+            {
+                external.changed = true;
+                external.resumed = previous.resumed(&next);
+            }
+            *control = Some((root.to_path_buf(), next, modified));
+        }
+        external
+    }
+
+    /// Queues a requested run, checked against the chain-depth limit as it is now.
+    fn queue_requested(
+        &self,
+        root: &Path,
+        request: core::RunRequest,
+    ) -> Result<(), (RunCause, String)> {
+        let expired = request.expired(Local::now().timestamp());
+        let cause = RunCause::Requested {
+            chain: request.chain.into(),
+            request: request.id,
+        };
+        if expired {
+            return Err((
+                cause,
+                "Requested while Mosaic wasn't running this vault's workflows.".into(),
+            ));
+        }
+        let cfg = config(root).map_err(|e| (cause.clone(), e.to_string()))?;
+        let reason = self
+            .events
+            .lock()
+            .expect("tessera event lock")
+            .queue
+            .enqueue(
+                QueuedRun {
+                    root: root.to_path_buf(),
+                    agent: request.agent,
+                    cause: cause.clone(),
+                },
+                cfg.max_chain_depth,
+                Instant::now(),
+            );
+        reason.map_or(Ok(()), |reason| Err((cause, reason)))
+    }
+
+    /// The oldest queued run allowed to start now. Pauses are re-read from the shared state each
+    /// time, so a pause another process wrote holds the queue.
+    fn next_queued(&self, root: &Path) -> Option<QueuedRun> {
+        let cfg = config(root).ok()?;
+        if cfg.paused {
+            return None;
+        }
+        let running = self.running.lock().expect("tessera lock").clone();
+        let mut events = self.events.lock().expect("tessera event lock");
+        events.queue.next(root, &cfg, |root, agent| {
+            running.contains(&running_key(root, agent))
+        })
+    }
 }
 
 fn tick(app: &AppHandle, startup: bool) {
@@ -429,15 +506,13 @@ fn enqueue_event(
         )
     };
     if let Some(reason) = reason {
-        record_skipped(
-            app,
-            ws.vault.root(),
-            &agent,
-            &trigger,
-            &path,
-            &chain,
-            reason,
-        );
+        let cause = RunCause::Event {
+            trigger,
+            path,
+            chain,
+            test: false,
+        };
+        record_skipped(app, ws.vault.root(), &agent, &cause, reason);
     } else {
         let _ = app.emit("tessera-changed", ());
     }
@@ -445,25 +520,7 @@ fn enqueue_event(
 
 fn drain_queue(app: &AppHandle, ws: &Arc<mosaic_core::Workspace>) {
     loop {
-        let Ok(cfg) = config(ws.vault.root()) else {
-            return;
-        };
-        if cfg.paused {
-            return;
-        }
-        let running = app
-            .state::<TesseraState>()
-            .running
-            .lock()
-            .expect("tessera lock")
-            .clone();
-        let job = {
-            let state = app.state::<TesseraState>();
-            let mut events = state.events.lock().expect("tessera event lock");
-            events.queue.next(ws.vault.root(), &cfg, |root, agent| {
-                running.contains(&running_key(root, agent))
-            })
-        };
+        let job = app.state::<TesseraState>().next_queued(ws.vault.root());
         let Some(job) = job else { break };
         if let Err(error) = start_agent(app, ws, &job.agent, job.cause.clone()) {
             // Another drain may have won the race to start this workflow. Put its event back
@@ -483,20 +540,12 @@ fn drain_queue(app: &AppHandle, ws: &Arc<mosaic_core::Workspace>) {
                     .requeue(job);
                 break;
             }
-            if let RunCause::Event {
-                trigger,
-                path,
-                chain,
-                ..
-            } = job.cause
-            {
+            if job.cause.chain().is_some() {
                 record_skipped(
                     app,
                     ws.vault.root(),
                     &job.agent,
-                    &trigger,
-                    &path,
-                    &chain,
+                    &job.cause,
                     error.to_string(),
                 );
             }
@@ -504,15 +553,7 @@ fn drain_queue(app: &AppHandle, ws: &Arc<mosaic_core::Workspace>) {
     }
 }
 
-fn record_skipped(
-    app: &AppHandle,
-    root: &Path,
-    agent: &str,
-    trigger: &str,
-    path: &str,
-    chain: &Chain,
-    reason: String,
-) {
+fn record_skipped(app: &AppHandle, root: &Path, agent: &str, cause: &RunCause, reason: String) {
     let title = app
         .state::<AppState>()
         .get()
@@ -532,10 +573,13 @@ fn record_skipped(
                 started: now,
                 finished: Some(now),
                 late: false,
-                trigger: Some(trigger.into()),
-                trigger_path: Some(path.into()),
-                chain_id: Some(chain.id.clone()),
-                chain_depth: Some(chain.depth),
+                trigger: Some(match cause {
+                    RunCause::Event { trigger, .. } => trigger.clone(),
+                    other => other.label(),
+                }),
+                trigger_path: cause.path().map(str::to_string),
+                chain_id: cause.chain().map(|c| c.id.clone()),
+                chain_depth: cause.chain().map(|c| c.depth),
                 model: None,
                 attempts: 0,
                 status: "skipped".into(),
@@ -685,6 +729,7 @@ fn launch(
     root: &Path,
     agent: &Agent,
     cause: &RunCause,
+    run_id: u64,
 ) -> Result<Child, String> {
     let vault_name = root
         .file_name()
@@ -700,7 +745,9 @@ fn launch(
         args.push("/.mosaic-no-direct-writes".into());
     }
     args.push("mcp".into());
-    let mcp = serde_json::json!({"mcpServers":{"mosaic":{"command":mosaic,"args":args}}});
+    // The run's id lets a run this agent requests (M7b) continue this run's workflow chain.
+    let env = serde_json::json!({ core::RUN_ENV: run_id.to_string() });
+    let mcp = serde_json::json!({"mcpServers":{"mosaic":{"command":mosaic,"args":args,"env":env}}});
     let mut command = Command::new(claude);
     command
         .args([
@@ -873,9 +920,16 @@ impl RunHost for DesktopRun<'_> {
         update_attempts(self.root, self.id, attempt);
     }
     fn attempt(&mut self, transcript: &mut RunTranscript) -> RunOutput {
-        launch(self.claude, self.mosaic, self.root, self.agent, self.cause)
-            .map(|child| collect_child(self.app, child, self.cause, self.id, transcript))
-            .unwrap_or_else(RunOutput::failed)
+        launch(
+            self.claude,
+            self.mosaic,
+            self.root,
+            self.agent,
+            self.cause,
+            self.id,
+        )
+        .map(|child| collect_child(self.app, child, self.cause, self.id, transcript))
+        .unwrap_or_else(RunOutput::failed)
     }
     fn publish(&mut self, transcript: &RunTranscript) {
         publish_transcript(self.app, self.id, transcript);
@@ -889,6 +943,112 @@ impl RunHost for DesktopRun<'_> {
 mod tests {
     use super::*;
     use mosaic_core::{Vault, Workspace, index::Index};
+
+    /// The scheduler's state in a temporary folder for this test's thread, and another handle on
+    /// it standing for a separate process (`mosaic mcp`).
+    fn shared_store() -> (tempfile::TempDir, VaultState) {
+        let dir = tempfile::tempdir().unwrap();
+        TEST_STORE.with(|s| *s.borrow_mut() = Some(dir.path().to_path_buf()));
+        let other = VaultState::in_dir(dir.path().to_path_buf()).unwrap();
+        (dir, other)
+    }
+
+    fn request(agent: &str, id: u64) -> core::RunRequest {
+        core::RunRequest {
+            id,
+            agent: agent.into(),
+            requested: Local::now().timestamp(),
+            parent_run: None,
+            chain: core::RequestChain {
+                id: format!("request-{id}"),
+                depth: 1,
+            },
+        }
+    }
+
+    #[test]
+    fn an_external_pause_holds_queued_runs_until_an_external_resume() {
+        let (_dir, other) = shared_store();
+        let root = Path::new("/vault");
+        let tessera = TesseraState::default();
+        tessera.observe_external(root);
+        tessera.queue_requested(root, request("digest", 1)).unwrap();
+
+        core::pause_all(&other, true).unwrap();
+        let seen = tessera.observe_external(root);
+        assert!(seen.changed && !seen.resumed);
+        assert!(tessera.next_queued(root).is_none());
+        let events = tessera.events.lock().unwrap();
+        assert_eq!(events.queue.count(root, "digest"), 1);
+        drop(events);
+
+        core::pause_all(&other, false).unwrap();
+        // The file's timestamp may not move within the same instant; force a re-read.
+        tessera.control.lock().unwrap().as_mut().unwrap().2 = None;
+        let seen = tessera.observe_external(root);
+        assert!(seen.changed && seen.resumed);
+        let job = tessera.next_queued(root).unwrap();
+        assert_eq!(job.agent, "digest");
+        assert_eq!(job.cause.chain().unwrap().depth, 1);
+    }
+
+    #[test]
+    fn an_external_agent_pause_holds_only_that_workflow() {
+        let (_dir, other) = shared_store();
+        let root = Path::new("/vault");
+        let tessera = TesseraState::default();
+        tessera.observe_external(root);
+        core::pause_agent(&other, "digest", true).unwrap();
+        // A request taken while its workflow is paused waits in the queue.
+        core::take_run_requests(&other).unwrap();
+        other
+            .update_run_requests(|list| {
+                list.push(request("digest", 1));
+                list.push(request("weekly", 2));
+            })
+            .unwrap();
+        let seen = tessera.observe_external(root);
+        assert!(seen.changed && seen.skipped.is_empty());
+        assert_eq!(tessera.next_queued(root).unwrap().agent, "weekly");
+        assert!(tessera.next_queued(root).is_none());
+        assert_eq!(
+            tessera.events.lock().unwrap().queue.count(root, "digest"),
+            1
+        );
+    }
+
+    #[test]
+    fn requests_over_the_current_chain_limit_are_skipped() {
+        let (_dir, other) = shared_store();
+        let root = Path::new("/vault");
+        // The limit was lowered after the request was made: the app checks it again.
+        other.update_tessera(|cfg| cfg.max_chain_depth = 0).unwrap();
+        other
+            .update_run_requests(|list| list.push(request("digest", 1)))
+            .unwrap();
+        let tessera = TesseraState::default();
+        let seen = tessera.observe_external(root);
+        assert_eq!(seen.skipped.len(), 1);
+        assert!(
+            seen.skipped[0].2.contains("depth 1"),
+            "{}",
+            seen.skipped[0].2
+        );
+        assert!(tessera.next_queued(root).is_none());
+    }
+
+    #[test]
+    fn stale_requests_are_skipped_not_run() {
+        let (_dir, other) = shared_store();
+        let root = Path::new("/vault");
+        let mut stale = request("digest", 1);
+        stale.requested -= core::REQUEST_TTL_SECS + 1;
+        other.update_run_requests(|list| list.push(stale)).unwrap();
+        let tessera = TesseraState::default();
+        let seen = tessera.observe_external(root);
+        assert_eq!(seen.skipped.len(), 1);
+        assert!(tessera.next_queued(root).is_none());
+    }
 
     #[test]
     fn creation_detection_is_precise() {

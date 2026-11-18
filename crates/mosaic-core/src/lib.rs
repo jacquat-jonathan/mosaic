@@ -23,6 +23,7 @@ pub mod schedule;
 pub mod settings;
 pub mod task_board;
 pub mod templates;
+pub mod tessera;
 pub mod timing;
 pub mod validate;
 pub mod vault;

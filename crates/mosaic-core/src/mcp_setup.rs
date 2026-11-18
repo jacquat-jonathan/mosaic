@@ -393,10 +393,13 @@ pub fn probe(
             }
         }
     });
-    let err_reader = std::thread::spawn(move || {
+    // Read on a thread and waited for with a limit: a process the server started can keep the pipe
+    // open after the server is gone.
+    let (err_tx, err_text) = mpsc::channel::<String>();
+    std::thread::spawn(move || {
         let mut text = String::new();
         let _ = stderr.read_to_string(&mut text);
-        text
+        let _ = err_tx.send(text);
     });
     let deadline = Instant::now() + timeout;
     let outcome = (|| -> std::result::Result<(), String> {
@@ -462,9 +465,13 @@ pub fn probe(
         }
         Ok(())
     })();
+    // End of input first: the server (and anything it started that reads stdin) exits on its own.
+    drop(stdin);
     let _ = child.kill();
     let _ = child.wait();
-    let stderr = err_reader.join().unwrap_or_default();
+    let stderr = err_text
+        .recv_timeout(Duration::from_secs(2))
+        .unwrap_or_default();
     let tail_from = stderr.char_indices().rev().nth(1999).map_or(0, |(i, _)| i);
     result.stderr = stderr[tail_from..].trim().to_string();
     match outcome {

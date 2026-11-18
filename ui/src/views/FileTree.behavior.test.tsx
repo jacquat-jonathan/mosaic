@@ -258,6 +258,7 @@ describe("file tree menus and rename editing", () => {
     let stored: Record<string, string> = { Folder: "blue" };
     const save = vi.spyOn(api, "setVaultPreferences").mockImplementation(async (_root, patch) => {
       stored = { ...patch.folder_colors };
+      return null;
     });
     vi.spyOn(api, "vaultPreferences").mockImplementation(async () => ({
       ...DEFAULT_VAULT_PREFS,

@@ -23,6 +23,9 @@ pub struct PlannerService {
     root: Option<PathBuf>,
     /// Who changes the planner through this service, stamped on every activity entry.
     context: Mutex<(String, Option<String>)>,
+    /// Why writes through this service are refused (an agent's `--may-change` without `planner:`),
+    /// set by the workspace. Reads are unaffected.
+    write_refusal: Mutex<Option<String>>,
 }
 
 impl PlannerService {
@@ -31,6 +34,7 @@ impl PlannerService {
             store: OnceLock::new(),
             root,
             context: Mutex::new(("app".into(), None)),
+            write_refusal: Mutex::new(None),
         }
     }
 
@@ -61,7 +65,27 @@ impl PlannerService {
         }
     }
 
-    /// The planner's store, opened the first time it's needed.
+    pub(crate) fn set_write_refusal(&self, refusal: Option<String>) {
+        *self.write_refusal.lock().unwrap_or_else(|p| p.into_inner()) = refusal;
+    }
+
+    /// The store for a change. Every method that writes the planner uses this instead of `store`,
+    /// so an agent restricted by `--may-change` without `planner:` is refused before anything
+    /// changes.
+    pub(crate) fn write_store(&self) -> Result<MutexGuard<'_, PlannerStore>> {
+        if let Some(refusal) = self
+            .write_refusal
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .clone()
+        {
+            return Err(Error::Denied(refusal));
+        }
+        self.store()
+    }
+
+    /// The planner's store, opened the first time it's needed. Only for reads; writes use
+    /// `write_store`.
     pub(crate) fn store(&self) -> Result<MutexGuard<'_, PlannerStore>> {
         let store = self.store.get_or_init(|| {
             match &self.root {

@@ -10,13 +10,18 @@ import { useWorkspace } from "../state/workspace";
 import { vaultPrefs } from "../state/vaultPreferences";
 import { registerDraft } from "../state/drafts";
 import { FolderChoices } from "./FolderChoices";
-import { eventFolder } from "./workflowPresentation";
+import { eventFolder, isScopeEntry, PLANNER_SCOPE } from "./workflowPresentation";
 import { viewPath } from "./specialTabs";
 import { DesignSystemScope } from "./DesignSystemScope";
 import "./workflowEditor.css";
 
 // Unlike the editor's FRONTMATTER_RE, this also matches fences with nothing between them.
 const AGENT_FRONTMATTER_RE = /^---[ \t]*\r?\n(?:([\s\S]*?)\r?\n)?---[ \t]*(?=\r?\n|$)/;
+
+/** The `may-change` list: the allowed folders, then the app-data scopes. */
+export function mayChange(folders: string[], scopes: string[]): string[] {
+  return [...folders, ...scopes.filter((s) => !folders.includes(s))];
+}
 
 export function workflowContent(
   source: string,
@@ -73,6 +78,8 @@ export function WorkflowForm({ agent, onDone }: { agent?: Agent; onDone?: () => 
   const [model, setModel] = useState("");
   const [review, setReview] = useState(true);
   const [allowed, setAllowed] = useState<string[]>([]);
+  // App-data scopes in `may-change` (`planner:`), kept apart from the folder picker.
+  const [scopes, setScopes] = useState<string[]>([]);
   const [web, setWeb] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -128,13 +135,16 @@ export function WorkflowForm({ agent, onDone }: { agent?: Agent; onDone?: () => 
       setOtherEvents([]);
       setModel("");
       setAllowed([]);
+      setScopes([]);
       setReview(true);
       setWeb(false);
       return;
     }
     setInstructions(chosen.instructions);
-    setAllowed(chosen.may_change);
-    setReview(!chosen.may_change.length);
+    const folders = chosen.may_change.filter((entry) => !isScopeEntry(entry));
+    setAllowed(folders);
+    setScopes(chosen.may_change.filter(isScopeEntry));
+    setReview(!folders.length);
     setModel(chosen.model ?? "");
     setWeb(chosen.web);
     const parsedEvents = (chosen.on ?? []).map((raw) => [raw, eventFolder(raw)] as const);
@@ -222,7 +232,7 @@ export function WorkflowForm({ agent, onDone }: { agent?: Agent; onDone?: () => 
             schedule,
             events,
             model || null,
-            review ? [] : allowed,
+            mayChange(review ? [] : allowed, scopes),
             instructions === chosen.instructions ? undefined : instructions,
             web,
           ),
@@ -243,7 +253,15 @@ export function WorkflowForm({ agent, onDone }: { agent?: Agent; onDone?: () => 
         );
         await api.create(
           path,
-          workflowContent("", schedule, events, model || null, review ? [] : allowed, instructions, web),
+          workflowContent(
+            "",
+            schedule,
+            events,
+            model || null,
+            mayChange(review ? [] : allowed, scopes),
+            instructions,
+            web,
+          ),
           initialRoot,
         );
       }
@@ -476,6 +494,25 @@ export function WorkflowForm({ agent, onDone }: { agent?: Agent; onDone?: () => 
             <p className="mds-hint">
               Outside these folders, changes require review. Stricter vault permissions always apply.
             </p>
+            <SettingRow
+              label="Can change Board and calendar"
+              controlId={`${id}-planner-toggle`}
+              hintId={`${id}-planner-hint`}
+              hint="Off by default. Lets the agent create, edit, complete and move planner tasks and calendar items directly. These changes can't be reviewed first; when off, its attempts are refused."
+            >
+              <Switch
+                id={`${id}-planner-toggle`}
+                label="Can change Board and calendar"
+                aria-describedby={`${id}-planner-hint`}
+                checked={scopes.includes(PLANNER_SCOPE)}
+                onCheckedChange={toggle((on) =>
+                  setScopes((current) => [
+                    ...current.filter((s) => s !== PLANNER_SCOPE),
+                    ...(on ? [PLANNER_SCOPE] : []),
+                  ]),
+                )}
+              />
+            </SettingRow>
             <SettingRow
               label="Can use the web (search and fetch pages)"
               controlId={`${id}-web-toggle`}

@@ -12,6 +12,8 @@ import { useWorkspace } from "../state/workspace";
 import { DesignSystemScope } from "./DesignSystemScope";
 import { RunsLedger } from "./RunsLedger";
 import {
+  allowedFolders,
+  canChangePlanner,
   eventFolder,
   matchesEventFolder,
   pendingForRun,
@@ -272,14 +274,16 @@ function WorkflowCatalog({
                   input="Vault files allowed by folder rules"
                   output="Defined in the agent instructions"
                   reviewPolicy={
-                    agent.may_change.length
-                      ? `May update ${agent.may_change.join(", ")} directly. Other changes require review. Folder rules take precedence.`
-                      : "Every change requires review. Folder rules take precedence."
+                    (allowedFolders(agent).length
+                      ? `May update ${allowedFolders(agent).join(", ")} directly. Other changes require review. Folder rules take precedence.`
+                      : "Every change requires review. Folder rules take precedence.") +
+                    (canChangePlanner(agent) ? " May change Board and calendar." : "")
                   }
                   metadata={[
                     { label: "Agent", value: agent.name },
                     { label: "Model", value: agent.model || "Claude Code default" },
-                    { label: "May change without review", value: agent.may_change.join(", ") || "None" },
+                    { label: "May change without review", value: allowedFolders(agent).join(", ") || "None" },
+                    { label: "Board and calendar", value: canChangePlanner(agent) ? "Can change" : "Can't change" },
                     { label: "Web", value: agent.web ? "Can use the web" : "No web access" },
                     ...(schedule?.queued ? [{ label: "Queued runs", value: schedule.queued }] : []),
                   ]}

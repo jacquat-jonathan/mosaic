@@ -34,7 +34,8 @@ write shows up in the app within a second.
 - **Files in the configured agents folder (default `Agents/`) are agents, not documents.** A note `Agents/Name.md` or a skill folder
   `Agents/Name/SKILL.md` defines an agent the person made: its frontmatter has `name`, `description`
   and, for Mosaic, `schedule`, `on` (for example `created in Daily/`), `model`, `may-change`
-  (folders it may write without review), and `web: true` (its workflow runs may search and fetch
+  (folders it may write without review, plus `planner:` if its scheduled runs may change Board
+  tasks and calendar items), and `web: true` (its workflow runs may search and fetch
   the web; off by default); the body is its instructions. `on` can be one event or a
   list and may coexist with `schedule`; automatic workflows run only while Mosaic is open. When the
   person points you at one, or names an agent, **act
@@ -270,4 +271,7 @@ derived from the snapshots. Use
 changes. Moving requires the complete destination epic, parent and status. Completion refuses open
 subtasks unless explicitly confirmed; future work sessions are cancelled by default or can explicitly
 be kept. Planner
-changes made through MCP appear in the open Board and Calendar automatically.
+changes made through MCP appear in the open Board and Calendar automatically. Planner changes can't
+be proposed for review: a scheduled workflow restricted to some folders is refused (`denied`) unless
+its `may-change` includes `planner:`. Don't retry or work around a refusal; tell the person what you
+wanted to change.

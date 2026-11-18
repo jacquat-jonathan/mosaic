@@ -54,8 +54,103 @@ pub struct Context {
     /// While an agent operation runs (see `freeze_rules`), the rules it read first, so every check
     /// in that operation sees the same rules even if the person edits them meanwhile.
     frozen_rules: Mutex<FrozenRules>,
-    /// Direct-write paths for one scheduled run; other writes become proposals.
-    change_allowlist: Mutex<Option<Vec<String>>>,
+    /// Direct-write paths and app-state scopes for one scheduled run (`--may-change`); other file
+    /// writes become proposals and other app-state writes are refused.
+    change_allowlist: Mutex<Option<ChangeAllowlist>>,
+    /// Proposals made or updated through this workspace (this MCP session or CLI command). An agent
+    /// under an allowlist may withdraw only these.
+    own_proposals: Mutex<std::collections::HashSet<i64>>,
+}
+
+/// App data an agent writes directly, outside the vault's files, so it can't be proposed for
+/// review. Under `--may-change`, a write to one is refused unless the allowlist names its scope
+/// (`planner:`, `bookmarks:`). Each store is one scope; a new kind of app data gets a new one.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AppScope {
+    /// The planner database: Board tasks and epics, calendar events, work sessions, iCal imports.
+    Planner,
+    /// The vault's bookmarks.
+    Bookmarks,
+}
+
+impl AppScope {
+    pub const ALL: [AppScope; 2] = [AppScope::Planner, AppScope::Bookmarks];
+
+    /// The scope's name in `--may-change` and an agent's `may-change`, without the colon.
+    pub fn name(self) -> &'static str {
+        match self {
+            AppScope::Planner => "planner",
+            AppScope::Bookmarks => "bookmarks",
+        }
+    }
+
+    fn what(self) -> &'static str {
+        match self {
+            AppScope::Planner => {
+                "the planner (Board tasks and epics, calendar events and work sessions)"
+            }
+            AppScope::Bookmarks => "bookmarks",
+        }
+    }
+
+    /// The scope an allowlist entry names (`planner:`), if it names a known one.
+    pub fn parse(entry: &str) -> Option<AppScope> {
+        let name = entry.trim().strip_suffix(':')?;
+        Self::ALL
+            .into_iter()
+            .find(|s| s.name().eq_ignore_ascii_case(name.trim()))
+    }
+}
+
+/// Whether an allowlist entry names an app-state scope (ends in `:`) rather than a vault path.
+pub fn is_scope_entry(entry: &str) -> bool {
+    entry.trim().ends_with(':')
+}
+
+/// A parsed `--may-change` list.
+#[derive(Clone, Debug)]
+struct ChangeAllowlist {
+    /// The entries as given, to carry the same restriction to another workspace (`reopen`).
+    raw: Vec<String>,
+    /// Normalized vault paths that may be written directly.
+    paths: Vec<String>,
+    scopes: Vec<AppScope>,
+}
+
+impl ChangeAllowlist {
+    fn new(raw: Vec<String>) -> Self {
+        let paths = raw
+            .iter()
+            .filter(|p| !is_scope_entry(p))
+            .filter_map(|p| normalize(p.trim_matches('/')).ok())
+            .collect();
+        let scopes = raw.iter().filter_map(|e| AppScope::parse(e)).collect();
+        Self { raw, paths, scopes }
+    }
+
+    /// Why a write to `scope` is refused, or `None` when it is allowed.
+    fn refusal(&self, scope: AppScope) -> Option<String> {
+        if self.scopes.contains(&scope) {
+            return None;
+        }
+        // `.mosaic-…` entries are Mosaic's own markers (no direct writes at all), not folders.
+        let folders: Vec<&str> = self
+            .paths
+            .iter()
+            .map(String::as_str)
+            .filter(|p| !p.starts_with(".mosaic-"))
+            .collect();
+        let allowed = if folders.is_empty() {
+            "no folders".to_string()
+        } else {
+            folders.join(", ")
+        };
+        Some(format!(
+            "Refused: you are restricted to changing {allowed} directly (the agent's may-change setting), and {what} is app data that can't be proposed for review, so changes to it need the scope `{name}:`. Don't retry this or work around it. Tell the person what you wanted to change so they can do it, or suggest they add `{name}:` to the agent's may-change setting (for the planner: the workflow's \"Can change Board and calendar\" switch).",
+            what = scope.what(),
+            name = scope.name(),
+        ))
+    }
 }
 
 #[derive(Clone)]
@@ -226,6 +321,7 @@ impl Workspace {
             fixed_rules: Mutex::new(None),
             frozen_rules: Mutex::default(),
             change_allowlist: Mutex::new(None),
+            own_proposals: Mutex::default(),
         });
         let files = FileService { ctx: ctx.clone() };
         let links = LinkService {
@@ -261,18 +357,47 @@ impl Workspace {
         self
     }
 
-    /// Restricts this agent workspace to direct writes below these vault-relative paths.
-    pub fn with_change_allowlist(self, paths: Vec<String>) -> Self {
+    /// Restricts this agent workspace to direct writes below these vault-relative paths; other file
+    /// writes become proposals. Entries ending in `:` name app-state scopes (`planner:`,
+    /// `bookmarks:`, see `AppScope`): app-state writes outside them are refused.
+    pub fn with_change_allowlist(self, entries: Vec<String>) -> Self {
         *self
             .change_allowlist
             .lock()
-            .unwrap_or_else(|p| p.into_inner()) = Some(
-            paths
-                .into_iter()
-                .filter_map(|p| normalize(p.trim_matches('/')).ok())
-                .collect(),
-        );
+            .unwrap_or_else(|p| p.into_inner()) = Some(ChangeAllowlist::new(entries));
+        self.sync_planner_guard();
         self
+    }
+
+    /// The `--may-change` entries this workspace was restricted with, as given.
+    pub fn change_allowlist(&self) -> Option<Vec<String>> {
+        self.change_allowlist
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .as_ref()
+            .map(|a| a.raw.clone())
+    }
+
+    /// Opens another vault for the same caller: same source, agent name, content validation and
+    /// change allowlist. Use it whenever a front end switches vaults, so a restriction can't be
+    /// lost on the way.
+    pub fn reopen(&self, root: impl AsRef<std::path::Path>) -> Result<Self> {
+        let mut next = Self::open(root)?.with_source(self.source());
+        next.vault.set_validate(self.vault.validates());
+        if let Some(name) = self.actor() {
+            next.set_actor(&name);
+        }
+        if let Some(entries) = self.change_allowlist() {
+            next = next.with_change_allowlist(entries);
+        }
+        Ok(next)
+    }
+
+    /// Hands the planner the refusal for its writes, from the source and allowlist together, so the
+    /// order of `with_source` and `with_change_allowlist` doesn't matter.
+    fn sync_planner_guard(&self) {
+        self.planner
+            .set_write_refusal(self.app_write_refusal(AppScope::Planner));
     }
 
     /// Opens a vault with its index in Caches (in memory if that fails) and its history in
@@ -302,6 +427,7 @@ impl Workspace {
     pub fn with_source(self, source: Source) -> Self {
         self.planner.set_actor_context(Some(source.as_str()), None);
         *self.source.lock().unwrap_or_else(|p| p.into_inner()) = source;
+        self.sync_planner_guard();
         self
     }
 
@@ -319,7 +445,53 @@ impl Context {
             .lock()
             .unwrap_or_else(|p| p.into_inner())
             .as_ref()
-            .is_none_or(|allowed| allowed.iter().any(|p| rule_covers(p, path)))
+            .is_none_or(|allowed| allowed.paths.iter().any(|p| rule_covers(p, path)))
+    }
+
+    /// Whether this workspace is restricted by `--may-change`.
+    pub(crate) fn has_change_allowlist(&self) -> bool {
+        self.change_allowlist
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .is_some()
+    }
+
+    /// Why a write to this app data is refused (an allowlist without its scope), if it is. The app
+    /// itself is never restricted.
+    fn app_write_refusal(&self, scope: AppScope) -> Option<String> {
+        if self.source() == Source::App {
+            return None;
+        }
+        self.change_allowlist
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .as_ref()
+            .and_then(|a| a.refusal(scope))
+    }
+
+    /// Refuses a write to app data that the change allowlist doesn't cover (see `AppScope`). Every
+    /// core function that writes app state outside the vault's files calls this (or, for the
+    /// planner, goes through `PlannerService::write_store`) before changing anything.
+    pub fn check_app_write(&self, scope: AppScope) -> Result<()> {
+        match self.app_write_refusal(scope) {
+            Some(message) => Err(Error::Denied(message)),
+            None => Ok(()),
+        }
+    }
+
+    /// Remembers a proposal made or updated through this workspace (see `own_proposals`).
+    pub(crate) fn record_own_proposal(&self, id: i64) {
+        self.own_proposals
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .insert(id);
+    }
+
+    pub(crate) fn is_own_proposal(&self, id: i64) -> bool {
+        self.own_proposals
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .contains(&id)
     }
 
     /// The agent's name, shown in the AI activity log (e.g. the MCP client "claude-code").
@@ -1600,6 +1772,7 @@ impl FileService {
     /// Bookmarks an existing file or folder (at the end of the list; no-op if already there).
     /// Bookmarks a file or folder, a search (`search:<query>`) or structured query (`query:<query>`).
     pub fn add_bookmark(&self, path: &str) -> Result<Vec<Bookmark>> {
+        self.check_app_write(AppScope::Bookmarks)?;
         let path = if let Some(q) = path
             .strip_prefix("search:")
             .filter(|q| !q.trim().is_empty())
@@ -1626,6 +1799,7 @@ impl FileService {
 
     /// Removes a bookmark (also one whose file no longer exists).
     pub fn remove_bookmark(&self, path: &str) -> Result<Vec<Bookmark>> {
+        self.check_app_write(AppScope::Bookmarks)?;
         let path = normalize(path)?;
         let mut found = false;
         crate::vault_state::update_bookmarks_for(self.vault.root(), |list| {

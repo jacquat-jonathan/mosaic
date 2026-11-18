@@ -49,3 +49,21 @@ export function workflowRunState(run: AgentRun, needsReview = false): RunState {
     return run.status;
   return needsReview ? "needs-review" : "completed";
 }
+
+/** The `may-change` scope that lets a scheduled agent change the planner (Board and calendar). */
+export const PLANNER_SCOPE = "planner:";
+
+/** A `may-change` entry naming app data (`planner:`) rather than a folder. */
+export function isScopeEntry(entry: string): boolean {
+  return entry.trim().endsWith(":");
+}
+
+/** The folders an agent may change without review (its `may-change` minus app-data scopes). */
+export function allowedFolders(agent: Pick<Agent, "may_change">): string[] {
+  return agent.may_change.filter((entry) => !isScopeEntry(entry));
+}
+
+/** Whether a scheduled agent may change the planner directly (`planner:` in `may-change`). */
+export function canChangePlanner(agent: Pick<Agent, "may_change">): boolean {
+  return agent.may_change.some((entry) => entry.trim().toLowerCase() === PLANNER_SCOPE);
+}

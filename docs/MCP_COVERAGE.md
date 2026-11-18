@@ -63,12 +63,38 @@ per write:
 |---|---|---|---|
 | Read | `list_*`, `get_*`, `read_file`, `outline`, `search`, `query`, `tasks_by_day`, `render`, `render_template`, `file_history`, `planner_task_history`, `vault_guide` | Allowed, minus hidden folders | Same |
 | Vault file write | `create_file`, `create_note`, `edit_file`, `patch_file`, `append_to_file`, `rename`, `move_files`, `copy_file`, `delete_file`, `create_folder`, `import_file`, `restore_version`, `carry_over` | Direct, unless the folder is read-only (refused) or in review (becomes a proposal) | Direct only inside the listed paths; elsewhere a proposal |
-| App-state write | `*_planner_task`, `add_bookmark`, `remove_bookmark`, `withdraw_proposal` | Direct | **Direct: the allowlist does not apply** (see open questions) |
+| App-state write, scope `planner:` | `*_planner_task` (later: epics, events, work sessions, iCal import) | Direct | **Refused** (`denied`) unless `planner:` is listed; then direct |
+| App-state write, scope `bookmarks:` | `add_bookmark`, `remove_bookmark` | Direct | **Refused** unless `bookmarks:` is listed; then direct |
+| Own proposals | `withdraw_proposal` | Any visible pending proposal | Only proposals this server session made or updated |
 
-Rule for new slices: a tool that writes vault files goes through the same core path (`in_review`), so
-folder rules, review and the allowlist apply without extra code. A tool that writes app state
-(planner, calendar, settings) must say in its description that it is not reviewed, and must follow
-the decision on the open question below before it ships.
+**Scopes.** An allowlist entry ending in `:` names app data instead of a folder: `planner:` (the
+whole planner database: Board tasks and epics, calendar events, work sessions, iCal imports) and
+`bookmarks:`. Scopes are case-insensitive; an unknown one grants nothing (the CLI warns on stderr).
+App data can't be proposed for review, so under an allowlist the safe default is to refuse, not to
+write. The refusal's message names the scope and tells the agent not to retry and to tell the person
+instead. Scheduled agents always run with an allowlist (an agent with no `may-change` gets a marker
+that allows no folders), so they never change app data unless the person opts in: the workflow
+form's "Can change Board and calendar" switch writes `planner:` into the agent's `may-change`
+(`- "planner:"`; an unquoted `- planner:` is read the same way).
+
+**Where it is enforced.** In core, so the CLI and every MCP tool get it without extra code:
+`Workspace::with_change_allowlist` parses the scopes, `Context::check_app_write(AppScope::…)` refuses,
+and every `PlannerService` write goes through `write_store()`, which refuses before touching the
+database (the test `every_planner_write_goes_through_write_store` fails if a new planner write uses
+`store()`). Front ends that switch vaults use `Workspace::reopen`, which carries the source, agent
+name, validation and allowlist over; the MCP server's follow mode does.
+
+**Rule for new slices.**
+
+- A tool that writes vault files goes through the same core path (`in_review`), so folder rules,
+  review and the allowlist apply without extra code.
+- A tool that writes app state calls a core function that is guarded: planner writes go through
+  `write_store()`; any other store calls `check_app_write` with its scope before changing anything.
+  App data with no scope yet gets a new `AppScope` (one per store, e.g. `settings:` for M5) and a row
+  in the table above. Never let an app-state write through under an allowlist without a scope.
+- Its description says it is applied directly, never reviewed, and refused without its scope.
+- Its tests cover the refusal under `--may-change` (see
+  `app_state_writes_need_their_scope_under_may_change`).
 
 ## Exclusions
 
@@ -266,12 +292,4 @@ file):
 - **Themes.** Color themes and other app-wide appearance settings live only in the UI's
   `localStorage` (`mosaic:settings`). No Tauri command or core code sees them, so MCP cannot reach
   them. Covering them means moving them into app settings first. Undecided whether that is worth it.
-- **App-state writes and `--may-change`.** Planner (and later calendar and settings) writes ignore
-  the allowlist, so a scheduled agent limited to `Daily/` can still change any Board task. Proposal:
-  before M2 ships, refuse app-state writes when an allowlist is set, unless it names a scope for them
-  (for example `--may-change planner:`). Changing this affects the existing planner tools.
-- **Follow mode loses the allowlist.** Without `--vault`, the server reopens the vault when the app
-  switches (`mcp.rs`, `workspace()`), but does not re-apply `with_change_allowlist`, so after a
-  switch the agent writes as if no allowlist were set. Only servers started without `--vault` are
-  affected; fix it with the previous question.
 - **Bookmark order.** `set_bookmarks` can reorder; MCP can only add and remove.

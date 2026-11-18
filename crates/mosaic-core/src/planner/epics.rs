@@ -214,22 +214,22 @@ impl PlannerService {
     }
 
     pub fn create_epic(&self, input: CreateEpic) -> Result<Epic> {
-        self.store()?.create_epic(input)
+        self.write_store()?.create_epic(input)
     }
 
     pub fn update_epic(&self, id: &str, input: UpdateEpic) -> Result<Epic> {
-        self.store()?.update_epic(id, input)
+        self.write_store()?.update_epic(id, input)
     }
 
     pub fn archive_epic(&self, id: &str, expected_revision: i64) -> Result<Epic> {
-        self.store()?.archive_epic(id, expected_revision)
+        self.write_store()?.archive_epic(id, expected_revision)
     }
 
     pub fn restore_epic(&self, id: &str, expected_revision: i64) -> Result<Epic> {
-        self.store()?.restore_epic(id, expected_revision)
+        self.write_store()?.restore_epic(id, expected_revision)
     }
 
     pub fn trash_epic(&self, id: &str, expected_revision: i64) -> Result<Epic> {
-        self.store()?.trash_epic(id, expected_revision)
+        self.write_store()?.trash_epic(id, expected_revision)
     }
 }

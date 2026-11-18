@@ -4,6 +4,7 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Workflows can't change the Board unless you allow it:** an automatic workflow limited to certain folders could still edit planner tasks and bookmarks, which can't be reviewed first. Those changes are now refused, and the agent is told to ask you instead. Turn on **Can change Board and calendar** in a workflow's settings to let it manage planner tasks. Also, `mosaic mcp` started with folder limits but without `--vault` now keeps those limits after you switch vaults in the app; before, it could write anywhere in the new vault.
 - **Send feedback:** a button next to the version at the top right opens a short form to report a bug or suggest an idea. It opens a prefilled GitHub issue in your browser to review and submit, with the app version and OS if you choose; nothing from your vault is included. Submitting needs a GitHub account with access to the Mosaic repository.
 
 ## 0.29.0 — 2026-11-14

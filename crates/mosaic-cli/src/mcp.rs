@@ -479,20 +479,11 @@ impl MosaicMcp {
         if self.mode == VaultMode::FollowApp
             && let Some(root) = app_vault()
             && root != current.vault.root()
-            && let Ok(next) = Workspace::open(&root)
+            // `reopen` carries the source, agent name, validation and `--may-change` restriction
+            // over: building the workspace here again would drop the restriction.
+            && let Ok(next) = current.reopen(&root)
         {
-            let next = Arc::new(
-                next.validating()
-                    .with_source(mosaic_core::history::Source::Agent),
-            );
-            if let Some(name) = self
-                .actor
-                .read()
-                .unwrap_or_else(|p| p.into_inner())
-                .as_deref()
-            {
-                next.set_actor(name);
-            }
+            let next = Arc::new(next);
             let _ = next.sync(|_, _| {});
             *self.ws.write().unwrap_or_else(|p| p.into_inner()) = next.clone();
             return next;
@@ -686,7 +677,7 @@ impl MosaicMcp {
     }
 
     #[tool(
-        description = "Create an app-owned planner task or subtask. Use list_planner_epics for epic IDs and list_planner_tasks for parent IDs. Returns the created task and revision."
+        description = "Create an app-owned planner task or subtask. Use list_planner_epics for epic IDs and list_planner_tasks for parent IDs. Returns the created task and revision. Applied directly, never reviewed; refused (code denied) when you are restricted to certain folders without `planner:`."
     )]
     async fn create_planner_task(
         &self,
@@ -708,7 +699,7 @@ impl MosaicMcp {
     }
 
     #[tool(
-        description = "Edit an app-owned planner task's title, description, due date or estimate. Pass the latest expected_revision from get/list; a stale revision returns conflict. This does not move, complete or archive the task."
+        description = "Edit an app-owned planner task's title, description, due date or estimate. Pass the latest expected_revision from get/list; a stale revision returns conflict. This does not move, complete or archive the task. Applied directly, never reviewed; refused (code denied) when you are restricted to certain folders without `planner:`."
     )]
     async fn update_planner_task(
         &self,
@@ -733,7 +724,7 @@ impl MosaicMcp {
     }
 
     #[tool(
-        description = "Move or reorder an app-owned planner task by supplying its complete destination epic, parent and non-Done status. Omit position to append in the destination. Use complete_planner_task or reopen_planner_task when crossing Done."
+        description = "Move or reorder an app-owned planner task by supplying its complete destination epic, parent and non-Done status. Omit position to append in the destination. Use complete_planner_task or reopen_planner_task when crossing Done. Applied directly, never reviewed; refused (code denied) when you are restricted to certain folders without `planner:`."
     )]
     async fn move_planner_task(
         &self,
@@ -777,7 +768,7 @@ impl MosaicMcp {
     }
 
     #[tool(
-        description = "Complete an app-owned planner task. By default this refuses incomplete subtasks and cancels future work sessions. Set the confirmation/policy fields deliberately when another outcome is intended."
+        description = "Complete an app-owned planner task. By default this refuses incomplete subtasks and cancels future work sessions. Set the confirmation/policy fields deliberately when another outcome is intended. Applied directly, never reviewed; refused (code denied) when you are restricted to certain folders without `planner:`."
     )]
     async fn complete_planner_task(
         &self,
@@ -798,7 +789,7 @@ impl MosaicMcp {
     }
 
     #[tool(
-        description = "Reopen a completed app-owned planner task as New. Pass its latest expected_revision. Move it afterward if another active status is wanted."
+        description = "Reopen a completed app-owned planner task as New. Pass its latest expected_revision. Move it afterward if another active status is wanted. Applied directly, never reviewed; refused (code denied) when you are restricted to certain folders without `planner:`."
     )]
     async fn reopen_planner_task(
         &self,
@@ -812,7 +803,7 @@ impl MosaicMcp {
     }
 
     #[tool(
-        description = "Archive an app-owned planner task while keeping it recoverable. Pass its latest expected_revision."
+        description = "Archive an app-owned planner task while keeping it recoverable. Pass its latest expected_revision. Applied directly, never reviewed; refused (code denied) when you are restricted to certain folders without `planner:`."
     )]
     async fn archive_planner_task(
         &self,
@@ -826,7 +817,7 @@ impl MosaicMcp {
     }
 
     #[tool(
-        description = "Restore an archived or trashed app-owned planner task. Pass its latest expected_revision."
+        description = "Restore an archived or trashed app-owned planner task. Pass its latest expected_revision. Applied directly, never reviewed; refused (code denied) when you are restricted to certain folders without `planner:`."
     )]
     async fn restore_planner_task(
         &self,
@@ -840,7 +831,7 @@ impl MosaicMcp {
     }
 
     #[tool(
-        description = "Move an archived app-owned planner task to Trash, where it remains recoverable. Archive it first and pass its latest expected_revision."
+        description = "Move an archived app-owned planner task to Trash, where it remains recoverable. Archive it first and pass its latest expected_revision. Applied directly, never reviewed; refused (code denied) when you are restricted to certain folders without `planner:`."
     )]
     async fn trash_planner_task(
         &self,
@@ -1052,7 +1043,7 @@ impl MosaicMcp {
     }
 
     #[tool(
-        description = "Bookmark a file or folder, a full-text search as `search:<words>`, or a structured query as `query:<query>` so the human finds it in Bookmarks. Returns the new list."
+        description = "Bookmark a file or folder, a full-text search as `search:<words>`, or a structured query as `query:<query>` so the human finds it in Bookmarks. Returns the new list. Applied directly, never reviewed; refused (code denied) when you are restricted to certain folders without `bookmarks:`."
     )]
     async fn add_bookmark(&self, Parameters(a): Parameters<PathArg>) -> ToolResult {
         self.ws()
@@ -1112,7 +1103,9 @@ impl MosaicMcp {
         })
     }
 
-    #[tool(description = "Remove a bookmark (the file itself is untouched). Returns the new list.")]
+    #[tool(
+        description = "Remove a bookmark (the file itself is untouched). Returns the new list. Applied directly, never reviewed; refused (code denied) when you are restricted to certain folders without `bookmarks:`."
+    )]
     async fn remove_bookmark(&self, Parameters(a): Parameters<PathArg>) -> ToolResult {
         self.ws()
             .files

@@ -568,15 +568,15 @@ impl PlannerService {
     }
 
     pub fn create_task(&self, input: CreateTask) -> Result<PlannerTask> {
-        self.store()?.create_task(input)
+        self.write_store()?.create_task(input)
     }
 
     pub fn update_task(&self, id: &str, input: UpdateTask) -> Result<PlannerTask> {
-        self.store()?.update_task(id, input)
+        self.write_store()?.update_task(id, input)
     }
 
     pub fn move_task(&self, id: &str, input: MoveTask) -> Result<PlannerTask> {
-        self.store()?.move_task(id, input)
+        self.write_store()?.move_task(id, input)
     }
 
     pub fn complete_task(
@@ -586,7 +586,7 @@ impl PlannerService {
         allow_incomplete_subtasks: bool,
         future_sessions: FutureSessionPolicy,
     ) -> Result<PlannerTask> {
-        self.store()?.complete_task(
+        self.write_store()?.complete_task(
             id,
             expected_revision,
             allow_incomplete_subtasks,
@@ -595,19 +595,19 @@ impl PlannerService {
     }
 
     pub fn reopen_task(&self, id: &str, expected_revision: i64) -> Result<PlannerTask> {
-        self.store()?.reopen_task(id, expected_revision)
+        self.write_store()?.reopen_task(id, expected_revision)
     }
 
     pub fn archive_task(&self, id: &str, expected_revision: i64) -> Result<PlannerTask> {
-        self.store()?.archive_task(id, expected_revision)
+        self.write_store()?.archive_task(id, expected_revision)
     }
 
     pub fn restore_task(&self, id: &str, expected_revision: i64) -> Result<PlannerTask> {
-        self.store()?.restore_task(id, expected_revision)
+        self.write_store()?.restore_task(id, expected_revision)
     }
 
     pub fn trash_task(&self, id: &str, expected_revision: i64) -> Result<PlannerTask> {
-        self.store()?.trash_task(id, expected_revision)
+        self.write_store()?.trash_task(id, expected_revision)
     }
 }
 

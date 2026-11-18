@@ -8,7 +8,9 @@ import { useAttention } from "../state/attention";
 import { useUi } from "../state/ui";
 import { useVault } from "../state/vault";
 import { DEFAULT_VAULT_PREFS, useVaultPreferences } from "../state/vaultPreferences";
-import { WorkflowForm } from "./WorkflowForm";
+import { parse as parseYaml } from "yaml";
+import { mayChange, WorkflowForm } from "./WorkflowForm";
+import { isScopeEntry } from "./workflowPresentation";
 
 beforeEach(() => {
   useAttention.setState({ agents: [], refresh: vi.fn().mockResolvedValue(undefined) });
@@ -93,4 +95,22 @@ test("failed saves retain the draft and a retry completes without running the wo
   await waitFor(() => expect(done).toHaveBeenCalledOnce());
   expect(run).not.toHaveBeenCalled();
   expect(hasDraft("mosaic:new-workflow")).toBe(false);
+});
+
+test("the Board and calendar switch adds the planner scope without opening folder access", async () => {
+  render(<WorkflowForm onDone={vi.fn()} />);
+  const user = await fill();
+  await user.click(screen.getByRole("switch", { name: "Can change Board and calendar" }));
+  await user.click(screen.getByRole("button", { name: "Create workflow" }));
+  await waitFor(() => expect(api.create).toHaveBeenCalledOnce());
+  const content = vi.mocked(api.create).mock.calls[0][1] as string;
+  // A string, not the mapping YAML would read from an unquoted `planner:`.
+  const props = parseYaml(/^---\n([\s\S]*?)\n---/.exec(content)![1]);
+  expect(props["may-change"]).toEqual(["planner:"]);
+});
+
+test("mayChange keeps folders and scopes apart", () => {
+  expect(mayChange(["Daily"], ["planner:"])).toEqual(["Daily", "planner:"]);
+  expect(isScopeEntry("planner:")).toBe(true);
+  expect(isScopeEntry("Daily")).toBe(false);
 });

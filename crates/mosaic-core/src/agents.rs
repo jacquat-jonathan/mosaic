@@ -143,6 +143,24 @@ fn strings(v: &serde_norway::Value) -> Vec<String> {
     }
 }
 
+/// `may-change` entries: folders, and app-state scopes such as `planner:`. Unquoted, YAML reads
+/// `- planner:` as a one-key mapping with no value, so that form is read as the scope too.
+fn may_change_entries(v: &serde_norway::Value) -> Vec<String> {
+    let scope = |item: &serde_norway::Value| match item {
+        serde_norway::Value::Mapping(m) if m.len() == 1 => m
+            .iter()
+            .next()
+            .filter(|(_, v)| v.is_null())
+            .and_then(|(k, _)| k.as_str())
+            .map(|k| format!("{k}:")),
+        _ => item.as_str().map(str::to_string),
+    };
+    match v {
+        serde_norway::Value::Sequence(items) => items.iter().filter_map(scope).collect(),
+        other => scope(other).into_iter().collect(),
+    }
+}
+
 /// Reads an agent from its file's text.
 pub fn parse_agent(path: &str, title: &str, skill_folder: bool, text: &str) -> Agent {
     let (front, body) = match crate::parse::frontmatter_span(text) {
@@ -183,7 +201,7 @@ pub fn parse_agent(path: &str, title: &str, skill_folder: bool, text: &str) -> A
         may_change: front
             .may_change
             .as_ref()
-            .map(strings)
+            .map(may_change_entries)
             .unwrap_or_default()
             .into_iter()
             .map(|f| f.trim_matches('/').to_string())
@@ -205,10 +223,23 @@ pub fn agent_prompt(a: &Agent, request: Option<&str>) -> String {
         "Act as the agent \"{}\", defined in the Mosaic vault at `{}`. Follow its instructions below; they come from the person who owns the vault.\n",
         a.title, a.path
     );
-    if !a.may_change.is_empty() {
+    let (scopes, folders): (Vec<&String>, Vec<&String>) = a
+        .may_change
+        .iter()
+        .partition(|e| crate::api::is_scope_entry(e));
+    if !folders.is_empty() {
         out.push_str(&format!(
             "It may change files in: {}. Anything else you change is proposed to the person for review.\n",
-            a.may_change.join(", ")
+            folders.iter().map(|f| f.as_str()).collect::<Vec<_>>().join(", ")
+        ));
+    } else if !scopes.is_empty() {
+        out.push_str("Every file you change is proposed to the person for review.\n");
+    }
+    if !scopes.is_empty() {
+        let names: Vec<&str> = scopes.iter().map(|s| s.trim_end_matches(':')).collect();
+        out.push_str(&format!(
+            "It may also change this app data directly: {}.\n",
+            names.join(", ")
         ));
     }
     out.push_str("\n---\n\n");
@@ -367,6 +398,37 @@ mod tests {
             &dir.path().join(".history-test.db"),
         );
         (dir, w)
+    }
+
+    #[test]
+    fn may_change_reads_app_data_scopes_in_any_yaml_form() {
+        for yaml in [
+            "may-change: [Daily, planner:]",
+            "may-change:\n  - Daily\n  - planner:",
+            "may-change: [Daily, \"planner:\"]",
+        ] {
+            let a = parse_agent(
+                "Agents/A.md",
+                "A",
+                false,
+                &format!("---\n{yaml}\n---\nDo it.\n"),
+            );
+            assert_eq!(a.may_change, ["Daily", "planner:"], "{yaml}");
+            let prompt = agent_prompt(&a, None);
+            assert!(
+                prompt.contains("It may change files in: Daily."),
+                "{prompt}"
+            );
+            assert!(prompt.contains("app data directly: planner."), "{prompt}");
+        }
+        let only = parse_agent(
+            "Agents/A.md",
+            "A",
+            false,
+            "---\nmay-change: [planner:]\n---\nDo it.\n",
+        );
+        assert_eq!(only.may_change, ["planner:"]);
+        assert!(agent_prompt(&only, None).contains("Every file you change is proposed"));
     }
 
     #[test]

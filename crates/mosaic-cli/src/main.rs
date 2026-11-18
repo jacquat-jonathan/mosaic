@@ -488,6 +488,18 @@ fn run(cli: Cli) -> Result<()> {
         .validating()
         .with_source(source);
     if !cli.may_change.is_empty() {
+        for entry in &cli.may_change {
+            if mosaic_core::api::is_scope_entry(entry)
+                && mosaic_core::api::AppScope::parse(entry).is_none()
+            {
+                eprintln!(
+                    "warning: --may-change {entry} names no known app data (known: {}); it allows nothing",
+                    mosaic_core::api::AppScope::ALL
+                        .map(|s| format!("{}:", s.name()))
+                        .join(", ")
+                );
+            }
+        }
         ws = ws.with_change_allowlist(cli.may_change.clone());
     }
     let json = cli.json;

@@ -240,6 +240,37 @@ fn action_str(a: Action) -> &'static str {
     }
 }
 
+impl Context {
+    /// Records a proposal (see `History::propose`) and remembers it as this workspace's own.
+    #[allow(clippy::too_many_arguments)]
+    fn propose_own(
+        &self,
+        path: &str,
+        action: Action,
+        base_hash: Option<&str>,
+        content: Option<&[u8]>,
+        binary: bool,
+        to_path: Option<&str>,
+        update_links: bool,
+        source: &Source,
+        actor: Option<&str>,
+    ) -> Result<i64> {
+        let id = self.hist().propose(
+            path,
+            action,
+            base_hash,
+            content,
+            binary,
+            to_path,
+            update_links,
+            source,
+            actor,
+        )?;
+        self.record_own_proposal(id);
+        Ok(id)
+    }
+}
+
 fn not_reviewable(path: &str, what: &str) -> Error {
     Error::Denied(format!(
         "{path} is in a folder where the person reviews your changes, and {what} can't be proposed for review; ask them to do it"
@@ -364,7 +395,7 @@ impl Context {
         } else {
             Action::Created
         };
-        let id = self.hist().propose(
+        let id = self.propose_own(
             norm,
             action,
             base.as_deref(),
@@ -388,7 +419,7 @@ impl Context {
             return Err(Error::AlreadyExists(norm.to_string()));
         }
         let hash = hash_bytes(bytes);
-        let id = self.hist().propose(
+        let id = self.propose_own(
             norm,
             Action::Created,
             None,
@@ -424,7 +455,7 @@ impl Context {
             .hash_of(from)?
             .ok_or_else(|| Error::NotFound(from.to_string()))?;
         let binary = !FileKind::of(Path::new(from)).is_text();
-        let id = self.hist().propose(
+        let id = self.propose_own(
             from,
             Action::Renamed,
             Some(&base),
@@ -506,7 +537,7 @@ impl Context {
                     }
                 };
                 let binary = !FileKind::of(Path::new(norm)).is_text();
-                let id = self.hist().propose(
+                let id = self.propose_own(
                     norm,
                     Action::Deleted,
                     base.as_deref(),
@@ -722,6 +753,13 @@ impl ReviewService<'_> {
         if access_for(&self.ws.rules()?, &p.path) == Some(Access::Hidden) {
             return Err(Error::NotFound(format!("proposal {id}")));
         }
+        // An agent restricted by `--may-change` takes back only what it proposed itself, in this
+        // session: proposals record only the client's name, which agents share.
+        if self.ws.has_change_allowlist() && !self.ws.is_own_proposal(id) {
+            return Err(Error::Denied(format!(
+                "Refused: proposal {id} wasn't made in this session, and a restricted agent can withdraw only its own proposals. Leave it for the person to accept or reject; mention it to them if it should go."
+            )));
+        }
         self.ws.hist().decide(id, "withdrawn", None)
     }
 }
@@ -866,6 +904,99 @@ mod tests {
                 .review,
             None
         );
+    }
+
+    #[test]
+    fn an_allowlist_refuses_bookmark_changes_without_their_scope() {
+        let (_dir, _app, agent) = setup();
+        let agent = agent.with_change_allowlist(vec!["Reviewed".into()]);
+        match agent.files.add_bookmark("Free.md") {
+            Err(Error::Denied(m)) => {
+                assert!(m.contains("`bookmarks:`"), "{m}");
+                assert!(m.contains("Reviewed"), "{m}");
+            }
+            other => panic!("expected a refusal, got {other:?}"),
+        }
+        assert!(matches!(
+            agent.files.remove_bookmark("Free.md"),
+            Err(Error::Denied(_))
+        ));
+        // Mosaic's no-direct-writes marker isn't presented as a folder.
+        let none = Workspace::new(
+            Vault::open(_dir.path()).unwrap(),
+            Index::in_memory().unwrap(),
+        )
+        .with_source(Source::Agent)
+        .with_change_allowlist(vec!["/.mosaic-no-direct-writes".into()]);
+        let Err(Error::Denied(m)) = none.files.add_bookmark("Free.md") else {
+            panic!("expected a refusal");
+        };
+        assert!(m.contains("no folders") && !m.contains(".mosaic"), "{m}");
+    }
+
+    #[test]
+    fn a_restricted_agent_withdraws_only_its_own_proposals() {
+        let (dir, _app, agent) = setup();
+        let db = dir.path().join(".history-test.db");
+        // Another agent's proposal, in the same history.
+        let other = Workspace::with_history_file(
+            Vault::open(dir.path()).unwrap(),
+            Index::in_memory().unwrap(),
+            &db,
+        )
+        .with_source(Source::Agent)
+        .with_change_allowlist(vec!["Elsewhere".into()]);
+        other.set_actor("claude-code");
+        let theirs = other
+            .files
+            .write("Free.md", "theirs\n", None)
+            .unwrap()
+            .review
+            .unwrap();
+        let agent = agent.with_change_allowlist(vec!["Elsewhere".into()]);
+        let mine = agent
+            .files
+            .write("Reviewed/Plan.md", "mine\n", None)
+            .unwrap()
+            .review
+            .unwrap();
+        assert!(matches!(
+            agent.review().withdraw(theirs),
+            Err(Error::Denied(_))
+        ));
+        agent.review().withdraw(mine).unwrap();
+        other.review().withdraw(theirs).unwrap();
+    }
+
+    #[test]
+    fn reopening_another_vault_keeps_the_allowlist() {
+        let (dir, _app, agent) = setup();
+        let agent = agent.with_change_allowlist(vec!["Allowed".into(), "planner:".into()]);
+        let second = tempfile::tempdir().unwrap();
+        std::fs::write(second.path().join("Free.md"), "free\n").unwrap();
+        let next = agent.reopen(second.path()).unwrap();
+        assert_eq!(
+            next.change_allowlist(),
+            Some(vec!["Allowed".into(), "planner:".into()])
+        );
+        assert_eq!(next.actor().as_deref(), Some("claude-code"));
+        assert_eq!(next.source(), Source::Agent);
+        assert!(
+            next.files
+                .write("Free.md", "changed\n", None)
+                .unwrap()
+                .review
+                .is_some()
+        );
+        assert_eq!(
+            std::fs::read_to_string(second.path().join("Free.md")).unwrap(),
+            "free\n"
+        );
+        assert!(matches!(
+            next.files.add_bookmark("Free.md"),
+            Err(Error::Denied(_))
+        ));
+        drop(dir);
     }
 
     #[test]

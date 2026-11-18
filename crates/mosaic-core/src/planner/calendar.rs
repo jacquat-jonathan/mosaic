@@ -925,15 +925,16 @@ impl PlannerService {
     }
 
     pub fn create_work_session(&self, input: CreateWorkSession) -> Result<WorkSession> {
-        self.store()?.create_work_session(input)
+        self.write_store()?.create_work_session(input)
     }
 
     pub fn update_work_session(&self, id: &str, input: UpdateWorkSession) -> Result<WorkSession> {
-        self.store()?.update_work_session(id, input)
+        self.write_store()?.update_work_session(id, input)
     }
 
     pub fn cancel_work_session(&self, id: &str, expected_revision: i64) -> Result<WorkSession> {
-        self.store()?.cancel_work_session(id, expected_revision)
+        self.write_store()?
+            .cancel_work_session(id, expected_revision)
     }
 
     pub fn events(
@@ -945,23 +946,23 @@ impl PlannerService {
     }
 
     pub fn create_event(&self, input: CreateEvent) -> Result<PlannerEvent> {
-        self.store()?.create_event(input)
+        self.write_store()?.create_event(input)
     }
 
     pub fn update_event(&self, id: &str, input: UpdateEvent) -> Result<PlannerEvent> {
-        self.store()?.update_event(id, input)
+        self.write_store()?.update_event(id, input)
     }
 
     pub fn archive_event(&self, id: &str, revision: i64) -> Result<PlannerEvent> {
-        self.store()?.archive_event(id, revision)
+        self.write_store()?.archive_event(id, revision)
     }
 
     pub fn restore_event(&self, id: &str, revision: i64) -> Result<PlannerEvent> {
-        self.store()?.restore_event(id, revision)
+        self.write_store()?.restore_event(id, revision)
     }
 
     pub fn trash_event(&self, id: &str, revision: i64) -> Result<PlannerEvent> {
-        self.store()?.trash_event(id, revision)
+        self.write_store()?.trash_event(id, revision)
     }
 
     pub fn cancel_event_occurrence(
@@ -970,7 +971,7 @@ impl PlannerService {
         revision: i64,
         occurrence_key: &str,
     ) -> Result<PlannerEvent> {
-        self.store()?
+        self.write_store()?
             .cancel_event_occurrence(series_id, revision, occurrence_key)
     }
 
@@ -981,7 +982,7 @@ impl PlannerService {
         occurrence_key: &str,
         input: CreateEvent,
     ) -> Result<PlannerEvent> {
-        self.store()?
+        self.write_store()?
             .replace_event_occurrence(series_id, revision, occurrence_key, input)
     }
 

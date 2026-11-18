@@ -439,7 +439,7 @@ test("chat with the assistant and manage the saved conversation", async ({ page 
 
   await page.getByLabel("Chat model").selectOption("haiku");
   await page.getByLabel("Message to Claude").fill("Summarize this note and suggest one improvement.");
-  await page.getByRole("button", { name: "Send" }).click();
+  await page.getByRole("button", { name: "Send", exact: true }).click();
   await expect(page.getByText("Done: I added a line to")).toBeVisible({ timeout: 5_000 });
   await expect(page.getByTitle("What this chat has cost so far")).toBeVisible();
   await page.locator(".chat .mds-tool summary").filter({ hasText: "Read Ideas" }).click();

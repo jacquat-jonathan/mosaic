@@ -203,25 +203,28 @@ be opened until you update the registration.
 
 ### Tools
 
-The server has 45 tools:
+The server has 45 tools (this list is checked against the server by a test):
 
-- **Reading:** `vault_guide`, `list_files`, `read_file`, `outline`, `search`, `query` (notes by tag,
-  folder, frontmatter field, date, links or open tasks), `get_backlinks`, `list_tags`,
-  `tasks_by_day`, `render` (a PNG of a canvas or SVG, so the agent can check what it drew).
-- **Writing:** `create_file`, `create_note`, `edit_file`, `patch_file`, `append_to_file`, `rename`,
-  `move_files`, `copy_file`, `import_file`, `delete_file`, `create_folder`, `carry_over` (moves
-  unfinished tasks to a day's note).
-- **Templates and preferences:** `list_templates`, `render_template`, `get_vault_preferences`.
-- **Bookmarks:** `list_bookmarks`, `add_bookmark`, `remove_bookmark`.
-- **History and review:** `file_history`, `restore_version`, `list_proposals`, `withdraw_proposal`.
-- **Agents:** `list_agents`. Each agent in `Agents/` is also an MCP prompt (`/mosaic:<name>` in
-  Claude Code).
-- **Planner (Board tasks):** `list_planner_epics`, `list_planner_tasks`, `get_planner_task`,
-  `planner_task_history`, `create_planner_task`, `update_planner_task`, `move_planner_task`,
-  `complete_planner_task`, `reopen_planner_task`, `archive_planner_task`, `restore_planner_task`,
-  `trash_planner_task`. They are revision-safe.
+<!-- mcp-tools:start -->
+- Guide and settings: `vault_guide`, `get_vault_preferences`, `list_agents`.
+- Read: `list_files`, `read_file`, `outline`, `search`, `query` (notes by tag, frontmatter field,
+  date or links), `get_backlinks`, `list_tags`, `render` (a PNG of a canvas, so the agent can check
+  what it drew).
+- Write: `create_file`, `edit_file`, `patch_file`, `append_to_file`, `rename`, `move_files`,
+  `copy_file`, `delete_file`, `create_folder`, `import_file`.
+- Templates: `list_templates`, `render_template`, `create_note`.
+- History and review: `file_history`, `restore_version`, `list_proposals`, `withdraw_proposal`.
+- Bookmarks: `list_bookmarks`, `add_bookmark`, `remove_bookmark`.
+- Markdown tasks: `tasks_by_day`, `carry_over`.
+- Planner (revision-safe Board tasks): `list_planner_epics`, `list_planner_tasks`,
+  `get_planner_task`, `planner_task_history`, `create_planner_task`, `update_planner_task`,
+  `move_planner_task`, `complete_planner_task`, `reopen_planner_task`, `archive_planner_task`,
+  `restore_planner_task`, `trash_planner_task`.
+<!-- mcp-tools:end -->
 
-Notes are also MCP resources (`mosaic:///Folder/Note.md`). In AI › Connections you can make
+Each agent in `Agents/` is also an MCP prompt (`/mosaic:<name>` in Claude Code), and notes are MCP
+resources (`mosaic:///Folder/Note.md`). [MCP coverage](docs/MCP_COVERAGE.md) maps every app feature
+to its tool, the slice that will add it, or why it stays out of MCP. In AI › Connections you can make
 folders read-only for agents or hide them. You can also have agents' changes in a folder
 **reviewed**: edits, new files and deletions wait under AI activity until you accept or reject them.
 Edits accept an `expected_hash`, so an agent never overwrites a newer edit of yours.
@@ -345,6 +348,7 @@ Layout:
 | `src-tauri` | The desktop app shell (thin commands over the core) |
 | `ui` | React + TypeScript UI (CodeMirror 6, React Flow, Excalidraw, Mermaid, Vega-Lite, Graphviz, pdf.js) |
 | `docs/AGENTS.md` | Guide for AI agents, also served by the MCP server |
+| `docs/MCP_COVERAGE.md` | Which app features MCP covers, plans or excludes (checked by a test) |
 | `docs/PLAN.md` | Implementation plan and milestones |
 
 **Releasing.** Follow the [release runbook](docs/RELEASING.md) for normal releases and failed-release

@@ -1,0 +1,12 @@
+.mosaic-ds .feedback-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mds-space-6);
+}
+.mosaic-ds .feedback-form textarea {
+  resize: vertical;
+  min-height: 96px;
+}
+.mosaic-ds .feedback-form .feedback-access {
+  margin: 0;
+}

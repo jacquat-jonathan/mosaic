@@ -3,7 +3,7 @@
   height: var(--titlebar);
   flex: none;
   min-width: 0;
-  padding: 0 90px;
+  padding: 0 112px 0 90px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -20,9 +20,27 @@
 .mosaic-ds.window-chrome .window-title {
   max-width: 100%;
 }
-.mosaic-ds.window-chrome .window-version {
+.mosaic-ds.window-chrome .window-meta {
   position: absolute;
-  right: var(--mds-space-6);
+  right: var(--mds-space-4);
+  display: flex;
+  align-items: center;
+  gap: var(--mds-space-2);
+  /* Only the button takes clicks; the rest of the strip still drags the window. */
+  pointer-events: none;
+}
+.mosaic-ds.window-chrome .window-version {
   font-size: var(--mds-text-caption);
   font-variant-numeric: tabular-nums;
+}
+.mosaic-ds.window-chrome .window-feedback {
+  pointer-events: auto;
+  width: 24px;
+  height: 22px;
+  padding: 0;
+  color: var(--mds-text-muted);
+}
+.mosaic-ds.window-chrome .window-feedback svg {
+  width: 14px;
+  height: 14px;
 }

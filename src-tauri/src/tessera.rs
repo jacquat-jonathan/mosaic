@@ -125,8 +125,8 @@ pub fn tessera_pause_agent(
     Ok(())
 }
 
-/// Only the app changes the chain-depth limit: `mosaic_core::tessera` has no setter, so another
-/// process (an MCP client) can't raise its own limit.
+// Only the app changes the chain-depth limit: `mosaic_core::tessera` has no setter, so another
+// process (an MCP client) can't raise its own limit.
 #[tauri::command(async)]
 #[specta::specta]
 pub fn tessera_set_max_chain_depth(state: State<AppState>, depth: u8) -> CmdResult<()> {

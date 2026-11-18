@@ -83,6 +83,7 @@ import { SHAPE_DRAG, ShapePalette, type PaletteItem } from "./ShapePalette";
 import { ICONS, ICON_NAMES, iconLabel } from "../../diagrams/icons";
 import { canvasToMermaid } from "../../diagrams/canvasToMermaid";
 import { exportCanvas } from "../../diagrams/export";
+import { treeDragActive, treeDragData } from "../../dragOut";
 import { plainLines } from "../../diagrams/canvasToSvg";
 import { timingSvg } from "../../diagrams/timing";
 import { errorMessage } from "../../ipc/types";
@@ -763,7 +764,7 @@ function CanvasFlow({
       });
       return;
     }
-    const p = e.dataTransfer.getData(TREE_DRAG);
+    const p = treeDragData(e.dataTransfer, TREE_DRAG);
     if (!p) return;
     e.preventDefault();
     const pos = flow.screenToFlowPosition({ x: e.clientX, y: e.clientY });
@@ -842,6 +843,7 @@ function CanvasFlow({
       className={`canvas-host ${presenting ? "presenting" : ""}`}
       onDragOver={(e) =>
         (e.dataTransfer.types.includes(TREE_DRAG) ||
+          treeDragActive() ||
           e.dataTransfer.types.includes(SHAPE_DRAG) ||
           isFinderDrag(e.dataTransfer)) &&
         e.preventDefault()

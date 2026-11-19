@@ -1,10 +1,12 @@
 //! Calendar subscription commands: thin wrappers over `mosaic_core::calendar_subscriptions`,
-//! with feeds cached in the app data directory and URLs kept in the macOS Keychain.
+//! with feeds cached in the app data directory and URLs kept in the macOS Keychain. `mosaic mcp`
+//! uses the same cache (`calendar_subscriptions::app_cache_dir`: the bundle identifier's folder
+//! in Application Support is this app data directory) and the same Keychain items.
 
 use crate::{AppState, CmdResult};
 use mosaic_core::Error;
 use mosaic_core::calendar_subscriptions::{
-    CalendarSubscriptions, HttpFetcher, Keychain, OverlayRange, SubscriptionView,
+    CACHE_DIR, CalendarSubscriptions, HttpFetcher, Keychain, OverlayRange, SubscriptionView,
 };
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager, State};
@@ -15,7 +17,7 @@ fn subscriptions(app: &AppHandle) -> CmdResult<CalendarSubscriptions<Keychain, H
         .app_data_dir()
         .map_err(|error| Error::Invalid(format!("calendar data directory unavailable: {error}")))?;
     Ok(CalendarSubscriptions::new(
-        directory.join("calendar-cache"),
+        directory.join(CACHE_DIR),
         Keychain,
         HttpFetcher::default(),
     ))

@@ -656,6 +656,73 @@ fn the_lazy_first_open_keeps_the_may_change_restriction() {
     assert!(err && refused["code"] == "denied", "{refused}");
 }
 
+/// The subscription tools through the real binary: the app's settings and Keychain. Writes are
+/// refused without `subscriptions:` before the Keychain or the network is touched (so this is safe
+/// on a Mac); reads work; off macOS, adding says the Keychain is needed, as in the app. The tools
+/// themselves are tested in process with a memory Keychain (`mcp/subscriptions/tests.rs`).
+#[test]
+fn calendar_subscription_tools_use_the_app_state() {
+    let home = tempfile::tempdir().unwrap();
+    let vault = home.path().join("V");
+    std::fs::create_dir_all(vault.join("Daily")).unwrap();
+    let settings = home.path().join("settings");
+    let cache = home.path().join("cache");
+    let url = "webcal://calendar.example/team.ics?token=private-token";
+
+    let mut c = Client::start_restricted(Some(&vault), &settings, &cache, &["Daily"]);
+    for (tool, args) in [
+        (
+            "add_calendar_subscription",
+            json!({ "name": "Team", "url": url }),
+        ),
+        (
+            "update_calendar_subscription",
+            json!({ "id": "x", "url": url }),
+        ),
+        ("remove_calendar_subscription", json!({ "id": "x" })),
+        ("refresh_calendar_subscriptions", json!({ "force": true })),
+    ] {
+        let (err, refused) = c.call(tool, args);
+        assert!(err, "{tool}: {refused}");
+        assert_eq!(refused["code"], "denied", "{tool}");
+        let message = refused["message"].as_str().unwrap();
+        assert!(message.contains("`subscriptions:`"), "{message}");
+        assert!(!message.contains("private-token"), "{message}");
+    }
+    let (err, listed) = c.call("list_calendar_subscriptions", json!({}));
+    assert!(!err, "{listed}");
+    assert_eq!(listed, json!([]));
+    let (err, overlay) = c.call(
+        "get_calendar_overlay",
+        json!({ "from": "2026-11-01", "to": "2026-11-30", "timezone": "UTC" }),
+    );
+    assert!(!err, "{overlay}");
+    assert_eq!(overlay["occurrences"], json!([]));
+    drop(c);
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let mut c = Client::start_restricted(
+            Some(&vault),
+            &settings,
+            &cache,
+            &["Daily", "subscriptions:"],
+        );
+        let (err, refused) = c.call(
+            "add_calendar_subscription",
+            json!({ "name": "Team", "url": url }),
+        );
+        assert!(err, "{refused}");
+        assert_eq!(
+            refused["message"],
+            "calendar subscriptions currently require macOS Keychain"
+        );
+        let (err, refreshed) = c.call("refresh_calendar_subscriptions", json!({}));
+        assert!(!err, "{refreshed}");
+        assert_eq!(refreshed, json!([]));
+    }
+}
+
 /// Under `--may-change`, app-state writes (planner, bookmarks) are refused unless the allowlist
 /// names their scope; reads and withdrawing the agent's own proposals still work.
 #[test]
@@ -729,7 +796,7 @@ fn without_any_vault_it_connects_and_picks_up_the_first_one_opened() {
     // Never opened a vault in the app (no settings.json): the handshake still succeeds.
     let mut c = Client::start_with(None, &settings, &home.path().join("cache"));
     let tools = c.request("tools/list", json!({}));
-    assert_eq!(tools["result"]["tools"].as_array().unwrap().len(), 61);
+    assert_eq!(tools["result"]["tools"].as_array().unwrap().len(), 67);
     let resources = c.request("resources/list", json!({}));
     assert_eq!(resources["result"]["resources"], json!([]));
     let (err, msg) = c.call("list_files", json!({}));
@@ -1274,7 +1341,7 @@ fn the_connection_test_reports_a_working_server_with_and_without_a_vault() {
 
     let r = probe(bin, &["mcp".into()], &env, timeout);
     assert!(r.ok, "{r:?}");
-    assert_eq!(r.tools, 61);
+    assert_eq!(r.tools, 67);
     assert_eq!(r.server_version.as_deref(), Some(env!("CARGO_PKG_VERSION")));
     assert!(r.no_vault.unwrap().contains("No Mosaic vault is open"));
 

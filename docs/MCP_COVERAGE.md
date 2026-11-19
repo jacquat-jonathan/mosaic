@@ -89,10 +89,17 @@ each note through the normal path too (the app's own Fix links writes directly, 
 accepted and `fix_links` runs again. Running it again updates the same proposals. Notes hidden from
 agents are reported without their names.
 
-**Known gap (not M6).** An agent's `rename` refuses when a note whose links it would rewrite is under
-a folder rule, but it does not check `--may-change` for those notes: a restricted agent renaming a file
-inside its folders rewrites links in notes outside them directly. A follow-up can reuse `fix_links`'s
-guarded rewrite.
+**Renames and moves rewrite links through the same path.** An agent's `rename` or `move_files`
+refuses, before anything moves, when a note whose links it would rewrite is under a folder rule
+(hidden, read-only or review); hidden notes are left out of the message. Under `--may-change`, each
+remaining link rewrite goes through `fix_links`'s guarded path (`FileService::write` on the agent's
+view of the note). Notes inside the allowlist are written directly. Notes outside it become proposals,
+listed in `proposed_links_in` with a review note. The move itself still goes ahead, as with
+`fix_links`. Holding it back would leave the agent's own folder half-done, and the person can still
+reject the link proposals. The move then stays unfinished: once the person accepts, `fix_links` closes
+it, and running it before then updates the same proposals. A rewrite builds on the agent's pending
+proposal for that note, if it has one. An unrestricted agent, the CLI and the app's own renames
+rewrite every link directly, as before. So does the person accepting an agent's proposed rename.
 
 **Scopes.** An allowlist entry ending in `:` names app data instead of a folder: `planner:` (the
 whole planner database: Board tasks and epics, calendar events, work sessions, iCal imports),

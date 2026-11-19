@@ -265,8 +265,10 @@ pub struct Renamed {
     /// **Fix links** for it (`FileService::fix_links`).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub failed_links_in: Vec<FailedLink>,
-    /// Files whose rewritten links wait for the person's review (an agent's `fix_links` in a
-    /// folder under review, or outside the folders it may change).
+    /// Files whose rewritten links wait for the person's review: an agent's `fix_links` in a
+    /// folder under review or outside the folders it may change, or a rename or move by an agent
+    /// restricted by `--may-change` that changes links outside those folders. The move happened;
+    /// it stays unfinished until the proposals are accepted and `fix_links` runs again.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub proposed_links_in: Vec<ProposedLink>,
     /// Set when the rename is waiting for review rather than applied.
@@ -2122,7 +2124,7 @@ impl FileService {
             let _ = self.hist().moved_to(id, &out);
         }
         let version_id = self.hist().renamed(from, &out, source, actor).ok();
-        let (mut updated, mut failed) = (Vec::new(), Vec::new());
+        let (mut updated, mut failed, mut proposed) = (Vec::new(), Vec::new(), Vec::new());
 
         if let Some(old_set) = old_set {
             let new_paths: Vec<String> = all_paths.iter().map(|p| map_path(p)).collect();
@@ -2135,13 +2137,21 @@ impl FileService {
                 new_paths.iter().map(String::as_str),
                 new_aliases.iter().map(|(a, p)| (a.as_str(), p.as_str())),
             );
+            // An agent restricted by `--may-change` rewrites each note through the normal write
+            // path, as its `fix_links` does: notes outside the folders it may change get a proposal
+            // instead of a direct write. The app (and anyone unrestricted) writes directly; the
+            // folder rules were checked above, before anything moved.
+            let guarded = self.source() != Source::App && self.has_change_allowlist();
             let rewritten = self.rewrite_sources(
-                &old_set, &new_set, &sources, &moved, &map_path, source, actor, false,
+                &old_set, &new_set, &sources, &moved, &map_path, source, actor, guarded,
             );
-            (updated, failed) = (rewritten.updated, rewritten.failed);
+            (updated, failed, proposed) = (rewritten.updated, rewritten.failed, rewritten.proposed);
         }
+        // The move stays unfinished while a note couldn't be rewritten or waits for review, so
+        // `fix_links` can finish it once the person has accepted the proposals.
         if let Some(id) = journal
             && failed.is_empty()
+            && proposed.is_empty()
         {
             let _ = self.hist().finish_rename(id);
         }
@@ -2187,7 +2197,7 @@ impl FileService {
                 path: out,
                 updated_links_in: updated,
                 failed_links_in: failed,
-                proposed_links_in: vec![],
+                proposed_links_in: proposed,
                 review: None,
             },
             version_id,
@@ -2485,6 +2495,10 @@ impl FileService {
                 edits.sort_by_key(|e| std::cmp::Reverse(e.0.0));
                 for ((s, e), r) in edits {
                     t.replace_range(s..e, &r);
+                }
+                // A moved note's relative link can come out the same (its target moved with it).
+                if t == text {
+                    return Ok(unchanged());
                 }
                 t
             }
@@ -3340,6 +3354,169 @@ mod tests {
         assert_eq!(fixed.proposed_links_in[0].path, "Locked/Two.md");
         assert_eq!(disk(&d, "Locked/Two.md"), "See [[A]].");
         assert_eq!(w.files.unfinished_renames().unwrap().len(), 1);
+    }
+
+    const B0: &str = "See [A](../Daily/A.md) and [E](../Daily/Sub/E.md).";
+    const B_A2: &str = "See [A](../Daily/A2.md) and [E](../Daily/Sub/E.md).";
+
+    /// `Projects/B.md` links into `Daily` from outside it; `Daily/C.md` and `Daily/Sub/D.md` link
+    /// from inside. Returns the person's workspace and an agent's, restricted to `may_change`.
+    fn daily_vault(may_change: Option<&[&str]>) -> (tempfile::TempDir, Workspace, Workspace) {
+        let dir = tempfile::tempdir().unwrap();
+        for (p, c) in [
+            ("Daily/A.md", "# A"),
+            ("Daily/C.md", "See [[A]] and [E](Sub/E.md)."),
+            ("Daily/Sub/E.md", "# E"),
+            ("Daily/Sub/D.md", "Up: [A](../A.md)"),
+            ("Projects/B.md", B0),
+        ] {
+            let full = dir.path().join(p);
+            std::fs::create_dir_all(full.parent().unwrap()).unwrap();
+            std::fs::write(full, c).unwrap();
+        }
+        let db = dir.path().join(".history-test.db");
+        let open = || {
+            Workspace::with_history_file(
+                Vault::open(dir.path()).unwrap(),
+                Index::in_memory().unwrap(),
+                &db,
+            )
+        };
+        let person = open();
+        person.sync(|_, _| {}).unwrap();
+        let mut agent = open().with_source(Source::Agent);
+        if let Some(paths) = may_change {
+            agent = agent.with_change_allowlist(paths.iter().map(|p| p.to_string()).collect());
+        }
+        agent.sync(|_, _| {}).unwrap();
+        (dir, person, agent)
+    }
+
+    /// The restricted agent's move changed links in `Projects/B.md` only as a proposal, which the
+    /// result lists, and left the move unfinished.
+    fn proposed_for_b(d: &tempfile::TempDir, agent: &Workspace, r: &Renamed, before: &str) {
+        assert_eq!(disk(d, "Projects/B.md"), before, "{r:?}");
+        assert_eq!(r.proposed_links_in.len(), 1, "{r:?}");
+        assert_eq!(r.proposed_links_in[0].path, "Projects/B.md");
+        assert!(r.failed_links_in.is_empty(), "{r:?}");
+        let proposals = agent.review().list(false, 10).unwrap();
+        assert_eq!(proposals.len(), 1, "{proposals:?}");
+        assert_eq!(
+            (proposals[0].id, proposals[0].path.as_str()),
+            (r.proposed_links_in[0].review, "Projects/B.md")
+        );
+        assert_eq!(agent.files.unfinished_renames().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn a_restricted_agents_rename_proposes_link_changes_outside_its_allowlist() {
+        let (d, person, agent) = daily_vault(Some(&["Daily"]));
+        let r = agent
+            .files
+            .rename("Daily/A.md", "Daily/A2.md", true)
+            .unwrap();
+        assert_eq!(r.path, "Daily/A2.md");
+        assert_eq!(r.updated_links_in, vec!["Daily/C.md", "Daily/Sub/D.md"]);
+        assert_eq!(disk(&d, "Daily/C.md"), "See [[A2]] and [E](Sub/E.md).");
+        assert_eq!(disk(&d, "Daily/Sub/D.md"), "Up: [A](../A2.md)");
+        proposed_for_b(&d, &agent, &r, B0);
+        // The agent reads its proposal.
+        assert_eq!(text(&agent, "Projects/B.md"), B_A2);
+
+        // Once the person accepts, fix_links finishes the move.
+        person
+            .review()
+            .accept(r.proposed_links_in[0].review, false)
+            .unwrap();
+        assert_eq!(disk(&d, "Projects/B.md"), B_A2);
+        let id = agent.files.unfinished_renames().unwrap()[0].id;
+        let fixed = agent.files.fix_links(id).unwrap();
+        assert!(fixed.proposed_links_in.is_empty(), "{fixed:?}");
+        assert!(agent.files.unfinished_renames().unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_restricted_agents_move_and_folder_rename_propose_link_changes_outside_its_allowlist() {
+        let (d, _person, agent) = daily_vault(Some(&["Daily"]));
+        let moved = agent
+            .files
+            .move_into(&["Daily/A.md".to_string()], "Daily/Archive")
+            .unwrap();
+        assert_eq!(moved.len(), 1);
+        assert_eq!(moved[0].path, "Daily/Archive/A.md");
+        assert_eq!(moved[0].updated_links_in, vec!["Daily/Sub/D.md"]);
+        assert_eq!(disk(&d, "Daily/Sub/D.md"), "Up: [A](../Archive/A.md)");
+        proposed_for_b(&d, &agent, &moved[0], B0);
+        assert_eq!(
+            text(&agent, "Projects/B.md"),
+            "See [A](../Daily/Archive/A.md) and [E](../Daily/Sub/E.md)."
+        );
+
+        let (d, _person, agent) = daily_vault(Some(&["Daily"]));
+        let r = agent.files.rename("Daily/Sub", "Daily/Sub2", true).unwrap();
+        assert_eq!(r.path, "Daily/Sub2");
+        assert!(
+            r.updated_links_in.contains(&"Daily/C.md".to_string()),
+            "{r:?}"
+        );
+        assert!(disk(&d, "Daily/C.md").contains("[[A]]"));
+        assert!(!disk(&d, "Daily/C.md").contains("Sub/E"));
+        proposed_for_b(&d, &agent, &r, B0);
+        assert_eq!(
+            text(&agent, "Projects/B.md"),
+            "See [A](../Daily/A.md) and [E](../Daily/Sub2/E.md)."
+        );
+    }
+
+    #[test]
+    fn a_restricted_agents_rename_builds_on_its_pending_proposal() {
+        let (d, person, agent) = daily_vault(Some(&["Daily"]));
+        let first = agent
+            .files
+            .write(
+                "Projects/B.md",
+                "See [A](../Daily/A.md) and [E](../Daily/Sub/E.md).\nMore.",
+                None,
+            )
+            .unwrap()
+            .review
+            .expect("a proposal");
+        let r = agent
+            .files
+            .rename("Daily/A.md", "Daily/A2.md", true)
+            .unwrap();
+        // The same proposal now carries both changes; nothing is written outside Daily.
+        assert_eq!(r.proposed_links_in[0].review, first);
+        proposed_for_b(&d, &agent, &r, B0);
+        assert_eq!(
+            text(&agent, "Projects/B.md"),
+            "See [A](../Daily/A2.md) and [E](../Daily/Sub/E.md).\nMore."
+        );
+        person.review().accept(first, false).unwrap();
+        let id = agent.files.unfinished_renames().unwrap()[0].id;
+        agent.files.fix_links(id).unwrap();
+        assert!(agent.files.unfinished_renames().unwrap().is_empty());
+        assert_eq!(
+            disk(&d, "Projects/B.md"),
+            "See [A](../Daily/A2.md) and [E](../Daily/Sub/E.md).\nMore."
+        );
+    }
+
+    #[test]
+    fn an_unrestricted_agents_and_the_apps_renames_rewrite_links_directly() {
+        for app in [false, true] {
+            let (d, person, agent) = daily_vault(None);
+            let w = if app { &person } else { &agent };
+            let r = w.files.rename("Daily/A.md", "Daily/A2.md", true).unwrap();
+            assert!(r.proposed_links_in.is_empty(), "{r:?}");
+            assert_eq!(
+                r.updated_links_in,
+                vec!["Daily/C.md", "Daily/Sub/D.md", "Projects/B.md"]
+            );
+            assert_eq!(disk(&d, "Projects/B.md"), B_A2);
+            assert!(w.files.unfinished_renames().unwrap().is_empty());
+            assert!(w.review().list(false, 10).unwrap().is_empty());
+        }
     }
 
     #[test]

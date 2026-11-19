@@ -912,8 +912,10 @@ export type Renamed_Deserialize = {
 	 */
 	failed_links_in: FailedLink[],
 	/**
-	 *  Files whose rewritten links wait for the person's review (an agent's `fix_links` in a
-	 *  folder under review, or outside the folders it may change).
+	 *  Files whose rewritten links wait for the person's review: an agent's `fix_links` in a
+	 *  folder under review or outside the folders it may change, or a rename or move by an agent
+	 *  restricted by `--may-change` that changes links outside those folders. The move happened;
+	 *  it stays unfinished until the proposals are accepted and `fix_links` runs again.
 	 */
 	proposed_links_in: ProposedLink[],
 	/**  Set when the rename is waiting for review rather than applied. */
@@ -930,8 +932,10 @@ export type Renamed_Serialize = {
 	 */
 	failed_links_in?: FailedLink[],
 	/**
-	 *  Files whose rewritten links wait for the person's review (an agent's `fix_links` in a
-	 *  folder under review, or outside the folders it may change).
+	 *  Files whose rewritten links wait for the person's review: an agent's `fix_links` in a
+	 *  folder under review or outside the folders it may change, or a rename or move by an agent
+	 *  restricted by `--may-change` that changes links outside those folders. The move happened;
+	 *  it stays unfinished until the proposals are accepted and `fix_links` runs again.
 	 */
 	proposed_links_in?: ProposedLink[],
 	/**  Set when the rename is waiting for review rather than applied. */

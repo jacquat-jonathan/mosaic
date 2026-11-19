@@ -23,7 +23,7 @@ These follow the existing ~45 tools in `crates/mosaic-cli/src/mcp.rs`.
 | `create_` / `add_` | New item; never overwrites (`add_` for entries in an existing list) | `create_note`, `create_planner_task`, `add_bookmark` |
 | `update_` / `edit_` / `patch_` / `append_to_` | Change an existing item | `update_planner_task`, `edit_file`, `patch_file` |
 | `move_`, `complete_`, `reopen_`, `archive_`, `restore_`, `trash_`, `remove_` | One lifecycle step each | `move_planner_task`, `archive_planner_task` |
-| `set_` | Replace a setting or a flag | (planned: `set_vault_preferences`, `set_task`) |
+| `set_` | Replace a setting or a flag | `set_vault_preferences`, `set_template_config` (planned: `set_task`) |
 
 Objects the app owns in its planner database carry a `planner_` infix (`list_planner_epics`), which
 keeps them apart from Markdown tools: `tasks_by_day` and `carry_over` work on Markdown checkboxes,
@@ -40,8 +40,9 @@ small; otherwise add a `get_` beside the `list_`.
 **Arguments.** Input structs derive `Deserialize` + `JsonSchema`; field doc comments are the schema
 descriptions. Paths are vault-relative strings. Planner ids are UUID strings. Proposal and version ids
 are integers. Dates are `YYYY-MM-DD`, times RFC 3339. Writes take the concurrency token from the read
-that preceded them: `expected_hash` for files, `expected_revision` for planner objects, so an agent
-never overwrites a newer human edit.
+that preceded them: `expected_hash` for files, `expected_revision` for planner objects and for
+settings (a string: the hash of the stored setting, returned as `revision` by its `get_`), so an
+agent never overwrites a newer human edit.
 
 **Results.** Pretty JSON in one text block (`ok()`); errors are `{code, message}` with `isError`
 (`err()`). Writes that become proposals say so in the result (`REVIEW_NOTE`). Images are image blocks
@@ -65,17 +66,23 @@ per write:
 | Vault file write | `create_file`, `create_note`, `edit_file`, `patch_file`, `append_to_file`, `rename`, `move_files`, `copy_file`, `delete_file`, `create_folder`, `import_file`, `restore_version`, `carry_over` | Direct, unless the folder is read-only (refused) or in review (becomes a proposal) | Direct only inside the listed paths; elsewhere a proposal |
 | App-state write, scope `planner:` | `*_planner_task` (later: epics, events, work sessions, iCal import) | Direct | **Refused** (`denied`) unless `planner:` is listed; then direct |
 | App-state write, scope `bookmarks:` | `add_bookmark`, `remove_bookmark` | Direct | **Refused** unless `bookmarks:` is listed; then direct |
+| App-state write, scope `settings:` | `set_vault_preferences`, `set_template_config` | Direct | **Refused** unless `settings:` is listed; then direct |
 | Own proposals | `withdraw_proposal` | Any visible pending proposal | Only proposals this server session made or updated |
 
 **Scopes.** An allowlist entry ending in `:` names app data instead of a folder: `planner:` (the
-whole planner database: Board tasks and epics, calendar events, work sessions, iCal imports) and
-`bookmarks:`. Scopes are case-insensitive; an unknown one grants nothing (the CLI warns on stderr).
+whole planner database: Board tasks and epics, calendar events, work sessions, iCal imports),
+`bookmarks:` and `settings:` (the vault's preferences, folder colors included, and template
+defaults in settings.json; never the folder rules for agents, which no tool changes). Scopes are case-insensitive; an unknown one grants nothing (the CLI warns on stderr).
 App data can't be proposed for review, so under an allowlist the safe default is to refuse, not to
 write. The refusal's message names the scope and tells the agent not to retry and to tell the person
 instead. Scheduled agents always run with an allowlist (an agent with no `may-change` gets a marker
 that allows no folders), so they never change app data unless the person opts in: the workflow
 form's "Can change Board and calendar" switch writes `planner:` into the agent's `may-change`
-(`- "planner:"`; an unquoted `- planner:` is read the same way).
+(`- "planner:"`; an unquoted `- planner:` is read the same way). There is no switch for
+`settings:`: changing vault settings is something a person asks for in a conversation (an
+interactive client has no allowlist), not a job for a schedule. A person who wants a workflow to do
+it writes `- "settings:"` in its `may-change`; the front matter, the workflow form (which keeps
+scopes it has no switch for) and the app's pass-through to `--may-change` all carry it.
 
 **Where it is enforced.** In core, so the CLI and every MCP tool get it without extra code:
 `Workspace::with_change_allowlist` parses the scopes, `Context::check_app_write(AppScope::…)` refuses,
@@ -104,7 +111,9 @@ for an agent must do the same.
 - `accept_proposal`, `reject_proposal`: an agent would be approving its own work. Core already refuses
   them for agents (`person_only`). Agents see outcomes with `list_proposals` and may withdraw their
   own with `withdraw_proposal`.
-- `set_agent_rules`: an agent would be changing its own folder permissions. Reading them is planned.
+- `set_agent_rules`: an agent would be changing its own folder permissions. Agents read them with
+  `get_agent_rules`, which leaves out rules on or inside hidden folders (it only counts them) so
+  their names don't leak.
 - `tessera_set_max_chain_depth`: the limit on agents triggering agents is a permission too; an agent
   could raise its own runaway limit.
 
@@ -133,9 +142,22 @@ rows below from `planned` to the tool names, adds tests, and updates the README 
    (preview, import, export as text).
 2. **M3 Planner rest.** Summary, activity feed, epic writes (create, update, archive, restore, trash),
    and export (backup content as returned JSON/CSV).
-3. **M5 Settings.** Vault preference writes, template configuration and starters, and reading agent
-   folder rules. `get_vault_preferences` currently says only the person configures preferences; this
-   slice changes that and must update its description and `docs/AGENTS.md`.
+3. **M5 Settings (done).** `set_vault_preferences`, `get_template_config`, `set_template_config`,
+   `list_template_starters` and `get_agent_rules` (read only), under the `settings:` scope. Core:
+   `Workspace::revised_vault_preferences`, `change_vault_preferences`, `revised_template_config`,
+   `change_template_config` and `agent_rules_view`; the app keeps its own `set_vault_preferences` and
+   `set_template_config`, which refuse every other source.
+   - **Preferences agents can't set** (`preferences::AGENT_PREFERENCES` lists those they can):
+     `agents_folder`, because scheduled agents and their `may-change` are read from it, so an agent
+     that moved it to a folder it may write could grant itself permissions; `allow_html_scripts` and
+     `allow_html_internet`, the HTML preview sandbox's security; `version` and `legacy_migrated`,
+     bookkeeping; and keys a newer Mosaic wrote.
+   - **Folder colors** are merged per folder (`null` removes one), so an agent never needs, or
+     erases, colors of folders hidden from it; reads leave those out.
+   - **Template rules** for folders or templates hidden from the agent are left out of
+     `get_template_config` and kept by `set_template_config`. When the templates folder itself is
+     hidden, both are refused.
+   - Paths an agent names that are hidden from it read as `not_found`, like a read.
 4. **M6 Links, index and tasks.** Index health and rebuild, Markdown task ticking and workflow state,
    aliases, unlinked mentions and linking them, link repair after interrupted renames, reading an old
    version, AI activity, and `undo_change` (an agent's undo goes through review like any write).
@@ -249,14 +271,14 @@ names in Notes are proposals for the slice, not commitments.
 | `list_dir` | `list_files` | |
 | `read_file` | `read_file` | |
 | `create_file` | `create_file` | |
-| `template_config` | planned (M5) | `get_template_config` |
+| `template_config` | `get_template_config` | |
 | `vault_preferences` | `get_vault_preferences` | |
-| `set_vault_preferences` | planned (M5) | `set_vault_preferences` |
-| `set_template_config` | planned (M5) | `set_template_config` |
+| `set_vault_preferences` | `set_vault_preferences` | |
+| `set_template_config` | `set_template_config` | |
 | `list_templates` | `list_templates` | |
 | `render_template` | `render_template` | |
 | `create_note` | `create_note` | |
-| `template_starters` | planned (M5) | `list_template_starters` |
+| `template_starters` | `list_template_starters` | |
 | `write_file` | `edit_file`, `patch_file`, `append_to_file` | |
 | `make_dir` | `create_folder` | |
 | `rename_path` | `rename`, `move_files` | |
@@ -265,7 +287,7 @@ names in Notes are proposals for the slice, not commitments.
 | `unlinked_mentions` | planned (M6) | `list_unlinked_mentions` |
 | `print_window` | excluded (window: printing) | |
 | `link_mention` | planned (M6) | `link_mention` |
-| `get_agent_rules` | planned (M5) | `get_agent_rules`, read only |
+| `get_agent_rules` | `get_agent_rules` | read only; rules in hidden folders are only counted |
 | `set_agent_rules` | excluded (hard: an agent would change its own permissions) | |
 | `version_content` | planned (M6) | `read_version` |
 | `restore_version` | `restore_version` | |

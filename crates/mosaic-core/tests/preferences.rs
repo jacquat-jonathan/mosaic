@@ -111,3 +111,238 @@ fn vault_preferences_are_scoped_preserved_and_used_by_the_core() {
         99
     );
 }
+
+/// Runs `test` in a child process with its own settings folder (see above).
+fn isolated(name: &str) -> bool {
+    if std::env::var_os("MOSAIC_PREFERENCES_TEST_CHILD").is_some() {
+        return true;
+    }
+    let settings = tempfile::tempdir().unwrap();
+    let output = std::process::Command::new(std::env::current_exe().unwrap())
+        .args(["--exact", name, "--nocapture"])
+        .env("MOSAIC_PREFERENCES_TEST_CHILD", "1")
+        .env("MOSAIC_SETTINGS_DIR", settings.path())
+        .env("MOSAIC_CACHE_DIR", settings.path().join("cache"))
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    false
+}
+
+fn hidden(path: &str) -> mosaic_core::settings::AgentRule {
+    mosaic_core::settings::AgentRule {
+        path: path.into(),
+        access: mosaic_core::settings::Access::Hidden,
+        written_as: None,
+    }
+}
+
+#[test]
+fn agents_change_vault_preferences_with_scope_revision_and_app_rules() {
+    if !isolated("agents_change_vault_preferences_with_scope_revision_and_app_rules") {
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let app = Workspace::open(dir.path()).unwrap();
+    app.set_vault_preferences(json!({"folder_colors":{"Private":"red","Projects":"green"}}))
+        .unwrap();
+    let agent = || {
+        Workspace::open(dir.path())
+            .unwrap()
+            .with_source(Source::Agent)
+            .with_agent_rules(vec![hidden("Private")])
+    };
+    let a = agent();
+    let read = a.revised_vault_preferences().unwrap();
+    // A hidden folder's color isn't shown, so its name doesn't leak.
+    assert_eq!(read.value.folder_colors.len(), 1);
+    assert_eq!(read.value.folder_colors["Projects"], "green");
+
+    // Under an allowlist without `settings:`, refused before anything changes.
+    let restricted = agent().with_change_allowlist(vec!["Daily".into(), "planner:".into()]);
+    let e = restricted
+        .change_vault_preferences(json!({"link_style":"markdown"}), &read.revision)
+        .unwrap_err();
+    assert_eq!(e.code(), "denied");
+    assert!(e.to_string().contains("`settings:`"));
+    assert_eq!(app.vault_preferences().unwrap().link_style, "wiki");
+
+    // With it (or with no allowlist), applied; folder colors merge per folder.
+    let allowed = agent().with_change_allowlist(vec!["Daily".into(), "Settings:".into()]);
+    let changed = allowed
+        .change_vault_preferences(
+            json!({"link_style":"markdown","folder_colors":{"Projects":null,"Areas":"blue"}}),
+            &read.revision,
+        )
+        .unwrap();
+    assert_ne!(changed.revision, read.revision);
+    let stored = app.vault_preferences().unwrap();
+    assert_eq!(stored.link_style, "markdown");
+    assert_eq!(
+        stored.folder_colors,
+        [("Areas", "blue"), ("Private", "red")]
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
+    );
+    assert_eq!(changed.value.folder_colors.len(), 1);
+
+    // A revision read before the change is stale.
+    let e = a
+        .change_vault_preferences(json!({"link_style":"wiki"}), &read.revision)
+        .unwrap_err();
+    assert_eq!(e.code(), "conflict");
+    assert_eq!(app.vault_preferences().unwrap().link_style, "markdown");
+    let now = a.revised_vault_preferences().unwrap().revision;
+    assert_eq!(now, changed.revision);
+
+    // The app's validation, and the preferences agents can't set.
+    for (patch, code) in [
+        (json!({"folder_colors":{"Areas":"pink"}}), "invalid"),
+        (json!({"daily_format":"MM/DD"}), "invalid"),
+        (json!({"daily_folder":"../outside"}), "invalid_path"),
+        (json!({"agents_folder":"Daily"}), "invalid"),
+        (json!({"allow_html_scripts":true}), "invalid"),
+        (json!({"allow_html_internet":true}), "invalid"),
+        (json!({"future":1}), "invalid"),
+        (json!({}), "invalid"),
+        (json!({"folder_colors":{"Private":null}}), "not_found"),
+        (json!({"daily_folder":"Private/Days"}), "not_found"),
+    ] {
+        let e = a.change_vault_preferences(patch.clone(), &now).unwrap_err();
+        assert_eq!(e.code(), code, "{patch}: {e}");
+    }
+    let stored = app.vault_preferences().unwrap();
+    assert_eq!(stored.agents_folder, "Agents");
+    assert!(!stored.allow_html_scripts);
+    assert_eq!(stored.folder_colors["Private"], "red");
+    assert_eq!(a.revised_vault_preferences().unwrap().revision, now);
+}
+
+#[test]
+fn agents_change_template_defaults_and_read_but_never_write_folder_rules() {
+    if !isolated("agents_change_template_defaults_and_read_but_never_write_folder_rules") {
+        return;
+    }
+    use mosaic_core::templates::{TemplateConfig, TemplateRule};
+    let dir = tempfile::tempdir().unwrap();
+    let app = Workspace::open(dir.path()).unwrap();
+    let rule = |folder: &str, template: Option<&str>| TemplateRule {
+        folder: folder.into(),
+        template: template.map(str::to_string),
+    };
+    app.set_template_config(TemplateConfig {
+        rules: vec![
+            rule("Meetings", Some("Templates/Meeting.md")),
+            rule("Private", Some("Templates/Secret.md")),
+        ],
+        ..Default::default()
+    })
+    .unwrap();
+    let agent = || {
+        Workspace::open(dir.path())
+            .unwrap()
+            .with_source(Source::Agent)
+            .with_agent_rules(vec![
+                hidden("Private"),
+                hidden("Templates/Secret.md"),
+                mosaic_core::settings::AgentRule {
+                    path: "Archive".into(),
+                    access: mosaic_core::settings::Access::ReadOnly,
+                    written_as: None,
+                },
+                mosaic_core::settings::AgentRule {
+                    path: "Private/Notes".into(),
+                    access: mosaic_core::settings::Access::ReadOnly,
+                    written_as: None,
+                },
+            ])
+    };
+    let a = agent();
+    let read = a.revised_template_config().unwrap();
+    assert_eq!(
+        read.value.rules,
+        vec![rule("Meetings", Some("Templates/Meeting.md"))]
+    );
+
+    let wanted = TemplateConfig {
+        rules: vec![
+            rule("Projects", Some("Templates/Project.md")),
+            rule("Inbox", None),
+        ],
+        ..Default::default()
+    };
+    let e = agent()
+        .with_change_allowlist(vec!["Daily".into()])
+        .change_template_config(wanted.clone(), &read.revision)
+        .unwrap_err();
+    assert_eq!(e.code(), "denied");
+    assert!(e.to_string().contains("`settings:`"));
+
+    let changed = agent()
+        .with_change_allowlist(vec!["settings:".into()])
+        .change_template_config(wanted.clone(), &read.revision)
+        .unwrap();
+    assert_eq!(changed.value.rules, wanted.rules);
+    // The rule the agent can't see is kept.
+    let stored = app.template_config().unwrap();
+    assert_eq!(stored.rules.len(), 3);
+    assert!(
+        stored
+            .rules
+            .contains(&rule("Private", Some("Templates/Secret.md")))
+    );
+
+    assert_eq!(
+        a.change_template_config(wanted.clone(), &read.revision)
+            .unwrap_err()
+            .code(),
+        "conflict"
+    );
+    let now = changed.revision;
+    for (config, code) in [
+        (
+            TemplateConfig {
+                rules: vec![rule("Projects", Some("Elsewhere/Project.md"))],
+                ..Default::default()
+            },
+            "invalid",
+        ),
+        (
+            TemplateConfig {
+                rules: vec![rule("A", None), rule("a", None)],
+                ..Default::default()
+            },
+            "invalid",
+        ),
+        (
+            TemplateConfig {
+                folder: String::new(),
+                ..Default::default()
+            },
+            "invalid_path",
+        ),
+        (
+            TemplateConfig {
+                rules: vec![rule("Private/Sub", None)],
+                ..Default::default()
+            },
+            "not_found",
+        ),
+    ] {
+        let e = a.change_template_config(config, &now).unwrap_err();
+        assert_eq!(e.code(), code, "{e}");
+    }
+    assert_eq!(a.revised_template_config().unwrap().revision, now);
+
+    // Folder rules: readable, minus the ones that would name a hidden folder.
+    let view = a.agent_rules_view().unwrap();
+    let paths: Vec<&str> = view.rules.iter().map(|r| r.path.as_str()).collect();
+    assert_eq!(paths, ["Archive"]);
+    assert_eq!(view.hidden_rules, 3);
+}

@@ -225,6 +225,11 @@ fn every_tool_works_end_to_end() {
     for expected in [
         "vault_guide",
         "get_vault_preferences",
+        "set_vault_preferences",
+        "get_template_config",
+        "set_template_config",
+        "list_template_starters",
+        "get_agent_rules",
         "list_files",
         "read_file",
         "outline",
@@ -656,7 +661,153 @@ fn the_lazy_first_open_keeps_the_may_change_restriction() {
     assert!(err && refused["code"] == "denied", "{refused}");
 }
 
-/// Under `--may-change`, app-state writes (planner, bookmarks) are refused unless the allowlist
+/// Vault preferences (folder colors included) and template defaults: read with a revision, changed
+/// with the app's validation, a stale revision is a conflict, and folders hidden from agents don't
+/// leak. Folder rules are readable, and no tool changes them.
+#[test]
+fn settings_tools_change_preferences_and_templates_and_only_read_folder_rules() {
+    let dir = fixture();
+    let root = std::fs::canonicalize(dir.path()).unwrap();
+    std::fs::create_dir_all(root.join("Templates")).unwrap();
+    std::fs::write(root.join("Templates/Meeting.md"), "# {{title}}\n").unwrap();
+    let settings = root.join(".test-settings");
+    std::fs::create_dir_all(&settings).unwrap();
+    let key = root.to_str().unwrap();
+    let config = json!({
+        "vault_preferences": { key: { "folder_colors": { "Private": "red" } } },
+        "templates": { key: { "version": 1, "folder": "Templates", "rules": [
+            { "folder": "Private", "template": null }
+        ] } },
+        "agent_rules": { key: [
+            { "path": "Private", "access": "hidden" },
+            { "path": "Private/Inner", "access": "read-only" },
+            { "path": "Archive", "access": "read-only" },
+            { "path": "Inbox", "access": "review" }
+        ] }
+    });
+    std::fs::write(settings.join("settings.json"), config.to_string()).unwrap();
+    let stored = || -> Value {
+        serde_json::from_str(&std::fs::read_to_string(settings.join("settings.json")).unwrap())
+            .unwrap()
+    };
+    let mut c = Client::start(&root);
+
+    // Preferences.
+    let (err, prefs) = c.call("get_vault_preferences", json!({}));
+    assert!(!err, "{prefs}");
+    assert_eq!(prefs["folder_colors"], json!({}));
+    assert!(!prefs.to_string().contains("Private"), "{prefs}");
+    let revision = prefs["revision"].clone();
+    let (err, changed) = c.call(
+        "set_vault_preferences",
+        json!({ "patch": { "folder_colors": { "Projects": "blue" }, "daily_notes_enabled": true },
+                "expected_revision": revision }),
+    );
+    assert!(!err, "{changed}");
+    assert_eq!(changed["folder_colors"], json!({ "Projects": "blue" }));
+    assert_eq!(changed["daily_notes_enabled"], true);
+    assert_eq!(
+        stored()["vault_preferences"][key]["folder_colors"],
+        json!({ "Private": "red", "Projects": "blue" })
+    );
+    let (err, stale) = c.call(
+        "set_vault_preferences",
+        json!({ "patch": { "link_style": "markdown" }, "expected_revision": revision }),
+    );
+    assert!(err && stale["code"] == "conflict", "{stale}");
+    for (patch, code) in [
+        (
+            json!({ "folder_colors": { "Projects": "teal" } }),
+            "invalid",
+        ),
+        (json!({ "link_style": "html" }), "invalid"),
+        (json!({ "agents_folder": "Inbox" }), "invalid"),
+        (json!({ "allow_html_internet": true }), "invalid"),
+        (json!({ "folder_colors": { "Private": null } }), "not_found"),
+    ] {
+        let (err, refused) = c.call(
+            "set_vault_preferences",
+            json!({ "patch": patch, "expected_revision": changed["revision"] }),
+        );
+        assert!(err && refused["code"] == code, "{patch}: {refused}");
+    }
+    assert_eq!(stored()["vault_preferences"][key]["link_style"], "wiki");
+
+    // Template defaults and starters.
+    let (err, starters) = c.call("list_template_starters", json!({}));
+    assert!(!err, "{starters}");
+    assert!(
+        starters
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|s| s["name"] == "Meeting.md"
+                && s["content"].as_str().unwrap().contains("{{title}}"))
+    );
+    let (err, templates) = c.call("get_template_config", json!({}));
+    assert!(!err, "{templates}");
+    assert_eq!(templates["rules"], json!([]));
+    let (err, changed) = c.call(
+        "set_template_config",
+        json!({ "folder": "Templates",
+                "rules": [{ "folder": "Meetings", "template": "Templates/Meeting.md" }],
+                "expected_revision": templates["revision"] }),
+    );
+    assert!(!err, "{changed}");
+    assert_eq!(
+        stored()["templates"][key]["rules"],
+        json!([
+            { "folder": "Meetings", "template": "Templates/Meeting.md" },
+            { "folder": "Private", "template": null }
+        ])
+    );
+    let (err, list) = c.call("list_templates", json!({ "path": "Meetings/Weekly.md" }));
+    assert!(!err, "{list}");
+    assert_eq!(list["default"]["template"], "Templates/Meeting.md");
+    let (err, stale) = c.call(
+        "set_template_config",
+        json!({ "folder": "Templates", "rules": [], "expected_revision": templates["revision"] }),
+    );
+    assert!(err && stale["code"] == "conflict", "{stale}");
+    let (err, refused) = c.call(
+        "set_template_config",
+        json!({ "folder": "Templates",
+                "rules": [{ "folder": "Meetings", "template": "Elsewhere/Meeting.md" }],
+                "expected_revision": changed["revision"] }),
+    );
+    assert!(err && refused["code"] == "invalid", "{refused}");
+
+    // Folder rules: readable without the hidden ones, and nothing can change them.
+    let (err, rules) = c.call("get_agent_rules", json!({}));
+    assert!(!err, "{rules}");
+    assert_eq!(
+        rules,
+        json!({ "rules": [
+            { "path": "Archive", "access": "read-only" },
+            { "path": "Inbox", "access": "review" }
+        ], "hidden_rules": 2 })
+    );
+    let tools = c.request("tools/list", json!({}));
+    let rule_writers: Vec<&str> = tools["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t["name"].as_str().unwrap())
+        .filter(|n| n.contains("rule") && *n != "get_agent_rules")
+        .collect();
+    assert_eq!(rule_writers, Vec::<&str>::new());
+    let res = c.request(
+        "tools/call",
+        json!({ "name": "set_agent_rules", "arguments": { "rules": [] } }),
+    );
+    assert!(
+        !res["error"].is_null() || res["result"]["isError"] == true,
+        "{res}"
+    );
+    assert_eq!(stored()["agent_rules"], config["agent_rules"]);
+}
+
+/// Under `--may-change`, app-state writes (planner, bookmarks, settings) are refused unless the allowlist
 /// names their scope; reads and withdrawing the agent's own proposals still work.
 #[test]
 fn app_state_writes_need_their_scope_under_may_change() {
@@ -686,6 +837,22 @@ fn app_state_writes_need_their_scope_under_may_change() {
     );
     let (err, refused) = c.call("remove_bookmark", json!({ "path": "Note.md" }));
     assert!(err && refused["code"] == "denied", "{refused}");
+    let (_, prefs) = c.call("get_vault_preferences", json!({}));
+    let (err, refused) = c.call(
+        "set_vault_preferences",
+        json!({ "patch": { "link_style": "markdown" }, "expected_revision": prefs["revision"] }),
+    );
+    assert!(err && refused["code"] == "denied", "{refused}");
+    assert!(
+        refused["message"].as_str().unwrap().contains("`settings:`"),
+        "{refused}"
+    );
+    let (_, templates) = c.call("get_template_config", json!({}));
+    let (err, refused) = c.call(
+        "set_template_config",
+        json!({ "folder": "Templates", "rules": [], "expected_revision": templates["revision"] }),
+    );
+    assert!(err && refused["code"] == "denied", "{refused}");
     let (err, tasks) = c.call("list_planner_tasks", json!({}));
     assert!(!err, "{tasks}");
     assert_eq!(tasks, json!([]));
@@ -704,8 +871,19 @@ fn app_state_writes_need_their_scope_under_may_change() {
         Some(&vault),
         &settings,
         &cache,
-        &["Daily", "planner:", "bookmarks:"],
+        &["Daily", "planner:", "bookmarks:", "settings:"],
     );
+    let (err, prefs) = c.call(
+        "set_vault_preferences",
+        json!({ "patch": { "link_style": "markdown" }, "expected_revision": prefs["revision"] }),
+    );
+    assert!(!err, "{prefs}");
+    assert_eq!(prefs["link_style"], "markdown");
+    let (err, templates) = c.call(
+        "set_template_config",
+        json!({ "folder": "Templates", "rules": [], "expected_revision": templates["revision"] }),
+    );
+    assert!(!err, "{templates}");
     let (err, task) = c.call("create_planner_task", json!({ "title": "T" }));
     assert!(!err, "{task}");
     let (err, task) = c.call(

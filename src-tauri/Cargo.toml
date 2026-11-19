@@ -40,7 +40,7 @@ specta-typescript = "=0.0.12"
 objc2-foundation = { version = "0.3", features = ["NSUserDefaults", "NSString", "NSArray", "NSData"] }
 # Drag pasteboard access for dragging tree items out to Finder (src/drag_out.rs). Pinned to the
 # versions Tauri's own macOS stack already uses.
-objc2 = "=0.6.4"
+objc2 = "=0.6.5"
 objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["std", "NSPasteboard", "NSPasteboardItem"] }
 
 [dev-dependencies]

@@ -271,7 +271,9 @@ write the annotation by hand.
   stopped half-way), the move shows up in `list_unfinished_renames`; `fix_links` finishes it. Notes it
   can't change are in `failed_links_in`; notes in folders the person reviews are in
   `proposed_links_in`, and the move stays unfinished until the person accepts them and you run
-  `fix_links` again.
+  `fix_links` again. A workflow limited by `may-change` that renames or moves a note gets the same
+  result: links in notes outside its folders are proposed, not changed, and listed in
+  `proposed_links_in`; the move itself happens.
 
 ## History and undo
 

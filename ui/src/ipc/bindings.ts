@@ -808,6 +808,12 @@ export type Proposal = {
 	update_links?: boolean,
 };
 
+export type ProposedLink = {
+	path: string,
+	/**  The proposal waiting for the person's review. */
+	review: number,
+};
+
 export type QueryResult = QueryResult_Serialize | QueryResult_Deserialize;
 
 export type QueryResult_Deserialize = {
@@ -905,6 +911,11 @@ export type Renamed_Deserialize = {
 	 *  **Fix links** for it (`FileService::fix_links`).
 	 */
 	failed_links_in: FailedLink[],
+	/**
+	 *  Files whose rewritten links wait for the person's review (an agent's `fix_links` in a
+	 *  folder under review, or outside the folders it may change).
+	 */
+	proposed_links_in: ProposedLink[],
 	/**  Set when the rename is waiting for review rather than applied. */
 	review: number | null,
 };
@@ -918,6 +929,11 @@ export type Renamed_Serialize = {
 	 *  **Fix links** for it (`FileService::fix_links`).
 	 */
 	failed_links_in?: FailedLink[],
+	/**
+	 *  Files whose rewritten links wait for the person's review (an agent's `fix_links` in a
+	 *  folder under review, or outside the folders it may change).
+	 */
+	proposed_links_in?: ProposedLink[],
 	/**  Set when the rename is waiting for review rather than applied. */
 	review?: number | null,
 };

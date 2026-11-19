@@ -1829,7 +1829,7 @@ fn hidden_notes_stay_hidden_from_link_task_and_history_tools() {
     );
     let not_found = |(err, payload): (bool, Value)| {
         assert!(err && payload["code"] == "not_found", "{payload}");
-        assert!(!payload.to_string().contains("current_hash"), "{payload}");
+        assert!(payload["current_hash"].is_null(), "{payload}");
     };
     not_found(c.call(
         "list_unlinked_mentions",

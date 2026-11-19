@@ -4,6 +4,7 @@
 mod calendar;
 mod epics;
 mod export;
+pub use export::PlannerExportSnapshot;
 mod ical;
 mod recurrence;
 mod schema;
@@ -552,6 +553,38 @@ impl PlannerStore {
             .collect::<std::result::Result<_, _>>()
             .map_err(sql_error)
     }
+
+    /// Activity newest first, at most `limit` entries with an id below `before_id`: the whole
+    /// planner's, one kind's (`entity_kind`), or one item's (`entity_kind` and `entity_id`).
+    pub fn activity_page(
+        &self,
+        entity_kind: Option<&str>,
+        entity_id: Option<&str>,
+        before_id: Option<i64>,
+        limit: usize,
+    ) -> Result<Vec<ActivityEntry>> {
+        if entity_id.is_some() && entity_kind.is_none() {
+            return Err(Error::Invalid(
+                "an activity entity_id needs its entity_kind".into(),
+            ));
+        }
+        let mut stmt = self
+            .conn
+            .prepare(&format!(
+                "{ACTIVITY_SELECT} WHERE (?1 IS NULL OR entity_kind = ?1)
+                    AND (?2 IS NULL OR entity_id = ?2) AND (?3 IS NULL OR id < ?3)
+                 ORDER BY id DESC LIMIT ?4"
+            ))
+            .map_err(sql_error)?;
+        let limit = i64::try_from(limit).unwrap_or(i64::MAX);
+        stmt.query_map(
+            params![entity_kind, entity_id, before_id, limit],
+            activity_row,
+        )
+        .map_err(sql_error)?
+        .collect::<std::result::Result<_, _>>()
+        .map_err(sql_error)
+    }
 }
 
 pub(super) const ACTIVITY_SELECT: &str = "SELECT id, entity_kind, entity_id, occurred_at, action,
@@ -595,6 +628,17 @@ impl PlannerService {
 
     pub fn activity(&self, entity_kind: &str, entity_id: &str) -> Result<Vec<ActivityEntry>> {
         self.store()?.activity(entity_kind, entity_id)
+    }
+
+    pub fn activity_page(
+        &self,
+        entity_kind: Option<&str>,
+        entity_id: Option<&str>,
+        before_id: Option<i64>,
+        limit: usize,
+    ) -> Result<Vec<ActivityEntry>> {
+        self.store()?
+            .activity_page(entity_kind, entity_id, before_id, limit)
     }
 }
 

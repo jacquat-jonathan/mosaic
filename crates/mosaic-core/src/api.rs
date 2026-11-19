@@ -117,6 +117,9 @@ pub struct Revised<T> {
     #[serde(flatten)]
     pub value: T,
     pub revision: String,
+    /// Settings left out (blank) because they name a path hidden from the agent.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub hidden: Vec<String>,
 }
 
 /// The vault's folder rules as an agent sees them (`Workspace::agent_rules_view`).
@@ -983,16 +986,35 @@ impl Workspace {
             .other
             .entry("legacy_migrated".into())
             .or_insert(serde_json::Value::Bool(raw.is_some()));
+        let mut hidden = Vec::new();
+        let p = &mut preferences;
+        for (key, path) in [
+            ("agents_folder", &mut p.agents_folder),
+            ("daily_folder", &mut p.daily_folder),
+            ("daily_template", &mut p.daily_template),
+            ("new_note_folder", &mut p.new_note_folder),
+            ("attachment_folder", &mut p.attachment_folder),
+            ("startup_note", &mut p.startup_note),
+        ] {
+            if !path.is_empty() && !self.agent_sees(path)? {
+                path.clear();
+                hidden.push(key.to_string());
+            }
+        }
         let mut colors = std::mem::take(&mut preferences.folder_colors);
         for folder in colors.keys().cloned().collect::<Vec<_>>() {
             if !self.agent_sees(&folder)? {
                 colors.remove(&folder);
+                if !hidden.iter().any(|h| h == "folder_colors") {
+                    hidden.push("folder_colors".into());
+                }
             }
         }
         preferences.folder_colors = colors;
         Ok(Revised {
             value: preferences,
             revision: settings_revision(raw),
+            hidden,
         })
     }
 
@@ -1117,15 +1139,19 @@ impl Workspace {
         let (mut config, revision) = (stored_template_config(raw)?, settings_revision(raw));
         self.check_templates_folder(&config)?;
         let mut visible = Vec::new();
+        let mut hidden = Vec::new();
         for rule in config.rules {
             if !self.template_rule_hidden(&rule)? {
                 visible.push(rule);
+            } else if hidden.is_empty() {
+                hidden.push("rules".to_string());
             }
         }
         config.rules = visible;
         Ok(Revised {
             value: config,
             revision,
+            hidden,
         })
     }
 
@@ -1163,6 +1189,13 @@ impl Workspace {
                 let mut merged = config.clone();
                 for rule in stored.rules {
                     if self.template_rule_hidden(&rule)? {
+                        // Their templates live in the templates folder: moving it would break
+                        // rules the agent can't see or fix.
+                        if !stored.folder.eq_ignore_ascii_case(&config.folder) {
+                            return Err(Error::Denied(
+                                "Some template defaults are for folders hidden from you, so only the person can move the templates folder (Settings › Templates)".into(),
+                            ));
+                        }
                         merged.rules.push(rule);
                     }
                 }
@@ -1174,12 +1207,19 @@ impl Workspace {
                     .map_err(|e| Error::Invalid(e.to_string()))
                     .map(|v| (m, v))
             }) {
-                Ok((_, value)) => {
+                Ok((m, value)) => {
+                    let merged_hidden = m.rules.len() > config.rules.len();
                     let revision = settings_revision(Some(&value));
                     s.templates.insert(self.vault.root().to_path_buf(), value);
+                    let hidden = if merged_hidden {
+                        vec!["rules".to_string()]
+                    } else {
+                        Vec::new()
+                    };
                     outcome = Some(Ok(Revised {
                         value: config.clone(),
                         revision,
+                        hidden,
                     }));
                     Ok(((), true))
                 }

@@ -149,8 +149,12 @@ fn agents_change_vault_preferences_with_scope_revision_and_app_rules() {
     }
     let dir = tempfile::tempdir().unwrap();
     let app = Workspace::open(dir.path()).unwrap();
-    app.set_vault_preferences(json!({"folder_colors":{"Private":"red","Projects":"green"}}))
-        .unwrap();
+    app.set_vault_preferences(json!({
+        "folder_colors":{"Private":"red","Projects":"green"},
+        "startup_note":"Private/Diary.md",
+        "new_note_folder":"Inbox"
+    }))
+    .unwrap();
     let agent = || {
         Workspace::open(dir.path())
             .unwrap()
@@ -162,6 +166,11 @@ fn agents_change_vault_preferences_with_scope_revision_and_app_rules() {
     // A hidden folder's color isn't shown, so its name doesn't leak.
     assert_eq!(read.value.folder_colors.len(), 1);
     assert_eq!(read.value.folder_colors["Projects"], "green");
+    // Nor a hidden path preference: blank, and named in `hidden`.
+    assert_eq!(read.value.startup_note, "");
+    assert_eq!(read.value.new_note_folder, "Inbox");
+    assert_eq!(read.hidden, ["startup_note", "folder_colors"]);
+    assert!(!serde_json::to_string(&read).unwrap().contains("Private"));
 
     // Under an allowlist without `settings:`, refused before anything changes.
     let restricted = agent().with_change_allowlist(vec!["Daily".into(), "planner:".into()]);
@@ -221,6 +230,7 @@ fn agents_change_vault_preferences_with_scope_revision_and_app_rules() {
     assert_eq!(stored.agents_folder, "Agents");
     assert!(!stored.allow_html_scripts);
     assert_eq!(stored.folder_colors["Private"], "red");
+    assert_eq!(stored.startup_note, "Private/Diary.md");
     assert_eq!(a.revised_vault_preferences().unwrap().revision, now);
 }
 
@@ -339,6 +349,39 @@ fn agents_change_template_defaults_and_read_but_never_write_folder_rules() {
         assert_eq!(e.code(), code, "{e}");
     }
     assert_eq!(a.revised_template_config().unwrap().revision, now);
+
+    // Hidden rules' templates live in the templates folder, so the agent can't move it.
+    let moved = TemplateConfig {
+        folder: "Blueprints".into(),
+        ..Default::default()
+    };
+    let e = a.change_template_config(moved, &now).unwrap_err();
+    assert_eq!(e.code(), "denied");
+    assert!(!e.to_string().contains("Secret"), "{e}");
+    assert!(!e.to_string().contains("Private"), "{e}");
+    assert_eq!(a.revised_template_config().unwrap().revision, now);
+
+    // A templates folder hidden from the agent hides its defaults: neither read nor changed.
+    let blind = Workspace::open(dir.path())
+        .unwrap()
+        .with_source(Source::Agent)
+        .with_agent_rules(vec![hidden("Templates")]);
+    assert_eq!(
+        blind.revised_template_config().unwrap_err().code(),
+        "denied"
+    );
+    let e = blind
+        .change_template_config(
+            TemplateConfig {
+                folder: "Blueprints".into(),
+                ..Default::default()
+            },
+            &now,
+        )
+        .unwrap_err();
+    assert_eq!(e.code(), "denied", "{e}");
+    assert_eq!(a.revised_template_config().unwrap().revision, now);
+    assert_eq!(app.template_config().unwrap().folder, "Templates");
 
     // Folder rules: readable, minus the ones that would name a hidden folder.
     let view = a.agent_rules_view().unwrap();

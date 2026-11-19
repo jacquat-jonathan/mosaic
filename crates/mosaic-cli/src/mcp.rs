@@ -994,7 +994,7 @@ impl MosaicMcp {
             .and_then(ok)
     }
     #[tool(
-        description = "Read vault-scoped preferences from Settings: agents and daily folders, daily filename format, where new notes and attachments go, generated link syntax, startup note and folder colors, plus the `revision` set_vault_preferences needs. Settings changes never move existing files. Colors of folders hidden from you are left out."
+        description = "Read vault-scoped preferences from Settings: agents and daily folders, daily filename format, where new notes and attachments go, generated link syntax, startup note and folder colors, plus the `revision` set_vault_preferences needs. Settings changes never move existing files. Settings naming a path hidden from you come back blank and are listed in `hidden`."
     )]
     async fn get_vault_preferences(&self) -> ToolResult {
         self.ws()
@@ -1015,7 +1015,7 @@ impl MosaicMcp {
             .and_then(ok)
     }
     #[tool(
-        description = "Read the template defaults from Settings › Templates: the templates `folder` and per-folder `rules` (a folder's default template, or null for Blank; subfolders inherit, the longest match wins), plus the `revision` set_template_config needs. Rules for folders hidden from you are left out."
+        description = "Read the template defaults from Settings › Templates: the templates `folder` and per-folder `rules` (a folder's default template, or null for Blank; subfolders inherit, the longest match wins), plus the `revision` set_template_config needs. Rules for folders hidden from you are left out (`hidden` then lists `rules`)."
     )]
     async fn get_template_config(&self) -> ToolResult {
         self.ws()

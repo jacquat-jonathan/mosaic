@@ -154,9 +154,13 @@ rows below from `planned` to the tool names, adds tests, and updates the README 
      bookkeeping; and keys a newer Mosaic wrote.
    - **Folder colors** are merged per folder (`null` removes one), so an agent never needs, or
      erases, colors of folders hidden from it; reads leave those out.
+   - **Path preferences** (the daily, new-note and attachment folders, daily template, startup
+     note, agents folder) that name a path hidden from the agent read as blank and are listed in
+     the result's `hidden`, so hidden folders' names don't leak.
    - **Template rules** for folders or templates hidden from the agent are left out of
-     `get_template_config` and kept by `set_template_config`. When the templates folder itself is
-     hidden, both are refused.
+     `get_template_config` (`hidden` lists `rules`) and kept by `set_template_config`, which then
+     refuses to move the templates folder (those rules' templates live there). When the templates
+     folder itself is hidden, both are refused.
    - Paths an agent names that are hidden from it read as `not_found`, like a read.
 4. **M6 Links, index and tasks.** Index health and rebuild, Markdown task ticking and workflow state,
    aliases, unlinked mentions and linking them, link repair after interrupted renames, reading an old

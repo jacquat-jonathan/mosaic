@@ -674,7 +674,10 @@ fn settings_tools_change_preferences_and_templates_and_only_read_folder_rules() 
     std::fs::create_dir_all(&settings).unwrap();
     let key = root.to_str().unwrap();
     let config = json!({
-        "vault_preferences": { key: { "folder_colors": { "Private": "red" } } },
+        "vault_preferences": { key: {
+            "folder_colors": { "Private": "red" },
+            "startup_note": "Private/Diary.md"
+        } },
         "templates": { key: { "version": 1, "folder": "Templates", "rules": [
             { "folder": "Private", "template": null }
         ] } },
@@ -696,6 +699,8 @@ fn settings_tools_change_preferences_and_templates_and_only_read_folder_rules() 
     let (err, prefs) = c.call("get_vault_preferences", json!({}));
     assert!(!err, "{prefs}");
     assert_eq!(prefs["folder_colors"], json!({}));
+    assert_eq!(prefs["startup_note"], "");
+    assert_eq!(prefs["hidden"], json!(["startup_note", "folder_colors"]));
     assert!(!prefs.to_string().contains("Private"), "{prefs}");
     let revision = prefs["revision"].clone();
     let (err, changed) = c.call(
@@ -735,6 +740,10 @@ fn settings_tools_change_preferences_and_templates_and_only_read_folder_rules() 
     assert_eq!(unchanged["revision"], changed["revision"]);
     assert_eq!(unchanged["link_style"], "wiki");
     assert_eq!(unchanged["agents_folder"], "Agents");
+    assert_eq!(
+        stored()["vault_preferences"][key]["startup_note"],
+        "Private/Diary.md"
+    );
 
     // Template defaults and starters.
     let (err, starters) = c.call("list_template_starters", json!({}));

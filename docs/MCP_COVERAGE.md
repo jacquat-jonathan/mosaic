@@ -61,15 +61,16 @@ per write:
 
 | Class | Tools | Without `--may-change` | With `--may-change` |
 |---|---|---|---|
-| Read | `list_*`, `get_*`, `read_file`, `outline`, `search`, `query`, `tasks_by_day`, `render`, `render_template`, `file_history`, `planner_task_history`, `vault_guide` | Allowed, minus hidden folders | Same |
+| Read | `list_*`, `get_*` (including `get_tessera_status`), `read_file`, `outline`, `search`, `query`, `tasks_by_day`, `render`, `render_template`, `file_history`, `planner_task_history`, `vault_guide` | Allowed, minus hidden folders | Same |
 | Vault file write | `create_file`, `create_note`, `edit_file`, `patch_file`, `append_to_file`, `rename`, `move_files`, `copy_file`, `delete_file`, `create_folder`, `import_file`, `restore_version`, `carry_over` | Direct, unless the folder is read-only (refused) or in review (becomes a proposal) | Direct only inside the listed paths; elsewhere a proposal |
 | App-state write, scope `planner:` | `*_planner_task` (later: epics, events, work sessions, iCal import) | Direct | **Refused** (`denied`) unless `planner:` is listed; then direct |
 | App-state write, scope `bookmarks:` | `add_bookmark`, `remove_bookmark` | Direct | **Refused** unless `bookmarks:` is listed; then direct |
+| App-state write, scope `agents:` | `pause_agents`, `resume_agents`, `pause_agent`, `resume_agent`, `run_agent` | Direct | **Refused** unless `agents:` is listed; then direct. Never given to a scheduled workflow (see M7b) |
 | Own proposals | `withdraw_proposal` | Any visible pending proposal | Only proposals this server session made or updated |
 
 **Scopes.** An allowlist entry ending in `:` names app data instead of a folder: `planner:` (the
-whole planner database: Board tasks and epics, calendar events, work sessions, iCal imports) and
-`bookmarks:`. Scopes are case-insensitive; an unknown one grants nothing (the CLI warns on stderr).
+whole planner database: Board tasks and epics, calendar events, work sessions, iCal imports),
+`bookmarks:` and `agents:` (Tessera control: pauses and run requests). Scopes are case-insensitive; an unknown one grants nothing (the CLI warns on stderr).
 App data can't be proposed for review, so under an allowlist the safe default is to refuse, not to
 write. The refusal's message names the scope and tells the agent not to retry and to tell the person
 instead. Scheduled agents always run with an allowlist (an agent with no `may-change` gets a marker
@@ -159,8 +160,26 @@ rows below from `planned` to the tool names, adds tests, and updates the README 
      (`parent_run_from_env`). Without it, the requested run starts a chain at depth 1. `request_run`
      refuses a run past the limit, and refuses an unknown parent run. There is no core setter for
      the limit.
-   - **M7b** adds the tools. It must take `parent_run` only from the environment, never from a tool
-     argument, so an agent can't reset its own depth.
+   - **M7b (done)** added `get_tessera_status`, `pause_agents`, `resume_agents`, `pause_agent`,
+     `resume_agent` and `run_agent`.
+     - `run_agent` takes `parent_run` only from `MOSAIC_TESSERA_RUN` (a value that isn't a run id is
+       refused), never from an argument, so an agent can't reset its own depth. Past the limit it is
+       refused with the depth and the maximum.
+     - The writes are guarded in core by `AppScope::Agents` (`agents:`): `pause_all`, `pause_agent`
+       and `request_run` call `check_app_write` first.
+     - **Scheduled agents never control Tessera.** No workflow needs it: chaining already works
+       through `on` events (a run creates the note another workflow watches for), under the same
+       limit, and pausing or resuming the person's workflows is the worst outcome of a run misled by
+       the content it reads. So there is no form switch, and the app drops `agents:` from a
+       workflow's `may-change` even when its front matter names it (`tessera::workflow_may_change`).
+       The refusal tells the agent to ask the person, not to add the scope. `agents:` is for a client
+       the person restricts by hand; unrestricted clients the person drives use the tools directly.
+       `MOSAIC_TESSERA_RUN` and the chain rule stay as defence in depth.
+     - `tessera_test_event` is not a tool: it is not a dry run. The app matches a note against the
+       workflow's `created in` events and starts a run at once, outside the queue, the pauses and the
+       chain-depth limit (a new chain at depth 0). Core has only the matcher, and putting the test
+       through `request_run` would change what it does. An agent gets the real effect, under the
+       limit, by creating the matching note, or with `run_agent`.
 
 ## Inventory
 
@@ -227,11 +246,11 @@ names in Notes are proposals for the slice, not commitments.
 | `chat_check` | excluded (in-app chat is itself an AI client) | |
 | `chat_send` | excluded (in-app chat is itself an AI client) | |
 | `chat_stop` | excluded (in-app chat is itself an AI client) | |
-| `tessera_status` | planned (M7) | `get_tessera_status`; core: `tessera::stored_status`, `scheduler_active` |
-| `tessera_run` | planned (M7) | `run_agent`; core: `tessera::request_run`, counts as a chained run |
-| `tessera_test_event` | planned (M7) | `test_agent_event` |
-| `tessera_pause_all` | planned (M7) | `pause_agents`; core: `tessera::pause_all` |
-| `tessera_pause_agent` | planned (M7) | `pause_agent`; core: `tessera::pause_agent` |
+| `tessera_status` | `get_tessera_status` | core: `tessera::stored_status`, `scheduler_active` |
+| `tessera_run` | `run_agent` | core: `tessera::request_run`; queued, counts as a chained run |
+| `tessera_test_event` | excluded (starts a run outside the queue, pauses and chain limit; agents create the matching note or use `run_agent`) | see M7b |
+| `tessera_pause_all` | `pause_agents`, `resume_agents` | core: `tessera::pause_all` |
+| `tessera_pause_agent` | `pause_agent`, `resume_agent` | core: `tessera::pause_agent` |
 | `tessera_set_max_chain_depth` | excluded (hard: the agent chain limit is a permission) | |
 | `proposals` | `list_proposals` | an agent sees its own proposals |
 | `proposal_content` | excluded (the person's review diff) | |

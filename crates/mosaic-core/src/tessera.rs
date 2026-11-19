@@ -9,9 +9,14 @@
 //!   poll and queues them like agent-created events: they wait while paused, and the chain-depth
 //!   limit applies to them.
 //! - The chain-depth limit has no setter here on purpose: only the app changes it.
+//! - Pausing, resuming and requesting runs are app-state writes under the scope `agents:`
+//!   (`AppScope::Agents`): refused for an agent restricted by `--may-change` unless it names the
+//!   scope. The app never passes `agents:` to a workflow run (`workflow_may_change`), so a scheduled
+//!   agent can't pause, resume or start workflows.
 
 use crate::Workspace;
 use crate::agents::{Agent, EventTrigger};
+use crate::api::AppScope;
 use crate::chat::RunTranscript;
 use crate::error::{Error, Result};
 use crate::settings::{AgentRun, TesseraSettings};
@@ -168,13 +173,15 @@ pub fn scheduler_active(cfg: &TesseraSettings, now: i64) -> bool {
     cfg.last_checked > 0 && now.saturating_sub(cfg.last_checked) <= SCHEDULER_STALE_SECS
 }
 
-/// Pause or resume every workflow.
-pub fn pause_all(state: &VaultState, paused: bool) -> Result<()> {
+/// Pause or resume every workflow. Refused under an allowlist without `agents:`.
+pub fn pause_all(ws: &Workspace, state: &VaultState, paused: bool) -> Result<()> {
+    ws.check_app_write(AppScope::Agents)?;
     state.update_tessera(|cfg| cfg.paused = paused)
 }
 
-/// Pause or resume one workflow, by name.
-pub fn pause_agent(state: &VaultState, name: &str, paused: bool) -> Result<()> {
+/// Pause or resume one workflow, by name. Refused under an allowlist without `agents:`.
+pub fn pause_agent(ws: &Workspace, state: &VaultState, name: &str, paused: bool) -> Result<()> {
+    ws.check_app_write(AppScope::Agents)?;
     state.update_tessera(|cfg| {
         cfg.paused_agents.retain(|n| n != name);
         if paused {
@@ -211,16 +218,18 @@ pub fn requested_chain(
     })
 }
 
-/// Ask the app to run workflow `name`. Returns the request id; the run starts once the app picks it
-/// up (within `POLL` while it is open), unless everything or this workflow is paused, in which case
-/// it waits. Refused when the run would go past the chain-depth limit.
+/// Ask the app to run workflow `name`. Returns the request; the run starts once the app picks it up
+/// (within `POLL` while it is open), unless everything or this workflow is paused, in which case it
+/// waits. Refused when the run would go past the chain-depth limit, and under an allowlist without
+/// `agents:`. `parent_run` must come from `parent_run_from_env`, never from the agent.
 pub fn request_run(
     ws: &Workspace,
     state: &VaultState,
     name: &str,
     parent_run: Option<u64>,
     now_ms: i64,
-) -> Result<u64> {
+) -> Result<RunRequest> {
+    ws.check_app_write(AppScope::Agents)?;
     let agent = ws.agent(name)?;
     if let Some(error) = trigger_error(&agent) {
         return Err(Error::Invalid(error));
@@ -242,18 +251,19 @@ pub fn request_run(
         let chain = requested_chain(&cfg, parent_run, id)?;
         if chain.depth > cfg.max_chain_depth {
             return Err(Error::Invalid(format!(
-                "This run would be at workflow-chain depth {} (maximum {}).",
+                "Refused: this run would be at workflow-chain depth {} (maximum {}). Workflows that start workflows stop at the limit the person set in Mosaic; don't retry.",
                 chain.depth, cfg.max_chain_depth
             )));
         }
-        pending.push(RunRequest {
+        let request = RunRequest {
             id,
             agent: agent.name.clone(),
             requested: now_ms / 1_000,
             parent_run,
             chain,
-        });
-        Ok(id)
+        };
+        pending.push(request.clone());
+        Ok(request)
     })?
 }
 
@@ -262,10 +272,38 @@ pub fn take_run_requests(state: &VaultState) -> Result<Vec<RunRequest>> {
     state.update_run_requests(std::mem::take)
 }
 
-/// The parent run id from `RUN_ENV`, for a `mosaic mcp` server started by a workflow run.
-pub fn parent_run_from_env() -> Option<u64> {
-    std::env::var(RUN_ENV).ok()?.trim().parse().ok()
+/// The parent run id from `RUN_ENV`, for a `mosaic mcp` server started by a workflow run. A value
+/// that isn't a run id is an error, never a fresh chain.
+pub fn parent_run_from_env() -> Result<Option<u64>> {
+    parse_parent_run(std::env::var_os(RUN_ENV).as_deref())
 }
+
+fn parse_parent_run(raw: Option<&std::ffi::OsStr>) -> Result<Option<u64>> {
+    let Some(raw) = raw else { return Ok(None) };
+    raw.to_str()
+        .and_then(|s| s.trim().parse().ok())
+        .map(Some)
+        .ok_or_else(|| Error::Invalid(format!("{RUN_ENV} isn't a workflow run id")))
+}
+
+/// The `--may-change` entries the app passes to a workflow run's `mosaic mcp`: the workflow's own,
+/// minus `agents:` (a scheduled agent never controls Tessera, even if its front matter names the
+/// scope), or a marker that allows no folders when nothing is left.
+pub fn workflow_may_change(agent: &Agent) -> Vec<String> {
+    let mut entries: Vec<String> = agent
+        .may_change
+        .iter()
+        .filter(|e| AppScope::parse(e) != Some(AppScope::Agents))
+        .cloned()
+        .collect();
+    if entries.is_empty() {
+        entries.push(NO_DIRECT_WRITES.to_string());
+    }
+    entries
+}
+
+/// A `--may-change` entry that names no folder: no direct writes at all.
+pub const NO_DIRECT_WRITES: &str = "/.mosaic-no-direct-writes";
 
 /// What another process can change and the app must react to.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -364,16 +402,16 @@ mod tests {
     #[test]
     fn pauses_are_shared_state() {
         let f = fixture();
-        pause_all(&f.state, true).unwrap();
-        pause_agent(&f.state, "digest", true).unwrap();
-        pause_agent(&f.state, "digest", true).unwrap();
+        pause_all(&f.ws, &f.state, true).unwrap();
+        pause_agent(&f.ws, &f.state, "digest", true).unwrap();
+        pause_agent(&f.ws, &f.state, "digest", true).unwrap();
         // Another handle on the same folder, as another process would open it.
         let other = VaultState::in_dir(f._state.path().into()).unwrap();
         let cfg = other.tessera().unwrap();
         assert!(cfg.paused);
         assert_eq!(cfg.paused_agents, vec!["digest"]);
-        pause_all(&other, false).unwrap();
-        pause_agent(&other, "digest", false).unwrap();
+        pause_all(&f.ws, &other, false).unwrap();
+        pause_agent(&f.ws, &other, "digest", false).unwrap();
         let cfg = f.state.tessera().unwrap();
         assert!(!cfg.paused);
         assert!(cfg.paused_agents.is_empty());
@@ -398,8 +436,12 @@ mod tests {
     #[test]
     fn requests_are_queued_and_taken_once() {
         let f = fixture();
-        let a = request_run(&f.ws, &f.state, "digest", None, 5_000).unwrap();
-        let b = request_run(&f.ws, &f.state, "Digest", None, 5_000).unwrap();
+        let a = request_run(&f.ws, &f.state, "digest", None, 5_000)
+            .unwrap()
+            .id;
+        let b = request_run(&f.ws, &f.state, "Digest", None, 5_000)
+            .unwrap()
+            .id;
         assert_ne!(a, b);
         let other = VaultState::in_dir(f._state.path().into()).unwrap();
         let taken = take_run_requests(&other).unwrap();
@@ -555,6 +597,63 @@ mod tests {
         let broken = status.agents.iter().find(|a| a.name == "broken").unwrap();
         assert!(broken.error.is_some() && !broken.running);
         assert_eq!(status.runs.len(), 1);
+    }
+
+    #[test]
+    fn writes_need_the_agents_scope_under_an_allowlist() {
+        let f = fixture();
+        let ws = f.ws.with_source(crate::history::Source::Agent);
+        // Unrestricted (an agent the person runs by hand): allowed.
+        pause_all(&ws, &f.state, true).unwrap();
+        let ws = ws.with_change_allowlist(vec!["Daily".into(), "planner:".into()]);
+        for error in [
+            pause_all(&ws, &f.state, false).unwrap_err(),
+            pause_agent(&ws, &f.state, "digest", true).unwrap_err(),
+            request_run(&ws, &f.state, "digest", None, 1).unwrap_err(),
+        ] {
+            assert!(matches!(error, Error::Denied(_)), "{error}");
+            let message = error.to_string();
+            assert!(message.contains("`agents:`"), "{message}");
+            assert!(message.contains("Tell the person"), "{message}");
+            // Never suggests giving a workflow the scope: the app strips it.
+            assert!(!message.contains("suggest they add"), "{message}");
+        }
+        let cfg = f.state.tessera().unwrap();
+        assert!(cfg.paused && cfg.paused_agents.is_empty());
+        assert!(f.state.run_requests().unwrap().is_empty());
+        let ws = ws.with_change_allowlist(vec!["Daily".into(), "Agents:".into()]);
+        pause_all(&ws, &f.state, false).unwrap();
+        pause_agent(&ws, &f.state, "digest", true).unwrap();
+        request_run(&ws, &f.state, "digest", None, 1).unwrap();
+    }
+
+    #[test]
+    fn workflow_runs_never_get_the_agents_scope() {
+        let f = fixture();
+        let mut agent = f.ws.agent("digest").unwrap();
+        agent.may_change = vec![
+            "Daily".into(),
+            "planner:".into(),
+            "agents:".into(),
+            " Agents :".into(),
+        ];
+        assert_eq!(workflow_may_change(&agent), vec!["Daily", "planner:"]);
+        agent.may_change = vec!["agents:".into()];
+        assert_eq!(workflow_may_change(&agent), vec![NO_DIRECT_WRITES]);
+        agent.may_change = vec![];
+        assert_eq!(workflow_may_change(&agent), vec![NO_DIRECT_WRITES]);
+    }
+
+    #[test]
+    fn a_parent_run_that_is_not_a_run_id_is_refused() {
+        use std::ffi::OsStr;
+        assert_eq!(parse_parent_run(None).unwrap(), None);
+        assert_eq!(
+            parse_parent_run(Some(OsStr::new(" 42 "))).unwrap(),
+            Some(42)
+        );
+        assert!(parse_parent_run(Some(OsStr::new(""))).is_err());
+        assert!(parse_parent_run(Some(OsStr::new("forty"))).is_err());
     }
 
     #[test]

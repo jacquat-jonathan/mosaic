@@ -38,7 +38,22 @@ impl Client {
         cache: &std::path::Path,
         may_change: &[&str],
     ) -> Self {
+        Self::start_env(vault, settings, cache, may_change, &[])
+    }
+
+    /// `start_restricted` with extra environment variables, as the app sets for a workflow run.
+    fn start_env(
+        vault: Option<&std::path::Path>,
+        settings: &std::path::Path,
+        cache: &std::path::Path,
+        may_change: &[&str],
+        env: &[(&str, &str)],
+    ) -> Self {
         let mut cmd = Command::new(env!("CARGO_BIN_EXE_mosaic"));
+        cmd.env_remove("MOSAIC_TESSERA_RUN");
+        for (key, value) in env {
+            cmd.env(key, value);
+        }
         if let Some(v) = vault {
             cmd.args(["--vault", v.to_str().unwrap()]);
         }
@@ -717,6 +732,198 @@ fn app_state_writes_need_their_scope_under_may_change() {
     assert!(!err, "{bookmarks}");
     let (err, _) = c.call("remove_bookmark", json!({ "path": "Note.md" }));
     assert!(!err);
+}
+
+/// A vault with one workflow, `digest`, and the paths a test server uses.
+fn tessera_vault() -> (
+    tempfile::TempDir,
+    std::path::PathBuf,
+    std::path::PathBuf,
+    std::path::PathBuf,
+) {
+    let home = tempfile::tempdir().unwrap();
+    let vault = home.path().join("V");
+    std::fs::create_dir_all(vault.join("Agents")).unwrap();
+    std::fs::create_dir_all(vault.join("Daily")).unwrap();
+    std::fs::write(
+        vault.join("Agents/digest.md"),
+        "---\ntitle: Digest\non: [created in Inbox/]\n---\nSummarize.\n",
+    )
+    .unwrap();
+    let settings = home.path().join("settings");
+    let cache = home.path().join("cache");
+    (home, vault, settings, cache)
+}
+
+/// The vault's Tessera state, as the app opens it.
+fn tessera_store(
+    vault: &std::path::Path,
+    settings: &std::path::Path,
+) -> mosaic_core::vault_state::VaultState {
+    mosaic_core::vault_state::VaultState::open_in(vault, settings).unwrap()
+}
+
+#[test]
+fn tessera_tools_report_pause_and_request_runs() {
+    let (_home, vault, settings, cache) = tessera_vault();
+    let mut c = Client::start_restricted(Some(&vault), &settings, &cache, &[]);
+
+    // Mosaic never ran here: nothing stored, and the scheduler isn't checking in.
+    let (err, status) = c.call("get_tessera_status", json!({}));
+    assert!(!err, "{status}");
+    assert_eq!(status["scheduler_active"], false);
+    assert!(status["note"].as_str().unwrap().contains("isn't running"));
+    assert_eq!(status["paused"], false);
+    assert_eq!(status["max_chain_depth"], 3);
+    assert_eq!(status["agents"][0]["name"], "digest");
+
+    let (err, paused) = c.call("pause_agents", json!({}));
+    assert!(!err, "{paused}");
+    assert_eq!(c.call("get_tessera_status", json!({})).1["paused"], true);
+    let (err, _) = c.call("resume_agents", json!({}));
+    assert!(!err);
+    assert_eq!(c.call("get_tessera_status", json!({})).1["paused"], false);
+
+    // Names resolve like the app's (case-insensitive), and unknown ones are refused.
+    let (err, paused) = c.call("pause_agent", json!({ "name": "Digest" }));
+    assert!(!err, "{paused}");
+    assert_eq!(paused, json!({ "agent": "digest", "paused": true }));
+    assert_eq!(
+        c.call("get_tessera_status", json!({})).1["agents"][0]["paused"],
+        true
+    );
+    let store = tessera_store(&vault, &settings);
+    assert_eq!(store.tessera().unwrap().paused_agents, vec!["digest"]);
+    let (err, _) = c.call("resume_agent", json!({ "name": "digest" }));
+    assert!(!err);
+    assert!(store.tessera().unwrap().paused_agents.is_empty());
+    let (err, missing) = c.call("pause_agent", json!({ "name": "nobody" }));
+    assert!(err, "{missing}");
+
+    // A `parent_run` argument is ignored: without a run in the environment the request starts its
+    // own chain at depth 1 (404 isn't a known run and would otherwise be refused).
+    let (err, requested) = c.call("run_agent", json!({ "name": "digest", "parent_run": 404 }));
+    assert!(!err, "{requested}");
+    assert_eq!(requested["agent"], "digest");
+    assert_eq!(requested["chain"]["depth"], 1);
+    assert!(
+        requested["chain"]["id"]
+            .as_str()
+            .unwrap()
+            .starts_with("request-")
+    );
+    assert_eq!(requested["scheduler_active"], false);
+    let pending = store.run_requests().unwrap();
+    assert_eq!(pending.len(), 1);
+    assert_eq!(pending[0].id, requested["request"].as_u64().unwrap());
+    assert_eq!(pending[0].parent_run, None);
+    assert_eq!(
+        c.call("get_tessera_status", json!({})).1["agents"][0]["queued"],
+        1
+    );
+    let (err, missing) = c.call("run_agent", json!({ "name": "nobody" }));
+    assert!(err, "{missing}");
+}
+
+/// Under `--may-change`, pausing, resuming and requesting runs need `agents:`; the status stays
+/// readable.
+#[test]
+fn tessera_writes_need_the_agents_scope_under_may_change() {
+    let (_home, vault, settings, cache) = tessera_vault();
+    let mut c = Client::start_restricted(Some(&vault), &settings, &cache, &["Daily", "planner:"]);
+    for (tool, args) in [
+        ("pause_agents", json!({})),
+        ("resume_agents", json!({})),
+        ("pause_agent", json!({ "name": "digest" })),
+        ("resume_agent", json!({ "name": "digest" })),
+        ("run_agent", json!({ "name": "digest" })),
+    ] {
+        let (err, refused) = c.call(tool, args);
+        assert!(err, "{tool}: {refused}");
+        assert_eq!(refused["code"], "denied", "{tool}");
+        let message = refused["message"].as_str().unwrap();
+        assert!(message.contains("`agents:`"), "{tool}: {message}");
+        assert!(message.contains("Tell the person"), "{tool}: {message}");
+    }
+    let (err, status) = c.call("get_tessera_status", json!({}));
+    assert!(!err, "{status}");
+    // Nothing was written: the vault didn't even get its state.
+    assert!(!vault.join(".mosaic/vault.json").exists());
+    drop(c);
+
+    let mut c = Client::start_restricted(Some(&vault), &settings, &cache, &["Daily", "agents:"]);
+    for (tool, args) in [
+        ("pause_agents", json!({})),
+        ("resume_agents", json!({})),
+        ("pause_agent", json!({ "name": "digest" })),
+        ("resume_agent", json!({ "name": "digest" })),
+        ("run_agent", json!({ "name": "digest" })),
+    ] {
+        let (err, result) = c.call(tool, args);
+        assert!(!err, "{tool}: {result}");
+    }
+}
+
+/// A server started for a workflow run (`MOSAIC_TESSERA_RUN`) requests runs one step deeper in that
+/// run's chain, refuses them past the limit, and ignores any parent given as an argument.
+#[test]
+fn run_agent_continues_the_chain_of_the_run_in_the_environment() {
+    let (_home, vault, settings, cache) = tessera_vault();
+    let store = tessera_store(&vault, &settings);
+    let run = |id: u64, depth: u8| -> mosaic_core::settings::AgentRun {
+        serde_json::from_value(json!({
+            "id": id, "agent": "digest", "title": "Digest", "started": 1,
+            "finished": null, "late": false, "status": "running", "answer": "",
+            "error": null, "proposals": 0, "chain_id": "event-1", "chain_depth": depth,
+        }))
+        .unwrap()
+    };
+    store
+        .update_tessera(|cfg| {
+            cfg.max_chain_depth = 3;
+            cfg.runs = vec![run(1, 0), run(8, 1), run(9, 3)];
+        })
+        .unwrap();
+
+    let mut c = Client::start_env(
+        Some(&vault),
+        &settings,
+        &cache,
+        &["agents:"],
+        &[("MOSAIC_TESSERA_RUN", "8")],
+    );
+    // The argument (run 1, depth 0) is ignored: the chain is run 8's, one step deeper.
+    let (err, requested) = c.call("run_agent", json!({ "name": "digest", "parent_run": 1 }));
+    assert!(!err, "{requested}");
+    assert_eq!(requested["chain"], json!({ "id": "event-1", "depth": 2 }));
+    assert_eq!(store.run_requests().unwrap()[0].parent_run, Some(8));
+    drop(c);
+
+    // Run 9 is already at the limit: one deeper is refused, with the depth and the maximum.
+    let mut c = Client::start_env(
+        Some(&vault),
+        &settings,
+        &cache,
+        &["agents:"],
+        &[("MOSAIC_TESSERA_RUN", "9")],
+    );
+    let (err, refused) = c.call("run_agent", json!({ "name": "digest" }));
+    assert!(err, "{refused}");
+    let message = refused["message"].as_str().unwrap();
+    assert!(message.contains("depth 4 (maximum 3)"), "{message}");
+    drop(c);
+
+    // A value that isn't a run id is refused, never treated as a fresh chain.
+    let mut c = Client::start_env(
+        Some(&vault),
+        &settings,
+        &cache,
+        &["agents:"],
+        &[("MOSAIC_TESSERA_RUN", "nine")],
+    );
+    let (err, refused) = c.call("run_agent", json!({ "name": "digest" }));
+    assert!(err, "{refused}");
+    assert_eq!(store.run_requests().unwrap().len(), 1);
 }
 
 #[test]

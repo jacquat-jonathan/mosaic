@@ -203,7 +203,7 @@ be opened until you update the registration.
 
 ### Tools
 
-The server has 45 tools (this list is checked against the server by a test):
+The server has 51 tools (this list is checked against the server by a test):
 
 <!-- mcp-tools:start -->
 - Guide and settings: `vault_guide`, `get_vault_preferences`, `list_agents`.
@@ -220,6 +220,8 @@ The server has 45 tools (this list is checked against the server by a test):
   `get_planner_task`, `planner_task_history`, `create_planner_task`, `update_planner_task`,
   `move_planner_task`, `complete_planner_task`, `reopen_planner_task`, `archive_planner_task`,
   `restore_planner_task`, `trash_planner_task`.
+- Workflows (Tessera): `get_tessera_status`, `pause_agents`, `resume_agents`, `pause_agent`,
+  `resume_agent`, `run_agent` (queued for the app, under the workflow-chain limit).
 <!-- mcp-tools:end -->
 
 Each agent in `Agents/` is also an MCP prompt (`/mosaic:<name>` in Claude Code), and notes are MCP

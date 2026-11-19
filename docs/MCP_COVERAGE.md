@@ -67,22 +67,27 @@ per write:
 | Vault file write | `create_file`, `create_note`, `edit_file`, `patch_file`, `append_to_file`, `rename`, `move_files`, `copy_file`, `delete_file`, `create_folder`, `import_file`, `restore_version`, `carry_over` | Direct, unless the folder is read-only (refused) or in review (becomes a proposal) | Direct only inside the listed paths; elsewhere a proposal |
 | App-state write, scope `planner:` | `*_planner_task`, `*_planner_event`, `*_planner_event_occurrence`, `*_planner_work_session`, `import_ical` (later: epics) | Direct | **Refused** (`denied`) unless `planner:` is listed; then direct |
 | App-state write, scope `bookmarks:` | `add_bookmark`, `remove_bookmark` | Direct | **Refused** unless `bookmarks:` is listed; then direct |
+| App-state write, scope `subscriptions:` | `add_calendar_subscription`, `update_calendar_subscription`, `remove_calendar_subscription`, `refresh_calendar_subscriptions` | Direct | **Refused** unless `subscriptions:` is listed; then direct |
 | App-state write, scope `agents:` | `pause_agents`, `resume_agents`, `pause_agent`, `resume_agent`, `run_agent` | Direct | **Refused** unless `agents:` is listed; then direct. Never given to a scheduled workflow (see M7b) |
 | Own proposals | `withdraw_proposal` | Any visible pending proposal | Only proposals this server session made or updated |
 
 **Scopes.** An allowlist entry ending in `:` names app data instead of a folder: `planner:` (the
 whole planner database: Board tasks and epics, calendar events, work sessions, iCal imports),
-`bookmarks:` and `agents:` (Tessera control: pauses and run requests). Scopes are case-insensitive; an unknown one grants nothing (the CLI warns on stderr).
+`bookmarks:`, `subscriptions:` (calendar subscriptions: their metadata, Keychain URLs and cached
+feeds; a refresh counts, since it rewrites the cache and each feed's status) and `agents:` (Tessera control: pauses and run requests). Scopes are case-insensitive; an unknown one grants nothing (the CLI warns on stderr).
 App data can't be proposed for review, so under an allowlist the safe default is to refuse, not to
 write. The refusal's message names the scope and tells the agent not to retry and to tell the person
 instead. Scheduled agents always run with an allowlist (an agent with no `may-change` gets a marker
 that allows no folders), so they never change app data unless the person opts in: the workflow
 form's "Can change Board and calendar" switch writes `planner:` into the agent's `may-change`
-(`- "planner:"`; an unquoted `- planner:` is read the same way).
+(`- "planner:"`; an unquoted `- planner:` is read the same way). There is no switch for
+`subscriptions:`: the person writes it into the agent's `may-change` by hand (the form keeps it).
+See [M4](#slices) for why.
 
 **Where it is enforced.** In core, so the CLI and every MCP tool get it without extra code:
 `Workspace::with_change_allowlist` parses the scopes, `Context::check_app_write(AppScope::…)` refuses,
-and every `PlannerService` write goes through `write_store()`, which refuses before touching the
+calendar subscription writes go through `CalendarSubscriptions::for_workspace` (which checks
+`AppScope::Subscriptions` before the Keychain, the network or any file), and every `PlannerService` write goes through `write_store()`, which refuses before touching the
 database (the test `every_planner_write_goes_through_write_store` fails if a new planner write uses
 `store()`). The MCP server keeps its `--may-change` list and applies it to every workspace it opens
 (at startup, on the lazy first open, and on each follow-mode switch); a front end that opens a vault
@@ -144,10 +149,32 @@ rows below from `planned` to the tool names, adds tests, and updates the README 
    version, AI activity, and `undo_change` (an agent's undo goes through review like any write).
 5. **M4 Calendar subscriptions.** M4a moved the subscription logic into core
    (`mosaic_core::calendar_subscriptions`: storage in settings, feed URLs behind a `SecretStore`,
-   downloads behind a `FeedFetcher`); the Tauri commands are thin wrappers. M4b adds the tools: list,
-   add, update, remove, refresh and the overlay range, after the write policy below is settled.
-   The app caches feeds in Tauri's app data directory and keeps URLs in the macOS Keychain; the MCP
-   server must use the same ones.
+   downloads behind a `FeedFetcher`); the Tauri commands are thin wrappers.
+   - **M4b (done)** adds the tools: `list_calendar_subscriptions`, `add_calendar_subscription`,
+     `update_calendar_subscription`, `remove_calendar_subscription`,
+     `refresh_calendar_subscriptions`, `get_calendar_overlay`.
+   - **Same state as the app.** Metadata is in the app's `settings.json`; feeds are cached in
+     `calendar_subscriptions::app_cache_dir()` (`calendar-cache` in Application Support's
+     `dev.jona.mosaic`, which is Tauri's app data directory for the bundle id); URLs are the same
+     Keychain items (service `com.mosaic.calendar-subscription`). Both processes reach the Keychain
+     through `/usr/bin/security`, so each reads the other's items. Every operation re-reads the
+     settings and writes them under the cross-process `settings.lock`; a refresh commits only if the
+     subscription's revision is unchanged. The app's calendar shows MCP changes when it next reloads
+     (focus, or every 5 minutes); there is no push to the UI.
+   - **No URL comes out.** `SubscriptionView` and `OverlayRange` have no URL field; core's errors
+     never quote it. `update_calendar_subscription` is a partial update (`CalendarSubscriptions::patch`),
+     merged under one settings lock.
+   - **Decision: agents may pass a feed URL.** Adding a feed means the agent sends one. It only
+     goes to the `SecretStore` (Keychain) and to the `FeedFetcher`, with the app's rules: HTTPS or
+     webcal only, an HTTPS-only client, 15 s timeout, 10 MB cap. The link is in the agent's context
+     anyway (the person gave it); the tool descriptions say to add one only when asked.
+   - **Decision: no scheduled-agent switch for `subscriptions:`.** Unattended feed management means
+     Keychain writes and downloads from agent-chosen URLs, and the app already refreshes feeds on its
+     own while open, so a scheduled run gains little. A person who wants it writes `subscriptions:`
+     into the agent's `may-change`; the workflow form keeps unknown scopes when it saves.
+   - **macOS only.** The tools use core's `Keychain`, so elsewhere they fail exactly as the app does
+     (`calendar subscriptions currently require macOS Keychain`); listing and the overlay still
+     work.
 6. **M7 Tessera.** Status, run an agent, test an event, pause all or one. An MCP-started run must
    count as a chained run, so the chain-depth limit applies to it.
    - **M7a (done)** moved the control into core, in `mosaic_core::tessera`. The scheduler still runs
@@ -241,12 +268,12 @@ names in Notes are proposals for the slice, not commitments.
 | `planner_export` | planned (M3) | `export_planner`, returns JSON or CSV |
 | `planner_export_file` | excluded (writes a host file chosen in a save dialog; `export_planner` returns the content) | |
 | `planner_restore_backup` | excluded (replaces the whole planner database; not undoable) | |
-| `calendar_subscriptions` | planned (M4) | `list_calendar_subscriptions`; logic is in core (M4a) |
-| `add_calendar_subscription` | planned (M4) | `add_calendar_subscription` |
-| `update_calendar_subscription` | planned (M4) | `update_calendar_subscription` |
-| `remove_calendar_subscription` | planned (M4) | `remove_calendar_subscription` |
-| `refresh_calendar_subscriptions` | planned (M4) | `refresh_calendar_subscriptions` |
-| `calendar_overlay_range` | planned (M4) | `get_calendar_overlay` |
+| `calendar_subscriptions` | `list_calendar_subscriptions` | no URL in any output |
+| `add_calendar_subscription` | `add_calendar_subscription` | scope `subscriptions:` |
+| `update_calendar_subscription` | `update_calendar_subscription` | partial update; scope `subscriptions:` |
+| `remove_calendar_subscription` | `remove_calendar_subscription` | scope `subscriptions:` |
+| `refresh_calendar_subscriptions` | `refresh_calendar_subscriptions` | scope `subscriptions:` |
+| `calendar_overlay_range` | `get_calendar_overlay` | |
 | `agents` | `list_agents` | |
 | `mirror_agents` | excluded (rewrites the `.claude/skills` agents are loaded with; the app runs it) | |
 | `chat_check` | excluded (in-app chat is itself an AI client) | |

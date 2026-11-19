@@ -750,6 +750,10 @@ fn tessera_vault() -> (
         "---\ntitle: Digest\non: [created in Inbox/]\n---\nSummarize.\n",
     )
     .unwrap();
+    // Canonical, as the server and the app open it: the vault's id records its root, so a
+    // symlinked temp dir (macOS `/var` -> `/private/var`) would otherwise give the test's
+    // `tessera_store` a new id and a different state folder than the server's.
+    let vault = vault.canonicalize().unwrap();
     let settings = home.path().join("settings");
     let cache = home.path().join("cache");
     (home, vault, settings, cache)

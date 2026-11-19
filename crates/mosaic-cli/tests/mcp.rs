@@ -731,7 +731,10 @@ fn settings_tools_change_preferences_and_templates_and_only_read_folder_rules() 
         );
         assert!(err && refused["code"] == code, "{patch}: {refused}");
     }
-    assert_eq!(stored()["vault_preferences"][key]["link_style"], "wiki");
+    let (_, unchanged) = c.call("get_vault_preferences", json!({}));
+    assert_eq!(unchanged["revision"], changed["revision"]);
+    assert_eq!(unchanged["link_style"], "wiki");
+    assert_eq!(unchanged["agents_folder"], "Agents");
 
     // Template defaults and starters.
     let (err, starters) = c.call("list_template_starters", json!({}));
@@ -907,7 +910,7 @@ fn without_any_vault_it_connects_and_picks_up_the_first_one_opened() {
     // Never opened a vault in the app (no settings.json): the handshake still succeeds.
     let mut c = Client::start_with(None, &settings, &home.path().join("cache"));
     let tools = c.request("tools/list", json!({}));
-    assert_eq!(tools["result"]["tools"].as_array().unwrap().len(), 45);
+    assert_eq!(tools["result"]["tools"].as_array().unwrap().len(), 50);
     let resources = c.request("resources/list", json!({}));
     assert_eq!(resources["result"]["resources"], json!([]));
     let (err, msg) = c.call("list_files", json!({}));
@@ -1452,7 +1455,7 @@ fn the_connection_test_reports_a_working_server_with_and_without_a_vault() {
 
     let r = probe(bin, &["mcp".into()], &env, timeout);
     assert!(r.ok, "{r:?}");
-    assert_eq!(r.tools, 45);
+    assert_eq!(r.tools, 50);
     assert_eq!(r.server_version.as_deref(), Some(env!("CARGO_PKG_VERSION")));
     assert!(r.no_vault.unwrap().contains("No Mosaic vault is open"));
 

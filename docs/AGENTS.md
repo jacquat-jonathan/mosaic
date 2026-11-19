@@ -281,3 +281,36 @@ changes made through MCP appear in the open Board and Calendar automatically. Pl
 be proposed for review: a scheduled workflow restricted to some folders is refused (`denied`) unless
 its `may-change` includes `planner:`. Don't retry or work around a refusal; tell the person what you
 wanted to change.
+
+## Calendar
+
+The planner's Calendar holds events (one-off or recurring) and work sessions (time blocked for a Board
+task). Start with `get_planner_calendar`: for `from`..`to` (YYYY-MM-DD, default today and the next 6
+days, at most 371 days) it returns every event occurrence with recurrences expanded, the work sessions
+with their task's title, the Board tasks due in the range (`due_markers`) and minutes scheduled per
+day. `list_planner_events` lists the events themselves (a recurring series once) and
+`list_planner_work_sessions` the sessions.
+
+- **Times.** Timed values are RFC 3339 with an offset when you write them
+  (`2026-11-20T09:00:00+01:00`) and come back in UTC (`2026-11-20T08:00:00.000Z`). All-day values
+  are dates, and the end is exclusive: a one-day event on the 20th ends on the 21st. `timezone` is an
+  IANA name (`Europe/Paris`); a recurrence repeats at the same local time in it.
+- **Recurrence.** `recurrence_rule` is an RRULE without its prefix: `FREQ=WEEKLY;BYDAY=MO,WE`,
+  `FREQ=MONTHLY;BYMONTHDAY=-1;COUNT=6`.
+- **Revisions.** Changes take `expected_revision`, as for tasks. Each occurrence in
+  `get_planner_calendar` carries its `series_id`, `series_revision` and `occurrence_key` (its local
+  date). To change the whole series or a one-off event use `update_planner_event` with only the
+  fields to change (`""` removes `meeting_url`, `epic_id`, `color` or `recurrence_rule`). To change
+  one occurrence use `cancel_planner_event_occurrence` or `replace_planner_event_occurrence` (new
+  start and end, plus any field that differs from the series). `archive_planner_event`,
+  `trash_planner_event` (after archiving) and `restore_planner_event` work as for tasks.
+- **Work sessions.** `create_planner_work_session` schedules a Board task;
+  `update_planner_work_session` moves or resizes it; `cancel_planner_work_session` removes it.
+- **iCalendar.** `preview_ical_import` shows what an `.ics` text would add, without changing
+  anything; `import_ical` with the same text imports all of it or the keys or `source_uid`s in
+  `select` (a UID brings a series with its overrides). Events imported before are skipped unless
+  `allow_duplicates`. `export_ical` returns the calendar as `.ics` text; save it with `create_file`
+  only if the person asks.
+
+Calendar changes are applied directly, never reviewed, and need `planner:` like Board tasks: under a
+`may-change` without it they are refused (`denied`). Tell the person instead of retrying.

@@ -919,7 +919,7 @@ fn without_any_vault_it_connects_and_picks_up_the_first_one_opened() {
     // Never opened a vault in the app (no settings.json): the handshake still succeeds.
     let mut c = Client::start_with(None, &settings, &home.path().join("cache"));
     let tools = c.request("tools/list", json!({}));
-    assert_eq!(tools["result"]["tools"].as_array().unwrap().len(), 50);
+    assert_eq!(tools["result"]["tools"].as_array().unwrap().len(), 66);
     let resources = c.request("resources/list", json!({}));
     assert_eq!(resources["result"]["resources"], json!([]));
     let (err, msg) = c.call("list_files", json!({}));
@@ -1464,7 +1464,7 @@ fn the_connection_test_reports_a_working_server_with_and_without_a_vault() {
 
     let r = probe(bin, &["mcp".into()], &env, timeout);
     assert!(r.ok, "{r:?}");
-    assert_eq!(r.tools, 50);
+    assert_eq!(r.tools, 66);
     assert_eq!(r.server_version.as_deref(), Some(env!("CARGO_PKG_VERSION")));
     assert!(r.no_vault.unwrap().contains("No Mosaic vault is open"));
 
@@ -1718,5 +1718,508 @@ fn readme_lists_every_mcp_tool() {
     assert!(
         missing.is_empty() && stale.is_empty(),
         "README.md's MCP tool list is out of date: add {missing:?}, remove {stale:?}"
+    );
+}
+
+/// One recurring timed event, Mondays at 09:30 in Paris from 2026-11-23.
+fn standup() -> Value {
+    json!({
+        "title": "Standup",
+        "start_value": "2026-11-23T09:30:00+01:00",
+        "end_value": "2026-11-23T09:45:00+01:00",
+        "timezone": "Europe/Paris",
+        "recurrence_rule": "FREQ=WEEKLY;BYDAY=MO"
+    })
+}
+
+fn find<'a>(list: &'a Value, key: &str, value: &Value) -> Option<&'a Value> {
+    list.as_array()
+        .unwrap()
+        .iter()
+        .find(|item| &item[key] == value)
+}
+
+#[test]
+fn agents_manage_calendar_events_and_work_sessions() {
+    let dir = fixture();
+    let epic = mosaic_core::planner::PlannerStore::open(dir.path())
+        .unwrap()
+        .create_epic(mosaic_core::planner::CreateEpic {
+            title: "Launch".into(),
+            description: String::new(),
+            color: "#22c55e".into(),
+        })
+        .unwrap();
+    let mut c = Client::start(dir.path());
+
+    // Events: create with every optional field, then clear them with "".
+    let (err, event) = c.call(
+        "create_planner_event",
+        json!({
+            "title": "Design review",
+            "location": "Room 2",
+            "meeting_url": "https://meet.example.com/x",
+            "participants": ["ana@example.com"],
+            "epic_id": epic.id,
+            "color": "#ff0000",
+            "start_value": "2026-11-20T09:00:00+01:00",
+            "end_value": "2026-11-20T10:00:00+01:00",
+            "timezone": "Europe/Paris",
+            "recurrence_rule": "FREQ=DAILY;COUNT=2"
+        }),
+    );
+    assert!(!err, "{event}");
+    assert_eq!(event["start_value"], "2026-11-20T08:00:00.000Z");
+    assert_eq!(event["revision"], 1);
+    let id = event["id"].clone();
+    let (err, updated) = c.call(
+        "update_planner_event",
+        json!({
+            "id": id, "expected_revision": 1, "title": "Design review (final)",
+            "meeting_url": "", "epic_id": "", "color": "", "recurrence_rule": ""
+        }),
+    );
+    assert!(!err, "{updated}");
+    assert_eq!(updated["revision"], 2);
+    assert_eq!(updated["title"], "Design review (final)");
+    assert_eq!(updated["location"], "Room 2", "fields left out are kept");
+    assert_eq!(updated["participants"], json!(["ana@example.com"]));
+    for cleared in ["meeting_url", "epic_id", "color", "recurrence_rule"] {
+        assert_eq!(updated[cleared], Value::Null, "{cleared}");
+    }
+    let (err, stale) = c.call(
+        "update_planner_event",
+        json!({ "id": id, "expected_revision": 1, "title": "Lost update" }),
+    );
+    assert!(err && stale["code"] == "conflict", "{stale}");
+    let (_, events) = c.call("list_planner_events", json!({}));
+    assert_eq!(
+        find(&events, "id", &id).unwrap(),
+        &updated,
+        "a refused update changes nothing"
+    );
+
+    // Work sessions for a Board task due in the range.
+    let (_, task) = c.call(
+        "create_planner_task",
+        json!({ "title": "Write brief", "due_date": "2026-11-21" }),
+    );
+    let (err, session) = c.call(
+        "create_planner_work_session",
+        json!({
+            "task_id": task["id"],
+            "start_value": "2026-11-21T14:00:00+01:00",
+            "end_value": "2026-11-21T15:30:00+01:00",
+            "timezone": "Europe/Paris"
+        }),
+    );
+    assert!(!err, "{session}");
+    let (err, sessions) = c.call(
+        "list_planner_work_sessions",
+        json!({ "task_id": task["id"] }),
+    );
+    assert!(!err, "{sessions}");
+    assert_eq!(sessions, json!([session]));
+    let (err, moved) = c.call(
+        "update_planner_work_session",
+        json!({ "id": session["id"], "expected_revision": 1, "end_value": "2026-11-21T16:00:00+01:00" }),
+    );
+    assert!(!err, "{moved}");
+    assert_eq!(moved["start_value"], session["start_value"]);
+    assert_eq!(moved["end_value"], "2026-11-21T15:00:00.000Z");
+    let (err, stale) = c.call(
+        "update_planner_work_session",
+        json!({ "id": session["id"], "expected_revision": 1, "end_value": "2026-11-21T18:00:00+01:00" }),
+    );
+    assert!(err && stale["code"] == "conflict", "{stale}");
+    let (_, sessions) = c.call("list_planner_work_sessions", json!({}));
+    assert_eq!(sessions, json!([moved]), "a refused update changes nothing");
+
+    // The range shows events, work sessions and due Board tasks together, with revisions.
+    let (err, range) = c.call(
+        "get_planner_calendar",
+        json!({ "from": "2026-11-20", "to": "2026-11-22" }),
+    );
+    assert!(!err, "{range}");
+    let occurrence = find(&range["events"], "event_id", &id).unwrap();
+    assert_eq!(occurrence["series_revision"], 2);
+    assert_eq!(occurrence["occurrence_key"], "2026-11-20");
+    let scheduled = &range["work_sessions"][0];
+    assert_eq!(scheduled["session"]["id"], session["id"]);
+    assert_eq!(scheduled["task_title"], "Write brief");
+    assert_eq!(range["due_markers"][0]["task_id"], task["id"]);
+    assert_eq!(
+        find(&range["workload"], "date", &json!("2026-11-21")).unwrap()["minutes"],
+        120
+    );
+    assert!(range.get("unscheduled_tasks").is_none(), "{range}");
+    let (_, range) = c.call(
+        "get_planner_calendar",
+        json!({ "from": "2026-11-20", "to": "2026-11-20", "include_unscheduled_tasks": true }),
+    );
+    assert_eq!(range["unscheduled_tasks"][0]["id"], task["id"]);
+    let (err, week) = c.call("get_planner_calendar", json!({}));
+    assert!(!err, "{week}");
+    assert_eq!(week["workload"].as_array().unwrap().len(), 7, "{week}");
+
+    let (err, cancelled) = c.call(
+        "cancel_planner_work_session",
+        json!({ "id": session["id"], "expected_revision": moved["revision"] }),
+    );
+    assert!(!err, "{cancelled}");
+    assert_eq!(cancelled["state"], "cancelled");
+    let (_, sessions) = c.call("list_planner_work_sessions", json!({}));
+    assert_eq!(sessions, json!([]));
+    let (_, sessions) = c.call(
+        "list_planner_work_sessions",
+        json!({ "include_cancelled": true }),
+    );
+    assert_eq!(sessions, json!([cancelled]));
+
+    // Export returns the iCalendar text itself.
+    let (err, ics) = c.call("export_ical", json!({}));
+    assert!(!err, "{ics}");
+    let ics = ics.as_str().expect("plain text");
+    assert!(ics.starts_with("BEGIN:VCALENDAR"), "{ics}");
+    assert!(ics.contains("SUMMARY:Design review (final)"), "{ics}");
+
+    // Lifecycle: trash needs archive first; restore brings it back.
+    let (err, refused) = c.call(
+        "trash_planner_event",
+        json!({ "id": id, "expected_revision": 2 }),
+    );
+    assert!(err && refused["code"] == "invalid", "{refused}");
+    let (err, archived) = c.call(
+        "archive_planner_event",
+        json!({ "id": id, "expected_revision": 2 }),
+    );
+    assert!(!err && archived["archived_at"].is_string(), "{archived}");
+    let (err, trashed) = c.call(
+        "trash_planner_event",
+        json!({ "id": id, "expected_revision": 3 }),
+    );
+    assert!(!err && trashed["trashed_at"].is_string(), "{trashed}");
+    let (_, events) = c.call("list_planner_events", json!({}));
+    assert_eq!(events, json!([]));
+    let (_, events) = c.call(
+        "list_planner_events",
+        json!({ "include_archived": true, "include_trashed": true }),
+    );
+    assert_eq!(events, json!([trashed]));
+    let (err, restored) = c.call(
+        "restore_planner_event",
+        json!({ "id": id, "expected_revision": 4 }),
+    );
+    assert!(!err, "{restored}");
+    assert!(restored["archived_at"].is_null() && restored["trashed_at"].is_null());
+    let (_, events) = c.call("list_planner_events", json!({}));
+    assert_eq!(events, json!([restored]));
+}
+
+#[test]
+fn recurring_occurrences_can_be_cancelled_and_replaced() {
+    let dir = fixture();
+    let mut c = Client::start(dir.path());
+    let (err, series) = c.call("create_planner_event", standup());
+    assert!(!err, "{series}");
+    let id = series["id"].clone();
+    let occurrences = |c: &mut Client| {
+        let (err, range) = c.call(
+            "get_planner_calendar",
+            json!({ "from": "2026-11-23", "to": "2026-12-13" }),
+        );
+        assert!(!err, "{range}");
+        range["events"].as_array().unwrap().clone()
+    };
+    let all = occurrences(&mut c);
+    let keys: Vec<_> = all.iter().map(|o| o["occurrence_key"].clone()).collect();
+    assert_eq!(
+        keys,
+        [
+            json!("2026-11-23"),
+            json!("2026-11-30"),
+            json!("2026-12-07")
+        ]
+    );
+    assert!(
+        all.iter()
+            .all(|o| o["series_id"] == id && o["series_revision"] == 1)
+    );
+
+    let (err, after) = c.call(
+        "cancel_planner_event_occurrence",
+        json!({ "series_id": id, "expected_revision": 1, "occurrence_key": "2026-11-30" }),
+    );
+    assert!(!err, "{after}");
+    assert_eq!(after["revision"], 2);
+    let (err, stale) = c.call(
+        "cancel_planner_event_occurrence",
+        json!({ "series_id": id, "expected_revision": 1, "occurrence_key": "2026-12-07" }),
+    );
+    assert!(err && stale["code"] == "conflict", "{stale}");
+    let keys: Vec<_> = occurrences(&mut c)
+        .iter()
+        .map(|o| o["occurrence_key"].clone())
+        .collect();
+    assert_eq!(keys, [json!("2026-11-23"), json!("2026-12-07")]);
+
+    let (err, refused) = c.call(
+        "replace_planner_event_occurrence",
+        json!({
+            "series_id": id, "expected_revision": 2, "occurrence_key": "2026-11-24",
+            "start_value": "2026-11-24T10:00:00+01:00", "end_value": "2026-11-24T10:15:00+01:00"
+        }),
+    );
+    assert!(
+        err && refused["code"] == "invalid",
+        "not an occurrence: {refused}"
+    );
+    let (err, replacement) = c.call(
+        "replace_planner_event_occurrence",
+        json!({
+            "series_id": id, "expected_revision": 2, "occurrence_key": "2026-12-07",
+            "title": "Standup (moved)",
+            "start_value": "2026-12-08T10:00:00+01:00", "end_value": "2026-12-08T10:30:00+01:00"
+        }),
+    );
+    assert!(!err, "{replacement}");
+    assert_eq!(replacement["series_id"], id);
+    assert_eq!(
+        replacement["timezone"], "Europe/Paris",
+        "taken from the series"
+    );
+    let all = occurrences(&mut c);
+    assert_eq!(all.len(), 2, "{all:?}");
+    let moved = &all[1];
+    assert_eq!(moved["event_id"], replacement["id"]);
+    assert_eq!(moved["series_id"], id);
+    assert_eq!(moved["title"], "Standup (moved)");
+    assert_eq!(moved["start_value"], "2026-12-08T09:00:00.000Z");
+    assert_eq!(moved["series_revision"], 3);
+}
+
+const ICS: &str = "BEGIN:VCALENDAR\nVERSION:2.0\n\
+BEGIN:VEVENT\nUID:one@example.com\nDTSTART:20261201T100000Z\nDTEND:20261201T110000Z\n\
+SUMMARY:Imported meeting\nLOCATION:Room 4\nEND:VEVENT\n\
+BEGIN:VEVENT\nUID:series@example.com\nDTSTART;TZID=Europe/Paris:20261202T090000\n\
+DTEND;TZID=Europe/Paris:20261202T093000\nRRULE:FREQ=DAILY;COUNT=3\nSUMMARY:Daily sync\nEND:VEVENT\n\
+BEGIN:VEVENT\nUID:series@example.com\nRECURRENCE-ID;TZID=Europe/Paris:20261203T090000\n\
+DTSTART;TZID=Europe/Paris:20261203T110000\nDTEND;TZID=Europe/Paris:20261203T113000\n\
+SUMMARY:Daily sync (late)\nEND:VEVENT\nEND:VCALENDAR\n";
+
+#[test]
+fn ical_text_is_previewed_and_imported() {
+    let dir = fixture();
+    let mut c = Client::start(dir.path());
+    let (err, preview) = c.call("preview_ical_import", json!({ "content": ICS }));
+    assert!(!err, "{preview}");
+    assert_eq!(preview["duplicates"], 0);
+    let candidates = preview["candidates"].as_array().unwrap();
+    assert_eq!(candidates.len(), 3, "{preview}");
+    assert!(
+        candidates.iter().all(|c| c.get("event").is_none()),
+        "compact"
+    );
+    let one = find(
+        &preview["candidates"],
+        "source_uid",
+        &json!("one@example.com"),
+    )
+    .unwrap();
+    assert_eq!(one["location"], "Room 4");
+    assert_eq!(one["start_value"], "2026-12-01T10:00:00.000Z");
+
+    let (err, refused) = c.call(
+        "import_ical",
+        json!({ "content": ICS, "select": ["series@example.com", "nope"] }),
+    );
+    assert!(err && refused["code"] == "invalid", "{refused}");
+    let (_, events) = c.call("list_planner_events", json!({}));
+    assert_eq!(events, json!([]), "a refused import adds nothing");
+
+    // A UID selects the series with its override.
+    let (err, imported) = c.call(
+        "import_ical",
+        json!({ "content": ICS, "select": ["series@example.com"] }),
+    );
+    assert!(!err, "{imported}");
+    assert_eq!(imported["imported_event_ids"].as_array().unwrap().len(), 2);
+    let (_, range) = c.call(
+        "get_planner_calendar",
+        json!({ "from": "2026-12-02", "to": "2026-12-04" }),
+    );
+    let titles: Vec<_> = range["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|o| o["title"].as_str().unwrap())
+        .collect();
+    assert_eq!(titles, ["Daily sync", "Daily sync (late)", "Daily sync"]);
+
+    let (_, preview) = c.call("preview_ical_import", json!({ "content": ICS }));
+    assert_eq!(preview["duplicates"], 2);
+    let (err, imported) = c.call("import_ical", json!({ "content": ICS }));
+    assert!(!err, "{imported}");
+    assert_eq!(imported["imported_event_ids"].as_array().unwrap().len(), 1);
+    assert_eq!(imported["skipped_duplicates"].as_array().unwrap().len(), 2);
+    let (_, events) = c.call("list_planner_events", json!({}));
+    assert!(
+        find(&events, "title", &json!("Imported meeting")).is_some(),
+        "{events}"
+    );
+}
+
+#[test]
+fn calendar_writes_need_the_planner_scope_under_may_change() {
+    let home = tempfile::tempdir().unwrap();
+    let vault = home.path().join("V");
+    std::fs::create_dir_all(vault.join("Daily")).unwrap();
+    let settings = home.path().join("settings");
+    let cache = home.path().join("cache");
+
+    let mut c = Client::start_with(Some(&vault), &settings, &cache);
+    let (_, task) = c.call("create_planner_task", json!({ "title": "T" }));
+    let (_, series) = c.call("create_planner_event", standup());
+    let (_, session) = c.call(
+        "create_planner_work_session",
+        json!({
+            "task_id": task["id"], "all_day": true,
+            "start_value": "2026-11-23", "end_value": "2026-11-24", "timezone": "Europe/Paris"
+        }),
+    );
+    assert!(session["id"].is_string(), "{session}");
+    drop(c);
+
+    let writes = |series: &Value, session: &Value| {
+        let id = &series["id"];
+        let rev = &series["revision"];
+        vec![
+            ("create_planner_event", standup()),
+            (
+                "update_planner_event",
+                json!({ "id": id, "expected_revision": rev, "title": "X" }),
+            ),
+            (
+                "cancel_planner_event_occurrence",
+                json!({ "series_id": id, "expected_revision": rev, "occurrence_key": "2026-11-30" }),
+            ),
+            (
+                "replace_planner_event_occurrence",
+                json!({
+                    "series_id": id, "expected_revision": rev, "occurrence_key": "2026-12-07",
+                    "start_value": "2026-12-07T11:00:00+01:00", "end_value": "2026-12-07T11:15:00+01:00"
+                }),
+            ),
+            (
+                "create_planner_work_session",
+                json!({
+                    "task_id": session["task_id"], "start_value": "2026-11-24T09:00:00+01:00",
+                    "end_value": "2026-11-24T10:00:00+01:00", "timezone": "Europe/Paris"
+                }),
+            ),
+            (
+                "update_planner_work_session",
+                json!({ "id": session["id"], "expected_revision": session["revision"], "end_value": "2026-11-25" }),
+            ),
+            (
+                "cancel_planner_work_session",
+                json!({ "id": session["id"], "expected_revision": session["revision"] }),
+            ),
+            ("import_ical", json!({ "content": ICS })),
+            (
+                "archive_planner_event",
+                json!({ "id": id, "expected_revision": rev }),
+            ),
+        ]
+    };
+
+    let mut c = Client::start_restricted(Some(&vault), &settings, &cache, &["Daily"]);
+    let mut lifecycle = writes(&series, &session);
+    lifecycle.extend([
+        (
+            "trash_planner_event",
+            json!({ "id": series["id"], "expected_revision": 1 }),
+        ),
+        (
+            "restore_planner_event",
+            json!({ "id": series["id"], "expected_revision": 1 }),
+        ),
+    ]);
+    for (tool, args) in lifecycle {
+        let (err, refused) = c.call(tool, args);
+        assert!(err && refused["code"] == "denied", "{tool}: {refused}");
+        assert!(
+            refused["message"].as_str().unwrap().contains("`planner:`"),
+            "{tool}: {refused}"
+        );
+    }
+    // Reads still work, and nothing changed.
+    let (err, events) = c.call("list_planner_events", json!({}));
+    assert!(!err, "{events}");
+    assert_eq!(events, json!([series]));
+    let (_, sessions) = c.call("list_planner_work_sessions", json!({}));
+    assert_eq!(sessions, json!([session]));
+    let (err, _) = c.call(
+        "get_planner_calendar",
+        json!({ "from": "2026-11-23", "to": "2026-11-29" }),
+    );
+    assert!(!err);
+    let (err, _) = c.call("preview_ical_import", json!({ "content": ICS }));
+    assert!(!err);
+    let (err, _) = c.call("export_ical", json!({}));
+    assert!(!err);
+    drop(c);
+
+    // With `planner:`, the same agent may change the calendar.
+    let mut c = Client::start_restricted(Some(&vault), &settings, &cache, &["Daily", "planner:"]);
+    let id = &series["id"];
+    let mut call = |tool: &str, args: Value| {
+        let (err, result) = c.call(tool, args);
+        assert!(!err, "{tool}: {result}");
+        result
+    };
+    call("create_planner_event", standup());
+    call("import_ical", json!({ "content": ICS }));
+    let s = call(
+        "update_planner_event",
+        json!({ "id": id, "expected_revision": 1, "title": "X" }),
+    );
+    let s = call(
+        "cancel_planner_event_occurrence",
+        json!({ "series_id": id, "expected_revision": s["revision"], "occurrence_key": "2026-11-30" }),
+    );
+    call(
+        "replace_planner_event_occurrence",
+        json!({
+            "series_id": id, "expected_revision": s["revision"], "occurrence_key": "2026-12-07",
+            "start_value": "2026-12-07T11:00:00+01:00", "end_value": "2026-12-07T11:15:00+01:00"
+        }),
+    );
+    let s = call(
+        "archive_planner_event",
+        json!({ "id": id, "expected_revision": 4 }),
+    );
+    let s = call(
+        "trash_planner_event",
+        json!({ "id": id, "expected_revision": s["revision"] }),
+    );
+    call(
+        "restore_planner_event",
+        json!({ "id": id, "expected_revision": s["revision"] }),
+    );
+    call(
+        "create_planner_work_session",
+        json!({
+            "task_id": session["task_id"], "start_value": "2026-11-24T09:00:00+01:00",
+            "end_value": "2026-11-24T10:00:00+01:00", "timezone": "Europe/Paris"
+        }),
+    );
+    let w = call(
+        "update_planner_work_session",
+        json!({ "id": session["id"], "expected_revision": 1, "end_value": "2026-11-25" }),
+    );
+    call(
+        "cancel_planner_work_session",
+        json!({ "id": session["id"], "expected_revision": w["revision"] }),
     );
 }

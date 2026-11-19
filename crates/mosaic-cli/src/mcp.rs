@@ -116,6 +116,36 @@ struct CreateArgs {
 }
 
 #[derive(Deserialize, JsonSchema)]
+struct SetPreferencesArgs {
+    /// Only the preferences to change, e.g. `{"link_style": "markdown"}`. `folder_colors` changes
+    /// only the folders it names: `{"Projects": "blue", "Old": null}` (null removes a color).
+    patch: serde_json::Map<String, serde_json::Value>,
+    /// The `revision` from the get_vault_preferences you read before this change.
+    expected_revision: String,
+}
+#[derive(Deserialize, JsonSchema)]
+struct TemplateRuleArg {
+    /// Vault-relative folder the rule applies to (and its subfolders); "" for the whole vault.
+    folder: String,
+    /// The template (a .md file inside the templates folder), or null for a Blank note that stops
+    /// inheriting a parent folder's template.
+    template: Option<String>,
+}
+#[derive(Deserialize, JsonSchema)]
+struct SetTemplateConfigArgs {
+    /// Vault-relative folder holding the templates (not the vault root).
+    folder: String,
+    /// Every per-folder default, replacing the current list (one rule per folder).
+    rules: Vec<TemplateRuleArg>,
+    /// The `revision` from the get_template_config you read before this change.
+    expected_revision: String,
+}
+#[derive(Serialize)]
+struct Starter {
+    name: &'static str,
+    content: &'static str,
+}
+#[derive(Deserialize, JsonSchema)]
 struct TemplatesArgs {
     path: Option<String>,
 }
@@ -1588,10 +1618,73 @@ impl MosaicMcp {
             .and_then(ok)
     }
     #[tool(
-        description = "Read vault-scoped preferences configured in Settings: agents and daily folders, filename format and generated link syntax. Settings changes never move existing files. This is read-only; only the person may configure preferences."
+        description = "Read vault-scoped preferences from Settings: agents and daily folders, daily filename format, where new notes and attachments go, generated link syntax, startup note and folder colors, plus the `revision` set_vault_preferences needs. Settings changes never move existing files. Settings naming a path hidden from you come back blank and are listed in `hidden`."
     )]
     async fn get_vault_preferences(&self) -> ToolResult {
-        self.ws().vault_preferences().map_err(err).and_then(ok)
+        self.ws()
+            .revised_vault_preferences()
+            .map_err(err)
+            .and_then(ok)
+    }
+    #[tool(
+        description = "Change vault preferences, as the person would in Settings. Pass only the keys to change and the `revision` from get_vault_preferences; a stale revision returns conflict (read again). Settable: daily_notes_enabled, daily_folder, daily_template, daily_format (YYYY-MM-DD, DD-MM-YYYY, YYYYMMDD), new_note_location (current, root, folder), new_note_folder, attachment_location (next-to-note, folder), attachment_folder, show_attachments_in_tree, link_style (wiki, markdown), startup_note, and folder_colors: per folder a preset (red, orange, green, blue, purple) or null to remove it; other folders keep theirs. Paths are vault-relative. The agents folder and HTML preview permissions are the person's alone and are refused. Changes never move files. Returns the new preferences and revision. Applied directly, never reviewed; refused (code denied) when you are restricted to certain folders without `settings:`."
+    )]
+    async fn set_vault_preferences(
+        &self,
+        Parameters(a): Parameters<SetPreferencesArgs>,
+    ) -> ToolResult {
+        self.ws()
+            .change_vault_preferences(serde_json::Value::Object(a.patch), &a.expected_revision)
+            .map_err(err)
+            .and_then(ok)
+    }
+    #[tool(
+        description = "Read the template defaults from Settings › Templates: the templates `folder` and per-folder `rules` (a folder's default template, or null for Blank; subfolders inherit, the longest match wins), plus the `revision` set_template_config needs. Rules for folders hidden from you are left out (`hidden` then lists `rules`)."
+    )]
+    async fn get_template_config(&self) -> ToolResult {
+        self.ws()
+            .revised_template_config()
+            .map_err(err)
+            .and_then(ok)
+    }
+    #[tool(
+        description = "Replace the template defaults, as the person would in Settings › Templates: the templates folder and the full list of per-folder rules (send every rule you want to keep). Each template must be a .md file inside the templates folder, and each folder may have one rule. Pass the `revision` from get_template_config; a stale revision returns conflict (read again). Rules you can't see are kept. Template files themselves are ordinary notes: write them with create_file. Returns the new config and revision. Applied directly, never reviewed; refused (code denied) when you are restricted to certain folders without `settings:`."
+    )]
+    async fn set_template_config(
+        &self,
+        Parameters(a): Parameters<SetTemplateConfigArgs>,
+    ) -> ToolResult {
+        let config = mosaic_core::templates::TemplateConfig {
+            version: 1,
+            folder: a.folder,
+            rules: a
+                .rules
+                .into_iter()
+                .map(|r| mosaic_core::templates::TemplateRule {
+                    folder: r.folder,
+                    template: r.template,
+                })
+                .collect(),
+        };
+        self.ws()
+            .change_template_config(config, &a.expected_revision)
+            .map_err(err)
+            .and_then(ok)
+    }
+    #[tool(
+        description = "The starter templates Settings › Templates offers (meeting, retro, …): file name and Markdown with placeholders such as {{title}} and {{date}}. Writes nothing; to add one, create_file it in the templates folder from get_template_config."
+    )]
+    async fn list_template_starters(&self) -> ToolResult {
+        ok(mosaic_core::templates::STARTERS
+            .iter()
+            .map(|&(name, content)| Starter { name, content })
+            .collect::<Vec<_>>())
+    }
+    #[tool(
+        description = "Read the vault's folder rules for agents (Settings › AI): which folders are read-only to you, and where your changes become proposals for review. Rules on or inside folders hidden from you are only counted (`hidden_rules`). Read only: the person sets these rules and no tool changes them."
+    )]
+    async fn get_agent_rules(&self) -> ToolResult {
+        self.ws().agent_rules_view().map_err(err).and_then(ok)
     }
     #[tool(
         description = "Preview a new note using its folder default, an explicit template or Blank. Returns rendered Markdown, source hash, default provenance and title/date/time context; writes nothing. Use the same timestamp and expected_template_hash when creating a scaffold."

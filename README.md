@@ -203,7 +203,7 @@ be opened until you update the registration.
 
 ### Tools
 
-The server has 45 tools (this list is checked against the server by a test):
+The server has 57 tools (this list is checked against the server by a test):
 
 <!-- mcp-tools:start -->
 - Guide and settings: `vault_guide`, `get_vault_preferences`, `list_agents`.

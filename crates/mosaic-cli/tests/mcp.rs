@@ -656,8 +656,6 @@ fn the_lazy_first_open_keeps_the_may_change_restriction() {
     assert!(err && refused["code"] == "denied", "{refused}");
 }
 
-/// Under `--may-change`, app-state writes (planner, bookmarks) are refused unless the allowlist
-/// names their scope; reads and withdrawing the agent's own proposals still work.
 /// The subscription tools through the real binary: the app's settings and Keychain. Writes are
 /// refused without `subscriptions:` before the Keychain or the network is touched (so this is safe
 /// on a Mac); reads work; off macOS, adding says the Keychain is needed, as in the app. The tools
@@ -725,6 +723,8 @@ fn calendar_subscription_tools_use_the_app_state() {
     }
 }
 
+/// Under `--may-change`, app-state writes (planner, bookmarks) are refused unless the allowlist
+/// names their scope; reads and withdrawing the agent's own proposals still work.
 #[test]
 fn app_state_writes_need_their_scope_under_may_change() {
     let home = tempfile::tempdir().unwrap();

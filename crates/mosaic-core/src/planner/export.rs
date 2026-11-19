@@ -17,6 +17,14 @@ struct PlannerExport {
     activity: Vec<ActivityEntry>,
 }
 
+/// One export and the state it was taken at.
+#[derive(Debug)]
+pub struct PlannerExportSnapshot {
+    pub revision: i64,
+    pub exported_at: String,
+    pub content: String,
+}
+
 impl PlannerStore {
     fn all_activity(&self) -> Result<Vec<ActivityEntry>> {
         let mut statement = self
@@ -31,9 +39,15 @@ impl PlannerStore {
     }
 
     pub fn export_json(&self) -> Result<String> {
+        self.export_json_at(&now())
+    }
+
+    /// The JSON export stamped with `exported_at`, so the same planner revision gives the same
+    /// bytes (MCP pages one export over several calls).
+    pub fn export_json_at(&self, exported_at: &str) -> Result<String> {
         let export = PlannerExport {
             format_version: 1,
-            exported_at: now(),
+            exported_at: exported_at.to_string(),
             summary: self.summary()?,
             epics: self.list_epics(true, true)?,
             tasks: self.list_tasks(true, true)?,
@@ -136,5 +150,31 @@ impl PlannerService {
 
     pub fn export_csv(&self) -> Result<String> {
         self.store()?.export_csv()
+    }
+
+    /// The `json` or `csv` export with the planner revision it reflects, read under one lock.
+    /// `exported_at` stamps the JSON export (default now; CSV has no timestamp), so the same
+    /// revision and stamp give the same bytes.
+    pub fn export_snapshot(
+        &self,
+        format: &str,
+        exported_at: Option<&str>,
+    ) -> Result<PlannerExportSnapshot> {
+        let store = self.store()?;
+        let exported_at = exported_at.map_or_else(now, str::to_string);
+        let content = match format {
+            "json" => store.export_json_at(&exported_at)?,
+            "csv" => store.export_csv()?,
+            _ => {
+                return Err(crate::error::Error::Invalid(
+                    "planner export must be JSON or CSV".into(),
+                ));
+            }
+        };
+        Ok(PlannerExportSnapshot {
+            revision: store.summary()?.revision,
+            exported_at,
+            content,
+        })
     }
 }

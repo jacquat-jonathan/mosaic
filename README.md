@@ -203,7 +203,7 @@ be opened until you update the registration.
 
 ### Tools
 
-The server has 72 tools (this list is checked against the server by a test):
+The server has 80 tools (this list is checked against the server by a test):
 
 <!-- mcp-tools:start -->
 - Guide and settings: `vault_guide`, `get_vault_preferences`, `set_vault_preferences` (folder
@@ -218,10 +218,13 @@ The server has 72 tools (this list is checked against the server by a test):
 - History and review: `file_history`, `restore_version`, `list_proposals`, `withdraw_proposal`.
 - Bookmarks: `list_bookmarks`, `add_bookmark`, `remove_bookmark`.
 - Markdown tasks: `tasks_by_day`, `carry_over`.
-- Planner (revision-safe Board tasks): `list_planner_epics`, `list_planner_tasks`,
+- Planner (revision-safe Board tasks and epics): `get_planner_summary`, `list_planner_activity`
+  (the activity feed), `list_planner_epics`, `create_planner_epic`, `update_planner_epic`,
+  `archive_planner_epic`, `restore_planner_epic`, `trash_planner_epic`, `list_planner_tasks`,
   `get_planner_task`, `planner_task_history`, `create_planner_task`, `update_planner_task`,
   `move_planner_task`, `complete_planner_task`, `reopen_planner_task`, `archive_planner_task`,
-  `restore_planner_task`, `trash_planner_task`.
+  `restore_planner_task`, `trash_planner_task`, `export_planner` (the backup as JSON or CSV,
+  returned in pages).
 - Calendar (revision-safe planner events and work sessions): `get_planner_calendar` (a range of days
   with recurrences expanded, work sessions and due Board tasks), `list_planner_events`,
   `create_planner_event`, `update_planner_event`, `archive_planner_event`, `restore_planner_event`,

@@ -23,11 +23,10 @@ dependencies.
 - Put the pinned Node first on `PATH` before any `node` or `pnpm` command; the image's
   default Node is a different version and `scripts/check-toolchain.sh` rejects it:
   `export PATH=/opt/node-mosaic/bin:$PATH`.
-- `scripts/check-rust.sh` fails here at its Clippy step: `cargo clippy --workspace` fails on
-  Linux in `src-tauri/src/calendar_subscriptions.rs` (`Command` and `SERVICE` are only used
-  by the macOS-only code). Run `cargo fmt --all --check`, then Clippy with
-  `-p mosaic-core -p mosaic-cli`, then `cargo test --locked --workspace --no-fail-fast`,
-  and leave `src-tauri`'s Clippy to CI.
+- Before `cargo` builds of the app, run `bash scripts/prepare-sidecar.sh debug` once: Tauri needs the
+  CLI sidecar in `src-tauri/binaries`. Then `cargo fmt --all --check`,
+  `cargo clippy --locked --workspace --all-targets -- -D warnings` (clean on Linux) and
+  `cargo test --locked --workspace --no-fail-fast`.
 - Three tests fail only because the session is `root`, which ignores file permissions:
   `inaccessible_planner_does_not_block_notes`,
   `a_link_that_cant_be_rewritten_is_reported_and_can_be_fixed_later` and

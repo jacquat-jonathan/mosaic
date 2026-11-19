@@ -739,54 +739,12 @@ mod download_tests {
 
 /// The service end to end, with an in-memory secret store and a scripted feed source.
 mod service_tests {
+    use super::super::testing::{MemorySecrets, ScriptedFetcher};
     use super::super::*;
     use super::block_on;
-    use std::collections::VecDeque;
-    use std::sync::Mutex;
 
     const FEED: &str = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:standup\r\nDTSTART:20261103T090000Z\r\nDTEND:20261103T093000Z\r\nSUMMARY:Standup\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
     const URL: &str = "webcal://calendar.example/team.ics?token=private-token";
-
-    #[derive(Default)]
-    struct MemorySecrets(Mutex<HashMap<String, String>>);
-
-    impl SecretStore for MemorySecrets {
-        fn set(&self, id: &str, value: &str) -> Result<()> {
-            self.0.lock().unwrap().insert(id.into(), value.into());
-            Ok(())
-        }
-        fn get(&self, id: &str) -> Result<String> {
-            self.0
-                .lock()
-                .unwrap()
-                .get(id)
-                .cloned()
-                .ok_or_else(|| Error::Invalid("missing secret".into()))
-        }
-        fn delete(&self, id: &str) {
-            self.0.lock().unwrap().remove(id);
-        }
-    }
-
-    #[derive(Default)]
-    struct ScriptedFetcher {
-        responses: Mutex<VecDeque<Result<Option<DownloadedFeed>>>>,
-        calls: Mutex<Vec<(String, Validators)>>,
-    }
-
-    impl FeedFetcher for ScriptedFetcher {
-        async fn fetch(&self, url: Url, validators: &Validators) -> Result<Option<DownloadedFeed>> {
-            self.calls
-                .lock()
-                .unwrap()
-                .push((url.to_string(), validators.clone()));
-            self.responses
-                .lock()
-                .unwrap()
-                .pop_front()
-                .expect("no download was expected")
-        }
-    }
 
     fn feed(content: &str, etag: &str) -> Result<Option<DownloadedFeed>> {
         Ok(Some(DownloadedFeed {
@@ -1179,5 +1137,176 @@ mod service_tests {
             .to_string();
         assert!(error.contains("Keychain"));
         assert!(service.list(&root).unwrap().is_empty());
+    }
+}
+
+/// The workspace-bound service agents use: writes need the `subscriptions:` scope under an
+/// allowlist, and partial updates keep the other fields.
+mod workspace_tests {
+    use super::super::testing::{MemorySecrets, ScriptedFetcher};
+    use super::super::*;
+    use super::block_on;
+    use crate::api::Workspace;
+    use crate::history::Source;
+
+    const FEED: &str = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:standup\r\nDTSTART:20261103T090000Z\r\nDTEND:20261103T093000Z\r\nSUMMARY:Standup\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+    const URL: &str = "https://calendar.example/team.ics?token=private-token";
+
+    fn feed() -> Result<Option<DownloadedFeed>> {
+        Ok(Some(DownloadedFeed {
+            content: FEED.into(),
+            etag: None,
+            last_modified: None,
+            url_hash: "resource".into(),
+        }))
+    }
+
+    fn setup() -> (
+        tempfile::TempDir,
+        CalendarSubscriptions<MemorySecrets, ScriptedFetcher>,
+    ) {
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir_all(dir.path().join("vault/Daily")).unwrap();
+        let service = CalendarSubscriptions::new(
+            dir.path().join("cache"),
+            MemorySecrets::default(),
+            ScriptedFetcher::default(),
+        )
+        .with_settings_dir(dir.path().join("settings"));
+        (dir, service)
+    }
+
+    fn agent(dir: &tempfile::TempDir, may_change: &[&str]) -> Workspace {
+        Workspace::open(dir.path().join("vault"))
+            .unwrap()
+            .with_source(Source::Agent)
+            .with_change_allowlist(may_change.iter().map(|s| s.to_string()).collect())
+    }
+
+    #[test]
+    fn writes_are_refused_without_the_scope_before_anything_is_touched() {
+        let (dir, service) = setup();
+        let ws = agent(&dir, &["Daily"]);
+        let subs = service.for_workspace(&ws);
+        let denied = |result: Result<()>| match result {
+            Err(Error::Denied(message)) => {
+                assert!(message.contains("`subscriptions:`"), "{message}");
+                assert!(message.contains("calendar subscriptions"), "{message}");
+            }
+            other => panic!("expected a refusal, got {other:?}"),
+        };
+        denied(block_on(subs.add("Team", URL, "#6477d4".into(), 30)).map(|_| ()));
+        denied(
+            subs.update("missing", SubscriptionPatch::default())
+                .map(|_| ()),
+        );
+        denied(subs.remove("missing"));
+        denied(block_on(subs.refresh(true)).map(|_| ()));
+        assert!(service.secrets.all().is_empty());
+        assert!(service.fetcher.take_calls().is_empty());
+        assert!(!dir.path().join("settings/settings.json").exists());
+        // Reads are never refused.
+        assert!(subs.list().unwrap().is_empty());
+        assert!(
+            subs.overlay_range("2026-11-01", "2026-11-30", "UTC")
+                .unwrap()
+                .occurrences
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn the_scope_allows_every_write() {
+        let (dir, service) = setup();
+        let ws = agent(&dir, &["Daily", "Subscriptions:"]);
+        let subs = service.for_workspace(&ws);
+        service.fetcher.respond(feed());
+        let added = block_on(subs.add("Team", URL, "#6477d4".into(), 30)).unwrap();
+        assert!(added.has_cache);
+        let range = subs
+            .overlay_range("2026-11-01", "2026-11-30", "UTC")
+            .unwrap();
+        assert_eq!(range.occurrences.len(), 1);
+        assert_eq!(range.occurrences[0].title, "Standup");
+        service.fetcher.respond(Ok(None));
+        assert_eq!(block_on(subs.refresh(true)).unwrap().len(), 1);
+        let changed = subs
+            .update(
+                &added.id,
+                SubscriptionPatch {
+                    visible: Some(false),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert!(!changed.visible);
+        subs.remove(&added.id).unwrap();
+        assert!(subs.list().unwrap().is_empty());
+        assert!(service.secrets.all().is_empty());
+    }
+
+    #[test]
+    fn a_patch_changes_only_the_given_fields() {
+        let (dir, service) = setup();
+        service.fetcher.respond(feed());
+        let root = dir.path().join("vault");
+        let added =
+            block_on(service.add(|| Ok(root.clone()), "Team", URL, "#6477d4".into(), 30)).unwrap();
+        // Another process renames it in between; a patch of the colour keeps the new name.
+        service
+            .update(
+                || Ok(root.clone()),
+                &added.id,
+                "Renamed",
+                "#6477d4".into(),
+                true,
+                30,
+                None,
+            )
+            .unwrap();
+        let patched = service
+            .patch(
+                || Ok(root.clone()),
+                &added.id,
+                SubscriptionPatch {
+                    color: Some("#ff0000".into()),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert_eq!(patched.name, "Renamed");
+        assert_eq!(patched.color, "#ff0000");
+        assert!(patched.visible && patched.has_cache);
+        assert_eq!(patched.refresh_minutes, 30);
+        for bad in [
+            SubscriptionPatch {
+                name: Some("  ".into()),
+                ..Default::default()
+            },
+            SubscriptionPatch {
+                refresh_minutes: Some(4),
+                ..Default::default()
+            },
+        ] {
+            assert!(matches!(
+                service.patch(|| Ok(root.clone()), &added.id, bad),
+                Err(Error::Invalid(_))
+            ));
+        }
+        // A new URL replaces the feed: its secret, and the cache is dropped until the next refresh.
+        let moved = service
+            .patch(
+                || Ok(root.clone()),
+                &added.id,
+                SubscriptionPatch {
+                    url: Some("https://calendar.example/other.ics".into()),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert!(!moved.has_cache);
+        assert_eq!(moved.name, "Renamed");
+        let secrets: Vec<String> = service.secrets.all().into_values().collect();
+        assert_eq!(secrets, ["https://calendar.example/other.ics"]);
     }
 }

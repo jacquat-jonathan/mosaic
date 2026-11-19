@@ -24,6 +24,8 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
 
+mod subscriptions;
+
 type ToolResult = Result<String, String>;
 
 /// Added to results of changes that were proposed instead of made (folders under review).
@@ -861,6 +863,8 @@ pub struct MosaicMcp {
     /// The MCP client's name, recorded with every change in the file history.
     actor: Arc<RwLock<Option<String>>>,
     tool_router: ToolRouter<Self>,
+    /// The app's calendar subscriptions (see `subscriptions`); `None` without an app data folder.
+    feeds: Option<Arc<dyn subscriptions::Feeds>>,
     /// When this server last walked the vault, and which vault (it can follow the app's).
     last_sync: Arc<Mutex<Option<(PathBuf, Instant)>>>,
 }
@@ -890,7 +894,8 @@ impl MosaicMcp {
             pinned,
             may_change,
             actor: Arc::new(RwLock::new(None)),
-            tool_router: Self::tool_router(),
+            tool_router: Self::tool_router() + Self::subscription_router(),
+            feeds: subscriptions::app_feeds(),
             last_sync: Default::default(),
         }
     }

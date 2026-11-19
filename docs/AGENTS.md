@@ -35,7 +35,7 @@ write shows up in the app within a second.
   `Agents/Name/SKILL.md` defines an agent the person made: its frontmatter has `name`, `description`
   and, for Mosaic, `schedule`, `on` (for example `created in Daily/`), `model`, `may-change`
   (folders it may write without review, plus `planner:` if its scheduled runs may change Board
-  tasks and calendar items), and `web: true` (its workflow runs may search and fetch
+  tasks and calendar items, and `subscriptions:` for calendar subscriptions), and `web: true` (its workflow runs may search and fetch
   the web; off by default); the body is its instructions. `on` can be one event or a
   list and may coexist with `schedule`; automatic workflows run only while Mosaic is open. When the
   person points you at one, or names an agent, **act
@@ -328,3 +328,24 @@ day. `list_planner_events` lists the events themselves (a recurring series once)
 
 Calendar changes are applied directly, never reviewed, and need `planner:` like Board tasks: under a
 `may-change` without it they are refused (`denied`). Tell the person instead of retrying.
+
+## Calendar subscriptions
+
+Subscriptions are read-only ICS feeds (a team calendar, holidays) the person subscribed to; the
+calendar shows their events over the planner's own. They are not planner events: you can't edit
+their events, only the subscription. `list_calendar_subscriptions` lists them (id, name, color,
+visible, refresh_minutes, last_success, last_error, has_cache). `get_calendar_overlay` returns the
+events of the visible ones from `from` to `to` (inclusive, `YYYY-MM-DD`, in `timezone`, default this
+computer's) from the cached downloads; it never downloads, so call `refresh_calendar_subscriptions`
+first if `last_success` is old (`force: true` downloads every feed now). A failed download is that
+subscription's `last_error`; tell the person rather than retrying in a loop.
+
+Change subscriptions only when the person asks. `add_calendar_subscription` takes a name and the
+feed's HTTPS or `webcal://` link, and `update_calendar_subscription` changes only the fields you give
+(name, color, visible, refresh_minutes, or a new url). A feed link often carries a private token: it
+goes into the macOS Keychain and no tool returns it, so don't repeat it in notes or replies, and never
+invent or guess one. `remove_calendar_subscription` forgets the link and the cached events; it can't be
+undone without the link. These changes apply at once, never as proposals; a workflow restricted to
+some folders is refused (`denied`) unless its `may-change` includes `subscriptions:`. The app shows
+your changes when the calendar next reloads (on focus, or within five minutes). Subscriptions need
+macOS: elsewhere adding one fails with "calendar subscriptions currently require macOS Keychain".

@@ -2,7 +2,10 @@
 //! (`is_error`) with a stable code, so the model can recover (e.g. re-read after a `conflict`).
 
 use base64::Engine;
-use mosaic_core::planner::{CreateTask, FutureSessionPolicy, MoveTask, TaskStatus, UpdateTask};
+use mosaic_core::planner::{
+    CreateEvent, CreateTask, CreateWorkSession, FutureSessionPolicy, MoveTask, PlannerEvent,
+    TaskStatus, UpdateEvent, UpdateTask, UpdateWorkSession,
+};
 use mosaic_core::settings::Settings;
 use mosaic_core::{Error, Workspace};
 use rmcp::handler::server::{router::tool::ToolRouter, wrapper::Parameters};
@@ -342,6 +345,250 @@ struct PlannerTaskRevisionArgs {
     id: String,
     /// Revision returned by the latest read; stale revisions are refused.
     expected_revision: i64,
+}
+
+/// The fixed source the app's iCalendar import uses, so an agent's import and the person's see each
+/// other's events as duplicates.
+const ICAL_SOURCE: &str = "ics-file";
+
+#[derive(Deserialize, JsonSchema)]
+struct PlannerEventIdArgs {
+    /// Event UUID, from list_planner_events or get_planner_calendar (an occurrence's series_id).
+    id: String,
+    /// The event's revision from the latest read (get_planner_calendar's series_revision); stale
+    /// revisions are refused with code conflict.
+    expected_revision: i64,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct CalendarArgs {
+    /// First day, YYYY-MM-DD (default today).
+    #[serde(default)]
+    from: Option<String>,
+    /// Last day, inclusive, YYYY-MM-DD (default 6 days after `from`). At most 371 days in all.
+    #[serde(default)]
+    to: Option<String>,
+    /// Also return every open Board task that could be scheduled (not limited to the range;
+    /// default false).
+    #[serde(default)]
+    include_unscheduled_tasks: bool,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct CreatePlannerEventArgs {
+    title: String,
+    #[serde(default)]
+    description: String,
+    #[serde(default)]
+    location: String,
+    /// Video-call link.
+    #[serde(default)]
+    meeting_url: Option<String>,
+    /// Names or email addresses.
+    #[serde(default)]
+    participants: Vec<String>,
+    /// Epic UUID from list_planner_epics; the event takes the epic's color.
+    #[serde(default)]
+    epic_id: Option<String>,
+    /// CSS color such as #3b82f6, overriding the epic's.
+    #[serde(default)]
+    color: Option<String>,
+    /// All-day event (default false: timed).
+    #[serde(default)]
+    all_day: bool,
+    /// Timed: RFC 3339 with offset, e.g. 2026-11-20T09:00:00+01:00 (stored in UTC). All-day:
+    /// YYYY-MM-DD.
+    start_value: String,
+    /// Timed: RFC 3339 with offset. All-day: YYYY-MM-DD, exclusive (a one-day event on the 20th
+    /// ends on the 21st).
+    end_value: String,
+    /// IANA timezone the event lives in, e.g. Europe/Paris. Recurrences repeat at the same local
+    /// time in it.
+    timezone: String,
+    /// RFC 5545 RRULE without the `RRULE:` prefix, e.g. FREQ=WEEKLY;BYDAY=MO,WE or
+    /// FREQ=MONTHLY;BYMONTHDAY=-1;COUNT=6. Omit for a one-off event.
+    #[serde(default)]
+    recurrence_rule: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct UpdatePlannerEventArgs {
+    /// Event UUID (a series or one-off event, not a replaced occurrence).
+    id: String,
+    /// Revision from the latest read; stale revisions are refused with code conflict.
+    expected_revision: i64,
+    /// Fields left out keep their current value.
+    #[serde(default)]
+    title: Option<String>,
+    #[serde(default)]
+    description: Option<String>,
+    #[serde(default)]
+    location: Option<String>,
+    /// "" removes it.
+    #[serde(default)]
+    meeting_url: Option<String>,
+    /// The complete new list.
+    #[serde(default)]
+    participants: Option<Vec<String>>,
+    /// "" removes the epic.
+    #[serde(default)]
+    epic_id: Option<String>,
+    /// "" removes the color override.
+    #[serde(default)]
+    color: Option<String>,
+    #[serde(default)]
+    all_day: Option<bool>,
+    /// Same formats as create_planner_event. When switching between timed and all-day, pass both
+    /// start_value and end_value.
+    #[serde(default)]
+    start_value: Option<String>,
+    #[serde(default)]
+    end_value: Option<String>,
+    #[serde(default)]
+    timezone: Option<String>,
+    /// "" makes the event a one-off.
+    #[serde(default)]
+    recurrence_rule: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct CancelOccurrenceArgs {
+    /// The recurring event's UUID (series_id in get_planner_calendar).
+    series_id: String,
+    /// The series' revision (series_revision in get_planner_calendar).
+    expected_revision: i64,
+    /// The occurrence's local date, YYYY-MM-DD (occurrence_key in get_planner_calendar).
+    occurrence_key: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct ReplaceOccurrenceArgs {
+    /// The recurring event's UUID (series_id in get_planner_calendar).
+    series_id: String,
+    /// The series' revision (series_revision in get_planner_calendar).
+    expected_revision: i64,
+    /// The occurrence's local date, YYYY-MM-DD (occurrence_key in get_planner_calendar).
+    occurrence_key: String,
+    /// New start, same formats as create_planner_event.
+    start_value: String,
+    /// New end, same formats as create_planner_event.
+    end_value: String,
+    /// Fields left out are taken from the series.
+    #[serde(default)]
+    title: Option<String>,
+    #[serde(default)]
+    description: Option<String>,
+    #[serde(default)]
+    location: Option<String>,
+    #[serde(default)]
+    meeting_url: Option<String>,
+    #[serde(default)]
+    participants: Option<Vec<String>>,
+    #[serde(default)]
+    epic_id: Option<String>,
+    #[serde(default)]
+    color: Option<String>,
+    #[serde(default)]
+    all_day: Option<bool>,
+    #[serde(default)]
+    timezone: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct WorkSessionListArgs {
+    /// Only this Board task's sessions (UUID from list_planner_tasks).
+    #[serde(default)]
+    task_id: Option<String>,
+    /// Include cancelled sessions (default false).
+    #[serde(default)]
+    include_cancelled: bool,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct CreateWorkSessionArgs {
+    /// Board task UUID from list_planner_tasks.
+    task_id: String,
+    /// All-day session (default false: timed).
+    #[serde(default)]
+    all_day: bool,
+    /// Timed: RFC 3339 with offset, e.g. 2026-11-20T14:00:00+01:00. All-day: YYYY-MM-DD.
+    start_value: String,
+    /// Timed: RFC 3339 with offset, after the start. All-day: YYYY-MM-DD, exclusive.
+    end_value: String,
+    /// IANA timezone, e.g. Europe/Paris.
+    timezone: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct UpdateWorkSessionArgs {
+    /// Work session UUID.
+    id: String,
+    /// Revision from the latest read; stale revisions are refused with code conflict.
+    expected_revision: i64,
+    /// Fields left out keep their current value.
+    #[serde(default)]
+    all_day: Option<bool>,
+    #[serde(default)]
+    start_value: Option<String>,
+    #[serde(default)]
+    end_value: Option<String>,
+    #[serde(default)]
+    timezone: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct IcalPreviewArgs {
+    /// The iCalendar (.ics) text.
+    content: String,
+    /// IANA timezone for floating times (no TZID and no Z), default UTC.
+    #[serde(default)]
+    fallback_timezone: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct IcalImportArgs {
+    /// The same iCalendar (.ics) text you previewed.
+    content: String,
+    /// The same fallback_timezone you previewed with (default UTC).
+    #[serde(default)]
+    fallback_timezone: Option<String>,
+    /// What to import: candidate keys or source_uids from preview_ical_import. A source_uid selects
+    /// every candidate with that UID (a recurring series and its overrides). Default: everything.
+    /// An entry that matches no candidate refuses the whole import.
+    #[serde(default)]
+    select: Option<Vec<String>>,
+    /// Import events already imported before again (default false: they're skipped).
+    #[serde(default)]
+    allow_duplicates: bool,
+}
+
+/// An event occurrence in `get_planner_calendar`, with the revision a change to its series needs.
+#[derive(Serialize)]
+struct CalendarOccurrence {
+    #[serde(flatten)]
+    occurrence: mosaic_core::planner::EventOccurrence,
+    series_revision: Option<i64>,
+}
+
+#[derive(Serialize)]
+struct CalendarView {
+    from: String,
+    to: String,
+    events: Vec<CalendarOccurrence>,
+    work_sessions: Vec<mosaic_core::planner::CalendarWorkSession>,
+    due_markers: Vec<mosaic_core::planner::DueMarker>,
+    workload: Vec<mosaic_core::planner::DayWorkload>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    unscheduled_tasks: Option<Vec<mosaic_core::planner::PlannerTask>>,
+}
+
+/// `Some("")` → `None`; otherwise the given value or the current one.
+fn merged(given: Option<String>, current: Option<String>) -> Option<String> {
+    match given {
+        Some(value) if value.trim().is_empty() => None,
+        Some(value) => Some(value),
+        None => current,
+    }
 }
 
 /// Notes listed as MCP resources at most (clients show them in a picker).
@@ -1014,6 +1261,378 @@ impl MosaicMcp {
             .trash_task(&a.id, a.expected_revision)
             .map_err(err)
             .and_then(ok)
+    }
+
+    /// A series or one-off event, archived and trashed included.
+    fn planner_event(&self, id: &str) -> Result<PlannerEvent, String> {
+        self.ws()
+            .planner
+            .events(true, true)
+            .map_err(err)?
+            .into_iter()
+            .find(|event| event.id == id)
+            .ok_or_else(|| err(Error::NotFound(format!("planner event/{id}"))))
+    }
+
+    #[tool(
+        description = "List the planner calendar's events: one-off events and recurring series (one entry per series, with its recurrence_rule), with id, revision, title, start_value/end_value (timed: RFC 3339 in UTC; all-day: YYYY-MM-DD, end exclusive), timezone, epic and lifecycle state. To see what happens on given days, with each recurrence expanded, use get_planner_calendar. Include archived or trashed events only when requested."
+    )]
+    async fn list_planner_events(&self, Parameters(a): Parameters<PlannerListArgs>) -> ToolResult {
+        self.ws()
+            .planner
+            .events(a.include_archived, a.include_trashed)
+            .map_err(err)
+            .and_then(ok)
+    }
+
+    #[tool(
+        description = "The planner calendar for a range of days (from/to as YYYY-MM-DD, default today and the 6 days after; at most 371 days). Returns `events`: every occurrence in the range, recurring series expanded, cancelled occurrences left out and replaced ones shown as their replacement (replacement: event_id differs from series_id); each has series_id, series_revision and occurrence_key (its local date), which is what update_planner_event, cancel_planner_event_occurrence and replace_planner_event_occurrence take. Also `work_sessions` (Board tasks scheduled in the range: session id and revision, task_id, task title and status), `due_markers` (Board tasks due in the range) and `workload` (scheduled minutes per day). Times are RFC 3339 in UTC; all-day values are dates with an exclusive end. Separate from Markdown checkbox tasks (tasks_by_day)."
+    )]
+    async fn get_planner_calendar(&self, Parameters(a): Parameters<CalendarArgs>) -> ToolResult {
+        let from = a.from.unwrap_or_else(mosaic_core::days::today);
+        let to = match a.to {
+            Some(to) => to,
+            None => mosaic_core::days::plus_days(&from, 6).map_err(err)?,
+        };
+        let ws = self.ws();
+        let range = ws.planner.calendar_range(&from, &to).map_err(err)?;
+        let revisions: std::collections::HashMap<String, i64> = ws
+            .planner
+            .events(false, false)
+            .map_err(err)?
+            .into_iter()
+            .map(|event| (event.id, event.revision))
+            .collect();
+        ok(CalendarView {
+            from: range.from,
+            to: range.to,
+            events: range
+                .events
+                .into_iter()
+                .map(|occurrence| CalendarOccurrence {
+                    series_revision: revisions.get(&occurrence.series_id).copied(),
+                    occurrence,
+                })
+                .collect(),
+            work_sessions: range.work_sessions,
+            due_markers: range.due_markers,
+            workload: range.workload,
+            unscheduled_tasks: a
+                .include_unscheduled_tasks
+                .then_some(range.unscheduled_tasks),
+        })
+    }
+
+    #[tool(
+        description = "Create a planner calendar event, one-off or recurring. Timed events take RFC 3339 times with an offset (2026-11-20T09:00:00+01:00); all-day events take YYYY-MM-DD with an exclusive end. timezone is an IANA name (Europe/Paris). recurrence_rule is an RRULE such as FREQ=WEEKLY;BYDAY=MO. Returns the event with its id and revision. Applied directly, never reviewed; refused (code denied) when you are restricted to certain folders without `planner:`."
+    )]
+    async fn create_planner_event(
+        &self,
+        Parameters(a): Parameters<CreatePlannerEventArgs>,
+    ) -> ToolResult {
+        self.ws()
+            .planner
+            .create_event(CreateEvent {
+                title: a.title,
+                description: a.description,
+                location: a.location,
+                meeting_url: a.meeting_url,
+                participants: a.participants,
+                epic_id: a.epic_id,
+                color: a.color,
+                all_day: a.all_day,
+                start_value: a.start_value,
+                end_value: a.end_value,
+                timezone: a.timezone,
+                recurrence_rule: a.recurrence_rule,
+            })
+            .map_err(err)
+            .and_then(ok)
+    }
+
+    #[tool(
+        description = "Change a planner calendar event or a whole recurring series. Pass only the fields to change; \"\" removes meeting_url, epic_id, color or recurrence_rule. Pass the latest expected_revision; a stale one returns conflict. To change one occurrence of a series, use replace_planner_event_occurrence. Applied directly, never reviewed; refused (code denied) when you are restricted to certain folders without `planner:`."
+    )]
+    async fn update_planner_event(
+        &self,
+        Parameters(a): Parameters<UpdatePlannerEventArgs>,
+    ) -> ToolResult {
+        let current = self.planner_event(&a.id)?;
+        self.ws()
+            .planner
+            .update_event(
+                &a.id,
+                UpdateEvent {
+                    expected_revision: a.expected_revision,
+                    title: a.title.unwrap_or(current.title),
+                    description: a.description.unwrap_or(current.description),
+                    location: a.location.unwrap_or(current.location),
+                    meeting_url: merged(a.meeting_url, current.meeting_url),
+                    participants: a.participants.unwrap_or(current.participants),
+                    epic_id: merged(a.epic_id, current.epic_id),
+                    color: merged(a.color, current.color),
+                    all_day: a.all_day.unwrap_or(current.all_day),
+                    start_value: a.start_value.unwrap_or(current.start_value),
+                    end_value: a.end_value.unwrap_or(current.end_value),
+                    timezone: a.timezone.unwrap_or(current.timezone),
+                    recurrence_rule: merged(a.recurrence_rule, current.recurrence_rule),
+                },
+            )
+            .map_err(err)
+            .and_then(ok)
+    }
+
+    #[tool(
+        description = "Archive a planner calendar event or recurring series: it leaves the calendar but stays recoverable. Pass its latest expected_revision. Applied directly, never reviewed; refused (code denied) when you are restricted to certain folders without `planner:`."
+    )]
+    async fn archive_planner_event(
+        &self,
+        Parameters(a): Parameters<PlannerEventIdArgs>,
+    ) -> ToolResult {
+        self.ws()
+            .planner
+            .archive_event(&a.id, a.expected_revision)
+            .map_err(err)
+            .and_then(ok)
+    }
+
+    #[tool(
+        description = "Restore an archived or trashed planner calendar event to the calendar. Pass its latest expected_revision. Applied directly, never reviewed; refused (code denied) when you are restricted to certain folders without `planner:`."
+    )]
+    async fn restore_planner_event(
+        &self,
+        Parameters(a): Parameters<PlannerEventIdArgs>,
+    ) -> ToolResult {
+        self.ws()
+            .planner
+            .restore_event(&a.id, a.expected_revision)
+            .map_err(err)
+            .and_then(ok)
+    }
+
+    #[tool(
+        description = "Move an archived planner calendar event to Trash, where it remains recoverable. Archive it first and pass its latest expected_revision. Applied directly, never reviewed; refused (code denied) when you are restricted to certain folders without `planner:`."
+    )]
+    async fn trash_planner_event(
+        &self,
+        Parameters(a): Parameters<PlannerEventIdArgs>,
+    ) -> ToolResult {
+        self.ws()
+            .planner
+            .trash_event(&a.id, a.expected_revision)
+            .map_err(err)
+            .and_then(ok)
+    }
+
+    #[tool(
+        description = "Cancel one occurrence of a recurring planner event, leaving the rest of the series. Take series_id, series_revision (as expected_revision) and occurrence_key from get_planner_calendar. Returns the series with its new revision. Applied directly, never reviewed; refused (code denied) when you are restricted to certain folders without `planner:`."
+    )]
+    async fn cancel_planner_event_occurrence(
+        &self,
+        Parameters(a): Parameters<CancelOccurrenceArgs>,
+    ) -> ToolResult {
+        self.ws()
+            .planner
+            .cancel_event_occurrence(&a.series_id, a.expected_revision, &a.occurrence_key)
+            .map_err(err)
+            .and_then(ok)
+    }
+
+    #[tool(
+        description = "Move or change one occurrence of a recurring planner event, leaving the rest of the series. Take series_id, series_revision (as expected_revision) and occurrence_key from get_planner_calendar; give the occurrence's new start_value and end_value, and any field that differs from the series. Replacing it again later replaces the replacement. Returns the replacement event. Applied directly, never reviewed; refused (code denied) when you are restricted to certain folders without `planner:`."
+    )]
+    async fn replace_planner_event_occurrence(
+        &self,
+        Parameters(a): Parameters<ReplaceOccurrenceArgs>,
+    ) -> ToolResult {
+        let series = self.planner_event(&a.series_id)?;
+        self.ws()
+            .planner
+            .replace_event_occurrence(
+                &a.series_id,
+                a.expected_revision,
+                &a.occurrence_key,
+                CreateEvent {
+                    title: a.title.unwrap_or(series.title),
+                    description: a.description.unwrap_or(series.description),
+                    location: a.location.unwrap_or(series.location),
+                    meeting_url: merged(a.meeting_url, series.meeting_url),
+                    participants: a.participants.unwrap_or(series.participants),
+                    epic_id: merged(a.epic_id, series.epic_id),
+                    color: merged(a.color, series.color),
+                    all_day: a.all_day.unwrap_or(series.all_day),
+                    start_value: a.start_value,
+                    end_value: a.end_value,
+                    timezone: a.timezone.unwrap_or(series.timezone),
+                    recurrence_rule: None,
+                },
+            )
+            .map_err(err)
+            .and_then(ok)
+    }
+
+    #[tool(
+        description = "List work sessions: blocks of time on the calendar for a Board task, optionally for one task. Each has id, task_id, all_day, start_value/end_value (timed: RFC 3339 in UTC; all-day: YYYY-MM-DD, end exclusive), timezone, state and revision. get_planner_calendar shows them by day with their task's title."
+    )]
+    async fn list_planner_work_sessions(
+        &self,
+        Parameters(a): Parameters<WorkSessionListArgs>,
+    ) -> ToolResult {
+        self.ws()
+            .planner
+            .work_sessions(a.task_id.as_deref(), a.include_cancelled)
+            .map_err(err)
+            .and_then(ok)
+    }
+
+    #[tool(
+        description = "Schedule a Board task on the calendar as a work session. Timed sessions take RFC 3339 times with an offset; all-day sessions take YYYY-MM-DD with an exclusive end. Returns the session with its id and revision. Applied directly, never reviewed; refused (code denied) when you are restricted to certain folders without `planner:`."
+    )]
+    async fn create_planner_work_session(
+        &self,
+        Parameters(a): Parameters<CreateWorkSessionArgs>,
+    ) -> ToolResult {
+        self.ws()
+            .planner
+            .create_work_session(CreateWorkSession {
+                task_id: a.task_id,
+                all_day: a.all_day,
+                start_value: a.start_value,
+                end_value: a.end_value,
+                timezone: a.timezone,
+            })
+            .map_err(err)
+            .and_then(ok)
+    }
+
+    #[tool(
+        description = "Move or resize a work session. Pass only the fields to change and its latest expected_revision; a stale one returns conflict. Cancelled sessions can't be changed. Applied directly, never reviewed; refused (code denied) when you are restricted to certain folders without `planner:`."
+    )]
+    async fn update_planner_work_session(
+        &self,
+        Parameters(a): Parameters<UpdateWorkSessionArgs>,
+    ) -> ToolResult {
+        let current = self
+            .ws()
+            .planner
+            .work_sessions(None, true)
+            .map_err(err)?
+            .into_iter()
+            .find(|session| session.id == a.id)
+            .ok_or_else(|| err(Error::NotFound(format!("planner work_session/{}", a.id))))?;
+        self.ws()
+            .planner
+            .update_work_session(
+                &a.id,
+                UpdateWorkSession {
+                    expected_revision: a.expected_revision,
+                    all_day: a.all_day.unwrap_or(current.all_day),
+                    start_value: a.start_value.unwrap_or(current.start_value),
+                    end_value: a.end_value.unwrap_or(current.end_value),
+                    timezone: a.timezone.unwrap_or(current.timezone),
+                },
+            )
+            .map_err(err)
+            .and_then(ok)
+    }
+
+    #[tool(
+        description = "Cancel a work session: it leaves the calendar (list_planner_work_sessions still shows it with include_cancelled). Pass its latest expected_revision. Applied directly, never reviewed; refused (code denied) when you are restricted to certain folders without `planner:`."
+    )]
+    async fn cancel_planner_work_session(
+        &self,
+        Parameters(a): Parameters<PlannerTaskRevisionArgs>,
+    ) -> ToolResult {
+        self.ws()
+            .planner
+            .cancel_work_session(&a.id, a.expected_revision)
+            .map_err(err)
+            .and_then(ok)
+    }
+
+    #[tool(
+        description = "Read an iCalendar (.ics) text and show what importing it into the planner calendar would add, without changing anything. Returns candidates (key, source_uid, title, times, timezone, recurrence_rule, recurrence_key for an override of one occurrence, and duplicate: already imported before), the number of duplicates and warnings about skipped or adjusted data. Import with import_ical and the same content."
+    )]
+    async fn preview_ical_import(&self, Parameters(a): Parameters<IcalPreviewArgs>) -> ToolResult {
+        let preview = self
+            .ws()
+            .planner
+            .preview_ical_import(
+                ICAL_SOURCE,
+                &a.content,
+                a.fallback_timezone.as_deref().unwrap_or("UTC"),
+            )
+            .map_err(err)?;
+        ok(serde_json::json!({
+            "planner_revision": preview.planner_revision,
+            "duplicates": preview.duplicates,
+            "warnings": preview.warnings,
+            "candidates": preview.candidates.iter().map(|c| serde_json::json!({
+                "key": c.key,
+                "source_uid": c.source_uid,
+                "recurrence_id": c.recurrence_id,
+                "recurrence_key": c.recurrence_key,
+                "title": c.title,
+                "location": c.event.location,
+                "all_day": c.all_day,
+                "start_value": c.start_value,
+                "end_value": c.end_value,
+                "timezone": c.timezone,
+                "recurrence_rule": c.recurrence_rule,
+                "duplicate": c.duplicate,
+            })).collect::<Vec<_>>(),
+        }))
+    }
+
+    #[tool(
+        description = "Import events from iCalendar (.ics) text into the planner calendar: all of them, or those named in `select` (keys or source_uids from preview_ical_import). Events imported before are skipped unless allow_duplicates. Returns imported_event_ids and skipped_duplicates. Applied directly, never reviewed; refused (code denied) when you are restricted to certain folders without `planner:`."
+    )]
+    async fn import_ical(&self, Parameters(a): Parameters<IcalImportArgs>) -> ToolResult {
+        let ws = self.ws();
+        let preview = ws
+            .planner
+            .preview_ical_import(
+                ICAL_SOURCE,
+                &a.content,
+                a.fallback_timezone.as_deref().unwrap_or("UTC"),
+            )
+            .map_err(err)?;
+        let keys: Vec<String> = match a.select {
+            None => preview.candidates.iter().map(|c| c.key.clone()).collect(),
+            Some(select) => {
+                let mut keys = Vec::new();
+                for wanted in select {
+                    let matched: Vec<&String> = preview
+                        .candidates
+                        .iter()
+                        .filter(|c| c.key == wanted || c.source_uid == wanted)
+                        .map(|c| &c.key)
+                        .collect();
+                    if matched.is_empty() {
+                        return Err(err(Error::Invalid(format!(
+                            "{wanted:?} matches no event in this calendar; use a key or source_uid from preview_ical_import"
+                        ))));
+                    }
+                    for key in matched {
+                        if !keys.contains(key) {
+                            keys.push(key.clone());
+                        }
+                    }
+                }
+                keys
+            }
+        };
+        ws.planner
+            .import_ical(&preview, &keys, a.allow_duplicates)
+            .map_err(err)
+            .and_then(ok)
+    }
+
+    #[tool(
+        description = "Export the planner calendar's events (series with their cancelled and replaced occurrences) as iCalendar text, returned as the tool result. Mosaic writes no file; save it with create_file if the person wants one in the vault."
+    )]
+    async fn export_ical(&self) -> ToolResult {
+        self.ws().planner.export_ical().map_err(err)
     }
 
     #[tool(

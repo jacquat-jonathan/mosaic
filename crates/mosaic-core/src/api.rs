@@ -64,27 +64,35 @@ pub struct Context {
 
 /// App data an agent writes directly, outside the vault's files, so it can't be proposed for
 /// review. Under `--may-change`, a write to one is refused unless the allowlist names its scope
-/// (`planner:`, `bookmarks:`, `settings:`). Each store is one scope; a new kind of app data gets a
-/// new one.
+/// (`planner:`, `bookmarks:`, `subscriptions:`, `settings:`). Each store is one scope; a new kind of
+/// app data gets a new one.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AppScope {
     /// The planner database: Board tasks and epics, calendar events, work sessions, iCal imports.
     Planner,
     /// The vault's bookmarks.
     Bookmarks,
+    /// Calendar subscriptions (ICS feeds), their URLs in the Keychain and their cached downloads.
+    Subscriptions,
     /// The vault's settings in settings.json: vault preferences (folder colors included) and
     /// template defaults. Never the agent folder rules, which no agent can change.
     Settings,
 }
 
 impl AppScope {
-    pub const ALL: [AppScope; 3] = [AppScope::Planner, AppScope::Bookmarks, AppScope::Settings];
+    pub const ALL: [AppScope; 4] = [
+        AppScope::Planner,
+        AppScope::Bookmarks,
+        AppScope::Subscriptions,
+        AppScope::Settings,
+    ];
 
     /// The scope's name in `--may-change` and an agent's `may-change`, without the colon.
     pub fn name(self) -> &'static str {
         match self {
             AppScope::Planner => "planner",
             AppScope::Bookmarks => "bookmarks",
+            AppScope::Subscriptions => "subscriptions",
             AppScope::Settings => "settings",
         }
     }
@@ -95,6 +103,7 @@ impl AppScope {
                 "the planner (Board tasks and epics, calendar events and work sessions)"
             }
             AppScope::Bookmarks => "bookmarks",
+            AppScope::Subscriptions => "calendar subscriptions",
             AppScope::Settings => {
                 "the vault's settings (preferences such as folder colors, and template defaults)"
             }

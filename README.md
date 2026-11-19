@@ -203,7 +203,7 @@ be opened until you update the registration.
 
 ### Tools
 
-The server has 66 tools (this list is checked against the server by a test):
+The server has 72 tools (this list is checked against the server by a test):
 
 <!-- mcp-tools:start -->
 - Guide and settings: `vault_guide`, `get_vault_preferences`, `set_vault_preferences` (folder
@@ -229,6 +229,9 @@ The server has 66 tools (this list is checked against the server by a test):
   `list_planner_work_sessions`, `create_planner_work_session`, `update_planner_work_session`,
   `cancel_planner_work_session`, `preview_ical_import`, `import_ical`, `export_ical` (returns the
   iCalendar text).
+- Calendar subscriptions (read-only ICS feeds; never return a feed URL): `list_calendar_subscriptions`,
+  `add_calendar_subscription`, `update_calendar_subscription`, `remove_calendar_subscription`,
+  `refresh_calendar_subscriptions`, `get_calendar_overlay`.
 <!-- mcp-tools:end -->
 
 Each agent in `Agents/` is also an MCP prompt (`/mosaic:<name>` in Claude Code), and notes are MCP

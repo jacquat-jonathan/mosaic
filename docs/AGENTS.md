@@ -23,7 +23,7 @@ write shows up in the app within a second.
 - **Some folders may be off limits.** The person can make folders read-only for you (changes fail with
   `denied`) or hide them (they don't appear anywhere and read as `not_found`). Don't try to work around it;
   tell them if you need access.
-- **Some folders are reviewed.** There, your create, edit, patch, append, restore and delete calls succeed
+- **Some folders are reviewed.** There, your create, edit, patch, append, restore, delete, task, link and undo calls succeed
   but don't change the file: the result has a `review` id (a proposal) and a note saying so. The person
   sees the change as a diff in the app and accepts or rejects it. Until then, your reads of that file show
   your proposal and your next edits build on it, so a multi-step change is reviewed as one. File renames
@@ -253,7 +253,40 @@ under), `due`. Every filter applies per task: first the task's own `text`, `stat
 `📅 2026-10-05` on its line, else the note's `due`) and `line`, then its note's fields. `tag:` matches
 #tags in the task or the note's frontmatter tags; plain words must appear in the task's text. Examples:
 `task:open folder:Daily`, `task:open due<=today sort:due`, `task:open tag:project show:status`. To tick a
-task, `patch_file` its line (`- [ ]` → `- [x]`).
+task, call `set_task` with the row's `path`, `task.line` and `task.text` and `done: true` (or false to
+untick it); it is refused with `conflict` when the line changed since you queried.
+
+**Workflow states.** Each task row also has `task.workflow`: `new`, `blocked`, `in-progress`, `in-qa` or
+`done`. Mosaic keeps the state on the task's line as `<!-- mosaic:state=in-progress -->`; `done` is the
+ticked checkbox. Move a task with `set_task_workflow`: pass `path`, `task.line`, `task.text` (as
+returned, annotation included) and `task.workflow` as `expected_state`, plus the new `state`. Don't
+write the annotation by hand.
+
+## Links, aliases and moves
+
+- `list_aliases` lists every frontmatter alias and the note it names; `[[Alias]]` opens that note.
+- `list_unlinked_mentions` finds notes that name a note (its title or an alias) in plain text without
+  linking to it. `link_mention` turns one into `[[Note]]` (or `[[Note|words]]`) on that line.
+- `rename` and `move_files` rewrite links to follow a move. If some notes couldn't be updated (or Mosaic
+  stopped half-way), the move shows up in `list_unfinished_renames`; `fix_links` finishes it. Notes it
+  can't change are in `failed_links_in`; notes in folders the person reviews are in
+  `proposed_links_in`, and the move stays unfinished until the person accepts them and you run
+  `fix_links` again.
+
+## History and undo
+
+`file_history` lists the versions Mosaic kept of a file; `read_version` shows one without restoring it,
+and `restore_version` puts it back. `list_ai_activity` is the person's AI activity log: changes made by
+agents and the command line, newest first. `undo_change` reverses one of them (an edit, a new file, a
+deletion or a move). Undoing is a change like any other: in a folder the person reviews, or outside the
+folders you may change, it becomes a proposal. It is refused with `conflict` when the file changed
+again since.
+
+## Search index
+
+`search`, `query`, backlinks, tags and mentions use an index of the vault. `get_index_health` says
+whether it is `healthy`, `rebuilding` or `degraded`. If results look out of date, `rebuild_index`
+re-reads every file (slow in a large vault); it changes no notes.
 
 ## Workflows (Tessera)
 

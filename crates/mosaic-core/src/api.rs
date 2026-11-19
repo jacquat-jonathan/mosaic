@@ -64,23 +64,31 @@ pub struct Context {
 
 /// App data an agent writes directly, outside the vault's files, so it can't be proposed for
 /// review. Under `--may-change`, a write to one is refused unless the allowlist names its scope
-/// (`planner:`, `bookmarks:`). Each store is one scope; a new kind of app data gets a new one.
+/// (`planner:`, `bookmarks:`, `subscriptions:`). Each store is one scope; a new kind of app data gets
+/// a new one.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AppScope {
     /// The planner database: Board tasks and epics, calendar events, work sessions, iCal imports.
     Planner,
     /// The vault's bookmarks.
     Bookmarks,
+    /// Calendar subscriptions (ICS feeds), their URLs in the Keychain and their cached downloads.
+    Subscriptions,
 }
 
 impl AppScope {
-    pub const ALL: [AppScope; 2] = [AppScope::Planner, AppScope::Bookmarks];
+    pub const ALL: [AppScope; 3] = [
+        AppScope::Planner,
+        AppScope::Bookmarks,
+        AppScope::Subscriptions,
+    ];
 
     /// The scope's name in `--may-change` and an agent's `may-change`, without the colon.
     pub fn name(self) -> &'static str {
         match self {
             AppScope::Planner => "planner",
             AppScope::Bookmarks => "bookmarks",
+            AppScope::Subscriptions => "subscriptions",
         }
     }
 
@@ -90,6 +98,7 @@ impl AppScope {
                 "the planner (Board tasks and epics, calendar events and work sessions)"
             }
             AppScope::Bookmarks => "bookmarks",
+            AppScope::Subscriptions => "calendar subscriptions",
         }
     }
 

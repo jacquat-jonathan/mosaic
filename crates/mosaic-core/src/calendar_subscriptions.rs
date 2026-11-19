@@ -6,6 +6,7 @@
 //! a cache directory chosen by the caller. Downloads go through a [`FeedFetcher`], so the network
 //! can be replaced in tests.
 
+use crate::api::{AppScope, Context};
 use crate::planner::{OverlayOccurrence, ical_warnings, overlay_occurrences, validate_ical};
 use crate::settings::Settings;
 use crate::{Error, Result};
@@ -86,6 +87,33 @@ pub struct SubscriptionView {
 pub struct OverlayRange {
     pub subscriptions: Vec<SubscriptionView>,
     pub occurrences: Vec<OverlayOccurrence>,
+}
+
+/// The settings of a subscription to change; `None` keeps the current value. A non-empty `url`
+/// replaces the feed.
+#[derive(Debug, Clone, Default)]
+pub struct SubscriptionPatch {
+    pub name: Option<String>,
+    pub color: Option<String>,
+    pub visible: Option<bool>,
+    pub refresh_minutes: Option<u32>,
+    pub url: Option<String>,
+}
+
+/// The folder in the app's data directory that caches downloaded feeds.
+pub const CACHE_DIR: &str = "calendar-cache";
+
+/// Where the app caches downloaded feeds: [`CACHE_DIR`] in its data directory
+/// ([`crate::settings::app_support_dir`]), which is also where the subscriptions' metadata is.
+/// Another process (`mosaic mcp`) uses it to share the app's feeds.
+pub fn app_cache_dir() -> Option<PathBuf> {
+    crate::settings::app_support_dir().map(|dir| dir.join(CACHE_DIR))
+}
+
+/// This computer's IANA timezone, or `UTC` when it can't be told.
+pub fn local_timezone() -> String {
+    localzone::get_local_zone_with_validation(|zone| zone.parse::<chrono_tz::Tz>().is_ok())
+        .unwrap_or_else(|| "UTC".into())
 }
 
 /// Where feed URLs are kept, by credential id. Feed URLs often embed a private token.
@@ -266,6 +294,18 @@ impl<S: SecretStore, F: FeedFetcher> CalendarSubscriptions<S, F> {
         self
     }
 
+    /// The secret store (tests).
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn secrets(&self) -> &S {
+        &self.secrets
+    }
+
+    /// The feed fetcher (tests).
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn fetcher(&self) -> &F {
+        &self.fetcher
+    }
+
     /// The vault's subscriptions.
     pub fn list(&self, vault_root: &Path) -> Result<Vec<SubscriptionView>> {
         let key = self.vault_key(vault_root)?;
@@ -365,6 +405,43 @@ impl<S: SecretStore, F: FeedFetcher> CalendarSubscriptions<S, F> {
                 "invalid calendar subscription settings".into(),
             ));
         }
+        self.patch(
+            vault_root,
+            id,
+            SubscriptionPatch {
+                name: Some(name.to_string()),
+                color: Some(color),
+                visible: Some(visible),
+                refresh_minutes: Some(refresh_minutes),
+                url,
+            },
+        )
+    }
+
+    /// Changes only the given settings of a subscription, reading and writing it under one lock of
+    /// the settings file, so a concurrent change by another process to the other fields is kept.
+    /// A non-empty `url` replaces the feed and drops its cache. `vault_root` is resolved after the
+    /// settings are checked.
+    pub fn patch(
+        &self,
+        vault_root: impl FnOnce() -> Result<PathBuf>,
+        id: &str,
+        patch: SubscriptionPatch,
+    ) -> Result<SubscriptionView> {
+        let SubscriptionPatch {
+            name,
+            color,
+            visible,
+            refresh_minutes,
+            url,
+        } = patch;
+        if name.as_deref().is_some_and(|name| name.trim().is_empty())
+            || refresh_minutes.is_some_and(|minutes| minutes < 5)
+        {
+            return Err(Error::Invalid(
+                "invalid calendar subscription settings".into(),
+            ));
+        }
         let key = self.vault_key(&vault_root()?)?;
         let replacement = url
             .filter(|url| !url.trim().is_empty())
@@ -404,10 +481,18 @@ impl<S: SecretStore, F: FeedFetcher> CalendarSubscriptions<S, F> {
                 invalidate_feed(subscription);
                 subscription.revision += 1;
             }
-            subscription.name = name.trim().to_string();
-            subscription.color = color;
-            subscription.visible = visible;
-            subscription.refresh_minutes = refresh_minutes;
+            if let Some(name) = name {
+                subscription.name = name.trim().to_string();
+            }
+            if let Some(color) = color {
+                subscription.color = color;
+            }
+            if let Some(visible) = visible {
+                subscription.visible = visible;
+            }
+            if let Some(refresh_minutes) = refresh_minutes {
+                subscription.refresh_minutes = refresh_minutes;
+            }
             Ok(subscription.clone())
         });
         let result = match result {
@@ -606,6 +691,77 @@ impl<S: SecretStore, F: FeedFetcher> CalendarSubscriptions<S, F> {
         subscription.last_error = (!warnings.is_empty())
             .then(|| format!("Calendar imported with warnings: {}", warnings.join(" ")));
         Ok(())
+    }
+}
+
+impl<S: SecretStore, F: FeedFetcher> CalendarSubscriptions<S, F> {
+    /// These subscriptions for the vault `ctx` has open, with its write rules. Use this for agents
+    /// (`mosaic mcp`); the app, which is never restricted, may call the methods above directly.
+    pub fn for_workspace<'a>(&'a self, ctx: &'a Context) -> VaultSubscriptions<'a, S, F> {
+        VaultSubscriptions { service: self, ctx }
+    }
+}
+
+/// Calendar subscriptions bound to one open vault. Every change (add, update, remove, refresh) is
+/// app data outside the vault's files, so it can't be proposed for review: under a change
+/// allowlist without `subscriptions:` it is refused ([`AppScope::Subscriptions`]) before the
+/// Keychain, the network, the cache or the settings are touched.
+pub struct VaultSubscriptions<'a, S, F> {
+    service: &'a CalendarSubscriptions<S, F>,
+    ctx: &'a Context,
+}
+
+impl<S: SecretStore, F: FeedFetcher> VaultSubscriptions<'_, S, F> {
+    fn root(&self) -> &Path {
+        self.ctx.vault.root()
+    }
+
+    fn check_write(&self) -> Result<()> {
+        self.ctx.check_app_write(AppScope::Subscriptions)
+    }
+
+    /// The vault's subscriptions (never their URLs).
+    pub fn list(&self) -> Result<Vec<SubscriptionView>> {
+        self.service.list(self.root())
+    }
+
+    /// See [`CalendarSubscriptions::add`].
+    pub async fn add(
+        &self,
+        name: &str,
+        url: &str,
+        color: String,
+        refresh_minutes: u32,
+    ) -> Result<SubscriptionView> {
+        self.check_write()?;
+        let root = self.root().to_path_buf();
+        self.service
+            .add(move || Ok(root), name, url, color, refresh_minutes)
+            .await
+    }
+
+    /// See [`CalendarSubscriptions::patch`].
+    pub fn update(&self, id: &str, patch: SubscriptionPatch) -> Result<SubscriptionView> {
+        self.check_write()?;
+        self.service
+            .patch(|| Ok(self.root().to_path_buf()), id, patch)
+    }
+
+    /// See [`CalendarSubscriptions::remove`].
+    pub fn remove(&self, id: &str) -> Result<()> {
+        self.check_write()?;
+        self.service.remove(self.root(), id)
+    }
+
+    /// See [`CalendarSubscriptions::refresh`].
+    pub async fn refresh(&self, force: bool) -> Result<Vec<SubscriptionView>> {
+        self.check_write()?;
+        self.service.refresh(self.root(), force).await
+    }
+
+    /// See [`CalendarSubscriptions::overlay_range`].
+    pub fn overlay_range(&self, from: &str, to: &str, timezone: &str) -> Result<OverlayRange> {
+        self.service.overlay_range(self.root(), from, to, timezone)
     }
 }
 
@@ -986,6 +1142,9 @@ fn cached_overlays(
     occurrences.sort_by(|a, b| a.start_value.cmp(&b.start_value));
     occurrences
 }
+
+#[cfg(any(test, feature = "test-support"))]
+pub mod testing;
 
 #[cfg(test)]
 mod tests;

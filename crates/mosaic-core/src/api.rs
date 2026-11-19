@@ -64,8 +64,8 @@ pub struct Context {
 
 /// App data an agent writes directly, outside the vault's files, so it can't be proposed for
 /// review. Under `--may-change`, a write to one is refused unless the allowlist names its scope
-/// (`planner:`, `bookmarks:`, `subscriptions:`, `settings:`). Each store is one scope; a new kind of
-/// app data gets a new one.
+/// (`planner:`, `bookmarks:`, `subscriptions:`, `settings:`, `agents:`). Each store is one scope; a
+/// new kind of app data gets a new one.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AppScope {
     /// The planner database: Board tasks and epics, calendar events, work sessions, iCal imports.
@@ -77,14 +77,18 @@ pub enum AppScope {
     /// The vault's settings in settings.json: vault preferences (folder colors included) and
     /// template defaults. Never the agent folder rules, which no agent can change.
     Settings,
+    /// Tessera's workflow control: pausing and resuming workflows and asking for runs. The app never
+    /// passes it to a workflow run (`tessera::workflow_may_change`).
+    Agents,
 }
 
 impl AppScope {
-    pub const ALL: [AppScope; 4] = [
+    pub const ALL: [AppScope; 5] = [
         AppScope::Planner,
         AppScope::Bookmarks,
         AppScope::Subscriptions,
         AppScope::Settings,
+        AppScope::Agents,
     ];
 
     /// The scope's name in `--may-change` and an agent's `may-change`, without the colon.
@@ -94,6 +98,7 @@ impl AppScope {
             AppScope::Bookmarks => "bookmarks",
             AppScope::Subscriptions => "subscriptions",
             AppScope::Settings => "settings",
+            AppScope::Agents => "agents",
         }
     }
 
@@ -107,6 +112,7 @@ impl AppScope {
             AppScope::Settings => {
                 "the vault's settings (preferences such as folder colors, and template defaults)"
             }
+            AppScope::Agents => "Tessera's workflows (pausing, resuming and starting runs)",
         }
     }
 
@@ -199,6 +205,13 @@ impl ChangeAllowlist {
         } else {
             folders.join(", ")
         };
+        if scope == AppScope::Agents {
+            // Never suggested for a workflow: the app doesn't pass `agents:` to workflow runs.
+            return Some(format!(
+                "Refused: you are restricted to changing {allowed} directly (the agent's may-change setting), and {what} is the person's control, which needs the scope `agents:`. Scheduled workflows never get it. Don't retry this or work around it. Tell the person what you wanted to pause, resume or run so they can do it in Mosaic's Workflows view.",
+                what = scope.what(),
+            ));
+        }
         Some(format!(
             "Refused: you are restricted to changing {allowed} directly (the agent's may-change setting), and {what} is app data that can't be proposed for review, so changes to it need the scope `{name}:`. Don't retry this or work around it. Tell the person what you wanted to change so they can do it, or suggest they add `{name}:` to the agent's may-change setting (for the planner: the workflow's \"Can change Board and calendar\" switch).",
             what = scope.what(),

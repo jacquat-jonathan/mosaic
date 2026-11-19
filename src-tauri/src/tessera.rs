@@ -102,7 +102,7 @@ pub fn tessera_status(
 #[specta::specta]
 pub fn tessera_pause_all(app: AppHandle, state: State<AppState>, paused: bool) -> CmdResult<()> {
     let ws = state.get()?;
-    core::pause_all(&store(ws.vault.root())?, paused)?;
+    core::pause_all(&ws, &store(ws.vault.root())?, paused)?;
     if !paused {
         drain_queue(&app, &ws);
     }
@@ -118,7 +118,7 @@ pub fn tessera_pause_agent(
     paused: bool,
 ) -> CmdResult<()> {
     let ws = state.get()?;
-    core::pause_agent(&store(ws.vault.root())?, &name, paused)?;
+    core::pause_agent(&ws, &store(ws.vault.root())?, &name, paused)?;
     if !paused {
         drain_queue(&app, &ws);
     }
@@ -736,13 +736,10 @@ fn launch(
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_default();
     let mut args = vec!["--vault".to_string(), root.display().to_string()];
-    for path in &agent.may_change {
+    // Never `agents:`: a workflow run can't pause, resume or start workflows.
+    for entry in core::workflow_may_change(agent) {
         args.push("--may-change".into());
-        args.push(path.clone());
-    }
-    if agent.may_change.is_empty() {
-        args.push("--may-change".into());
-        args.push("/.mosaic-no-direct-writes".into());
+        args.push(entry);
     }
     args.push("mcp".into());
     // The run's id lets a run this agent requests (M7b) continue this run's workflow chain.
@@ -974,7 +971,8 @@ mod tests {
         tessera.observe_external(root);
         tessera.queue_requested(root, request("digest", 1)).unwrap();
 
-        core::pause_all(&other, true).unwrap();
+        // Another process (`mosaic mcp`) pausing through the shared state.
+        other.update_tessera(|cfg| cfg.paused = true).unwrap();
         let seen = tessera.observe_external(root);
         assert!(seen.changed && !seen.resumed);
         assert!(tessera.next_queued(root).is_none());
@@ -982,7 +980,7 @@ mod tests {
         assert_eq!(events.queue.count(root, "digest"), 1);
         drop(events);
 
-        core::pause_all(&other, false).unwrap();
+        other.update_tessera(|cfg| cfg.paused = false).unwrap();
         // The file's timestamp may not move within the same instant; force a re-read.
         tessera.control.lock().unwrap().as_mut().unwrap().2 = None;
         let seen = tessera.observe_external(root);
@@ -998,7 +996,9 @@ mod tests {
         let root = Path::new("/vault");
         let tessera = TesseraState::default();
         tessera.observe_external(root);
-        core::pause_agent(&other, "digest", true).unwrap();
+        other
+            .update_tessera(|cfg| cfg.paused_agents.push("digest".into()))
+            .unwrap();
         // A request taken while its workflow is paused waits in the queue.
         core::take_run_requests(&other).unwrap();
         other

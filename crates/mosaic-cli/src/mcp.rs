@@ -51,6 +51,20 @@ fn err(e: Error) -> String {
 }
 
 #[derive(Deserialize, JsonSchema)]
+struct TesseraStatusArgs {
+    /// Most recent runs to include (default 20), newest first, without their transcripts.
+    limit: Option<usize>,
+}
+
+/// A workflow by name. Unknown arguments are ignored: a run's chain comes only from the run that
+/// started this server (`MOSAIC_TESSERA_RUN`), never from the caller.
+#[derive(Deserialize, JsonSchema)]
+struct WorkflowArg {
+    /// The workflow's name, as `get_tessera_status` or `list_agents` gives it.
+    name: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
 struct PathArg {
     /// Vault-relative path, e.g. `Projects/Plan.md`.
     path: String,
@@ -971,6 +985,58 @@ pub enum VaultMode {
     FollowApp,
 }
 
+/// Added to Tessera results while the app's scheduler isn't checking in.
+const SCHEDULER_INACTIVE_NOTE: &str = "Mosaic's scheduler isn't running for this vault (the app is closed, on another vault, or was stopped). Runs shown as running may have ended without being recorded. Pauses take effect and run requests wait until Mosaic is open on this vault; a request not picked up within 10 minutes is skipped.";
+
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
+        .unwrap_or(0)
+}
+
+/// The vault's shared state for a Tessera write, as the app opens it. The scope is checked first
+/// (core checks it again), so a refused write doesn't give the vault a state folder either.
+fn tessera_state(ws: &Workspace) -> Result<mosaic_core::vault_state::VaultState, String> {
+    ws.check_app_write(mosaic_core::api::AppScope::Agents)
+        .map_err(err)?;
+    mosaic_core::vault_state::VaultState::open(ws.vault.root()).map_err(err)
+}
+
+/// The scheduler's status as stored, with whether the app is checking in.
+fn tessera_status(ws: &Workspace, limit: usize) -> ToolResult {
+    use mosaic_core::tessera;
+    let state = mosaic_core::vault_state::VaultState::peek(ws.vault.root()).map_err(err)?;
+    let (mut status, last_checked) = match &state {
+        Some(state) => (
+            tessera::stored_status(ws, state).map_err(err)?,
+            state.tessera().map_err(err)?,
+        ),
+        // Mosaic never opened this vault: nothing stored yet.
+        None => {
+            let cfg = mosaic_core::settings::TesseraSettings::default();
+            (
+                tessera::status(ws, cfg.clone(), |_| false, |_| 0).map_err(err)?,
+                cfg,
+            )
+        }
+    };
+    let active = tessera::scheduler_active(&last_checked, now_ms() / 1_000);
+    status
+        .runs
+        .sort_by(|a, b| b.started.cmp(&a.started).then(b.id.cmp(&a.id)));
+    status.runs.truncate(limit);
+    for run in &mut status.runs {
+        run.transcript = Default::default();
+    }
+    let mut v = serde_json::to_value(&status).map_err(|e| e.to_string())?;
+    v["scheduler_active"] = active.into();
+    if !active {
+        v["note"] = SCHEDULER_INACTIVE_NOTE.into();
+    }
+    ok(v)
+}
+
 #[derive(Clone)]
 pub struct MosaicMcp {
     /// `None` until a vault opens: the server still answers the MCP handshake and lists its tools,
@@ -1080,6 +1146,24 @@ impl MosaicMcp {
             return Some(next);
         }
         current
+    }
+
+    /// `pause_agents` / `resume_agents`: the new pause state.
+    fn set_all_paused(&self, paused: bool) -> ToolResult {
+        let ws = self.ws();
+        let state = tessera_state(&ws)?;
+        mosaic_core::tessera::pause_all(&ws, &state, paused).map_err(err)?;
+        ok(serde_json::json!({ "paused": paused }))
+    }
+
+    /// `pause_agent` / `resume_agent`, by the workflow's name as the app knows it.
+    fn set_agent_paused(&self, name: &str, paused: bool) -> ToolResult {
+        let ws = self.ws();
+        // Refused (scope) before the name lookup.
+        let state = tessera_state(&ws)?;
+        let agent = ws.agent(name).map_err(err)?;
+        mosaic_core::tessera::pause_agent(&ws, &state, &agent.name, paused).map_err(err)?;
+        ok(serde_json::json!({ "agent": agent.name, "paused": paused }))
     }
 
     /// Opens the vault if it can be opened now. When it opens during this request, tells the
@@ -2494,6 +2578,69 @@ impl MosaicMcp {
         let mut v = serde_json::to_value(&undone).map_err(|e| e.to_string())?;
         if undone.review.is_some() {
             v["note"] = REVIEW_NOTE.into();
+        }
+        ok(v)
+    }
+
+    #[tool(
+        description = "Tessera, Mosaic's workflow scheduler: whether everything is paused, the workflow-chain depth limit, each workflow (name, schedule, `on` events, paused, running, queued run requests, trigger error) and the most recent runs (status, cause, chain, answer, error). `scheduler_active` is false when the app isn't checking in (closed, on another vault, or it crashed); then a run shown as running may already have ended, and pauses and run requests only take effect once Mosaic is open on this vault."
+    )]
+    async fn get_tessera_status(&self, Parameters(a): Parameters<TesseraStatusArgs>) -> ToolResult {
+        tessera_status(&self.ws(), a.limit.unwrap_or(20))
+    }
+
+    #[tool(
+        description = "Pause every Tessera workflow: no scheduled, event or requested run starts until resumed (a run in progress finishes). Applied directly, never reviewed; refused (code denied) when you are restricted to certain folders without `agents:`, which scheduled workflows never get."
+    )]
+    async fn pause_agents(&self) -> ToolResult {
+        self.set_all_paused(true)
+    }
+
+    #[tool(
+        description = "Resume Tessera after pause_agents: workflows run again on their schedules and events, and queued runs start. Workflows paused one by one stay paused. Applied directly, never reviewed; refused (code denied) when you are restricted to certain folders without `agents:`, which scheduled workflows never get."
+    )]
+    async fn resume_agents(&self) -> ToolResult {
+        self.set_all_paused(false)
+    }
+
+    #[tool(
+        description = "Pause one Tessera workflow: none of its runs start until resumed (a run in progress finishes). Applied directly, never reviewed; refused (code denied) when you are restricted to certain folders without `agents:`, which scheduled workflows never get."
+    )]
+    async fn pause_agent(&self, Parameters(a): Parameters<WorkflowArg>) -> ToolResult {
+        self.set_agent_paused(&a.name, true)
+    }
+
+    #[tool(
+        description = "Resume one Tessera workflow paused with pause_agent or in the app. It still waits while everything is paused. Applied directly, never reviewed; refused (code denied) when you are restricted to certain folders without `agents:`, which scheduled workflows never get."
+    )]
+    async fn resume_agent(&self, Parameters(a): Parameters<WorkflowArg>) -> ToolResult {
+        self.set_agent_paused(&a.name, false)
+    }
+
+    #[tool(
+        description = "Ask Mosaic to run a Tessera workflow now. The run is queued: the app starts it within a few seconds while it is open on this vault (it waits while the workflow or everything is paused; a request not picked up within 10 minutes is skipped). Returns the request and its workflow chain: it counts as a chained run, one step deeper when you are yourself a workflow run, and is refused past the chain-depth limit the person set. Applied directly, never reviewed; refused (code denied) when you are restricted to certain folders without `agents:`, which scheduled workflows never get."
+    )]
+    async fn run_agent(&self, Parameters(a): Parameters<WorkflowArg>) -> ToolResult {
+        use mosaic_core::tessera;
+        let ws = self.ws();
+        let state = tessera_state(&ws)?;
+        // Only from the environment the app set: an agent can't pick its own chain.
+        let parent_run = tessera::parent_run_from_env().map_err(err)?;
+        let request =
+            tessera::request_run(&ws, &state, &a.name, parent_run, now_ms()).map_err(err)?;
+        let active = state
+            .tessera()
+            .map(|cfg| tessera::scheduler_active(&cfg, now_ms() / 1_000))
+            .unwrap_or(false);
+        let mut v = serde_json::json!({
+            "request": request.id,
+            "agent": request.agent,
+            "chain": request.chain,
+            "scheduler_active": active,
+            "note": "Queued, not started: check get_tessera_status for the run.",
+        });
+        if !active {
+            v["note"] = SCHEDULER_INACTIVE_NOTE.into();
         }
         ok(v)
     }

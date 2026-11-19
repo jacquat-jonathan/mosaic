@@ -203,7 +203,7 @@ be opened until you update the registration.
 
 ### Tools
 
-The server has 92 tools (this list is checked against the server by a test):
+The server has 98 tools (this list is checked against the server by a test):
 
 <!-- mcp-tools:start -->
 - Guide and settings: `vault_guide`, `get_vault_preferences`, `set_vault_preferences` (folder
@@ -240,6 +240,8 @@ The server has 92 tools (this list is checked against the server by a test):
 - Calendar subscriptions (read-only ICS feeds; never return a feed URL): `list_calendar_subscriptions`,
   `add_calendar_subscription`, `update_calendar_subscription`, `remove_calendar_subscription`,
   `refresh_calendar_subscriptions`, `get_calendar_overlay`.
+- Workflows (Tessera): `get_tessera_status`, `pause_agents`, `resume_agents`, `pause_agent`,
+  `resume_agent`, `run_agent` (queued for the app, under the workflow-chain limit).
 <!-- mcp-tools:end -->
 
 Each agent in `Agents/` is also an MCP prompt (`/mosaic:<name>` in Claude Code), and notes are MCP

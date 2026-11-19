@@ -35,7 +35,7 @@ write shows up in the app within a second.
   `Agents/Name/SKILL.md` defines an agent the person made: its frontmatter has `name`, `description`
   and, for Mosaic, `schedule`, `on` (for example `created in Daily/`), `model`, `may-change`
   (folders it may write without review, plus `planner:` if its scheduled runs may change Board
-  tasks and calendar items, and `subscriptions:` for calendar subscriptions), and `web: true` (its workflow runs may search and fetch
+  tasks and calendar items, and `subscriptions:` for calendar subscriptions; `agents:` is never given to scheduled runs), and `web: true` (its workflow runs may search and fetch
   the web; off by default); the body is its instructions. `on` can be one event or a
   list and may coexist with `schedule`; automatic workflows run only while Mosaic is open. When the
   person points you at one, or names an agent, **act
@@ -287,6 +287,28 @@ again since.
 `search`, `query`, backlinks, tags and mentions use an index of the vault. `get_index_health` says
 whether it is `healthy`, `rebuilding` or `degraded`. If results look out of date, `rebuild_index`
 re-reads every file (slow in a large vault); it changes no notes.
+
+## Workflows (Tessera)
+
+Tessera runs the person's workflows (agents with a `schedule` or `on` events) inside the Mosaic app.
+`get_tessera_status` shows whether everything is paused, the workflow-chain depth limit, each
+workflow (paused, running, queued requests, a broken trigger) and the most recent runs. Check
+`scheduler_active`: when it is false the app isn't checking in (closed, on another vault, or it
+crashed), so a run shown as running may already have ended, and changes wait until Mosaic is open.
+
+`pause_agents` and `resume_agents` pause or resume every workflow; `pause_agent` and `resume_agent`
+one, by name (a workflow paused alone stays paused when everything is resumed). `run_agent` asks the
+app to run a workflow: the request is queued, started within a few seconds while Mosaic is open on
+this vault, waits while paused, and is skipped if not picked up within 10 minutes. A requested run
+counts as a chained run: it starts a chain at depth 1, or, from inside a workflow run, continues that
+run's chain one step deeper. Past the limit the person set it is refused; don't retry. You can't
+change the limit, and the chain comes from Mosaic, not from your arguments.
+
+These are app changes, applied directly and never reviewed. Restricted by `may-change`, you need the
+scope `agents:`; scheduled workflows never get it (Mosaic drops it from their `may-change`), so a
+workflow can't pause, resume or start workflows. To chain workflows, create the note another
+workflow's `on` event watches for. If you are refused, tell the person what you wanted to pause,
+resume or run.
 
 ## Planner tasks
 

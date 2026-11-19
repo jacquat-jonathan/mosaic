@@ -986,7 +986,7 @@ fn without_any_vault_it_connects_and_picks_up_the_first_one_opened() {
     // Never opened a vault in the app (no settings.json): the handshake still succeeds.
     let mut c = Client::start_with(None, &settings, &home.path().join("cache"));
     let tools = c.request("tools/list", json!({}));
-    assert_eq!(tools["result"]["tools"].as_array().unwrap().len(), 80);
+    assert_eq!(tools["result"]["tools"].as_array().unwrap().len(), 92);
     let resources = c.request("resources/list", json!({}));
     assert_eq!(resources["result"]["resources"], json!([]));
     let (err, msg) = c.call("list_files", json!({}));
@@ -1531,7 +1531,7 @@ fn the_connection_test_reports_a_working_server_with_and_without_a_vault() {
 
     let r = probe(bin, &["mcp".into()], &env, timeout);
     assert!(r.ok, "{r:?}");
-    assert_eq!(r.tools, 80);
+    assert_eq!(r.tools, 92);
     assert_eq!(r.server_version.as_deref(), Some(env!("CARGO_PKG_VERSION")));
     assert!(r.no_vault.unwrap().contains("No Mosaic vault is open"));
 
@@ -1785,6 +1785,338 @@ fn readme_lists_every_mcp_tool() {
     assert!(
         missing.is_empty() && stale.is_empty(),
         "README.md's MCP tool list is out of date: add {missing:?}, remove {stale:?}"
+    );
+}
+
+/// A vault in a temp dir with these files, and its canonical root (folder rules match it).
+fn vault_with(files: &[(&str, &str)]) -> (tempfile::TempDir, std::path::PathBuf) {
+    let dir = tempfile::tempdir().unwrap();
+    let root = std::fs::canonicalize(dir.path()).unwrap();
+    for (p, c) in files {
+        let full = root.join(p);
+        std::fs::create_dir_all(full.parent().unwrap()).unwrap();
+        std::fs::write(full, c).unwrap();
+    }
+    (dir, root)
+}
+
+/// Writes the agent folder rules for `root` where `Client::start`'s server reads them: settings.json
+/// for a vault not used yet, else the vault's own state (`vaults/<id>/rules.json`), which wins.
+fn agent_rules(root: &std::path::Path, rules: Value) {
+    let settings = root.join(".test-settings");
+    std::fs::create_dir_all(&settings).unwrap();
+    let config = json!({ "agent_rules": { root.to_str().unwrap(): rules } });
+    std::fs::write(settings.join("settings.json"), config.to_string()).unwrap();
+    if let Ok(vaults) = std::fs::read_dir(settings.join("vaults")) {
+        for state in vaults {
+            std::fs::write(state.unwrap().path().join("rules.json"), rules.to_string()).unwrap();
+        }
+    }
+}
+
+/// The `query task:all` row of the task whose text contains `text`.
+fn task_row(c: &mut Client, text: &str) -> Value {
+    let (err, q) = c.call("query", json!({ "query": "task:all" }));
+    assert!(!err, "{q}");
+    q["rows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["task"]["text"].as_str().unwrap().contains(text))
+        .cloned()
+        .unwrap_or_else(|| panic!("no task {text}: {q}"))
+}
+
+fn read(root: &std::path::Path, p: &str) -> String {
+    std::fs::read_to_string(root.join(p)).unwrap()
+}
+
+#[test]
+fn links_index_and_task_tools_work_end_to_end() {
+    let (_dir, root) = vault_with(&[
+        ("Home.md", "---\naliases: [Start]\n---\n# Home\n"),
+        ("Ideas.md", "Mention Home here.\n"),
+        ("Tasks.md", "- [ ] Write report\n- [ ] Ship it\n"),
+    ]);
+    let mut c = Client::start(&root);
+    let tools = c.request("tools/list", json!({}));
+    let names: Vec<&str> = tools["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t["name"].as_str().unwrap())
+        .collect();
+    for expected in [
+        "get_index_health",
+        "rebuild_index",
+        "set_task",
+        "set_task_workflow",
+        "list_aliases",
+        "list_unlinked_mentions",
+        "link_mention",
+        "list_unfinished_renames",
+        "fix_links",
+        "read_version",
+        "list_ai_activity",
+        "undo_change",
+    ] {
+        assert!(names.contains(&expected), "missing tool {expected}");
+    }
+
+    // Index.
+    let (err, health) = c.call("get_index_health", json!({}));
+    assert!(!err, "{health}");
+    assert_eq!(health["status"], "healthy");
+    assert_eq!(health["app_watching"], false);
+    let (err, stats) = c.call("rebuild_index", json!({}));
+    assert!(!err, "{stats}");
+    assert_eq!(stats["indexed"], 3, "{stats}");
+
+    // Aliases, mentions and linking one.
+    let (err, aliases) = c.call("list_aliases", json!({}));
+    assert!(!err, "{aliases}");
+    assert_eq!(aliases, json!([{ "alias": "Start", "path": "Home.md" }]));
+    let (err, mentions) = c.call("list_unlinked_mentions", json!({ "path": "Home.md" }));
+    assert!(!err, "{mentions}");
+    assert_eq!(mentions[0]["source"], "Ideas.md");
+    assert_eq!(mentions[0]["line"], 1);
+    let (err, linked) = c.call(
+        "link_mention",
+        json!({ "source": "Ideas.md", "line": 1, "text": mentions[0]["text"], "target": "Home.md" }),
+    );
+    assert!(!err, "{linked}");
+    assert_eq!(read(&root, "Ideas.md"), "Mention [[Home]] here.\n");
+    let (_, mentions) = c.call("list_unlinked_mentions", json!({ "path": "Home.md" }));
+    assert_eq!(mentions, json!([]));
+
+    // Ticking a task, then its workflow state.
+    let row = task_row(&mut c, "Write report");
+    let (err, w) = c.call(
+        "set_task",
+        json!({ "path": row["path"], "line": row["task"]["line"], "text": row["task"]["text"], "done": true }),
+    );
+    assert!(!err, "{w}");
+    assert!(read(&root, "Tasks.md").starts_with("- [x] Write report\n"));
+    let (err, stale) = c.call(
+        "set_task",
+        json!({ "path": "Tasks.md", "line": 1, "text": "Something else", "done": false }),
+    );
+    assert!(err && stale["code"] == "conflict", "{stale}");
+
+    let row = task_row(&mut c, "Ship it");
+    assert_eq!(row["task"]["workflow"], "new");
+    let (err, w) = c.call(
+        "set_task_workflow",
+        json!({ "path": row["path"], "line": row["task"]["line"], "text": row["task"]["text"],
+                "expected_state": row["task"]["workflow"], "state": "in-progress" }),
+    );
+    assert!(!err, "{w}");
+    assert!(
+        read(&root, "Tasks.md").contains("- [ ] Ship it <!-- mosaic:state=in-progress -->\n"),
+        "{}",
+        read(&root, "Tasks.md")
+    );
+    // The row now carries the annotation in its text; passing it as-is works.
+    let row = task_row(&mut c, "Ship it");
+    assert_eq!(row["task"]["workflow"], "in-progress");
+    let (err, w) = c.call(
+        "set_task_workflow",
+        json!({ "path": row["path"], "line": row["task"]["line"], "text": row["task"]["text"],
+                "expected_state": "in-progress", "state": "done" }),
+    );
+    assert!(!err, "{w}");
+    assert!(read(&root, "Tasks.md").contains("- [x] Ship it\n"));
+    let (err, stale) = c.call(
+        "set_task_workflow",
+        json!({ "path": "Tasks.md", "line": 2, "text": "Ship it", "expected_state": "new", "state": "blocked" }),
+    );
+    assert!(err && stale["code"] == "conflict", "{stale}");
+
+    // History: activity, an old version, undo.
+    let (err, activity) = c.call("list_ai_activity", json!({}));
+    assert!(!err, "{activity}");
+    let link = activity
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|v| v["path"] == "Ideas.md")
+        .expect("the link_mention change");
+    assert_eq!(
+        (&link["action"], &link["source"], &link["actor"]),
+        (&json!("edited"), &json!("agent"), &json!("test"))
+    );
+    let (_, versions) = c.call("file_history", json!({ "path": "Tasks.md" }));
+    let oldest = versions.as_array().unwrap().last().unwrap()["id"].clone();
+    let (err, old) = c.call("read_version", json!({ "id": oldest }));
+    assert!(!err, "{old}");
+    assert_eq!(old["content"], "- [ ] Write report\n- [ ] Ship it\n");
+    let (err, missing) = c.call("read_version", json!({ "id": 99999 }));
+    assert!(err && missing["code"] == "not_found", "{missing}");
+    let (err, undone) = c.call("undo_change", json!({ "id": link["id"] }));
+    assert!(!err, "{undone}");
+    assert_eq!(undone, json!({ "path": "Ideas.md" }));
+    assert_eq!(read(&root, "Ideas.md"), "Mention Home here.\n");
+
+    // Nothing to repair.
+    let (err, open) = c.call("list_unfinished_renames", json!({}));
+    assert!(!err, "{open}");
+    assert_eq!(open, json!([]));
+    let (err, none) = c.call("fix_links", json!({ "id": 1 }));
+    assert!(err && none["code"] == "invalid", "{none}");
+}
+
+#[test]
+fn note_edits_and_undo_outside_may_change_become_proposals() {
+    let (dir, root) = vault_with(&[
+        ("Home.md", "# Home\n"),
+        (
+            "Note.md",
+            "Mention Home here.\n- [ ] Task one\n- [ ] Task two\n",
+        ),
+        ("Daily/Today.md", "- [ ] Daily task\n"),
+    ]);
+    let settings = dir.path().join("settings");
+    let cache = dir.path().join("cache");
+    // An unrestricted agent's change, for the restricted one to undo.
+    let mut free = Client::start_restricted(Some(&root), &settings, &cache, &[]);
+    let (err, _) = free.call(
+        "append_to_file",
+        json!({ "path": "Note.md", "content": "- appended\n" }),
+    );
+    assert!(!err);
+    let (_, activity) = free.call("list_ai_activity", json!({}));
+    let change = activity[0]["id"].clone();
+    drop(free);
+    let before = read(&root, "Note.md");
+
+    let mut c = Client::start_restricted(Some(&root), &settings, &cache, &["Daily"]);
+    let proposed = |payload: &Value| {
+        assert!(payload["review"].is_i64(), "{payload}");
+        assert!(
+            payload["note"]
+                .as_str()
+                .unwrap()
+                .contains("Proposed, not applied")
+        );
+    };
+    let (err, w) = c.call(
+        "set_task",
+        json!({ "path": "Note.md", "line": 2, "text": "Task one", "done": true }),
+    );
+    assert!(!err, "{w}");
+    proposed(&w);
+    let (err, w) = c.call(
+        "set_task_workflow",
+        json!({ "path": "Note.md", "line": 3, "text": "Task two", "expected_state": "new", "state": "blocked" }),
+    );
+    assert!(!err, "{w}");
+    proposed(&w);
+    let (err, w) = c.call(
+        "link_mention",
+        json!({ "source": "Note.md", "line": 1, "text": "Home", "target": "Home.md" }),
+    );
+    assert!(!err, "{w}");
+    proposed(&w);
+    let pending = w["review"].clone();
+    assert_eq!(
+        read(&root, "Note.md"),
+        before,
+        "nothing written outside Daily"
+    );
+    // The proposals build on each other: the agent reads all three changes.
+    let (_, f) = c.call("read_file", json!({ "path": "Note.md" }));
+    let content = f["content"].as_str().unwrap();
+    assert!(content.contains("[[Home]]") && content.contains("- [x] Task one"));
+    assert!(
+        content.contains("Task two <!-- mosaic:state=blocked -->"),
+        "{content}"
+    );
+
+    // Inside Daily, the same tool writes directly.
+    let (err, w) = c.call(
+        "set_task",
+        json!({ "path": "Daily/Today.md", "line": 1, "text": "Daily task", "done": true }),
+    );
+    assert!(!err && w["review"].is_null(), "{w}");
+    assert_eq!(read(&root, "Daily/Today.md"), "- [x] Daily task\n");
+    let (err, _) = c.call("withdraw_proposal", json!({ "id": pending }));
+    assert!(!err);
+
+    // Undo by a restricted agent is reviewed like any other change.
+    let (err, undone) = c.call("undo_change", json!({ "id": change }));
+    assert!(!err, "{undone}");
+    assert_eq!(undone["path"], "Note.md");
+    proposed(&undone);
+    assert_eq!(read(&root, "Note.md"), before, "the undo waits for review");
+    let (_, list) = c.call("list_proposals", json!({}));
+    assert_eq!(list[0]["status"], "pending");
+    assert_eq!(list[0]["id"], undone["review"]);
+}
+
+#[test]
+fn hidden_notes_stay_hidden_from_link_task_and_history_tools() {
+    let (_dir, root) = vault_with(&[
+        ("Home.md", "---\naliases: [Start]\n---\n# Home\n"),
+        ("Ideas.md", "Mention Home here.\n"),
+        ("Private/Diary.md", "Home again.\n- [ ] Secret task\n"),
+        ("Private/Secret.md", "---\naliases: [Hush]\n---\n"),
+    ]);
+    let mut c = Client::start(&root);
+    let (err, _) = c.call(
+        "append_to_file",
+        json!({ "path": "Private/Diary.md", "content": "more\n" }),
+    );
+    assert!(!err);
+    let (_, activity) = c.call("list_ai_activity", json!({}));
+    let change = activity[0]["id"].clone();
+    drop(c);
+    agent_rules(&root, json!([{ "path": "Private", "access": "hidden" }]));
+    let mut c = Client::start(&root);
+
+    let (_, mentions) = c.call("list_unlinked_mentions", json!({ "path": "Home.md" }));
+    assert_eq!(
+        mentions
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|m| m["source"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        ["Ideas.md"],
+        "mentions in hidden notes are left out"
+    );
+    let not_found = |(err, payload): (bool, Value)| {
+        assert!(err && payload["code"] == "not_found", "{payload}");
+        assert!(payload["current_hash"].is_null(), "{payload}");
+    };
+    not_found(c.call(
+        "list_unlinked_mentions",
+        json!({ "path": "Private/Secret.md" }),
+    ));
+    not_found(c.call(
+        "link_mention",
+        json!({ "source": "Ideas.md", "line": 1, "text": "Home", "target": "Private/Secret.md" }),
+    ));
+    not_found(c.call(
+        "set_task",
+        json!({ "path": "Private/Diary.md", "line": 9, "text": "x", "done": true }),
+    ));
+    not_found(c.call(
+        "set_task_workflow",
+        json!({ "path": "Private/Diary.md", "line": 9, "text": "x", "expected_state": "new", "state": "done" }),
+    ));
+    let (err, payload) = c.call("read_version", json!({ "id": change }));
+    assert!(!payload.to_string().contains("Private"), "{payload}");
+    not_found((err, payload));
+    let (err, payload) = c.call("undo_change", json!({ "id": change }));
+    assert!(!payload.to_string().contains("Private"), "{payload}");
+    not_found((err, payload));
+    let (_, aliases) = c.call("list_aliases", json!({}));
+    assert_eq!(aliases, json!([{ "alias": "Start", "path": "Home.md" }]));
+    let (_, activity) = c.call("list_ai_activity", json!({}));
+    assert_eq!(activity, json!([]));
+    assert_eq!(
+        read(&root, "Private/Diary.md"),
+        "Home again.\n- [ ] Secret task\nmore\n"
     );
 }
 

@@ -81,7 +81,7 @@ Every collected command resolves to a definition; every `bindings.ts` key maps t
 
 | Location | Symbol | Kind | Evidence | Conf. | Risk |
 |---|---|---|---|---|---|
-| `src-tauri/src/lib.rs:595-609` (wrapper `ui/src/ipc/api.ts:99`, binding `bindings.ts:12`) | `set_task_workflow` | command | No production UI caller. Only `ui/src/views/taskBoard.test.ts:48-55` and `ui/src/ipc/mock.behavior.test.ts:208-220`. Core method `api.rs:769` is tested; CLI/MCP don't use it | medium | Medium (may be an unfinished feature) |
+| `src-tauri/src/lib.rs:595-609` (wrapper `ui/src/ipc/api.ts:99`, binding `bindings.ts:12`) | `set_task_workflow` | command | No production UI caller. Only `ui/src/views/taskBoard.test.ts:48-55` and `ui/src/ipc/mock.behavior.test.ts:208-220`. Core method `api.rs:769` is tested. **Update (MCP M6):** now exposed as the MCP tool `set_task_workflow`, which works end to end from `query task:…` rows (`task.workflow`); the Tauri command still has no UI caller | medium | Medium (may be an unfinished feature) |
 | `ui/src/ipc/api.ts:232` | `read_raw` (invoked, undefined in Rust) | command name | Only used when `!inTauri` (`api.ts:217`), handled by `mock.ts:2746`. Browser-mock only | low | Low |
 
 ---

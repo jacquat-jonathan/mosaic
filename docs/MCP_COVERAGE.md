@@ -64,13 +64,34 @@ per write:
 
 | Class | Tools | Without `--may-change` | With `--may-change` |
 |---|---|---|---|
-| Read | `list_*`, `get_*`, `preview_ical_import`, `export_ical`, `export_planner`, `read_file`, `outline`, `search`, `query`, `tasks_by_day`, `render`, `render_template`, `file_history`, `planner_task_history`, `vault_guide` | Allowed, minus hidden folders | Same |
-| Vault file write | `create_file`, `create_note`, `edit_file`, `patch_file`, `append_to_file`, `rename`, `move_files`, `copy_file`, `delete_file`, `create_folder`, `import_file`, `restore_version`, `carry_over` | Direct, unless the folder is read-only (refused) or in review (becomes a proposal) | Direct only inside the listed paths; elsewhere a proposal |
+| Read | `list_*`, `get_*`, `preview_ical_import`, `export_ical`, `export_planner`, `read_file`, `read_version`, `outline`, `search`, `query`, `tasks_by_day`, `render`, `render_template`, `file_history`, `planner_task_history`, `vault_guide` | Allowed, minus hidden folders | Same |
+| Vault file write | `create_file`, `create_note`, `edit_file`, `patch_file`, `append_to_file`, `rename`, `move_files`, `copy_file`, `delete_file`, `create_folder`, `import_file`, `restore_version`, `carry_over`, `set_task`, `set_task_workflow`, `link_mention`, `fix_links`, `undo_change` | Direct, unless the folder is read-only (refused) or in review (becomes a proposal) | Direct only inside the listed paths; elsewhere a proposal |
+| Derived index | `rebuild_index` | Direct | Direct (no scope) |
 | App-state write, scope `planner:` | `*_planner_task`, `*_planner_event`, `*_planner_event_occurrence`, `*_planner_work_session`, `*_planner_epic`, `import_ical` | Direct | **Refused** (`denied`) unless `planner:` is listed; then direct |
 | App-state write, scope `bookmarks:` | `add_bookmark`, `remove_bookmark` | Direct | **Refused** unless `bookmarks:` is listed; then direct |
 | App-state write, scope `subscriptions:` | `add_calendar_subscription`, `update_calendar_subscription`, `remove_calendar_subscription`, `refresh_calendar_subscriptions` | Direct | **Refused** unless `subscriptions:` is listed; then direct |
 | App-state write, scope `settings:` | `set_vault_preferences`, `set_template_config` | Direct | **Refused** unless `settings:` is listed; then direct |
 | Own proposals | `withdraw_proposal` | Any visible pending proposal | Only proposals this server session made or updated |
+
+**Derived index.** `rebuild_index` writes only the search index, a cache rebuilt from the vault's
+files, not notes and not data the person owns. The server already writes the same index whenever an
+index-backed tool syncs it, so a rebuild needs no scope and is allowed under `--may-change`. It rebuilds
+in batches and keeps the last consistent index while it runs, so the app's searches never see it empty.
+It re-reads every file, so it is slow in a large vault, but it changes nothing the person sees.
+
+**Undo and link repair are writes.** `undo_change` restores, deletes or renames through the same
+core calls as `restore_version`, `delete_file` and `rename`, so an agent's undo outside its allowlist
+or in a reviewed folder becomes a proposal (`review` in the result). When the person accepts it, the
+original change is not marked `undone`; it is a separate change. `fix_links` run by an agent writes
+each note through the normal path too (the app's own Fix links writes directly, as a rename does):
+`proposed_links_in` lists the notes waiting for review, and the move stays unfinished until they are
+accepted and `fix_links` runs again. Running it again updates the same proposals. Notes hidden from
+agents are reported without their names.
+
+**Known gap (not M6).** An agent's `rename` refuses when a note whose links it would rewrite is under
+a folder rule, but it does not check `--may-change` for those notes: a restricted agent renaming a file
+inside its folders rewrites links in notes outside them directly. A follow-up can reuse `fix_links`'s
+guarded rewrite.
 
 **Scopes.** An allowlist entry ending in `:` names app data instead of a folder: `planner:` (the
 whole planner database: Board tasks and epics, calendar events, work sessions, iCal imports),
@@ -232,11 +253,11 @@ names in Notes are proposals for the slice, not commitments.
 | Tauri command | MCP | Notes |
 |---|---|---|
 | `open_vault` | excluded (vault scope: the server is bound to one vault) | |
-| `index_health` | planned (M6) | `get_index_health` |
-| `rebuild_index` | planned (M6) | `rebuild_index` |
+| `index_health` | `get_index_health` | this server's own index state, plus whether the app's watcher keeps it current |
+| `rebuild_index` | `rebuild_index` | synchronous in MCP (no watcher); see [Writes](#writes-and---may-change) |
 | `query_notes` | `query` | |
-| `set_task` | planned (M6) | `set_task`: tick a Markdown checkbox by line |
-| `set_task_workflow` | planned (M6) | `set_task_workflow` |
+| `set_task` | `set_task` | tick a Markdown checkbox by line |
+| `set_task_workflow` | `set_task_workflow` | no UI caller yet; takes the `task.workflow` of a `query` row |
 | `days` | `tasks_by_day` | |
 | `carry_over` | `carry_over` | |
 | `planner_summary` | `get_planner_summary` | |
@@ -322,28 +343,28 @@ names in Notes are proposals for the slice, not commitments.
 | `rename_path` | `rename`, `move_files` | |
 | `delete_path` | `delete_file` | |
 | `file_history` | `file_history` | |
-| `unlinked_mentions` | planned (M6) | `list_unlinked_mentions` |
+| `unlinked_mentions` | `list_unlinked_mentions` | |
 | `print_window` | excluded (window: printing) | |
-| `link_mention` | planned (M6) | `link_mention` |
+| `link_mention` | `link_mention` | |
 | `get_agent_rules` | `get_agent_rules` | read only; rules in hidden folders are only counted |
 | `set_agent_rules` | excluded (hard: an agent would change its own permissions) | |
-| `version_content` | planned (M6) | `read_version` |
+| `version_content` | `read_version` | |
 | `restore_version` | `restore_version` | |
-| `ai_activity` | planned (M6) | `list_ai_activity` |
-| `undo_change` | planned (M6) | `undo_change`, through review |
+| `ai_activity` | `list_ai_activity` | |
+| `undo_change` | `undo_change` | through review, like any vault write |
 | `absolute_path` | excluded (host paths; MCP uses vault-relative paths) | |
 | `asset_path` | excluded (UI asset URLs) | |
 | `open_in_default_app` | excluded (opens an app on the person's desktop) | |
 | `drag_out_attach` | excluded (window: native drag of tree items out to Finder) | |
 | `drag_out_detach` | excluded (window: native drag of tree items out to Finder) | |
 | `drag_out_end` | excluded (window: native drag of tree items out to Finder) | |
-| `unfinished_renames` | planned (M6) | `list_unfinished_renames` |
-| `fix_links` | planned (M6) | `fix_links` |
+| `unfinished_renames` | `list_unfinished_renames` | |
+| `fix_links` | `fix_links` | each note through the normal write path for agents |
 | `html_preview_document` | excluded (UI rendering; agents use `render`) | |
 | `search` | `search` | |
 | `backlinks` | `get_backlinks` | |
 | `tags` | `list_tags` | |
-| `aliases` | planned (M6) | `list_aliases` |
+| `aliases` | `list_aliases` | |
 | `outline` | `outline` | |
 | `cli_info` | excluded (CLI installer) | |
 | `install_cli` | excluded (CLI installer; writes outside the vault) | |

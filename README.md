@@ -203,7 +203,7 @@ be opened until you update the registration.
 
 ### Tools
 
-The server has 80 tools (this list is checked against the server by a test):
+The server has 92 tools (this list is checked against the server by a test):
 
 <!-- mcp-tools:start -->
 - Guide and settings: `vault_guide`, `get_vault_preferences`, `set_vault_preferences` (folder
@@ -215,9 +215,14 @@ The server has 80 tools (this list is checked against the server by a test):
   `copy_file`, `delete_file`, `create_folder`, `import_file`.
 - Templates: `list_templates`, `render_template`, `create_note`, `get_template_config`,
   `set_template_config`, `list_template_starters`.
-- History and review: `file_history`, `restore_version`, `list_proposals`, `withdraw_proposal`.
+- Links: `list_aliases`, `list_unlinked_mentions`, `link_mention`, `list_unfinished_renames`,
+  `fix_links` (finish a move whose links weren't all rewritten).
+- Search index: `get_index_health`, `rebuild_index`.
+- History and review: `file_history`, `read_version`, `restore_version`, `list_ai_activity`,
+  `undo_change` (reviewed like any change), `list_proposals`, `withdraw_proposal`.
 - Bookmarks: `list_bookmarks`, `add_bookmark`, `remove_bookmark`.
-- Markdown tasks: `tasks_by_day`, `carry_over`.
+- Markdown tasks: `tasks_by_day`, `carry_over`, `set_task` (tick a checkbox), `set_task_workflow`
+  (new, blocked, in progress, in QA, done).
 - Planner (revision-safe Board tasks and epics): `get_planner_summary`, `list_planner_activity`
   (the activity feed), `list_planner_epics`, `create_planner_epic`, `update_planner_epic`,
   `archive_planner_epic`, `restore_planner_epic`, `trash_planner_epic`, `list_planner_tasks`,

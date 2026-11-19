@@ -218,9 +218,6 @@ enum BookmarkCmd {
     Remove { path: String },
 }
 
-/// `mosaic mcp` always completes the MCP handshake, even when no vault can be opened (none open
-/// in the app yet, or a pinned `--vault` that moved): clients would otherwise only say "failed to
-/// connect". Its tools then explain what to do, and the vault opens as soon as it can.
 /// `--may-change` entries ending in `:` name app data (`planner:`); an unknown one allows nothing.
 fn warn_unknown_scopes(may_change: &[String]) {
     for entry in may_change {
@@ -237,6 +234,9 @@ fn warn_unknown_scopes(may_change: &[String]) {
     }
 }
 
+/// `mosaic mcp` always completes the MCP handshake, even when no vault can be opened (none open
+/// in the app yet, or a pinned `--vault` that moved): clients would otherwise only say "failed to
+/// connect". Its tools then explain what to do, and the vault opens as soon as it can.
 fn serve_mcp(vault: Option<PathBuf>, mode: mcp::VaultMode, may_change: Vec<String>) -> Result<()> {
     let root = vault.clone().or_else(|| Settings::load().last_vault);
     let ws = match root.as_deref().map(Workspace::open) {

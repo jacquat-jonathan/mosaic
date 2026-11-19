@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Agent, AgentRun, Proposal, TesseraStatus } from "../ipc/types";
 import { api } from "../ipc/api";
+import { parse as parseYaml } from "yaml";
 import { useAttention } from "../state/attention";
 import { useReview } from "../state/review";
 import { useUi } from "../state/ui";
@@ -679,5 +680,30 @@ describe("workflow form", () => {
     fireEvent.submit(document.querySelector("form")!);
     await waitFor(() => expect(api.write).toHaveBeenCalled());
     expect(done).toHaveBeenCalled();
+  });
+
+  it("keeps a hand-written settings scope when the Board switch is turned on", async () => {
+    const custom = agent("custom", { may_change: ["Projects", "settings:"] });
+    useAttention.setState({ agents: [custom], refresh: vi.fn().mockResolvedValue(undefined) });
+    vi.spyOn(api, "read").mockResolvedValue({
+      path: custom.path,
+      kind: "markdown",
+      size: 10,
+      mtime: 1,
+      hash: "old",
+      content: '---\nname: custom\nmay-change:\n  - Projects\n  - "settings:"\n---\nBody',
+      review: null,
+    });
+    vi.spyOn(api, "write").mockResolvedValue({ path: custom.path, hash: "new", review: null });
+    render(<WorkflowForm agent={custom} onDone={vi.fn()} />);
+    await waitFor(() => expect(api.read).toHaveBeenCalled());
+    const toggle = screen.getByRole("switch", { name: "Can change Board and calendar" });
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
+    fireEvent.click(toggle);
+    fireEvent.submit(document.querySelector("form")!);
+    await waitFor(() => expect(api.write).toHaveBeenCalled());
+    const content = vi.mocked(api.write).mock.calls[0][1] as string;
+    const props = parseYaml(/^---\n([\s\S]*?)\n---/.exec(content)![1]);
+    expect(props["may-change"]).toEqual(["Projects", "settings:", "planner:"]);
   });
 });

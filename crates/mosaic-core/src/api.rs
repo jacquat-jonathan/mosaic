@@ -64,8 +64,8 @@ pub struct Context {
 
 /// App data an agent writes directly, outside the vault's files, so it can't be proposed for
 /// review. Under `--may-change`, a write to one is refused unless the allowlist names its scope
-/// (`planner:`, `bookmarks:`, `subscriptions:`). Each store is one scope; a new kind of app data gets
-/// a new one.
+/// (`planner:`, `bookmarks:`, `subscriptions:`, `settings:`). Each store is one scope; a new kind of
+/// app data gets a new one.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AppScope {
     /// The planner database: Board tasks and epics, calendar events, work sessions, iCal imports.
@@ -74,13 +74,17 @@ pub enum AppScope {
     Bookmarks,
     /// Calendar subscriptions (ICS feeds), their URLs in the Keychain and their cached downloads.
     Subscriptions,
+    /// The vault's settings in settings.json: vault preferences (folder colors included) and
+    /// template defaults. Never the agent folder rules, which no agent can change.
+    Settings,
 }
 
 impl AppScope {
-    pub const ALL: [AppScope; 3] = [
+    pub const ALL: [AppScope; 4] = [
         AppScope::Planner,
         AppScope::Bookmarks,
         AppScope::Subscriptions,
+        AppScope::Settings,
     ];
 
     /// The scope's name in `--may-change` and an agent's `may-change`, without the colon.
@@ -89,6 +93,7 @@ impl AppScope {
             AppScope::Planner => "planner",
             AppScope::Bookmarks => "bookmarks",
             AppScope::Subscriptions => "subscriptions",
+            AppScope::Settings => "settings",
         }
     }
 
@@ -99,6 +104,9 @@ impl AppScope {
             }
             AppScope::Bookmarks => "bookmarks",
             AppScope::Subscriptions => "calendar subscriptions",
+            AppScope::Settings => {
+                "the vault's settings (preferences such as folder colors, and template defaults)"
+            }
         }
     }
 
@@ -109,6 +117,45 @@ impl AppScope {
             .into_iter()
             .find(|s| s.name().eq_ignore_ascii_case(name.trim()))
     }
+}
+
+/// A setting with the revision a change to it must name (`expected_revision`), so an agent never
+/// overwrites a newer change made in the app.
+#[derive(Debug, Clone, Serialize)]
+pub struct Revised<T> {
+    #[serde(flatten)]
+    pub value: T,
+    pub revision: String,
+    /// Settings left out (blank) because they name a path hidden from the agent.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub hidden: Vec<String>,
+}
+
+/// The vault's folder rules as an agent sees them (`Workspace::agent_rules_view`).
+#[derive(Debug, Clone, Serialize)]
+pub struct AgentRulesView {
+    pub rules: Vec<AgentRule>,
+    /// Rules on or inside folders hidden from agents, left out of `rules`.
+    pub hidden_rules: usize,
+}
+
+/// The revision of one stored settings value (absent included).
+fn settings_revision(raw: Option<&serde_json::Value>) -> String {
+    let bytes = serde_json::to_vec(&raw).expect("JSON values serialize");
+    crate::vault::hash_bytes(&bytes)
+}
+
+fn stored_template_config(
+    raw: Option<&serde_json::Value>,
+) -> Result<crate::templates::TemplateConfig> {
+    let config: crate::templates::TemplateConfig = match raw {
+        Some(raw) => serde_json::from_value(raw.clone()).map_err(|_| {
+            Error::Invalid("Invalid template settings; repair in Settings › Templates".into())
+        })?,
+        None => Default::default(),
+    };
+    config.validate()?;
+    Ok(config)
 }
 
 /// Whether an allowlist entry names an app-state scope (ends in `:`) rather than a vault path.
@@ -563,6 +610,13 @@ impl Context {
         if self.source() == Source::App {
             return Ok(Vec::new());
         }
+        self.folder_rules()
+    }
+
+    /// The vault's folder rules for agents whoever asks (`rules` without the app's exemption):
+    /// the test override, the rules frozen for this request, or the stored ones. Unreadable rules
+    /// are refused, never read as "no rules".
+    fn folder_rules(&self) -> Result<Vec<AgentRule>> {
         if let Some(rules) = self
             .fixed_rules
             .lock()
@@ -950,6 +1004,315 @@ impl Workspace {
         })
         .map_err(|e| Error::io("settings.json", e))?;
         failure.map_or(Ok(()), Err)
+    }
+
+    /// Vault preferences as an agent sees them, with the revision `change_vault_preferences` takes,
+    /// both from one read of settings.json. Folder colors of folders hidden from agents are left
+    /// out.
+    pub fn revised_vault_preferences(
+        &self,
+    ) -> Result<Revised<crate::preferences::VaultPreferences>> {
+        let settings = Settings::try_load().map_err(|e| Error::io("settings.json", e))?;
+        let raw = settings.vault_preferences.get(self.vault.root());
+        self.revised_preferences(raw)
+    }
+
+    fn revised_preferences(
+        &self,
+        raw: Option<&serde_json::Value>,
+    ) -> Result<Revised<crate::preferences::VaultPreferences>> {
+        let mut preferences: crate::preferences::VaultPreferences = match raw {
+            Some(raw) => serde_json::from_value(raw.clone()).map_err(|e| {
+                Error::Invalid(format!("Repair vault preferences in Settings: {e}"))
+            })?,
+            None => Default::default(),
+        };
+        preferences.validate()?;
+        preferences
+            .other
+            .entry("legacy_migrated".into())
+            .or_insert(serde_json::Value::Bool(raw.is_some()));
+        let mut hidden = Vec::new();
+        let p = &mut preferences;
+        for (key, path) in [
+            ("agents_folder", &mut p.agents_folder),
+            ("daily_folder", &mut p.daily_folder),
+            ("daily_template", &mut p.daily_template),
+            ("new_note_folder", &mut p.new_note_folder),
+            ("attachment_folder", &mut p.attachment_folder),
+            ("startup_note", &mut p.startup_note),
+        ] {
+            if !path.is_empty() && !self.agent_sees(path)? {
+                path.clear();
+                hidden.push(key.to_string());
+            }
+        }
+        let mut colors = std::mem::take(&mut preferences.folder_colors);
+        for folder in colors.keys().cloned().collect::<Vec<_>>() {
+            if !self.agent_sees(&folder)? {
+                colors.remove(&folder);
+                if !hidden.iter().any(|h| h == "folder_colors") {
+                    hidden.push("folder_colors".into());
+                }
+            }
+        }
+        preferences.folder_colors = colors;
+        Ok(Revised {
+            value: preferences,
+            revision: settings_revision(raw),
+            hidden,
+        })
+    }
+
+    /// An agent's (or the CLI's) change to the vault preferences. Only `AGENT_PREFERENCES` may be
+    /// set; `folder_colors` is merged per folder (`null` removes one). Refused without the
+    /// `settings:` scope under `--may-change`, and a conflict when the preferences changed since
+    /// `expected_revision` was read. Validated as in the app.
+    pub fn change_vault_preferences(
+        &self,
+        patch: serde_json::Value,
+        expected_revision: &str,
+    ) -> Result<Revised<crate::preferences::VaultPreferences>> {
+        self.check_app_write(AppScope::Settings)?;
+        let patch = patch
+            .as_object()
+            .ok_or_else(|| Error::Invalid("Expected a preferences object".into()))?;
+        if patch.is_empty() {
+            return Err(Error::Invalid(
+                "Name at least one preference to change".into(),
+            ));
+        }
+        for (key, value) in patch {
+            if !crate::preferences::AGENT_PREFERENCES.contains(&key.as_str()) {
+                return Err(Error::Invalid(format!(
+                    "`{key}` can't be changed by an agent; the person sets it in Settings. Agents may change: {}",
+                    crate::preferences::AGENT_PREFERENCES.join(", ")
+                )));
+            }
+            if key == "folder_colors" {
+                let colors = value.as_object().ok_or_else(|| {
+                    Error::Invalid(
+                        "folder_colors maps folders to a color preset, or to null to remove one"
+                            .into(),
+                    )
+                })?;
+                for (folder, color) in colors {
+                    if !(color.is_null() || color.is_string()) {
+                        return Err(Error::Invalid(format!(
+                            "Use a color preset or null for {folder}"
+                        )));
+                    }
+                    self.check_agent_sees(folder)?;
+                }
+            } else if let Some(path) = value.as_str()
+                && crate::preferences::PATH_PREFERENCES.contains(&key.as_str())
+                && !path.is_empty()
+            {
+                self.check_agent_sees(path)?;
+            }
+        }
+        let mut outcome = None;
+        Settings::try_update(|s| {
+            let raw = s.vault_preferences.get(self.vault.root());
+            let current = settings_revision(raw);
+            if current != expected_revision {
+                outcome = Some(Err(Error::Conflict {
+                    path: "vault preferences".into(),
+                    current_hash: current,
+                }));
+                return Ok(((), false));
+            }
+            let mut patch = patch.clone();
+            if let Some(serde_json::Value::Object(changes)) = patch.get("folder_colors") {
+                let mut colors = raw
+                    .and_then(|r| r.get("folder_colors"))
+                    .and_then(|c| c.as_object())
+                    .cloned()
+                    .unwrap_or_default();
+                for (folder, color) in changes {
+                    if color.is_null() {
+                        colors.remove(folder);
+                    } else {
+                        colors.insert(folder.clone(), color.clone());
+                    }
+                }
+                patch.insert("folder_colors".into(), serde_json::Value::Object(colors));
+            }
+            match crate::preferences::VaultPreferences::patched(raw, &patch) {
+                Ok(value) => {
+                    let revised = self.revised_preferences(Some(&value));
+                    s.vault_preferences
+                        .insert(self.vault.root().to_path_buf(), value);
+                    let changed = revised.is_ok();
+                    outcome = Some(revised);
+                    Ok(((), changed))
+                }
+                Err(error) => {
+                    outcome = Some(Err(error));
+                    Ok(((), false))
+                }
+            }
+        })
+        .map_err(|e| Error::io("settings.json", e))?;
+        outcome.expect("the update ran")
+    }
+
+    /// Whether the agent's folder rules let it see `path` (always, for the app). A path that can't
+    /// be resolved counts as not visible; unreadable rules are an error.
+    fn agent_sees(&self, path: &str) -> Result<bool> {
+        match self.check_read(path) {
+            Ok(()) => Ok(true),
+            Err(Error::NotFound(_) | Error::InvalidPath(_)) => Ok(false),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Refuses a setting that names a path hidden from the agent, as reading it would ("not
+    /// found"). Invalid paths are left to the settings' own validation.
+    fn check_agent_sees(&self, path: &str) -> Result<()> {
+        match self.check_read(path) {
+            Err(Error::InvalidPath(_)) | Ok(()) => Ok(()),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Template defaults as an agent sees them, with the revision `change_template_config` takes,
+    /// both from one read of settings.json. Rules for folders or templates hidden from agents are
+    /// left out (a change keeps them). Refused when the templates folder itself is hidden.
+    pub fn revised_template_config(&self) -> Result<Revised<crate::templates::TemplateConfig>> {
+        let settings = Settings::try_load().map_err(|e| Error::io("settings.json", e))?;
+        let raw = settings.templates.get(self.vault.root());
+        let (mut config, revision) = (stored_template_config(raw)?, settings_revision(raw));
+        self.check_templates_folder(&config)?;
+        let mut visible = Vec::new();
+        let mut hidden = Vec::new();
+        for rule in config.rules {
+            if !self.template_rule_hidden(&rule)? {
+                visible.push(rule);
+            } else if hidden.is_empty() {
+                hidden.push("rules".to_string());
+            }
+        }
+        config.rules = visible;
+        Ok(Revised {
+            value: config,
+            revision,
+            hidden,
+        })
+    }
+
+    /// An agent's (or the CLI's) replacement of the template defaults: the templates folder and
+    /// the per-folder rules. Rules hidden from the agent are kept. Refused without the `settings:`
+    /// scope under `--may-change`, a conflict when the defaults changed since `expected_revision`
+    /// was read, and validated as in the app.
+    pub fn change_template_config(
+        &self,
+        config: crate::templates::TemplateConfig,
+        expected_revision: &str,
+    ) -> Result<Revised<crate::templates::TemplateConfig>> {
+        self.check_app_write(AppScope::Settings)?;
+        config.validate()?;
+        self.check_agent_sees(&config.folder)?;
+        for rule in &config.rules {
+            self.check_agent_sees(&rule.folder)?;
+            if let Some(template) = &rule.template {
+                self.check_agent_sees(template)?;
+            }
+        }
+        let mut outcome = None;
+        Settings::try_update(|s| {
+            let raw = s.templates.get(self.vault.root());
+            let current = settings_revision(raw);
+            if current != expected_revision {
+                outcome = Some(Err(Error::Conflict {
+                    path: "template defaults".into(),
+                    current_hash: current,
+                }));
+                return Ok(((), false));
+            }
+            let merged = stored_template_config(raw).and_then(|stored| {
+                self.check_templates_folder(&stored)?;
+                let mut merged = config.clone();
+                for rule in stored.rules {
+                    if self.template_rule_hidden(&rule)? {
+                        // Their templates live in the templates folder: moving it would break
+                        // rules the agent can't see or fix.
+                        if !stored.folder.eq_ignore_ascii_case(&config.folder) {
+                            return Err(Error::Denied(
+                                "Some template defaults are for folders hidden from you, so only the person can move the templates folder (Settings › Templates)".into(),
+                            ));
+                        }
+                        merged.rules.push(rule);
+                    }
+                }
+                merged.validate()?;
+                Ok(merged)
+            });
+            match merged.and_then(|m| {
+                serde_json::to_value(&m)
+                    .map_err(|e| Error::Invalid(e.to_string()))
+                    .map(|v| (m, v))
+            }) {
+                Ok((m, value)) => {
+                    let merged_hidden = m.rules.len() > config.rules.len();
+                    let revision = settings_revision(Some(&value));
+                    s.templates.insert(self.vault.root().to_path_buf(), value);
+                    let hidden = if merged_hidden {
+                        vec!["rules".to_string()]
+                    } else {
+                        Vec::new()
+                    };
+                    outcome = Some(Ok(Revised {
+                        value: config.clone(),
+                        revision,
+                        hidden,
+                    }));
+                    Ok(((), true))
+                }
+                Err(error) => {
+                    outcome = Some(Err(error));
+                    Ok(((), false))
+                }
+            }
+        })
+        .map_err(|e| Error::io("settings.json", e))?;
+        outcome.expect("the update ran")
+    }
+
+    /// Agents can't read or change template defaults kept in a folder hidden from them.
+    fn check_templates_folder(&self, config: &crate::templates::TemplateConfig) -> Result<()> {
+        if self.agent_sees(&config.folder)? {
+            Ok(())
+        } else {
+            Err(Error::Denied(
+                "Templates are kept in a folder hidden from agents, so their defaults are too"
+                    .into(),
+            ))
+        }
+    }
+
+    fn template_rule_hidden(&self, rule: &crate::templates::TemplateRule) -> Result<bool> {
+        Ok(!self.agent_sees(&rule.folder)?
+            || match &rule.template {
+                Some(t) => !self.agent_sees(t)?,
+                None => false,
+            })
+    }
+
+    /// The vault's folder rules (Settings › AI) as agents may read them: rules on or inside a
+    /// hidden folder are left out and only counted, so the hidden folders' names don't leak.
+    /// There is deliberately no agent path that changes them.
+    pub fn agent_rules_view(&self) -> Result<AgentRulesView> {
+        let rules = self.folder_rules()?;
+        let visible: Vec<AgentRule> = rules
+            .iter()
+            .filter(|r| crate::settings::access_for(&rules, &r.path) != Some(Access::Hidden))
+            .cloned()
+            .collect();
+        Ok(AgentRulesView {
+            hidden_rules: rules.len() - visible.len(),
+            rules: visible,
+        })
     }
 
     pub fn template_config(&self) -> Result<crate::templates::TemplateConfig> {

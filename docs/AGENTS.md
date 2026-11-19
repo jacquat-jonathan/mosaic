@@ -43,7 +43,13 @@ write shows up in the app within a second.
   prompt (in Claude Code: `/mosaic:<name>`), and Mosaic mirrors them into the vault's
   `.claude/skills/`, so Claude Code started in the vault has them as skills. Edit an agent in `Agents/`,
   never its mirror.
-- **Vault preferences are shared with CLI/MCP.** Read `get_vault_preferences` (CLI: `mosaic preferences`). Settings may change the agents folder, daily-note
+- **Vault preferences are shared with CLI/MCP.** Read `get_vault_preferences` (CLI: `mosaic preferences`).
+  When the person asks, change them with `set_vault_preferences` (pass only the keys to change and
+  the `revision` you read; folder colors use the presets red, orange, green, blue, purple). Template
+  defaults work the same way with `get_template_config` and `set_template_config`;
+  `list_template_starters` shows the starter templates. The agents folder, HTML preview permissions
+  and the folder rules (`get_agent_rules`, read only) stay the person's. A workflow limited to
+  certain folders may change these settings only with `settings:` in its `may-change`. Settings may change the agents folder, daily-note
   folder and file-name format without moving files. Discover agents with `list_agents`, not a
   hard-coded `Agents/` listing. Daily formats are `YYYY-MM-DD`, `DD-MM-YYYY` or `YYYYMMDD`; legacy
   ISO daily names remain recognized, while due dates and date placeholders always use ISO. Two

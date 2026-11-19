@@ -1201,7 +1201,7 @@ fn without_any_vault_it_connects_and_picks_up_the_first_one_opened() {
     // Never opened a vault in the app (no settings.json): the handshake still succeeds.
     let mut c = Client::start_with(None, &settings, &home.path().join("cache"));
     let tools = c.request("tools/list", json!({}));
-    assert_eq!(tools["result"]["tools"].as_array().unwrap().len(), 78);
+    assert_eq!(tools["result"]["tools"].as_array().unwrap().len(), 86);
     let resources = c.request("resources/list", json!({}));
     assert_eq!(resources["result"]["resources"], json!([]));
     let (err, msg) = c.call("list_files", json!({}));
@@ -1746,7 +1746,7 @@ fn the_connection_test_reports_a_working_server_with_and_without_a_vault() {
 
     let r = probe(bin, &["mcp".into()], &env, timeout);
     assert!(r.ok, "{r:?}");
-    assert_eq!(r.tools, 78);
+    assert_eq!(r.tools, 86);
     assert_eq!(r.server_version.as_deref(), Some(env!("CARGO_PKG_VERSION")));
     assert!(r.no_vault.unwrap().contains("No Mosaic vault is open"));
 
@@ -2503,5 +2503,313 @@ fn calendar_writes_need_the_planner_scope_under_may_change() {
     call(
         "cancel_planner_work_session",
         json!({ "id": session["id"], "expected_revision": w["revision"] }),
+    );
+}
+
+/// Every file under `dir`, so a test can show a tool wrote none.
+fn files_under(dir: &std::path::Path) -> std::collections::BTreeSet<std::path::PathBuf> {
+    let mut found = std::collections::BTreeSet::new();
+    let mut todo = vec![dir.to_path_buf()];
+    while let Some(next) = todo.pop() {
+        for entry in std::fs::read_dir(&next).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                todo.push(path);
+            } else {
+                found.insert(path);
+            }
+        }
+    }
+    found
+}
+
+#[test]
+fn agents_manage_epics_and_read_the_planner_summary_activity_and_export() {
+    let dir = fixture();
+    let mut c = Client::start(dir.path());
+    let call = |c: &mut Client, tool: &str, args: Value| {
+        let (err, result) = c.call(tool, args);
+        assert!(!err, "{tool}: {result}");
+        result
+    };
+
+    let empty = call(&mut c, "get_planner_summary", json!({}));
+    assert_eq!(empty["is_empty"], true, "{empty}");
+
+    let epic = call(
+        &mut c,
+        "create_planner_epic",
+        json!({ "title": "Launch", "description": "Q4" }),
+    );
+    assert_eq!(epic["color"], "#6477d4", "{epic}");
+    assert_eq!(epic["revision"], 1);
+    let other = call(
+        &mut c,
+        "create_planner_epic",
+        json!({ "title": "Hiring", "color": "#10b981" }),
+    );
+    let task = call(
+        &mut c,
+        "create_planner_task",
+        json!({ "title": "Ship", "epic_id": epic["id"] }),
+    );
+    let epic = call(
+        &mut c,
+        "update_planner_epic",
+        json!({ "id": epic["id"], "expected_revision": 1, "title": "Launch v2", "position": 5 }),
+    );
+    assert_eq!(epic["title"], "Launch v2");
+    assert_eq!(
+        epic["description"], "Q4",
+        "left-out fields keep their value"
+    );
+    assert_eq!(epic["position"], 5);
+
+    // A stale revision is refused and changes nothing.
+    for (tool, args) in [
+        (
+            "update_planner_epic",
+            json!({ "id": epic["id"], "expected_revision": 1, "title": "Stale" }),
+        ),
+        (
+            "archive_planner_epic",
+            json!({ "id": epic["id"], "expected_revision": 1 }),
+        ),
+    ] {
+        let (err, refused) = c.call(tool, args);
+        assert!(err && refused["code"] == "conflict", "{tool}: {refused}");
+    }
+    let listed = call(&mut c, "list_planner_epics", json!({}));
+    assert_eq!(find(&listed, "id", &epic["id"]), Some(&epic));
+
+    // Trash needs archive first; restore brings it back.
+    let (err, refused) = c.call(
+        "trash_planner_epic",
+        json!({ "id": other["id"], "expected_revision": other["revision"] }),
+    );
+    assert!(err && refused["code"] == "invalid", "{refused}");
+    let other = call(
+        &mut c,
+        "archive_planner_epic",
+        json!({ "id": other["id"], "expected_revision": other["revision"] }),
+    );
+    assert!(other["archived_at"].is_string());
+    assert_eq!(call(&mut c, "list_planner_epics", json!({})), json!([epic]));
+    let other = call(
+        &mut c,
+        "trash_planner_epic",
+        json!({ "id": other["id"], "expected_revision": other["revision"] }),
+    );
+    assert!(other["trashed_at"].is_string());
+    let other = call(
+        &mut c,
+        "restore_planner_epic",
+        json!({ "id": other["id"], "expected_revision": other["revision"] }),
+    );
+    assert!(other["archived_at"].is_null() && other["trashed_at"].is_null());
+
+    let summary = call(&mut c, "get_planner_summary", json!({}));
+    assert_eq!(summary["epics"], 2);
+    assert_eq!(summary["tasks"], 1);
+    assert_eq!(summary["is_empty"], false);
+
+    // The feed: newest first, paged, snapshots only on request.
+    let feed = call(&mut c, "list_planner_activity", json!({}));
+    let entries = feed["entries"].as_array().unwrap();
+    assert_eq!(entries.len(), 7, "{feed}");
+    assert_eq!(entries[0]["action"], "restored");
+    assert_eq!(entries[0]["source"], "agent");
+    assert!(entries[0]["before"].is_null() && entries[0]["after"].is_null());
+    assert!(entries[0]["changes"].is_array());
+    assert!(feed["next_before_id"].is_null());
+    let page = call(&mut c, "list_planner_activity", json!({ "limit": 3 }));
+    assert_eq!(page["entries"], json!(entries[..3]));
+    let rest = call(
+        &mut c,
+        "list_planner_activity",
+        json!({ "limit": 10, "before_id": page["next_before_id"] }),
+    );
+    assert_eq!(rest["entries"], json!(entries[3..]));
+    let one = call(
+        &mut c,
+        "list_planner_activity",
+        json!({ "entity_kind": "epic", "entity_id": epic["id"], "include_snapshots": true }),
+    );
+    let one = one["entries"].as_array().unwrap();
+    assert_eq!(one.len(), 2);
+    assert_eq!(one[0]["after"]["title"], "Launch v2");
+    let tasks = call(
+        &mut c,
+        "list_planner_activity",
+        json!({ "entity_kind": "task" }),
+    );
+    assert_eq!(tasks["entries"][0]["entity_id"], task["id"]);
+    let (err, refused) = c.call("list_planner_activity", json!({ "entity_id": epic["id"] }));
+    assert!(err && refused["code"] == "invalid", "{refused}");
+
+    // Export returns the content and writes no file.
+    let before = files_under(dir.path());
+    let json_export = call(&mut c, "export_planner", json!({ "format": "json" }));
+    assert!(json_export["next_cursor"].is_null());
+    assert_eq!(json_export["revision"], summary["revision"]);
+    let content = json_export["content"].as_str().unwrap();
+    assert_eq!(
+        content.len(),
+        json_export["total_bytes"].as_u64().unwrap() as usize
+    );
+    let parsed: Value = serde_json::from_str(content).unwrap();
+    assert_eq!(parsed["epics"].as_array().unwrap().len(), 2);
+    assert_eq!(parsed["tasks"][0]["id"], task["id"]);
+    assert_eq!(parsed["exported_at"], json_export["exported_at"]);
+    let csv = call(&mut c, "export_planner", json!({ "format": "csv" }));
+    let csv = csv["content"].as_str().unwrap();
+    assert!(csv.starts_with("entity_type,id,"), "{csv}");
+    assert_eq!(csv.lines().count(), 4, "{csv}");
+
+    // Small pages join into one export, identical to a single page at the same time.
+    let mut joined = String::new();
+    let mut cursor = Value::Null;
+    let mut pages = 0;
+    loop {
+        let page = call(
+            &mut c,
+            "export_planner",
+            json!({ "format": "json", "cursor": cursor, "max_bytes": 4096 }),
+        );
+        let text = page["content"].as_str().unwrap();
+        assert!(text.len() <= 4096);
+        assert_eq!(page["offset"].as_u64().unwrap() as usize, joined.len());
+        joined.push_str(text);
+        pages += 1;
+        cursor = page["next_cursor"].clone();
+        if cursor.is_null() {
+            break;
+        }
+        assert!(text.ends_with('\n'), "pages end at a line break");
+    }
+    assert!(pages > 1, "{pages}");
+    let joined: Value = serde_json::from_str(&joined).unwrap();
+    assert_eq!(joined["epics"], parsed["epics"]);
+    assert_eq!(joined["activity"], parsed["activity"]);
+    assert_eq!(files_under(dir.path()), before, "export wrote a file");
+
+    // A cursor from before a change, or a tampered one, is refused.
+    let first = call(
+        &mut c,
+        "export_planner",
+        json!({ "format": "json", "max_bytes": 4096 }),
+    );
+    let stale = first["next_cursor"].clone();
+    let (err, refused) = c.call(
+        "export_planner",
+        json!({ "format": "csv", "cursor": stale }),
+    );
+    assert!(err && refused["code"] == "invalid", "{refused}");
+    for bad in [
+        "nonsense".to_string(),
+        format!(
+            "json:{}:99999999:{}",
+            first["revision"],
+            first["exported_at"].as_str().unwrap()
+        ),
+        "json:x:1:t".into(),
+    ] {
+        let (err, refused) = c.call(
+            "export_planner",
+            json!({ "format": "json", "cursor": bad.as_str() }),
+        );
+        assert!(err && refused["code"] == "invalid", "{bad}: {refused}");
+    }
+    call(
+        &mut c,
+        "update_planner_epic",
+        json!({ "id": epic["id"], "expected_revision": epic["revision"], "color": "#000000" }),
+    );
+    let (err, refused) = c.call(
+        "export_planner",
+        json!({ "format": "json", "cursor": stale }),
+    );
+    assert!(err && refused["code"] == "conflict", "{refused}");
+}
+
+#[test]
+fn epic_writes_need_the_planner_scope_under_may_change() {
+    let home = tempfile::tempdir().unwrap();
+    let vault = home.path().join("V");
+    std::fs::create_dir_all(vault.join("Daily")).unwrap();
+    let settings = home.path().join("settings");
+    let cache = home.path().join("cache");
+
+    let mut c = Client::start_with(Some(&vault), &settings, &cache);
+    let (_, epic) = c.call("create_planner_epic", json!({ "title": "E" }));
+    assert!(epic["id"].is_string(), "{epic}");
+    drop(c);
+
+    let id = &epic["id"];
+    let mut c = Client::start_restricted(Some(&vault), &settings, &cache, &["Daily"]);
+    for (tool, args) in [
+        ("create_planner_epic", json!({ "title": "X" })),
+        (
+            "update_planner_epic",
+            json!({ "id": id, "expected_revision": 1, "title": "X" }),
+        ),
+        (
+            "archive_planner_epic",
+            json!({ "id": id, "expected_revision": 1 }),
+        ),
+        (
+            "trash_planner_epic",
+            json!({ "id": id, "expected_revision": 1 }),
+        ),
+        (
+            "restore_planner_epic",
+            json!({ "id": id, "expected_revision": 1 }),
+        ),
+    ] {
+        let (err, refused) = c.call(tool, args);
+        assert!(err && refused["code"] == "denied", "{tool}: {refused}");
+        assert!(
+            refused["message"].as_str().unwrap().contains("`planner:`"),
+            "{tool}: {refused}"
+        );
+    }
+    // Reads still work, and nothing changed.
+    let (err, epics) = c.call("list_planner_epics", json!({}));
+    assert!(!err, "{epics}");
+    assert_eq!(epics, json!([epic]));
+    let (err, summary) = c.call("get_planner_summary", json!({}));
+    assert!(!err && summary["epics"] == 1, "{summary}");
+    let (err, feed) = c.call("list_planner_activity", json!({}));
+    assert!(
+        !err && feed["entries"].as_array().unwrap().len() == 1,
+        "{feed}"
+    );
+    let (err, export) = c.call("export_planner", json!({ "format": "csv" }));
+    assert!(!err, "{export}");
+    drop(c);
+
+    // With `planner:`, the same agent may change epics.
+    let mut c = Client::start_restricted(Some(&vault), &settings, &cache, &["Daily", "planner:"]);
+    let mut call = |tool: &str, args: Value| {
+        let (err, result) = c.call(tool, args);
+        assert!(!err, "{tool}: {result}");
+        result
+    };
+    call("create_planner_epic", json!({ "title": "X" }));
+    let e = call(
+        "update_planner_epic",
+        json!({ "id": id, "expected_revision": 1, "title": "Y" }),
+    );
+    let e = call(
+        "archive_planner_epic",
+        json!({ "id": id, "expected_revision": e["revision"] }),
+    );
+    let e = call(
+        "trash_planner_epic",
+        json!({ "id": id, "expected_revision": e["revision"] }),
+    );
+    call(
+        "restore_planner_epic",
+        json!({ "id": id, "expected_revision": e["revision"] }),
     );
 }

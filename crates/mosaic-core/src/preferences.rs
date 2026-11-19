@@ -40,6 +40,35 @@ pub struct VaultPreferences {
     #[cfg_attr(feature = "specta", specta(skip))]
     pub other: BTreeMap<String, serde_json::Value>,
 }
+/// The preferences an agent (or the CLI) may change with `Workspace::change_vault_preferences`.
+/// Left out on purpose: `agents_folder` (where scheduled agents and their `may-change` live; an
+/// agent could point it at a folder it may write and so grant itself permissions),
+/// `allow_html_scripts` and `allow_html_internet` (the HTML preview sandbox's security),
+/// `version` and `legacy_migrated` (bookkeeping), and preferences a newer Mosaic wrote.
+pub const AGENT_PREFERENCES: &[&str] = &[
+    "daily_notes_enabled",
+    "daily_folder",
+    "daily_template",
+    "daily_format",
+    "new_note_location",
+    "new_note_folder",
+    "attachment_location",
+    "attachment_folder",
+    "show_attachments_in_tree",
+    "link_style",
+    "startup_note",
+    "folder_colors",
+];
+
+/// The agent-settable preferences that name a vault path.
+pub(crate) const PATH_PREFERENCES: &[&str] = &[
+    "daily_folder",
+    "daily_template",
+    "new_note_folder",
+    "attachment_folder",
+    "startup_note",
+];
+
 /// The values `validate` accepts, as types for the app's TypeScript bindings.
 #[cfg(feature = "specta")]
 #[allow(dead_code)]

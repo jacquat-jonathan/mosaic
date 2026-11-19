@@ -203,16 +203,18 @@ be opened until you update the registration.
 
 ### Tools
 
-The server has 75 tools (this list is checked against the server by a test):
+The server has 80 tools (this list is checked against the server by a test):
 
 <!-- mcp-tools:start -->
-- Guide and settings: `vault_guide`, `get_vault_preferences`, `list_agents`.
+- Guide and settings: `vault_guide`, `get_vault_preferences`, `set_vault_preferences` (folder
+  colors included), `get_agent_rules` (read only), `list_agents`.
 - Read: `list_files`, `read_file`, `outline`, `search`, `query` (notes by tag, frontmatter field,
   date or links), `get_backlinks`, `list_tags`, `render` (a PNG of a canvas, so the agent can check
   what it drew).
 - Write: `create_file`, `edit_file`, `patch_file`, `append_to_file`, `rename`, `move_files`,
   `copy_file`, `delete_file`, `create_folder`, `import_file`.
-- Templates: `list_templates`, `render_template`, `create_note`.
+- Templates: `list_templates`, `render_template`, `create_note`, `get_template_config`,
+  `set_template_config`, `list_template_starters`.
 - History and review: `file_history`, `restore_version`, `list_proposals`, `withdraw_proposal`.
 - Bookmarks: `list_bookmarks`, `add_bookmark`, `remove_bookmark`.
 - Markdown tasks: `tasks_by_day`, `carry_over`.
@@ -322,7 +324,9 @@ daily filenames, generated link syntax, folder colors and startup note. Folder c
 creation/discovery only; they never migrate files. Missing paths can be selected again or explicitly created.
 Daily names support `YYYY-MM-DD`, `DD-MM-YYYY` and `YYYYMMDD`, while legacy ISO notes remain recognized.
 Date placeholders and task due dates stay ISO. Duplicate daily dates are reported, never overwritten.
-Shared vault preferences are readable with `mosaic preferences` and MCP `get_vault_preferences`.
+Shared vault preferences are readable with `mosaic preferences` and MCP `get_vault_preferences`; agents
+can change them (except the agents folder and HTML preview permissions) and the template defaults over
+MCP, and can read but never change the folder rules for agents.
 
 Workflow creation/editing is one page. Schedules and note-created events can coexist; manual Run now
 is always available. Changes require review by default. Existing agents retain their identity and

@@ -1377,7 +1377,7 @@ impl PlannerService {
         selected_keys: &[String],
         allow_duplicates: bool,
     ) -> Result<IcalImportResult> {
-        self.store()?
+        self.write_store()?
             .import_ical(preview, selected_keys, allow_duplicates)
     }
 

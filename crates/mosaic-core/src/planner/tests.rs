@@ -1470,3 +1470,121 @@ fn newer_schema_has_typed_unavailability_and_never_offers_rollback() {
     );
     assert!(ws.planner.summary().is_err());
 }
+
+fn agent_task() -> CreateTask {
+    CreateTask {
+        epic_id: None,
+        parent_id: None,
+        title: "From agent".into(),
+        description: String::new(),
+        status: TaskStatus::New,
+        due_date: None,
+        estimate_minutes: None,
+    }
+}
+
+#[test]
+fn an_allowlist_without_the_planner_scope_refuses_planner_writes() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = Workspace::open(dir.path()).unwrap();
+    let existing = app.planner.create_task(agent_task()).unwrap();
+    // The allowlist before the source, to check the order doesn't matter.
+    let agent = Workspace::open(dir.path())
+        .unwrap()
+        .with_change_allowlist(vec!["Daily".into()])
+        .with_source(crate::history::Source::Agent);
+    let denied = |r: Result<PlannerTask>| match r {
+        Err(Error::Denied(m)) => assert!(m.contains("planner:"), "{m}"),
+        other => panic!("expected a refusal, got {other:?}"),
+    };
+    denied(agent.planner.create_task(agent_task()));
+    denied(agent.planner.archive_task(&existing.id, existing.revision));
+    denied(agent.planner.complete_task(
+        &existing.id,
+        existing.revision,
+        true,
+        FutureSessionPolicy::Keep,
+    ));
+    assert!(matches!(
+        agent.planner.create_epic(CreateEpic {
+            title: "E".into(),
+            description: String::new(),
+            color: "#5b8def".into(),
+        }),
+        Err(Error::Denied(_))
+    ));
+    assert!(matches!(
+        agent.planner.cancel_work_session("missing", 1),
+        Err(Error::Denied(_))
+    ));
+    assert!(matches!(
+        agent.planner.trash_event("missing", 1),
+        Err(Error::Denied(_))
+    ));
+    // Reads still work, and nothing changed.
+    let tasks = agent.planner.tasks(true, true).unwrap();
+    assert_eq!(tasks.len(), 1);
+    assert_eq!(tasks[0].revision, existing.revision);
+
+    // `planner:` lets the agent write; the app is never restricted.
+    let allowed = Workspace::open(dir.path())
+        .unwrap()
+        .with_source(crate::history::Source::Agent)
+        .with_change_allowlist(vec!["Daily".into(), "Planner:".into()]);
+    allowed.planner.create_task(agent_task()).unwrap();
+    let app = Workspace::open(dir.path())
+        .unwrap()
+        .with_change_allowlist(vec!["Daily".into()]);
+    app.planner.create_task(agent_task()).unwrap();
+}
+
+/// Every planner method that isn't a known read must go through `write_store`, so a new write
+/// (a later MCP slice) is covered by the `--may-change` check without anyone remembering it.
+#[test]
+fn every_planner_write_goes_through_write_store() {
+    const READS: &[&str] = &[
+        "open",
+        "unavailable",
+        "tasks",
+        "epics",
+        "work_sessions",
+        "events",
+        "calendar_range",
+        "preview_ical_import",
+        "export_ical",
+        "export_json",
+        "export_csv",
+        "summary",
+        "activity",
+    ];
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/planner");
+    let mut checked = 0;
+    for file in fs::read_dir(&dir).unwrap() {
+        let path = file.unwrap().path();
+        let text = fs::read_to_string(&path).unwrap();
+        let mut rest = text.as_str();
+        while let Some(start) = rest.find("\nimpl PlannerService {") {
+            let after = &rest[start + 1..];
+            let end = after.find("\n}\n").unwrap();
+            let block = &after[..end];
+            for method in block.split("\n    pub fn ").skip(1) {
+                let name = method.split(['(', '<']).next().unwrap();
+                let body = method.split("\n    }").next().unwrap();
+                if READS.contains(&name) {
+                    assert!(
+                        !body.contains("write_store"),
+                        "{name} in {path:?} is listed as a read"
+                    );
+                } else if body.contains("self.store()") || body.contains("self.write_store()") {
+                    assert!(
+                        body.contains("self.write_store()"),
+                        "{name} in {path:?} writes the planner without write_store; add it to READS only if it never changes anything"
+                    );
+                    checked += 1;
+                }
+            }
+            rest = &after[end..];
+        }
+    }
+    assert!(checked >= 24, "found only {checked} planner writes");
+}

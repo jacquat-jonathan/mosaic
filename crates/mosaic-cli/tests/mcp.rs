@@ -28,9 +28,22 @@ impl Client {
         settings: &std::path::Path,
         cache: &std::path::Path,
     ) -> Self {
+        Self::start_restricted(vault, settings, cache, &[])
+    }
+
+    /// `start_with`, restricted like a scheduled agent: one `--may-change` per entry.
+    fn start_restricted(
+        vault: Option<&std::path::Path>,
+        settings: &std::path::Path,
+        cache: &std::path::Path,
+        may_change: &[&str],
+    ) -> Self {
         let mut cmd = Command::new(env!("CARGO_BIN_EXE_mosaic"));
         if let Some(v) = vault {
             cmd.args(["--vault", v.to_str().unwrap()]);
+        }
+        for entry in may_change {
+            cmd.args(["--may-change", entry]);
         }
         let mut child = cmd
             .arg("mcp")
@@ -565,6 +578,145 @@ fn without_a_vault_it_follows_the_app() {
         !guide.as_str().unwrap().starts_with("Note:"),
         "no warning when following"
     );
+}
+
+/// Following the app must not lose `--may-change`: after the person switches vaults, a write
+/// outside the allowlist is still a proposal, and app-state writes are still refused.
+#[test]
+fn following_the_app_keeps_the_may_change_restriction() {
+    let home = tempfile::tempdir().unwrap();
+    let (a, b) = (home.path().join("A"), home.path().join("B"));
+    for vault in [&a, &b] {
+        std::fs::create_dir_all(vault.join("Allowed")).unwrap();
+        std::fs::write(vault.join("Outside.md"), "original\n").unwrap();
+    }
+    let settings = home.path().join("settings");
+    open_in_app(&settings, &a);
+    let mut c = Client::start_restricted(None, &settings, &home.path().join("cache"), &["Allowed"]);
+    let (err, before) = c.call(
+        "edit_file",
+        json!({ "path": "Outside.md", "content": "agent\n" }),
+    );
+    assert!(!err, "{before}");
+    assert!(before["review"].is_number(), "{before}");
+
+    // The person switches vaults in the app.
+    open_in_app(&settings, &b);
+    let (err, after) = c.call(
+        "edit_file",
+        json!({ "path": "Outside.md", "content": "agent\n" }),
+    );
+    assert!(!err, "{after}");
+    assert!(
+        after["review"].is_number(),
+        "a write outside the allowlist must stay a proposal after the switch: {after}"
+    );
+    assert!(after["note"].as_str().unwrap().contains("Proposed"));
+    assert_eq!(
+        std::fs::read_to_string(b.join("Outside.md")).unwrap(),
+        "original\n"
+    );
+    // Inside the allowlist, still direct, in the new vault.
+    let (err, inside) = c.call(
+        "create_file",
+        json!({ "path": "Allowed/New.md", "content": "hi\n" }),
+    );
+    assert!(!err, "{inside}");
+    assert!(inside["review"].is_null(), "{inside}");
+    assert!(b.join("Allowed/New.md").exists());
+    let (err, planner) = c.call("create_planner_task", json!({ "title": "Sneaky" }));
+    assert!(err, "{planner}");
+    assert_eq!(planner["code"], "denied");
+}
+
+/// A restricted server started before any vault is open applies `--may-change` to the vault it
+/// opens lazily on the first call.
+#[test]
+fn the_lazy_first_open_keeps_the_may_change_restriction() {
+    let home = tempfile::tempdir().unwrap();
+    let vault = home.path().join("V");
+    std::fs::create_dir_all(vault.join("Allowed")).unwrap();
+    std::fs::write(vault.join("Outside.md"), "original\n").unwrap();
+    let settings = home.path().join("settings");
+    let mut c = Client::start_restricted(None, &settings, &home.path().join("cache"), &["Allowed"]);
+    let (err, msg) = c.call("list_files", json!({}));
+    assert!(err && msg["code"] == "no_vault", "{msg}");
+    open_in_app(&settings, &vault);
+    let (err, w) = c.call(
+        "edit_file",
+        json!({ "path": "Outside.md", "content": "agent\n" }),
+    );
+    assert!(!err, "{w}");
+    assert!(w["review"].is_number(), "must be a proposal: {w}");
+    assert_eq!(
+        std::fs::read_to_string(vault.join("Outside.md")).unwrap(),
+        "original\n"
+    );
+    let (err, refused) = c.call("create_planner_task", json!({ "title": "T" }));
+    assert!(err && refused["code"] == "denied", "{refused}");
+}
+
+/// Under `--may-change`, app-state writes (planner, bookmarks) are refused unless the allowlist
+/// names their scope; reads and withdrawing the agent's own proposals still work.
+#[test]
+fn app_state_writes_need_their_scope_under_may_change() {
+    let home = tempfile::tempdir().unwrap();
+    let vault = home.path().join("V");
+    std::fs::create_dir_all(vault.join("Daily")).unwrap();
+    std::fs::write(vault.join("Note.md"), "note\n").unwrap();
+    let settings = home.path().join("settings");
+    let cache = home.path().join("cache");
+
+    let mut c = Client::start_restricted(Some(&vault), &settings, &cache, &["Daily"]);
+    let (err, refused) = c.call("create_planner_task", json!({ "title": "T" }));
+    assert!(err, "{refused}");
+    assert_eq!(refused["code"], "denied");
+    let message = refused["message"].as_str().unwrap();
+    assert!(message.contains("`planner:`"), "{message}");
+    assert!(message.contains("Don't retry"), "{message}");
+    assert!(message.contains("Tell the person"), "{message}");
+    let (err, refused) = c.call("add_bookmark", json!({ "path": "Note.md" }));
+    assert!(err, "{refused}");
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap()
+            .contains("`bookmarks:`"),
+        "{refused}"
+    );
+    let (err, refused) = c.call("remove_bookmark", json!({ "path": "Note.md" }));
+    assert!(err && refused["code"] == "denied", "{refused}");
+    let (err, tasks) = c.call("list_planner_tasks", json!({}));
+    assert!(!err, "{tasks}");
+    assert_eq!(tasks, json!([]));
+    // The agent's own proposal can still be taken back.
+    let (_, proposed) = c.call(
+        "edit_file",
+        json!({ "path": "Note.md", "content": "changed\n" }),
+    );
+    let id = proposed["review"].as_i64().expect("a proposal");
+    let (err, withdrawn) = c.call("withdraw_proposal", json!({ "id": id }));
+    assert!(!err, "{withdrawn}");
+    drop(c);
+
+    // Naming the scopes lets the same agent change them.
+    let mut c = Client::start_restricted(
+        Some(&vault),
+        &settings,
+        &cache,
+        &["Daily", "planner:", "bookmarks:"],
+    );
+    let (err, task) = c.call("create_planner_task", json!({ "title": "T" }));
+    assert!(!err, "{task}");
+    let (err, task) = c.call(
+        "complete_planner_task",
+        json!({ "id": task["id"], "expected_revision": task["revision"] }),
+    );
+    assert!(!err, "{task}");
+    let (err, bookmarks) = c.call("add_bookmark", json!({ "path": "Note.md" }));
+    assert!(!err, "{bookmarks}");
+    let (err, _) = c.call("remove_bookmark", json!({ "path": "Note.md" }));
+    assert!(!err);
 }
 
 #[test]

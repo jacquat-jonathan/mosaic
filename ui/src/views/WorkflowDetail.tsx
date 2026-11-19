@@ -9,7 +9,13 @@ import { useWorkspace } from "../state/workspace";
 import { DesignSystemScope } from "./DesignSystemScope";
 import { WorkflowForm } from "./WorkflowForm";
 import { WorkflowList } from "./WorkflowList";
-import { pendingForRun, workflowRunState, workflowTrigger } from "./workflowPresentation";
+import {
+  allowedFolders,
+  canChangePlanner,
+  pendingForRun,
+  workflowRunState,
+  workflowTrigger,
+} from "./workflowPresentation";
 import "./workflowDetail.css";
 import "./workflowStatus.css";
 
@@ -89,7 +95,8 @@ function Context({ name, root }: { name: string; root?: string }) {
               ["Agent", agent.name],
               ["Trigger", workflowTrigger(agent)],
               ["Model", agent.model || "Claude Code default"],
-              ["Allowed folders", agent.may_change.join(", ") || "All changes require review"],
+              ["Allowed folders", allowedFolders(agent).join(", ") || "All changes require review"],
+              ["Board and calendar", canChangePlanner(agent) ? "Can change" : "Can't change"],
               ["Web", agent.web ? "Can use the web" : "No web access"],
             ].map(([label, value]) => (
               <div key={label}>

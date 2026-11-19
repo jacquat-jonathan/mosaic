@@ -298,7 +298,7 @@ impl Context {
 
     /// The file as the agent should see it: its pending proposal if there is one, else the disk.
     /// `None` when it doesn't exist (or its deletion is proposed).
-    fn effective(&self, norm: &str) -> Result<Option<(String, String, Option<i64>)>> {
+    pub(crate) fn effective(&self, norm: &str) -> Result<Option<(String, String, Option<i64>)>> {
         if let Some((p, content)) = self.hist().pending_for(norm)? {
             return Ok(content.map(|c| {
                 let h = hash_bytes(c.as_bytes());
@@ -470,6 +470,7 @@ impl Context {
             path: to.to_string(),
             updated_links_in: vec![],
             failed_links_in: vec![],
+            proposed_links_in: vec![],
             review: Some(id),
         })
     }

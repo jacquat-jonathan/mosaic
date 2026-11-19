@@ -213,9 +213,14 @@ The server has 45 tools (this list is checked against the server by a test):
 - Write: `create_file`, `edit_file`, `patch_file`, `append_to_file`, `rename`, `move_files`,
   `copy_file`, `delete_file`, `create_folder`, `import_file`.
 - Templates: `list_templates`, `render_template`, `create_note`.
-- History and review: `file_history`, `restore_version`, `list_proposals`, `withdraw_proposal`.
+- Links: `list_aliases`, `list_unlinked_mentions`, `link_mention`, `list_unfinished_renames`,
+  `fix_links` (finish a move whose links weren't all rewritten).
+- Search index: `get_index_health`, `rebuild_index`.
+- History and review: `file_history`, `read_version`, `restore_version`, `list_ai_activity`,
+  `undo_change` (reviewed like any change), `list_proposals`, `withdraw_proposal`.
 - Bookmarks: `list_bookmarks`, `add_bookmark`, `remove_bookmark`.
-- Markdown tasks: `tasks_by_day`, `carry_over`.
+- Markdown tasks: `tasks_by_day`, `carry_over`, `set_task` (tick a checkbox), `set_task_workflow`
+  (new, blocked, in progress, in QA, done).
 - Planner (revision-safe Board tasks): `list_planner_epics`, `list_planner_tasks`,
   `get_planner_task`, `planner_task_history`, `create_planner_task`, `update_planner_task`,
   `move_planner_task`, `complete_planner_task`, `reopen_planner_task`, `archive_planner_task`,

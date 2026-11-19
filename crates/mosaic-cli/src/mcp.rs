@@ -425,6 +425,100 @@ struct CopyArgs {
     to: String,
 }
 
+#[derive(Deserialize, JsonSchema)]
+struct SetTaskArgs {
+    /// Vault-relative path of the note, from the `query` row.
+    path: String,
+    /// 1-based line of the task (`task.line` in a `query task:…` row).
+    line: usize,
+    /// The task's text as `query` returned it (`task.text`); refused with `conflict` if the line
+    /// no longer holds it.
+    text: String,
+    /// true ticks it (`- [x]`), false unticks it (`- [ ]`).
+    done: bool,
+}
+
+#[derive(Clone, Copy, Deserialize, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+enum TaskWorkflowArg {
+    New,
+    Blocked,
+    InProgress,
+    InQa,
+    Done,
+}
+
+impl TaskWorkflowArg {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::New => "new",
+            Self::Blocked => "blocked",
+            Self::InProgress => "in-progress",
+            Self::InQa => "in-qa",
+            Self::Done => "done",
+        }
+    }
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct SetTaskWorkflowArgs {
+    /// Vault-relative path of the note, from the `query` row.
+    path: String,
+    /// 1-based line of the task (`task.line`).
+    line: usize,
+    /// The task's text as `query` returned it (`task.text`, with or without its
+    /// `<!-- mosaic:state=… -->` annotation).
+    text: String,
+    /// The state you read (`task.workflow`); refused with `conflict` if it changed since.
+    expected_state: TaskWorkflowArg,
+    /// The new state. `done` ticks the checkbox; the others untick it.
+    state: TaskWorkflowArg,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct MentionsArgs {
+    /// Vault-relative path of the note whose title and aliases to look for.
+    path: String,
+    /// Maximum notes to report (default 30); each contributes at most 3 mentions.
+    limit: Option<usize>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct LinkMentionArgs {
+    /// The note that mentions it (`source` from list_unlinked_mentions).
+    source: String,
+    /// 1-based line of the mention (`line`).
+    line: usize,
+    /// The words to turn into a link (`text`).
+    text: String,
+    /// Vault-relative path of the note to link to.
+    target: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct ChangeIdArg {
+    /// Change id: `id` from list_ai_activity or file_history.
+    id: i64,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct VersionIdArg {
+    /// Version id from file_history or list_ai_activity.
+    id: i64,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct MoveIdArg {
+    /// Unfinished move id from list_unfinished_renames.
+    id: i64,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct ActivityArgs {
+    /// Maximum changes (default 50), newest first.
+    limit: Option<usize>,
+}
+
 /// Which vault the server works on: one given on the command line, or whichever is open in the app.
 #[derive(Clone, Copy, PartialEq)]
 pub enum VaultMode {
@@ -654,7 +748,7 @@ impl MosaicMcp {
     }
 
     #[tool(
-        description = "Structured query over the vault's notes: by tag, folder, frontmatter field, date and links. More precise than search. Filters (prefix - to negate): tag:project (nested tags match; tag:a|b for either), folder:Projects, kind:markdown|canvas, links-to:Note (notes linking to it), linked-from:Note (notes it links to), has:field. Comparisons on frontmatter fields and on title, name, folder, tags, modified: status=active, status!=done, priority>2, due<=today+7, title~draft (contains); a|b matches either; list fields match if any item does; dates as 2026-10-02, today, today-7. Uppercase OR separates alternative AND groups, e.g. `tag:work status=active OR tag:idea priority>2`. Also sort:due or sort:-modified (descending), limit:N (default 100), show:a,b (columns), and plain words for full-text search. Quote values with spaces: status=\"in progress\". Returns matching notes with title, modified time, tags and frontmatter, the columns worth showing, and the total before limit. Tasks: task:open (or done, moved, cancelled, all; task:open|moved) returns Markdown checkbox tasks (`- [ ] text`) instead of notes, not the app-only planner's tasks. Each row has a `task` (line, status, mark, text, depth, parent line, due). Filters then apply per task: its own text, status, due (from 📅 2026-10-05 on its line, else the note's due) and line, then its note's fields; tag: matches #tags in the task or the note's frontmatter tags; plain words must appear in the task text. E.g. task:open folder:Daily, task:open due<=today sort:due. Tick one with patch_file on that line."
+        description = "Structured query over the vault's notes: by tag, folder, frontmatter field, date and links. More precise than search. Filters (prefix - to negate): tag:project (nested tags match; tag:a|b for either), folder:Projects, kind:markdown|canvas, links-to:Note (notes linking to it), linked-from:Note (notes it links to), has:field. Comparisons on frontmatter fields and on title, name, folder, tags, modified: status=active, status!=done, priority>2, due<=today+7, title~draft (contains); a|b matches either; list fields match if any item does; dates as 2026-10-02, today, today-7. Uppercase OR separates alternative AND groups, e.g. `tag:work status=active OR tag:idea priority>2`. Also sort:due or sort:-modified (descending), limit:N (default 100), show:a,b (columns), and plain words for full-text search. Quote values with spaces: status=\"in progress\". Returns matching notes with title, modified time, tags and frontmatter, the columns worth showing, and the total before limit. Tasks: task:open (or done, moved, cancelled, all; task:open|moved) returns Markdown checkbox tasks (`- [ ] text`) instead of notes, not the app-only planner's tasks. Each row has a `task` (line, status, mark, text, workflow, depth, parent line, due). Filters then apply per task: its own text, status, due (from 📅 2026-10-05 on its line, else the note's due) and line, then its note's fields; tag: matches #tags in the task or the note's frontmatter tags; plain words must appear in the task text. E.g. task:open folder:Daily, task:open due<=today sort:due. Tick one with set_task; move it between workflow states (task.workflow) with set_task_workflow."
     )]
     async fn query(&self, Parameters(a): Parameters<QueryArgs>) -> ToolResult {
         self.fresh();
@@ -1190,6 +1284,152 @@ impl MosaicMcp {
             .remove_bookmark(&a.path)
             .map_err(err)
             .and_then(ok)
+    }
+
+    #[tool(
+        description = "Whether the search index behind search, query, backlinks and tags is current: status (healthy, rebuilding or degraded), watching (this server has no file watcher, so always false here), diagnostic (what failed, if anything) and app_watching (the Mosaic app's watcher is keeping the index current). If search results look wrong or status is degraded, call rebuild_index."
+    )]
+    async fn get_index_health(&self) -> ToolResult {
+        self.fresh();
+        let ws = self.ws();
+        let mut v = serde_json::to_value(ws.index_health()).map_err(|e| e.to_string())?;
+        v["app_watching"] = ws.index().watched_within(APP_HEARTBEAT_AGE).into();
+        ok(v)
+    }
+
+    #[tool(
+        description = "Rebuild the search index from the vault's files, re-reading every file (a full rescan; it can take a while in a large vault). Changes no notes and no app data: the index is a cache derived from the files, so it is allowed whatever folders you may change. Returns indexed, removed and unchanged counts."
+    )]
+    async fn rebuild_index(&self) -> ToolResult {
+        let ws = self.ws();
+        let stats = ws.rebuild_index(|_, _| {}).map_err(err)?;
+        *self.last_sync.lock().unwrap_or_else(|p| p.into_inner()) =
+            Some((ws.vault.root().to_path_buf(), Instant::now()));
+        ok(stats)
+    }
+
+    #[tool(
+        description = "Tick or untick one Markdown checkbox task (`- [ ] …` in a note, not an app-only planner task). Pass path, task.line and task.text from a `query task:…` row; refused with conflict when that line no longer holds the task. Normal history, folder permissions and review apply."
+    )]
+    async fn set_task(&self, Parameters(a): Parameters<SetTaskArgs>) -> ToolResult {
+        self.ws()
+            .files
+            .set_task(&a.path, a.line, &a.text, a.done)
+            .map_err(err)
+            .and_then(written)
+    }
+
+    #[tool(
+        description = "Move one Markdown checkbox task between workflow states: new, blocked, in-progress, in-qa, done (`query` rows show it as task.workflow). The state is kept on the task's line as `<!-- mosaic:state=… -->`, which Mosaic shows as a board; done ticks the checkbox, any other state unticks it. Pass path, task.line, task.text and task.workflow (as expected_state) from a `query task:…` row; refused with conflict when the task or its state changed since. Normal history, folder permissions and review apply."
+    )]
+    async fn set_task_workflow(
+        &self,
+        Parameters(a): Parameters<SetTaskWorkflowArgs>,
+    ) -> ToolResult {
+        self.ws()
+            .files
+            .set_task_workflow(
+                &a.path,
+                a.line,
+                &mosaic_core::task_board::label(&a.text),
+                a.expected_state.as_str(),
+                a.state.as_str(),
+            )
+            .map_err(err)
+            .and_then(written)
+    }
+
+    #[tool(
+        description = "Every alias declared in notes' frontmatter (`aliases:`), with the note it names. A [[wiki link]] to an alias opens that note."
+    )]
+    async fn list_aliases(&self) -> ToolResult {
+        self.fresh();
+        let aliases = self.ws().aliases().map_err(err)?;
+        ok(aliases
+            .into_iter()
+            .map(|(alias, path)| serde_json::json!({ "alias": alias, "path": path }))
+            .collect::<Vec<_>>())
+    }
+
+    #[tool(
+        description = "Notes that mention a note's title or one of its aliases in plain text without linking to it: source, line, context (the line) and text (the words). Turn one into a link with link_mention."
+    )]
+    async fn list_unlinked_mentions(&self, Parameters(a): Parameters<MentionsArgs>) -> ToolResult {
+        self.fresh();
+        self.ws()
+            .links
+            .unlinked_mentions(&a.path, a.limit.unwrap_or(30))
+            .map_err(err)
+            .and_then(ok)
+    }
+
+    #[tool(
+        description = "Turn one unlinked mention from list_unlinked_mentions into a link: the words on that line of source become [[Target]] (or [[Target|words]]). Pass source, line and text from the mention. Normal history, folder permissions and review apply."
+    )]
+    async fn link_mention(&self, Parameters(a): Parameters<LinkMentionArgs>) -> ToolResult {
+        self.fresh();
+        self.ws()
+            .links
+            .link_mention(&a.source, a.line, &a.text, &a.target)
+            .map_err(err)
+            .and_then(written)
+    }
+
+    #[tool(
+        description = "Moves and renames whose links in other notes weren't all rewritten (some notes couldn't be changed, or Mosaic stopped half-way): id, from, to and started (ms since the epoch). Finish one with fix_links."
+    )]
+    async fn list_unfinished_renames(&self) -> ToolResult {
+        self.ws()
+            .files
+            .unfinished_renames()
+            .map_err(err)
+            .and_then(ok)
+    }
+
+    #[tool(
+        description = "Finish an interrupted move from list_unfinished_renames: rewrite the links that still point at the old names. Each note goes through the normal write path, so folder permissions and review apply: updated_links_in were changed, proposed_links_in wait for the person's review, failed_links_in couldn't be changed (and why). The move stays unfinished until every note is updated; run it again after the person accepts the proposals."
+    )]
+    async fn fix_links(&self, Parameters(a): Parameters<MoveIdArg>) -> ToolResult {
+        self.fresh();
+        let renamed = self.ws().files.fix_links(a.id).map_err(err)?;
+        let proposed = !renamed.proposed_links_in.is_empty();
+        let mut v = serde_json::to_value(&renamed).map_err(|e| e.to_string())?;
+        if proposed {
+            v["note"] = REVIEW_NOTE.into();
+        }
+        ok(v)
+    }
+
+    #[tool(
+        description = "Read one kept version of a file (an id from file_history or list_ai_activity), without restoring it. Returns id and content."
+    )]
+    async fn read_version(&self, Parameters(a): Parameters<VersionIdArg>) -> ToolResult {
+        let content = self.ws().files.version_content(a.id).map_err(err)?;
+        ok(serde_json::json!({ "id": a.id, "content": content }))
+    }
+
+    #[tool(
+        description = "Changes made by AI agents and the command line, newest first, as the person sees them under AI activity: id, path, time, source (agent or cli), actor (the agent's name), action (created, edited, deleted, renamed, restored) and from_path for renames. Undo one with undo_change."
+    )]
+    async fn list_ai_activity(&self, Parameters(a): Parameters<ActivityArgs>) -> ToolResult {
+        self.ws()
+            .files
+            .activity(a.limit.unwrap_or(50))
+            .map_err(err)
+            .and_then(ok)
+    }
+
+    #[tool(
+        description = "Undo one change from list_ai_activity: an edit goes back to the version before it, a created file goes to the Trash, a deleted file comes back, a rename is reversed. Refused with conflict when the file changed again since. It is a change like any other: folder permissions and review apply, so in a reviewed folder (or outside the folders you may change) it becomes a proposal. Returns path, and review when proposed."
+    )]
+    async fn undo_change(&self, Parameters(a): Parameters<ChangeIdArg>) -> ToolResult {
+        self.fresh();
+        let undone = self.ws().files.undo_detailed(a.id).map_err(err)?;
+        let mut v = serde_json::to_value(&undone).map_err(|e| e.to_string())?;
+        if undone.review.is_some() {
+            v["note"] = REVIEW_NOTE.into();
+        }
+        ok(v)
     }
 }
 

@@ -196,6 +196,10 @@ pub struct Renamed {
     /// **Fix links** for it (`FileService::fix_links`).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub failed_links_in: Vec<FailedLink>,
+    /// Files whose rewritten links wait for the person's review (an agent's `fix_links` in a
+    /// folder under review, or outside the folders it may change).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub proposed_links_in: Vec<ProposedLink>,
     /// Set when the rename is waiting for review rather than applied.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub review: Option<i64>,
@@ -206,6 +210,39 @@ pub struct Renamed {
 pub struct FailedLink {
     pub path: String,
     pub error: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+pub struct ProposedLink {
+    pub path: String,
+    /// The proposal waiting for the person's review.
+    pub review: i64,
+}
+
+/// Stands in for the path of a note hidden from agents in what an agent is told.
+const HIDDEN_NOTE: &str = "(a note hidden from agents)";
+
+/// What happened to one note's links.
+enum Rewrite {
+    Unchanged,
+    Written,
+    Proposed(i64),
+}
+
+#[derive(Default)]
+struct Rewritten {
+    updated: Vec<String>,
+    failed: Vec<FailedLink>,
+    proposed: Vec<ProposedLink>,
+}
+
+/// An undone change: the file's path afterwards, and the proposal when the undo waits for review.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct Undone {
+    pub path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub review: Option<i64>,
 }
 
 /// A note that mentions another note's title or alias without linking to it.
@@ -1031,12 +1068,23 @@ impl FileService {
         Ok(w)
     }
 
+    /// The text a line edit builds on: in a folder under review, the agent's view (its pending
+    /// proposal, as `read` shows it), so a second edit extends the proposal; else the disk.
+    fn text_to_edit(&self, norm: &str) -> Result<Option<(String, String)>> {
+        if self.in_review(norm) {
+            return Ok(self.effective(norm)?.map(|(t, h, _)| (t, h)));
+        }
+        Ok(self.text_of(norm))
+    }
+
     /// Ticks (`done`) or unticks the task on `line` (1-based) of a note, from a task query. Refused
     /// with `conflict` when that line no longer holds the task `text` (the note changed since).
     pub fn set_task(&self, path: &str, line: usize, text: &str, done: bool) -> Result<Written> {
+        // A hidden note reads as missing, before a conflict could reveal its hash.
+        self.check_read(path)?;
         let norm = normalize(path)?;
         let (content, hash) = self
-            .text_of(&norm)
+            .text_to_edit(&norm)?
             .ok_or_else(|| Error::NotFound(norm.clone()))?;
         let mut lines: Vec<&str> = content.split_inclusive('\n').collect();
         let conflict = || Error::Conflict {
@@ -1070,7 +1118,7 @@ impl FileService {
         self.check_read(path)?;
         let norm = normalize(path)?;
         let (content, hash) = self
-            .text_of(&norm)
+            .text_to_edit(&norm)?
             .ok_or_else(|| Error::NotFound(norm.clone()))?;
         let conflict = || Error::Conflict {
             path: norm.clone(),
@@ -1259,7 +1307,9 @@ impl FileService {
     /// The content of one version.
     pub fn version_content(&self, id: i64) -> Result<String> {
         if let Some(v) = self.hist().get(id)? {
-            self.check_read(&v.path)?;
+            // A hidden file's version reads as missing, without naming the file.
+            self.check_read(&v.path)
+                .map_err(|_| Error::NotFound(format!("version {id}")))?;
         }
         self.hist()
             .content(id)?
@@ -1298,17 +1348,27 @@ impl FileService {
     /// created file goes to the Trash, a deleted file comes back, a rename is reversed. Refuses
     /// (`conflict`) when the file changed again since. Returns the file's path afterwards.
     pub fn undo(&self, id: i64) -> Result<String> {
-        let path = self.undo_change(id)?;
-        // An accepted proposal that this undoes: tell the agent (list_proposals shows "undone").
-        let _ = self.hist().proposal_undone(id);
-        Ok(path)
+        self.undo_detailed(id).map(|u| u.path)
     }
 
-    fn undo_change(&self, id: i64) -> Result<String> {
-        let v = self
-            .hist()
-            .get(id)?
-            .ok_or_else(|| Error::NotFound(format!("change {id}")))?;
+    /// [`FileService::undo`], saying whether the undo was made or proposed: it goes through the
+    /// normal write path, so in a folder under review (or, under `--may-change`, outside the
+    /// folders the agent may change) it becomes a proposal.
+    pub fn undo_detailed(&self, id: i64) -> Result<Undone> {
+        let undone = self.undo_change(id)?;
+        // An accepted proposal that this undoes: tell the agent (list_proposals shows "undone").
+        // A proposed undo hasn't undone anything yet.
+        if undone.review.is_none() {
+            let _ = self.hist().proposal_undone(id);
+        }
+        Ok(undone)
+    }
+
+    fn undo_change(&self, id: i64) -> Result<Undone> {
+        let missing = || Error::NotFound(format!("change {id}"));
+        let v = self.hist().get(id)?.ok_or_else(missing)?;
+        // A hidden file's change reads as missing, before anything could reveal its state.
+        self.check_read(&v.path).map_err(|_| missing())?;
         let current = self.text_of(&v.path).map(|(_, h)| h);
         let unchanged = || match &current {
             Some(h) if *h == v.hash => Ok(()),
@@ -1324,27 +1384,40 @@ impl FileService {
                 let prev = self.hist().previous(id)?.ok_or_else(|| {
                     Error::Invalid(format!("{} has no earlier version to go back to", v.path))
                 })?;
-                self.restore(&v.path, prev.id, current.as_deref())?;
-                Ok(v.path)
+                let w = self.restore(&v.path, prev.id, current.as_deref())?;
+                Ok(Undone {
+                    path: v.path,
+                    review: w.review,
+                })
             }
             "created" => {
                 unchanged()?;
-                self.delete(&v.path)?;
-                Ok(v.path)
+                let review = self.delete(&v.path)?;
+                Ok(Undone {
+                    path: v.path,
+                    review,
+                })
             }
             "deleted" => {
                 if self.vault.stat(&v.path).is_ok() {
                     return Err(Error::AlreadyExists(v.path));
                 }
-                self.restore(&v.path, id, None)?;
-                Ok(v.path)
+                let w = self.restore(&v.path, id, None)?;
+                Ok(Undone {
+                    path: v.path,
+                    review: w.review,
+                })
             }
             "renamed" => {
                 let from = v
                     .from_path
                     .clone()
                     .ok_or_else(|| Error::Invalid("this rename has no origin".into()))?;
-                Ok(self.rename(&v.path, &from, true)?.path)
+                let r = self.rename(&v.path, &from, true)?;
+                Ok(Undone {
+                    path: r.path,
+                    review: r.review,
+                })
             }
             other => Err(Error::Invalid(format!(
                 "a change of type “{other}” can't be undone"
@@ -1410,8 +1483,12 @@ impl Workspace {
         Ok(paths)
     }
 
+    /// Every frontmatter alias and the note it names, without notes hidden from agents.
     pub fn aliases(&self) -> Result<Vec<(String, String)>> {
-        self.reading().aliases()
+        let rules = self.rules()?;
+        let mut aliases = self.reading().aliases()?;
+        aliases.retain(|(_, path)| Context::visible(&rules, path));
+        Ok(aliases)
     }
 }
 
@@ -1477,6 +1554,8 @@ impl LinkService {
         text: &str,
         target: &str,
     ) -> Result<Written> {
+        // A hidden target reads as missing, so linking can't confirm that it exists.
+        self.check_read(target)?;
         let file = self.files.read(source)?;
         let content = file
             .content
@@ -1671,9 +1750,10 @@ impl FileService {
                 new_paths.iter().map(String::as_str),
                 new_aliases.iter().map(|(a, p)| (a.as_str(), p.as_str())),
             );
-            (updated, failed) = self.rewrite_sources(
-                &old_set, &new_set, &sources, &moved, &map_path, source, actor,
+            let rewritten = self.rewrite_sources(
+                &old_set, &new_set, &sources, &moved, &map_path, source, actor, false,
             );
+            (updated, failed) = (rewritten.updated, rewritten.failed);
         }
         if let Some(id) = journal
             && failed.is_empty()
@@ -1722,6 +1802,7 @@ impl FileService {
                 path: out,
                 updated_links_in: updated,
                 failed_links_in: failed,
+                proposed_links_in: vec![],
                 review: None,
             },
             version_id,
@@ -1800,30 +1881,49 @@ impl FileService {
         map_path: &dyn Fn(&str) -> String,
         source: &Source,
         actor: Option<&str>,
-    ) -> (Vec<String>, Vec<FailedLink>) {
+        guarded: bool,
+    ) -> Rewritten {
         let moved_map: HashMap<String, String> =
             moved.iter().map(|p| (p.clone(), map_path(p))).collect();
-        let (mut updated, mut failed) = (Vec::new(), Vec::new());
+        let mut out = Rewritten::default();
         for old_src in sources {
             let new_src = map_path(old_src);
+            if guarded && self.check_read(&new_src).is_err() {
+                // Its name stays hidden too; the person can finish the move in the app.
+                out.failed.push(FailedLink {
+                    path: HIDDEN_NOTE.to_string(),
+                    error: "it is hidden from agents; ask the person to use Fix links in Mosaic"
+                        .to_string(),
+                });
+                continue;
+            }
             let src_moved = moved_map.contains_key(old_src);
             match self.rewrite_links(
-                old_set, new_set, old_src, &new_src, src_moved, &moved_map, map_path, source, actor,
+                old_set, new_set, old_src, &new_src, src_moved, &moved_map, map_path, source,
+                actor, guarded,
             ) {
-                Ok(true) => updated.push(new_src),
-                Ok(false) => {}
-                Err(e) => failed.push(FailedLink {
+                Ok(Rewrite::Written) => out.updated.push(new_src),
+                Ok(Rewrite::Unchanged) => {}
+                Ok(Rewrite::Proposed(review)) => out.proposed.push(ProposedLink {
+                    path: new_src,
+                    review,
+                }),
+                Err(e) => out.failed.push(FailedLink {
                     path: new_src,
                     error: e.to_string(),
                 }),
             }
         }
-        (updated, failed)
+        out
     }
 
     /// Moves whose links didn't all get rewritten (some failed, or Mosaic stopped half-way).
+    /// Moves whose names are hidden from agents are left out, so `fix_links` doesn't find them.
     pub fn unfinished_renames(&self) -> Result<Vec<crate::history::UnfinishedRename>> {
-        self.hist().unfinished_renames()
+        let rules = self.rules()?;
+        let mut list = self.hist().unfinished_renames()?;
+        list.retain(|op| Context::visible(&rules, &op.from) && Context::visible(&rules, &op.to));
+        Ok(list)
     }
 
     /// Finishes an interrupted move: rewrites links that still point at the old names. Notes
@@ -1836,20 +1936,22 @@ impl FileService {
             .find(|op| op.id == id)
             .ok_or_else(|| Error::Invalid(format!("there is no unfinished move {id}")))?;
         let (from, to) = (op.from.as_str(), op.to.as_str());
-        let done = |failed: Vec<FailedLink>, updated: Vec<String>, path: &str| {
-            if failed.is_empty() {
+        let done = |r: Rewritten, path: &str| {
+            // Still unfinished while a note couldn't be rewritten or waits for review.
+            if r.failed.is_empty() && r.proposed.is_empty() {
                 self.hist().finish_rename(id)?;
             }
             Ok(Renamed {
                 path: path.to_string(),
-                updated_links_in: updated,
-                failed_links_in: failed,
+                updated_links_in: r.updated,
+                failed_links_in: r.failed,
+                proposed_links_in: r.proposed,
                 review: None,
             })
         };
         let Ok(dest) = self.vault.stat(to) else {
             // Stopped before the move itself: nothing points at a new name.
-            return done(vec![], vec![], from);
+            return done(Rewritten::default(), from);
         };
         let moved: Vec<String> = if dest.is_dir {
             self.vault
@@ -1895,7 +1997,10 @@ impl FileService {
         let moved_before: Vec<String> = moved.iter().map(|p| swap(p, to, from)).collect();
         let map_path = |p: &str| swap(p, from, to);
         let actor = self.actor();
-        let (updated, failed) = self.rewrite_sources(
+        // The app's own Fix links writes directly, as a rename does; anyone else (an agent, the
+        // CLI) goes through the normal write path, so folder rules and review apply per note.
+        let guarded = self.source() != Source::App;
+        let rewritten = self.rewrite_sources(
             &old_set,
             &new_set,
             &op.sources,
@@ -1903,11 +2008,12 @@ impl FileService {
             &map_path,
             &self.source(),
             actor.as_deref(),
+            guarded,
         );
-        for p in &updated {
+        for p in &rewritten.updated {
             self.reindex(p);
         }
-        done(failed, updated, to)
+        done(rewritten, to)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1922,16 +2028,37 @@ impl FileService {
         map_path: &dyn Fn(&str) -> String,
         source: &Source,
         actor: Option<&str>,
-    ) -> Result<bool> {
-        let file = match self.vault.read(new_src) {
-            Ok(f) => f,
-            Err(Error::NotFound(_)) | Err(Error::NotText(_)) => return Ok(false),
-            Err(e) => return Err(e),
+        guarded: bool,
+    ) -> Result<Rewrite> {
+        // Guarded (an agent's `fix_links`): rewrite the note as the agent sees it, its pending
+        // proposal included, so running it again updates that proposal instead of conflicting.
+        let (text, hash, kind, pending) = if guarded {
+            let Some((text, hash, pending)) = self.effective(new_src)? else {
+                return Ok(Rewrite::Unchanged);
+            };
+            (
+                text,
+                hash,
+                FileKind::of(std::path::Path::new(new_src)),
+                pending,
+            )
+        } else {
+            let file = match self.vault.read(new_src) {
+                Ok(f) => f,
+                Err(Error::NotFound(_)) | Err(Error::NotText(_)) => return Ok(Rewrite::Unchanged),
+                Err(e) => return Err(e),
+            };
+            let Some(text) = file.content else {
+                return Ok(Rewrite::Unchanged);
+            };
+            (text, file.hash, file.kind, None)
         };
-        let Some(text) = file.content else {
-            return Ok(false);
+        // Nothing left to rewrite, but a proposal with the rewrite still waits for the person.
+        let unchanged = || match pending {
+            Some(id) => Rewrite::Proposed(id),
+            None => Rewrite::Unchanged,
         };
-        let new_text = match file.kind {
+        let new_text = match kind {
             FileKind::Markdown => {
                 let parsed = parse::parse(&text);
                 let mut edits: Vec<((usize, usize), String)> = Vec::new();
@@ -1967,7 +2094,7 @@ impl FileService {
                     edits.push((range, replacement));
                 }
                 if edits.is_empty() {
-                    return Ok(false);
+                    return Ok(unchanged());
                 }
                 let mut t = text.clone();
                 edits.sort_by_key(|e| std::cmp::Reverse(e.0.0));
@@ -1988,16 +2115,24 @@ impl FileService {
                         .into_owned();
                 }
                 if t == text {
-                    return Ok(false);
+                    return Ok(unchanged());
                 }
                 t
             }
-            _ => return Ok(false),
+            _ => return Ok(unchanged()),
         };
-        let _ = self.hist().keep_before(new_src, &text, &file.hash, source);
-        self.vault.write(new_src, &new_text, Some(&file.hash))?;
+        if guarded {
+            // The normal write path: folder permissions, review and `--may-change` apply.
+            let w = self.write(new_src, &new_text, Some(&hash))?;
+            return Ok(match w.review {
+                Some(id) => Rewrite::Proposed(id),
+                None => Rewrite::Written,
+            });
+        }
+        let _ = self.hist().keep_before(new_src, &text, &hash, source);
+        self.vault.write(new_src, &new_text, Some(&hash))?;
         self.record_as(new_src, Action::Edited, source, actor);
-        Ok(true)
+        Ok(Rewrite::Written)
     }
 }
 
@@ -2731,6 +2866,157 @@ mod tests {
             assert_eq!(text(&w, &p), "See [[B]].");
         }
         assert!(w.files.unfinished_renames().unwrap().is_empty());
+    }
+
+    /// `linked_vault`'s files, opened by an agent with these folder rules.
+    fn linked_agent(d: &std::path::Path, db: &std::path::Path, rules: Vec<AgentRule>) -> Workspace {
+        let w =
+            Workspace::with_history_file(Vault::open(d).unwrap(), Index::in_memory().unwrap(), db)
+                .with_source(Source::Agent)
+                .with_agent_rules(rules);
+        w.sync(|_, _| {}).unwrap();
+        w
+    }
+
+    fn rule(path: &str, access: Access) -> AgentRule {
+        AgentRule {
+            path: path.into(),
+            access,
+            written_as: None,
+        }
+    }
+
+    /// `linked_vault` after a move from A.md to B.md that stopped before rewriting any link.
+    fn interrupted_move() -> (tempfile::TempDir, std::path::PathBuf) {
+        let (d, db, w) = linked_vault();
+        let sources = ["Locked/Two.md", "Notes/One.md", "Notes/Three.md"].map(String::from);
+        w.hist().begin_rename("A.md", "B.md", &sources).unwrap();
+        w.vault.rename("A.md", "B.md").unwrap();
+        (d, db)
+    }
+
+    fn disk(d: &tempfile::TempDir, p: &str) -> String {
+        std::fs::read_to_string(d.path().join(p)).unwrap()
+    }
+
+    #[test]
+    fn an_agents_fix_links_goes_through_review_and_keeps_hidden_notes_hidden() {
+        let (d, db) = interrupted_move();
+        let w = linked_agent(
+            d.path(),
+            &db,
+            vec![
+                rule("Locked", Access::Hidden),
+                rule("Notes/Three.md", Access::Review),
+            ],
+        );
+        let open = w.files.unfinished_renames().unwrap();
+        assert_eq!(open.len(), 1);
+        let fixed = w.files.fix_links(open[0].id).unwrap();
+        assert_eq!(fixed.updated_links_in, vec!["Notes/One.md"]);
+        assert_eq!(disk(&d, "Notes/One.md"), "See [[B]].");
+        // The hidden note is reported without its name, and left alone.
+        assert_eq!(fixed.failed_links_in.len(), 1);
+        assert_eq!(fixed.failed_links_in[0].path, HIDDEN_NOTE);
+        assert!(!fixed.failed_links_in[0].error.contains("Locked"));
+        assert_eq!(disk(&d, "Locked/Two.md"), "See [[A]].");
+        // The reviewed note is proposed, not written.
+        assert_eq!(fixed.proposed_links_in.len(), 1, "{fixed:?}");
+        let review = fixed.proposed_links_in[0].review;
+        assert_eq!(fixed.proposed_links_in[0].path, "Notes/Three.md");
+        assert_eq!(disk(&d, "Notes/Three.md"), "See [[A]].");
+        assert_eq!(text(&w, "Notes/Three.md"), "See [[B]].");
+
+        // Running it again keeps the one proposal, and the move stays open until it's accepted.
+        let again = w.files.fix_links(open[0].id).unwrap();
+        assert!(again.updated_links_in.is_empty(), "{again:?}");
+        assert_eq!(
+            again.proposed_links_in,
+            vec![ProposedLink {
+                path: "Notes/Three.md".into(),
+                review
+            }]
+        );
+        assert_eq!(w.review().list(true, 10).unwrap().len(), 1);
+        assert_eq!(w.files.unfinished_renames().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn an_agents_fix_links_outside_its_allowlist_is_proposed() {
+        let (d, db) = interrupted_move();
+        let w = linked_agent(d.path(), &db, vec![]).with_change_allowlist(vec!["Notes".into()]);
+        let open = w.files.unfinished_renames().unwrap();
+        let fixed = w.files.fix_links(open[0].id).unwrap();
+        assert_eq!(
+            fixed.updated_links_in,
+            vec!["Notes/One.md", "Notes/Three.md"]
+        );
+        assert_eq!(fixed.proposed_links_in.len(), 1, "{fixed:?}");
+        assert_eq!(fixed.proposed_links_in[0].path, "Locked/Two.md");
+        assert_eq!(disk(&d, "Locked/Two.md"), "See [[A]].");
+        assert_eq!(w.files.unfinished_renames().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn moves_with_hidden_names_are_not_listed_for_agents() {
+        let (d, db) = interrupted_move();
+        let w = linked_agent(d.path(), &db, vec![rule("B.md", Access::Hidden)]);
+        assert!(w.files.unfinished_renames().unwrap().is_empty());
+        let w = linked_agent(d.path(), &db, vec![]);
+        let id = w.files.unfinished_renames().unwrap()[0].id;
+        let w = linked_agent(d.path(), &db, vec![rule("B.md", Access::Hidden)]);
+        assert!(matches!(w.files.fix_links(id), Err(Error::Invalid(_))));
+    }
+
+    #[test]
+    fn an_agents_undo_outside_its_allowlist_is_proposed() {
+        let (d, w) = agent_ws();
+        w.files
+            .patch("Ideas.md", "Ideas", "Thoughts", None)
+            .unwrap();
+        let id = w.files.activity(10).unwrap()[0].id;
+        let edited = disk(&d, "Ideas.md");
+        let w = w.with_change_allowlist(vec!["Daily".into()]);
+        let undone = w.files.undo_detailed(id).unwrap();
+        assert_eq!(undone.path, "Ideas.md");
+        let review = undone.review.expect("a proposal");
+        assert_eq!(disk(&d, "Ideas.md"), edited);
+        let proposals = w.review().list(true, 10).unwrap();
+        assert_eq!(
+            (proposals[0].id, proposals[0].status.as_str()),
+            (review, "pending")
+        );
+    }
+
+    #[test]
+    fn hidden_files_read_as_missing_to_task_version_undo_and_alias_tools() {
+        let (_d, w) = agent_ws();
+        w.files
+            .patch("Ideas.md", "Ideas", "Thoughts", None)
+            .unwrap();
+        let id = w.files.activity(10).unwrap()[0].id;
+        assert!(w.aliases().unwrap().iter().any(|(_, p)| p == "Home.md"));
+        let w = w.with_agent_rules(vec![
+            rule("Ideas.md", Access::Hidden),
+            rule("Home.md", Access::Hidden),
+        ]);
+        // A stale line would be a conflict carrying the file's hash; hidden, it is just missing.
+        assert!(matches!(
+            w.files.set_task("Ideas.md", 1, "no such task", true),
+            Err(Error::NotFound(_))
+        ));
+        assert!(
+            matches!(w.files.version_content(id), Err(Error::NotFound(m)) if m == format!("version {id}"))
+        );
+        assert!(
+            matches!(w.files.undo_detailed(id), Err(Error::NotFound(m)) if m == format!("change {id}"))
+        );
+        assert!(w.aliases().unwrap().iter().all(|(_, p)| p != "Home.md"));
+        assert!(matches!(
+            w.links
+                .link_mention("Projects/Plan.md", 1, "Home", "Home.md"),
+            Err(Error::NotFound(_))
+        ));
     }
 
     #[test]

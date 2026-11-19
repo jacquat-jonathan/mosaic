@@ -42,6 +42,15 @@ fn written(w: mosaic_core::Written) -> ToolResult {
     }
 }
 
+/// A move's result, with a note when the move itself or some of its link changes were proposed.
+fn renamed_value(r: &mosaic_core::api::Renamed) -> Result<serde_json::Value, String> {
+    let mut v = serde_json::to_value(r).map_err(|e| e.to_string())?;
+    if r.review.is_some() || !r.proposed_links_in.is_empty() {
+        v["note"] = REVIEW_NOTE.into();
+    }
+    Ok(v)
+}
+
 fn ok<T: Serialize>(value: T) -> ToolResult {
     serde_json::to_string_pretty(&value).map_err(|e| e.to_string())
 }
@@ -2187,27 +2196,32 @@ impl MosaicMcp {
     }
 
     #[tool(
-        description = "Move or rename a file or folder. Links in other notes are updated to follow it."
+        description = "Move or rename a file or folder. Links in other notes are updated to follow it: updated_links_in were changed; proposed_links_in wait for the person's review (notes outside the folders you may change), and the move then stays unfinished until they are accepted and fix_links runs."
     )]
     async fn rename(&self, Parameters(a): Parameters<RenameArgs>) -> ToolResult {
         self.fresh();
-        self.ws()
+        let renamed = self
+            .ws()
             .files
             .rename(&a.from, &a.to, a.update_links.unwrap_or(true))
-            .map_err(err)
-            .and_then(ok)
+            .map_err(err)?;
+        ok(renamed_value(&renamed)?)
     }
 
     #[tool(
-        description = "Move several files and folders into one folder in one call (created if missing). Links in other notes follow. Nothing moves if a destination is taken."
+        description = "Move several files and folders into one folder in one call (created if missing). Links in other notes follow, as with rename (proposed_links_in wait for review). Nothing moves if a destination is taken."
     )]
     async fn move_files(&self, Parameters(a): Parameters<MoveArgs>) -> ToolResult {
         self.fresh();
-        self.ws()
+        let moved = self
+            .ws()
             .files
             .move_into(&a.paths, &a.folder)
-            .map_err(err)
-            .and_then(ok)
+            .map_err(err)?;
+        ok(moved
+            .iter()
+            .map(renamed_value)
+            .collect::<Result<Vec<_>, _>>()?)
     }
 
     #[tool(
@@ -2458,12 +2472,7 @@ impl MosaicMcp {
     async fn fix_links(&self, Parameters(a): Parameters<MoveIdArg>) -> ToolResult {
         self.fresh();
         let renamed = self.ws().files.fix_links(a.id).map_err(err)?;
-        let proposed = !renamed.proposed_links_in.is_empty();
-        let mut v = serde_json::to_value(&renamed).map_err(|e| e.to_string())?;
-        if proposed {
-            v["note"] = REVIEW_NOTE.into();
-        }
-        ok(v)
+        ok(renamed_value(&renamed)?)
     }
 
     #[tool(

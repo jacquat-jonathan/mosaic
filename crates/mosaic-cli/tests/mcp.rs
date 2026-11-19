@@ -2930,3 +2930,99 @@ fn epic_writes_need_the_planner_scope_under_may_change() {
         json!({ "id": id, "expected_revision": e["revision"] }),
     );
 }
+
+#[test]
+fn a_restricted_agents_moves_propose_link_changes_outside_may_change() {
+    const B0: &str = "See [A](../Daily/A.md) and [E](../Daily/Sub/E.md).";
+    let files = [
+        ("Daily/A.md", "# A"),
+        ("Daily/Sub/E.md", "# E"),
+        ("Daily/Sub/D.md", "Up: [A](../A.md)"),
+        ("Daily/C.md", "See [E](Sub/E.md)."),
+        ("Projects/B.md", B0),
+    ];
+    // Each move: the tool, its arguments, the moved path, the note inside Daily whose links it
+    // rewrites directly (and its new text), and B.md as the agent then reads it.
+    let cases = [
+        (
+            "rename",
+            json!({ "from": "Daily/A.md", "to": "Daily/A2.md" }),
+            "Daily/A2.md",
+            ("Daily/Sub/D.md", "Up: [A](../A2.md)"),
+            "See [A](../Daily/A2.md) and [E](../Daily/Sub/E.md).",
+        ),
+        (
+            "move_files",
+            json!({ "paths": ["Daily/A.md"], "folder": "Daily/Archive" }),
+            "Daily/Archive/A.md",
+            ("Daily/Sub/D.md", "Up: [A](../Archive/A.md)"),
+            "See [A](../Daily/Archive/A.md) and [E](../Daily/Sub/E.md).",
+        ),
+        (
+            "rename",
+            json!({ "from": "Daily/Sub", "to": "Daily/Sub2" }),
+            "Daily/Sub2",
+            ("Daily/C.md", "See [E](Sub2/E.md)."),
+            "See [A](../Daily/A.md) and [E](../Daily/Sub2/E.md).",
+        ),
+    ];
+    for (tool, args, moved, (inside, inside_text), proposed_b) in cases {
+        let (dir, root) = vault_with(&files);
+        let settings = dir.path().join("settings");
+        let cache = dir.path().join("cache");
+        let mut c = Client::start_restricted(Some(&root), &settings, &cache, &["Daily"]);
+        let (err, r) = c.call(tool, args.clone());
+        assert!(!err, "{tool} {args}: {r}");
+        let r = if r.is_array() { r[0].clone() } else { r };
+        assert_eq!(r["path"], moved, "{r}");
+        // Inside Daily, links are rewritten directly.
+        assert_eq!(r["updated_links_in"], json!([inside]), "{r}");
+        assert_eq!(read(&root, inside), inside_text);
+        // Outside it, B.md is proposed, not written, and the result lists it.
+        assert_eq!(read(&root, "Projects/B.md"), B0, "{tool} {args}");
+        let proposed = r["proposed_links_in"]
+            .as_array()
+            .expect("proposed_links_in");
+        assert_eq!(proposed.len(), 1, "{r}");
+        assert_eq!(proposed[0]["path"], "Projects/B.md");
+        assert!(
+            r["note"]
+                .as_str()
+                .unwrap()
+                .contains("Proposed, not applied")
+        );
+        let (_, list) = c.call("list_proposals", json!({}));
+        let list = list.as_array().unwrap();
+        assert_eq!(list.len(), 1, "{list:?}");
+        assert_eq!(list[0]["id"], proposed[0]["review"]);
+        assert_eq!(list[0]["path"], "Projects/B.md");
+        let (_, f) = c.call("read_file", json!({ "path": "Projects/B.md" }));
+        assert_eq!(f["content"], proposed_b);
+        // The move stays unfinished until the proposal is accepted.
+        let (_, open) = c.call("list_unfinished_renames", json!({}));
+        assert_eq!(open.as_array().unwrap().len(), 1, "{open}");
+    }
+
+    // An unrestricted agent rewrites every note directly.
+    let (dir, root) = vault_with(&files);
+    let mut c = Client::start_restricted(
+        Some(&root),
+        &dir.path().join("settings"),
+        &dir.path().join("cache"),
+        &[],
+    );
+    let (err, r) = c.call(
+        "rename",
+        json!({ "from": "Daily/A.md", "to": "Daily/A2.md" }),
+    );
+    assert!(!err, "{r}");
+    assert!(
+        r.get("proposed_links_in").is_none() && r.get("note").is_none(),
+        "{r}"
+    );
+    assert_eq!(
+        read(&root, "Projects/B.md"),
+        "See [A](../Daily/A2.md) and [E](../Daily/Sub/E.md)."
+    );
+    assert_eq!(read(&root, "Daily/Sub/D.md"), "Up: [A](../A2.md)");
+}

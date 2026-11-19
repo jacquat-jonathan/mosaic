@@ -50,7 +50,9 @@ person chose in a save dialog (`*_export_file`), the MCP tool returns the conten
 
 **Placement.** The logic lives in `mosaic-core`; the Tauri command and the MCP tool are both thin
 wrappers over it. `mosaic-cli` must not depend on `src-tauri`, so a feature whose logic is still in
-`src-tauri` (calendar subscriptions) moves into core before it gets MCP tools.
+`src-tauri` moves into core before it gets MCP tools. Calendar subscriptions (M4a,
+`mosaic_core::calendar_subscriptions`) and the Tessera control (M7a, `mosaic_core::tessera`) already
+moved.
 
 ## Writes and `--may-change`
 
@@ -61,9 +63,9 @@ per write:
 
 | Class | Tools | Without `--may-change` | With `--may-change` |
 |---|---|---|---|
-| Read | `list_*`, `get_*` (including `get_tessera_status`), `read_file`, `outline`, `search`, `query`, `tasks_by_day`, `render`, `render_template`, `file_history`, `planner_task_history`, `vault_guide` | Allowed, minus hidden folders | Same |
+| Read | `list_*`, `get_*` (including `get_tessera_status`), `preview_ical_import`, `export_ical`, `read_file`, `outline`, `search`, `query`, `tasks_by_day`, `render`, `render_template`, `file_history`, `planner_task_history`, `vault_guide` | Allowed, minus hidden folders | Same |
 | Vault file write | `create_file`, `create_note`, `edit_file`, `patch_file`, `append_to_file`, `rename`, `move_files`, `copy_file`, `delete_file`, `create_folder`, `import_file`, `restore_version`, `carry_over` | Direct, unless the folder is read-only (refused) or in review (becomes a proposal) | Direct only inside the listed paths; elsewhere a proposal |
-| App-state write, scope `planner:` | `*_planner_task` (later: epics, events, work sessions, iCal import) | Direct | **Refused** (`denied`) unless `planner:` is listed; then direct |
+| App-state write, scope `planner:` | `*_planner_task`, `*_planner_event`, `*_planner_event_occurrence`, `*_planner_work_session`, `import_ical` (later: epics) | Direct | **Refused** (`denied`) unless `planner:` is listed; then direct |
 | App-state write, scope `bookmarks:` | `add_bookmark`, `remove_bookmark` | Direct | **Refused** unless `bookmarks:` is listed; then direct |
 | App-state write, scope `agents:` | `pause_agents`, `resume_agents`, `pause_agent`, `resume_agent`, `run_agent` | Direct | **Refused** unless `agents:` is listed; then direct. Never given to a scheduled workflow (see M7b) |
 | Own proposals | `withdraw_proposal` | Any visible pending proposal | Only proposals this server session made or updated |
@@ -129,9 +131,9 @@ for an agent must do the same.
 In this order (the numbering is the roadmap's, not the order). Each slice adds its tools, moves the
 rows below from `planned` to the tool names, adds tests, and updates the README list.
 
-1. **M2 Calendar.** Events (list, create, update, archive, restore, trash), recurring occurrences
-   (cancel, replace), work sessions (list, create, update, cancel), the calendar range, and iCal
-   (preview, import, export as text).
+1. **M2 Calendar (done).** Events (list, create, update, archive, restore, trash), recurring
+   occurrences (cancel, replace), work sessions (list, create, update, cancel), the calendar range,
+   and iCal (preview, import, export as text).
 2. **M3 Planner rest.** Summary, activity feed, epic writes (create, update, archive, restore, trash),
    and export (backup content as returned JSON/CSV).
 3. **M5 Settings.** Vault preference writes, template configuration and starters, and reading agent
@@ -140,8 +142,12 @@ rows below from `planned` to the tool names, adds tests, and updates the README 
 4. **M6 Links, index and tasks.** Index health and rebuild, Markdown task ticking and workflow state,
    aliases, unlinked mentions and linking them, link repair after interrupted renames, reading an old
    version, AI activity, and `undo_change` (an agent's undo goes through review like any write).
-5. **M4 Calendar subscriptions.** Move the subscription logic from `src-tauri/src/calendar_subscriptions.rs`
-   into core first, then list, add, update, remove, refresh and the overlay range.
+5. **M4 Calendar subscriptions.** M4a moved the subscription logic into core
+   (`mosaic_core::calendar_subscriptions`: storage in settings, feed URLs behind a `SecretStore`,
+   downloads behind a `FeedFetcher`); the Tauri commands are thin wrappers. M4b adds the tools: list,
+   add, update, remove, refresh and the overlay range, after the write policy below is settled.
+   The app caches feeds in Tauri's app data directory and keeps URLs in the macOS Keychain; the MCP
+   server must use the same ones.
 6. **M7 Tessera.** Status, run an agent, test an event, pause all or one. An MCP-started run must
    count as a chained run, so the chain-depth limit applies to it.
    - **M7a (done)** moved the control into core, in `mosaic_core::tessera`. The scheduler still runs
@@ -215,27 +221,27 @@ names in Notes are proposals for the slice, not commitments.
 | `planner_archive_task` | `archive_planner_task` | |
 | `planner_restore_task` | `restore_planner_task` | |
 | `planner_trash_task` | `trash_planner_task` | |
-| `planner_work_sessions` | planned (M2) | `list_planner_work_sessions` |
-| `planner_create_work_session` | planned (M2) | `create_planner_work_session` |
-| `planner_update_work_session` | planned (M2) | `update_planner_work_session` |
-| `planner_cancel_work_session` | planned (M2) | `cancel_planner_work_session` |
-| `planner_calendar_range` | planned (M2) | `get_planner_calendar` |
-| `planner_events` | planned (M2) | `list_planner_events` |
-| `planner_create_event` | planned (M2) | `create_planner_event` |
-| `planner_update_event` | planned (M2) | `update_planner_event` |
-| `planner_archive_event` | planned (M2) | `archive_planner_event` |
-| `planner_restore_event` | planned (M2) | `restore_planner_event` |
-| `planner_trash_event` | planned (M2) | `trash_planner_event` |
-| `planner_cancel_event_occurrence` | planned (M2) | `cancel_planner_event_occurrence` |
-| `planner_replace_event_occurrence` | planned (M2) | `replace_planner_event_occurrence` |
-| `planner_ical_preview` | planned (M2) | `preview_ical_import` |
-| `planner_ical_import` | planned (M2) | `import_ical` |
-| `planner_ical_export` | planned (M2) | `export_ical`, returns the text |
+| `planner_work_sessions` | `list_planner_work_sessions` |  |
+| `planner_create_work_session` | `create_planner_work_session` |  |
+| `planner_update_work_session` | `update_planner_work_session` |  |
+| `planner_cancel_work_session` | `cancel_planner_work_session` |  |
+| `planner_calendar_range` | `get_planner_calendar` | events expanded, work sessions, due Board tasks; adds `series_revision` |
+| `planner_events` | `list_planner_events` |  |
+| `planner_create_event` | `create_planner_event` |  |
+| `planner_update_event` | `update_planner_event` | fields left out keep their value |
+| `planner_archive_event` | `archive_planner_event` |  |
+| `planner_restore_event` | `restore_planner_event` |  |
+| `planner_trash_event` | `trash_planner_event` |  |
+| `planner_cancel_event_occurrence` | `cancel_planner_event_occurrence` |  |
+| `planner_replace_event_occurrence` | `replace_planner_event_occurrence` |  |
+| `planner_ical_preview` | `preview_ical_import` |  |
+| `planner_ical_import` | `import_ical` | takes the `.ics` text and re-runs the preview; source `ics-file`, as in the app |
+| `planner_ical_export` | `export_ical` | returns the text |
 | `planner_ical_export_file` | excluded (writes a host file chosen in a save dialog; `export_ical` returns the content) | |
 | `planner_export` | planned (M3) | `export_planner`, returns JSON or CSV |
 | `planner_export_file` | excluded (writes a host file chosen in a save dialog; `export_planner` returns the content) | |
 | `planner_restore_backup` | excluded (replaces the whole planner database; not undoable) | |
-| `calendar_subscriptions` | planned (M4) | `list_calendar_subscriptions`; move into core first |
+| `calendar_subscriptions` | planned (M4) | `list_calendar_subscriptions`; logic is in core (M4a) |
 | `add_calendar_subscription` | planned (M4) | `add_calendar_subscription` |
 | `update_calendar_subscription` | planned (M4) | `update_calendar_subscription` |
 | `remove_calendar_subscription` | planned (M4) | `remove_calendar_subscription` |

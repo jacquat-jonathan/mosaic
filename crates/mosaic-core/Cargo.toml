@@ -26,10 +26,14 @@ unicode-normalization = "0.1.25"
 specta = { version = "=2.0.0-rc.25", features = ["derive", "serde_json", "chrono"], optional = true }
 specta-typescript = { version = "=0.0.12", optional = true }
 rrule = "0.14"
+reqwest = { version = "0.12", default-features = false, features = ["brotli", "deflate", "gzip", "rustls-tls"] }
+scraper = { version = "0.29", default-features = false }
+encoding_rs = "0.8"
 
 [features]
 # TypeScript types for the app's IPC bindings (src-tauri exports ui/src/ipc/bindings.ts).
 specta = ["dep:specta", "dep:specta-typescript"]
 
 [dev-dependencies]
+tokio = { workspace = true }
 proptest = { version = "1.11", default-features = false, features = ["std"] }

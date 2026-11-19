@@ -831,11 +831,12 @@ fn tessera_tools_report_pause_and_request_runs() {
 fn tessera_writes_need_the_agents_scope_under_may_change() {
     let (_home, vault, settings, cache) = tessera_vault();
     let mut c = Client::start_restricted(Some(&vault), &settings, &cache, &["Daily", "planner:"]);
+    // Pauses last, so one that got through would still show below.
     for (tool, args) in [
-        ("pause_agents", json!({})),
         ("resume_agents", json!({})),
-        ("pause_agent", json!({ "name": "digest" })),
         ("resume_agent", json!({ "name": "digest" })),
+        ("pause_agents", json!({})),
+        ("pause_agent", json!({ "name": "digest" })),
         ("run_agent", json!({ "name": "digest" })),
     ] {
         let (err, refused) = c.call(tool, args);
@@ -847,8 +848,11 @@ fn tessera_writes_need_the_agents_scope_under_may_change() {
     }
     let (err, status) = c.call("get_tessera_status", json!({}));
     assert!(!err, "{status}");
-    // Nothing was written: the vault didn't even get its state.
-    assert!(!vault.join(".mosaic/vault.json").exists());
+    // Nothing was written.
+    let store = tessera_store(&vault, &settings);
+    let cfg = store.tessera().unwrap();
+    assert!(!cfg.paused && cfg.paused_agents.is_empty());
+    assert!(store.run_requests().unwrap().is_empty());
     drop(c);
 
     let mut c = Client::start_restricted(Some(&vault), &settings, &cache, &["Daily", "agents:"]);
@@ -936,7 +940,7 @@ fn without_any_vault_it_connects_and_picks_up_the_first_one_opened() {
     // Never opened a vault in the app (no settings.json): the handshake still succeeds.
     let mut c = Client::start_with(None, &settings, &home.path().join("cache"));
     let tools = c.request("tools/list", json!({}));
-    assert_eq!(tools["result"]["tools"].as_array().unwrap().len(), 45);
+    assert_eq!(tools["result"]["tools"].as_array().unwrap().len(), 51);
     let resources = c.request("resources/list", json!({}));
     assert_eq!(resources["result"]["resources"], json!([]));
     let (err, msg) = c.call("list_files", json!({}));
@@ -1481,7 +1485,7 @@ fn the_connection_test_reports_a_working_server_with_and_without_a_vault() {
 
     let r = probe(bin, &["mcp".into()], &env, timeout);
     assert!(r.ok, "{r:?}");
-    assert_eq!(r.tools, 45);
+    assert_eq!(r.tools, 51);
     assert_eq!(r.server_version.as_deref(), Some(env!("CARGO_PKG_VERSION")));
     assert!(r.no_vault.unwrap().contains("No Mosaic vault is open"));
 

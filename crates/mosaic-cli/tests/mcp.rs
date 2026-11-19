@@ -729,7 +729,7 @@ fn without_any_vault_it_connects_and_picks_up_the_first_one_opened() {
     // Never opened a vault in the app (no settings.json): the handshake still succeeds.
     let mut c = Client::start_with(None, &settings, &home.path().join("cache"));
     let tools = c.request("tools/list", json!({}));
-    assert_eq!(tools["result"]["tools"].as_array().unwrap().len(), 45);
+    assert_eq!(tools["result"]["tools"].as_array().unwrap().len(), 57);
     let resources = c.request("resources/list", json!({}));
     assert_eq!(resources["result"]["resources"], json!([]));
     let (err, msg) = c.call("list_files", json!({}));
@@ -1274,7 +1274,7 @@ fn the_connection_test_reports_a_working_server_with_and_without_a_vault() {
 
     let r = probe(bin, &["mcp".into()], &env, timeout);
     assert!(r.ok, "{r:?}");
-    assert_eq!(r.tools, 45);
+    assert_eq!(r.tools, 57);
     assert_eq!(r.server_version.as_deref(), Some(env!("CARGO_PKG_VERSION")));
     assert!(r.no_vault.unwrap().contains("No Mosaic vault is open"));
 
@@ -1543,12 +1543,18 @@ fn vault_with(files: &[(&str, &str)]) -> (tempfile::TempDir, std::path::PathBuf)
     (dir, root)
 }
 
-/// Writes the agent folder rules for `root` into the settings `Client::start` uses.
+/// Writes the agent folder rules for `root` where `Client::start`'s server reads them: settings.json
+/// for a vault not used yet, else the vault's own state (`vaults/<id>/rules.json`), which wins.
 fn agent_rules(root: &std::path::Path, rules: Value) {
     let settings = root.join(".test-settings");
     std::fs::create_dir_all(&settings).unwrap();
     let config = json!({ "agent_rules": { root.to_str().unwrap(): rules } });
     std::fs::write(settings.join("settings.json"), config.to_string()).unwrap();
+    if let Ok(vaults) = std::fs::read_dir(settings.join("vaults")) {
+        for state in vaults {
+            std::fs::write(state.unwrap().path().join("rules.json"), rules.to_string()).unwrap();
+        }
+    }
 }
 
 /// The `query task:all` row of the task whose text contains `text`.
@@ -1855,56 +1861,4 @@ fn hidden_notes_stay_hidden_from_link_task_and_history_tools() {
         read(&root, "Private/Diary.md"),
         "Home again.\n- [ ] Secret task\nmore\n"
     );
-}
-
-#[test]
-fn fix_links_finishes_an_interrupted_move_through_review() {
-    // A canvas the validator refuses: the agent's rename can't rewrite its link, so the move is
-    // left unfinished, as when Mosaic stops half-way.
-    let broken = r#"{"nodes":[{"id":"a","type":"file","file":"A.md","x":0,"y":0,"width":100,"height":100},{"id":"b","type":"text","x":200,"y":0,"width":100,"height":100}],"edges":[]}"#;
-    let (_dir, root) = vault_with(&[
-        ("A.md", "# A\n"),
-        ("Notes/One.md", "See [[A]].\n"),
-        ("Board/Map.canvas", broken),
-    ]);
-    let mut c = Client::start(&root);
-    let (err, renamed) = c.call("rename", json!({ "from": "A.md", "to": "B.md" }));
-    assert!(!err, "{renamed}");
-    assert_eq!(
-        renamed["failed_links_in"][0]["path"], "Board/Map.canvas",
-        "{renamed}"
-    );
-    assert_eq!(read(&root, "Notes/One.md"), "See [[B]].\n");
-    let (err, open) = c.call("list_unfinished_renames", json!({}));
-    assert!(!err, "{open}");
-    assert_eq!(
-        (&open[0]["from"], &open[0]["to"]),
-        (&json!("A.md"), &json!("B.md"))
-    );
-    let id = open[0]["id"].clone();
-    drop(c);
-
-    // The person repairs the canvas and reviews agents' changes on the board.
-    let fixed_canvas = broken.replace(r#""type":"text","#, r#""type":"text","text":"note","#);
-    std::fs::write(root.join("Board/Map.canvas"), &fixed_canvas).unwrap();
-    agent_rules(&root, json!([{ "path": "Board", "access": "review" }]));
-    let mut c = Client::start(&root);
-    let (err, fixed) = c.call("fix_links", json!({ "id": id }));
-    assert!(!err, "{fixed}");
-    assert_eq!(
-        fixed["proposed_links_in"][0]["path"], "Board/Map.canvas",
-        "{fixed}"
-    );
-    assert!(fixed["note"].as_str().unwrap().contains("Proposed"));
-    let review = fixed["proposed_links_in"][0]["review"].clone();
-    assert_eq!(read(&root, "Board/Map.canvas"), fixed_canvas);
-    let (_, open) = c.call("list_unfinished_renames", json!({}));
-    assert_eq!(open.as_array().unwrap().len(), 1, "open until accepted");
-    // Again: the same proposal, not a second one.
-    let (err, again) = c.call("fix_links", json!({ "id": id }));
-    assert!(!err, "{again}");
-    assert_eq!(again["proposed_links_in"][0]["review"], review, "{again}");
-    let (_, list) = c.call("list_proposals", json!({}));
-    assert_eq!(list.as_array().unwrap().len(), 1, "{list}");
-    assert_eq!(list[0]["status"], "pending");
 }

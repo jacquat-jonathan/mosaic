@@ -1556,6 +1556,8 @@ fn every_planner_write_goes_through_write_store() {
         "export_csv",
         "summary",
         "activity",
+        "activity_page",
+        "export_snapshot",
     ];
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/planner");
     let mut checked = 0;
@@ -1587,4 +1589,38 @@ fn every_planner_write_goes_through_write_store() {
         }
     }
     assert!(checked >= 24, "found only {checked} planner writes");
+}
+
+#[test]
+fn activity_pages_newest_first_and_exports_repeat_at_a_fixed_time() {
+    let mut store = in_memory();
+    let first = epic(&mut store, "One");
+    let second = epic(&mut store, "Two");
+    let item = task(&mut store, Some(first.id.clone()), None, "T");
+    store.archive_epic(&second.id, second.revision).unwrap();
+
+    let all = store.activity_page(None, None, None, 10).unwrap();
+    let kinds: Vec<_> = all.iter().map(|e| e.entity_kind.as_str()).collect();
+    assert_eq!(kinds, ["epic", "task", "epic", "epic"]);
+    assert!(all.windows(2).all(|w| w[0].id > w[1].id), "newest first");
+    let page = store.activity_page(None, None, Some(all[1].id), 2).unwrap();
+    assert_eq!(page, all[2..4]);
+    let epics = store.activity_page(Some("epic"), None, None, 10).unwrap();
+    assert_eq!(epics.len(), 3);
+    let one = store
+        .activity_page(Some("task"), Some(&item.id), None, 10)
+        .unwrap();
+    assert_eq!(one.len(), 1);
+    assert_eq!(one[0].action, "created");
+    assert!(matches!(
+        store.activity_page(None, Some(&item.id), None, 10),
+        Err(Error::Invalid(_))
+    ));
+
+    let at = "2026-11-19T10:00:00.000Z";
+    let json = store.export_json_at(at).unwrap();
+    assert_eq!(json, store.export_json_at(at).unwrap());
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(parsed["exported_at"], at);
+    assert_eq!(parsed["epics"].as_array().unwrap().len(), 2);
 }

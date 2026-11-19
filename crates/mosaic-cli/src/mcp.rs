@@ -3,8 +3,8 @@
 
 use base64::Engine;
 use mosaic_core::planner::{
-    CreateEvent, CreateTask, CreateWorkSession, FutureSessionPolicy, MoveTask, PlannerEvent,
-    TaskStatus, UpdateEvent, UpdateTask, UpdateWorkSession,
+    CreateEpic, CreateEvent, CreateTask, CreateWorkSession, FutureSessionPolicy, MoveTask,
+    PlannerEvent, TaskStatus, UpdateEpic, UpdateEvent, UpdateTask, UpdateWorkSession,
 };
 use mosaic_core::settings::Settings;
 use mosaic_core::{Error, Workspace};
@@ -377,6 +377,170 @@ struct PlannerTaskRevisionArgs {
     id: String,
     /// Revision returned by the latest read; stale revisions are refused.
     expected_revision: i64,
+}
+
+#[derive(Clone, Copy, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+enum ActivityKindArg {
+    Epic,
+    Task,
+    Event,
+    WorkSession,
+}
+
+impl ActivityKindArg {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Epic => "epic",
+            Self::Task => "task",
+            Self::Event => "event",
+            Self::WorkSession => "work_session",
+        }
+    }
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct PlannerActivityArgs {
+    /// Only this kind of item. Omit for the whole planner's feed.
+    #[serde(default)]
+    entity_kind: Option<ActivityKindArg>,
+    /// Only this item's entries (its UUID); needs entity_kind.
+    #[serde(default)]
+    entity_id: Option<String>,
+    /// next_before_id from the previous page, for older entries.
+    #[serde(default)]
+    before_id: Option<i64>,
+    /// Entries per page, newest first (default 50, at most 200).
+    #[serde(default)]
+    limit: Option<usize>,
+    /// Also return each entry's full before/after records (default false; `changes` already lists
+    /// every changed field).
+    #[serde(default)]
+    include_snapshots: bool,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct CreatePlannerEpicArgs {
+    title: String,
+    #[serde(default)]
+    description: String,
+    /// CSS color such as #3b82f6 (default #6477d4, the app's).
+    #[serde(default)]
+    color: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct UpdatePlannerEpicArgs {
+    /// Epic UUID from list_planner_epics.
+    id: String,
+    /// Revision returned by the latest read; stale revisions are refused with code conflict.
+    expected_revision: i64,
+    /// Fields left out keep their current value.
+    #[serde(default)]
+    title: Option<String>,
+    #[serde(default)]
+    description: Option<String>,
+    /// CSS color such as #3b82f6.
+    #[serde(default)]
+    color: Option<String>,
+    /// Board order: epics are listed by ascending position.
+    #[serde(default)]
+    position: Option<i64>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct PlannerEpicRevisionArgs {
+    /// Epic UUID from list_planner_epics.
+    id: String,
+    /// Revision returned by the latest read; stale revisions are refused with code conflict.
+    expected_revision: i64,
+}
+
+#[derive(Clone, Copy, Deserialize, JsonSchema, PartialEq)]
+#[serde(rename_all = "lowercase")]
+enum ExportFormatArg {
+    Json,
+    Csv,
+}
+
+impl ExportFormatArg {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Json => "json",
+            Self::Csv => "csv",
+        }
+    }
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct ExportPlannerArgs {
+    /// json: the full backup (epics, tasks, work sessions, events and all activity); csv: one row
+    /// per epic, task, work session and event.
+    format: ExportFormatArg,
+    /// next_cursor from the previous page; omit for the first page.
+    #[serde(default)]
+    cursor: Option<String>,
+    /// Page size in bytes (default 256000, between 4096 and 1000000). Pages end at a line break.
+    #[serde(default)]
+    max_bytes: Option<usize>,
+}
+
+const ACTIVITY_PAGE: usize = 50;
+const MAX_ACTIVITY_PAGE: usize = 200;
+const EXPORT_PAGE: usize = 256_000;
+const EXPORT_PAGE_RANGE: (usize, usize) = (4096, 1_000_000);
+const DEFAULT_EPIC_COLOR: &str = "#6477d4";
+
+/// Where a paged export continues: `format:revision:offset:exported_at`.
+struct ExportCursor {
+    format: String,
+    revision: i64,
+    offset: usize,
+    exported_at: String,
+}
+
+impl ExportCursor {
+    fn encode(&self) -> String {
+        format!(
+            "{}:{}:{}:{}",
+            self.format, self.revision, self.offset, self.exported_at
+        )
+    }
+
+    fn decode(cursor: &str) -> Option<Self> {
+        let mut parts = cursor.splitn(4, ':');
+        Some(Self {
+            format: parts.next()?.to_string(),
+            revision: parts.next()?.parse().ok()?,
+            offset: parts.next()?.parse().ok()?,
+            exported_at: parts.next().filter(|at| !at.is_empty())?.to_string(),
+        })
+    }
+}
+
+/// The end of the page of `content` starting at `offset`: the last line break within `max` bytes,
+/// or the last character boundary when one line is longer than that.
+fn export_page_end(content: &str, offset: usize, max: usize) -> usize {
+    let limit = offset.saturating_add(max);
+    if limit >= content.len() {
+        return content.len();
+    }
+    let window = &content.as_bytes()[offset..limit];
+    if let Some(newline) = window.iter().rposition(|&b| b == b'\n') {
+        return offset + newline + 1;
+    }
+    let mut end = limit;
+    while !content.is_char_boundary(end) {
+        end -= 1;
+    }
+    if end == offset {
+        // A character longer than the page: take it whole.
+        end = limit;
+        while !content.is_char_boundary(end) {
+            end += 1;
+        }
+    }
+    end
 }
 
 /// The fixed source the app's iCalendar import uses, so an agent's import and the person's see each
@@ -1296,6 +1460,191 @@ impl MosaicMcp {
             .trash_task(&a.id, a.expected_revision)
             .map_err(err)
             .and_then(ok)
+    }
+
+    #[tool(
+        description = "The planner at a glance: its revision (it rises with every planner change, so a changed revision means something changed since your last read), schema version, how many epics, tasks, work sessions and calendar events it holds (archived and trashed included), and whether it is empty."
+    )]
+    async fn get_planner_summary(&self) -> ToolResult {
+        self.ws().planner.summary().map_err(err).and_then(ok)
+    }
+
+    #[tool(
+        description = "The planner's activity feed, newest first: what changed on the Board and in the calendar, when (occurred_at, UTC), by whom (source: app, cli, agent or external; actor: the agent name), what (action and a self-contained summary), which fields (changes: field, from, to), why when it was a consequence (reason), plus a one-line `text`. Filter by entity_kind (epic, task, event, work_session) and entity_id for one item. Pages of `limit` entries; pass next_before_id as before_id for older ones (null: no more). Full before/after records only with include_snapshots. For one task's whole history oldest first, use planner_task_history."
+    )]
+    async fn list_planner_activity(
+        &self,
+        Parameters(a): Parameters<PlannerActivityArgs>,
+    ) -> ToolResult {
+        let limit = a.limit.unwrap_or(ACTIVITY_PAGE).clamp(1, MAX_ACTIVITY_PAGE);
+        // One more than the page shows whether older entries remain.
+        let mut entries = self
+            .ws()
+            .planner
+            .activity_page(
+                a.entity_kind.map(ActivityKindArg::as_str),
+                a.entity_id.as_deref(),
+                a.before_id,
+                limit + 1,
+            )
+            .map_err(err)?;
+        let more = entries.len() > limit;
+        entries.truncate(limit);
+        let next_before_id = more.then(|| entries.last().map(|e| e.id)).flatten();
+        if !a.include_snapshots {
+            for entry in &mut entries {
+                entry.before = None;
+                entry.after = None;
+            }
+        }
+        ok(serde_json::json!({ "entries": entries, "next_before_id": next_before_id }))
+    }
+
+    #[tool(
+        description = "Create a planner epic: a colored group of Board tasks (and calendar events). Returns the epic with its id and revision; pass the id as epic_id to create_planner_task or move_planner_task. Applied directly, never reviewed; refused (code denied) when you are restricted to certain folders without `planner:`."
+    )]
+    async fn create_planner_epic(
+        &self,
+        Parameters(a): Parameters<CreatePlannerEpicArgs>,
+    ) -> ToolResult {
+        self.ws()
+            .planner
+            .create_epic(CreateEpic {
+                title: a.title,
+                description: a.description,
+                color: a.color.unwrap_or_else(|| DEFAULT_EPIC_COLOR.into()),
+            })
+            .map_err(err)
+            .and_then(ok)
+    }
+
+    #[tool(
+        description = "Change a planner epic's title, description, color or Board position. Pass only the fields to change and the latest expected_revision; a stale one returns conflict and changes nothing. Applied directly, never reviewed; refused (code denied) when you are restricted to certain folders without `planner:`."
+    )]
+    async fn update_planner_epic(
+        &self,
+        Parameters(a): Parameters<UpdatePlannerEpicArgs>,
+    ) -> ToolResult {
+        self.ws()
+            .planner
+            .update_epic(
+                &a.id,
+                UpdateEpic {
+                    expected_revision: a.expected_revision,
+                    title: a.title,
+                    description: a.description,
+                    color: a.color,
+                    position: a.position,
+                },
+            )
+            .map_err(err)
+            .and_then(ok)
+    }
+
+    #[tool(
+        description = "Archive a planner epic: it leaves the Board but stays recoverable; its tasks are untouched. Pass its latest expected_revision. Applied directly, never reviewed; refused (code denied) when you are restricted to certain folders without `planner:`."
+    )]
+    async fn archive_planner_epic(
+        &self,
+        Parameters(a): Parameters<PlannerEpicRevisionArgs>,
+    ) -> ToolResult {
+        self.ws()
+            .planner
+            .archive_epic(&a.id, a.expected_revision)
+            .map_err(err)
+            .and_then(ok)
+    }
+
+    #[tool(
+        description = "Restore an archived or trashed planner epic to the Board. Pass its latest expected_revision. Applied directly, never reviewed; refused (code denied) when you are restricted to certain folders without `planner:`."
+    )]
+    async fn restore_planner_epic(
+        &self,
+        Parameters(a): Parameters<PlannerEpicRevisionArgs>,
+    ) -> ToolResult {
+        self.ws()
+            .planner
+            .restore_epic(&a.id, a.expected_revision)
+            .map_err(err)
+            .and_then(ok)
+    }
+
+    #[tool(
+        description = "Move an archived planner epic to Trash, where it remains recoverable. Archive it first and pass its latest expected_revision. Applied directly, never reviewed; refused (code denied) when you are restricted to certain folders without `planner:`."
+    )]
+    async fn trash_planner_epic(
+        &self,
+        Parameters(a): Parameters<PlannerEpicRevisionArgs>,
+    ) -> ToolResult {
+        self.ws()
+            .planner
+            .trash_epic(&a.id, a.expected_revision)
+            .map_err(err)
+            .and_then(ok)
+    }
+
+    #[tool(
+        description = "Export the whole planner as the app's backup export, returned as the tool result: format json (epics, tasks, work sessions, events and all activity, archived and trashed included) or csv (one row per epic, task, work session and event). Mosaic writes no file; save it with create_file if the person wants one in the vault. Large exports come in pages ending at a line break: `content` is this page, and next_cursor (null on the last page) fetches the next with the same format; the pages joined are one export. A cursor is refused with code conflict once the planner changed; start again without one."
+    )]
+    async fn export_planner(&self, Parameters(a): Parameters<ExportPlannerArgs>) -> ToolResult {
+        let format = a.format.as_str();
+        let max = a
+            .max_bytes
+            .unwrap_or(EXPORT_PAGE)
+            .clamp(EXPORT_PAGE_RANGE.0, EXPORT_PAGE_RANGE.1);
+        let cursor = match a.cursor.as_deref() {
+            None => None,
+            Some(text) => Some(
+                ExportCursor::decode(text)
+                    .filter(|c| c.format == format)
+                    .ok_or_else(|| {
+                        err(Error::Invalid(
+                            "unknown export cursor: pass next_cursor unchanged, with the same format"
+                                .into(),
+                        ))
+                    })?,
+            ),
+        };
+        let snapshot = self
+            .ws()
+            .planner
+            .export_snapshot(format, cursor.as_ref().map(|c| c.exported_at.as_str()))
+            .map_err(err)?;
+        let (revision, content) = (snapshot.revision, &snapshot.content);
+        let offset = match &cursor {
+            None => 0,
+            Some(c) if c.revision != revision => {
+                return Err(err(Error::Conflict {
+                    path: "planner/export".into(),
+                    current_hash: revision.to_string(),
+                }));
+            }
+            Some(c) if c.offset >= content.len() || !content.is_char_boundary(c.offset) => {
+                return Err(err(Error::Invalid(
+                    "unknown export cursor: pass next_cursor unchanged".into(),
+                )));
+            }
+            Some(c) => c.offset,
+        };
+        let end = export_page_end(content, offset, max);
+        let next_cursor = (end < content.len()).then(|| {
+            ExportCursor {
+                format: format.into(),
+                revision,
+                offset: end,
+                exported_at: snapshot.exported_at.clone(),
+            }
+            .encode()
+        });
+        ok(serde_json::json!({
+            "format": format,
+            "revision": revision,
+            "exported_at": snapshot.exported_at,
+            "total_bytes": content.len(),
+            "offset": offset,
+            "content": &content[offset..end],
+            "next_cursor": next_cursor,
+        }))
     }
 
     /// A series or one-off event, archived and trashed included.

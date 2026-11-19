@@ -58,7 +58,7 @@ write shows up in the app within a second.
 - **Planner data is app-owned.** Board tasks, epics, work sessions and local events are separate from
   Markdown checkboxes and live under `.mosaic/`. CLI/MCP `task:` queries, `tasks_by_day` and
   `carry_over` operate only on Markdown tasks. Use the `*_planner_task` tools for Board tasks and
-  `list_planner_epics` for their epic IDs; never inspect or edit `.mosaic/planner.sqlite3` directly,
+  the `*_planner_epic` tools for their epics; never inspect or edit `.mosaic/planner.sqlite3` directly,
   and do not imply that changing a checkbox changes an independent planner item.
 - **Several files at once:** `move_files` moves a list into one folder in a single call; `import_file`
   adds an image or other binary file from base64 (never overwrites).
@@ -309,7 +309,27 @@ derived from the snapshots. Use
 `reopen_planner_task`, `archive_planner_task`, `restore_planner_task` and `trash_planner_task` for
 changes. Moving requires the complete destination epic, parent and status. Completion refuses open
 subtasks unless explicitly confirmed; future work sessions are cancelled by default or can explicitly
-be kept. Planner
+be kept.
+
+Epics group Board tasks. `create_planner_epic` takes a title, an optional description and a CSS color
+(the app's default when left out); `update_planner_epic` changes only the fields you pass, with the
+epic's `expected_revision`. `archive_planner_epic`, `restore_planner_epic` and `trash_planner_epic`
+are lifecycle steps like the task ones: archive before trashing, and archiving an epic leaves its
+tasks as they are.
+
+`get_planner_summary` returns the planner's `revision`, which rises with every change, and counts of
+epics, tasks, work sessions and events: compare revisions to see whether anything changed since you
+last looked. `list_planner_activity` is the activity feed for the whole planner, newest first, in
+pages (`limit`, then `before_id` = the previous `next_before_id`); filter it with `entity_kind`
+(`epic`, `task`, `event`, `work_session`) and `entity_id`. Its entries have the same fields as
+`planner_task_history`, without the `before`/`after` snapshots unless you pass `include_snapshots`.
+`export_planner` returns the app's backup export as `json` (everything, including all activity) or
+`csv` (one row per item) in the result; it never writes a file, so save it with `create_file` if the
+person wants a copy in the vault. A large export comes in pages: pass `next_cursor` back as `cursor`
+until it is `null`, and join the `content` of the pages. If the planner changes in between, the cursor
+is refused with `conflict`; start again.
+
+Planner
 changes made through MCP appear in the open Board and Calendar automatically. Planner changes can't
 be proposed for review: a scheduled workflow restricted to some folders is refused (`denied`) unless
 its `may-change` includes `planner:`. Don't retry or work around a refusal; tell the person what you

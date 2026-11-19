@@ -64,10 +64,10 @@ per write:
 
 | Class | Tools | Without `--may-change` | With `--may-change` |
 |---|---|---|---|
-| Read | `list_*`, `get_*`, `preview_ical_import`, `export_ical`, `read_file`, `read_version`, `outline`, `search`, `query`, `tasks_by_day`, `render`, `render_template`, `file_history`, `planner_task_history`, `vault_guide` | Allowed, minus hidden folders | Same |
+| Read | `list_*`, `get_*`, `preview_ical_import`, `export_ical`, `export_planner`, `read_file`, `read_version`, `outline`, `search`, `query`, `tasks_by_day`, `render`, `render_template`, `file_history`, `planner_task_history`, `vault_guide` | Allowed, minus hidden folders | Same |
 | Vault file write | `create_file`, `create_note`, `edit_file`, `patch_file`, `append_to_file`, `rename`, `move_files`, `copy_file`, `delete_file`, `create_folder`, `import_file`, `restore_version`, `carry_over`, `set_task`, `set_task_workflow`, `link_mention`, `fix_links`, `undo_change` | Direct, unless the folder is read-only (refused) or in review (becomes a proposal) | Direct only inside the listed paths; elsewhere a proposal |
 | Derived index | `rebuild_index` | Direct | Direct (no scope) |
-| App-state write, scope `planner:` | `*_planner_task`, `*_planner_event`, `*_planner_event_occurrence`, `*_planner_work_session`, `import_ical` (later: epics) | Direct | **Refused** (`denied`) unless `planner:` is listed; then direct |
+| App-state write, scope `planner:` | `*_planner_task`, `*_planner_event`, `*_planner_event_occurrence`, `*_planner_work_session`, `*_planner_epic`, `import_ical` | Direct | **Refused** (`denied`) unless `planner:` is listed; then direct |
 | App-state write, scope `bookmarks:` | `add_bookmark`, `remove_bookmark` | Direct | **Refused** unless `bookmarks:` is listed; then direct |
 | App-state write, scope `subscriptions:` | `add_calendar_subscription`, `update_calendar_subscription`, `remove_calendar_subscription`, `refresh_calendar_subscriptions` | Direct | **Refused** unless `subscriptions:` is listed; then direct |
 | App-state write, scope `settings:` | `set_vault_preferences`, `set_template_config` | Direct | **Refused** unless `settings:` is listed; then direct |
@@ -169,8 +169,8 @@ rows below from `planned` to the tool names, adds tests, and updates the README 
 1. **M2 Calendar (done).** Events (list, create, update, archive, restore, trash), recurring
    occurrences (cancel, replace), work sessions (list, create, update, cancel), the calendar range,
    and iCal (preview, import, export as text).
-2. **M3 Planner rest.** Summary, activity feed, epic writes (create, update, archive, restore, trash),
-   and export (backup content as returned JSON/CSV).
+2. **M3 Planner rest (done).** Summary, activity feed, epic writes (create, update, archive, restore,
+   trash), and export (backup content as returned JSON/CSV, paged).
 3. **M5 Settings (done).** `set_vault_preferences`, `get_template_config`, `set_template_config`,
    `list_template_starters` and `get_agent_rules` (read only), under the `settings:` scope. Core:
    `Workspace::revised_vault_preferences`, `change_vault_preferences`, `revised_template_config`,
@@ -260,15 +260,15 @@ names in Notes are proposals for the slice, not commitments.
 | `set_task_workflow` | `set_task_workflow` | no UI caller yet; takes the `task.workflow` of a `query` row |
 | `days` | `tasks_by_day` | |
 | `carry_over` | `carry_over` | |
-| `planner_summary` | planned (M3) | `get_planner_summary` |
-| `planner_activity` | planned (M3) | `list_planner_activity`; per-task history is `planner_task_history` |
+| `planner_summary` | `get_planner_summary` | |
+| `planner_activity` | `list_planner_activity` | also the planner-wide feed, newest first and paged; one task's whole history is `planner_task_history` |
 | `planner_epics` | `list_planner_epics` | |
 | `planner_tasks` | `list_planner_tasks`, `get_planner_task` | |
-| `planner_create_epic` | planned (M3) | `create_planner_epic` |
-| `planner_update_epic` | planned (M3) | `update_planner_epic` |
-| `planner_archive_epic` | planned (M3) | `archive_planner_epic` |
-| `planner_restore_epic` | planned (M3) | `restore_planner_epic` |
-| `planner_trash_epic` | planned (M3) | `trash_planner_epic` |
+| `planner_create_epic` | `create_planner_epic` | color defaults to the app's |
+| `planner_update_epic` | `update_planner_epic` | fields left out keep their value |
+| `planner_archive_epic` | `archive_planner_epic` | |
+| `planner_restore_epic` | `restore_planner_epic` | |
+| `planner_trash_epic` | `trash_planner_epic` | |
 | `planner_create_task` | `create_planner_task` | |
 | `planner_update_task` | `update_planner_task` | |
 | `planner_move_task` | `move_planner_task` | |
@@ -294,7 +294,7 @@ names in Notes are proposals for the slice, not commitments.
 | `planner_ical_import` | `import_ical` | takes the `.ics` text and re-runs the preview; source `ics-file`, as in the app |
 | `planner_ical_export` | `export_ical` | returns the text |
 | `planner_ical_export_file` | excluded (writes a host file chosen in a save dialog; `export_ical` returns the content) | |
-| `planner_export` | planned (M3) | `export_planner`, returns JSON or CSV |
+| `planner_export` | `export_planner` | returns the JSON or CSV content, in pages with a cursor when large |
 | `planner_export_file` | excluded (writes a host file chosen in a save dialog; `export_planner` returns the content) | |
 | `planner_restore_backup` | excluded (replaces the whole planner database; not undoable) | |
 | `calendar_subscriptions` | `list_calendar_subscriptions` | no URL in any output |

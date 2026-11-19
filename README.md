@@ -203,7 +203,7 @@ be opened until you update the registration.
 
 ### Tools
 
-The server has 45 tools (this list is checked against the server by a test):
+The server has 61 tools (this list is checked against the server by a test):
 
 <!-- mcp-tools:start -->
 - Guide and settings: `vault_guide`, `get_vault_preferences`, `list_agents`.
@@ -220,6 +220,13 @@ The server has 45 tools (this list is checked against the server by a test):
   `get_planner_task`, `planner_task_history`, `create_planner_task`, `update_planner_task`,
   `move_planner_task`, `complete_planner_task`, `reopen_planner_task`, `archive_planner_task`,
   `restore_planner_task`, `trash_planner_task`.
+- Calendar (revision-safe planner events and work sessions): `get_planner_calendar` (a range of days
+  with recurrences expanded, work sessions and due Board tasks), `list_planner_events`,
+  `create_planner_event`, `update_planner_event`, `archive_planner_event`, `restore_planner_event`,
+  `trash_planner_event`, `cancel_planner_event_occurrence`, `replace_planner_event_occurrence`,
+  `list_planner_work_sessions`, `create_planner_work_session`, `update_planner_work_session`,
+  `cancel_planner_work_session`, `preview_ical_import`, `import_ical`, `export_ical` (returns the
+  iCalendar text).
 <!-- mcp-tools:end -->
 
 Each agent in `Agents/` is also an MCP prompt (`/mosaic:<name>` in Claude Code), and notes are MCP
@@ -251,9 +258,10 @@ mosaic note create Meetings/Retro.md      # create using its default; --template
 
 The vault is chosen by `--vault`, then `$MOSAIC_VAULT`, then the vault last opened in the app.
 CLI and MCP task queries, `days`, and `carry-over` continue to operate on Markdown checkboxes only.
-MCP planner tools operate on the separate Board tasks and push external changes into an open Board
-or Calendar. Every mutation requires the task revision returned by the latest read, so concurrent
-changes fail with a conflict instead of being overwritten.
+MCP planner tools operate on the separate Board tasks and calendar events and push external changes
+into an open Board or Calendar. Every change to an existing task, event or work session requires the
+revision returned by the latest read, so concurrent changes fail with a conflict instead of being
+overwritten.
 
 ## Planner data and recovery
 

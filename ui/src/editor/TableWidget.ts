@@ -1,5 +1,5 @@
 import { type EditorView, WidgetType } from "@codemirror/view";
-import { type ChangeDesc, MapMode, Transaction } from "@codemirror/state";
+import { type ChangeDesc, Transaction } from "@codemirror/state";
 import { undo, redo, isolateHistory } from "@codemirror/commands";
 import { useUi, type MenuItem } from "../state/ui";
 import { treeDragActive, treeDragData } from "../dragOut";
@@ -34,7 +34,14 @@ import { editTableSource } from "./tableSource";
 import { editorScope, editorButton } from "./designSystemDom";
 import "./editorControls.css";
 
-const tableFocus = new WeakMap<EditorView, { from: number; row: number; col: number; caret?: "start" | "end" }>();
+/**
+ * A cell to focus once its table is drawn again. `from`–`to` is where the table's widget may now
+ * start (after a reload the exact start is ambiguous); `notice` says why it was redrawn.
+ */
+const tableFocus = new WeakMap<
+  EditorView,
+  { from: number; to?: number; row: number; col: number; caret?: "start" | "end"; notice?: string }
+>();
 const controllers = new WeakMap<
   HTMLElement,
   { update(source: string, widthsLine: string): boolean; destroy(): void; focus(pos: number): boolean }
@@ -56,9 +63,13 @@ export function rememberTableFocus(view: EditorView): TableFocus | null {
  */
 export function restoreTableFocus(view: EditorView, focus: TableFocus, changes: ChangeDesc) {
   if ((document.activeElement as HTMLElement | null)?.closest("th, td")) return;
-  const from = changes.mapPos(focus.from, 1, MapMode.TrackDel);
-  if (from === null) return; // the table was deleted
-  tableFocus.set(view, { from, row: focus.row, col: focus.col });
+  tableFocus.set(view, {
+    from: changes.mapPos(focus.from, -1),
+    to: changes.mapPos(focus.from, 1),
+    row: focus.row,
+    col: focus.col,
+    notice: "This table was changed outside the editor.",
+  });
 }
 
 /** Keyboard navigation into a rendered table enters its cell editor instead of revealing pipes. */
@@ -358,12 +369,24 @@ export class TableWidget extends WidgetType {
       });
     };
     let pendingWidths: string | null = null;
+    /** A short message under the table, e.g. why it was redrawn while being edited. */
+    const showNotice = (text: string) => {
+      const notice = document.createElement("div");
+      notice.className = "table-notice";
+      notice.setAttribute("role", "status");
+      notice.textContent = text;
+      wrap.append(notice);
+      setTimeout(() => notice.remove(), 4000);
+    };
     /** Removes the table (and its widths comment) with the line break after it, as one undo step. */
     const deleteTable = () => {
       if (view.state.readOnly || !wrap.isConnected) return;
       const start = from();
+      const doc = view.state.doc;
       let end = tableFrom() + source.length;
-      if (view.state.doc.sliceString(end, end + 1) === "\n") end++;
+      if (doc.sliceString(end, end + 1) === "\n") end++;
+      // A blank line on both sides would leave two in a row: take the one after the table too.
+      if (doc.sliceString(start - 2, start) === "\n\n" && doc.sliceString(end, end + 1) === "\n") end++;
       replaced = true;
       view.dispatch({
         changes: { from: start, to: end, insert: "" },
@@ -611,7 +634,7 @@ export class TableWidget extends WidgetType {
       if (!next || !wrap.contains(next)) commit(typed());
     });
     const addColumnRight = (row: number, col: number) =>
-      commit(insertColumn(typed(), col + 1), { row, col: col + 1 }, widths && insertWidth(widths, col + 1));
+      commit(insertColumn(typed(), col + 1), { row, col: col + 1 }, widths ? insertWidth(widths, col + 1) : undefined);
     const addRowBelow = (row: number, col: number) => commit(insertRow(typed(), row + 1), { row: row + 1, col });
     const alignmentMenu = (col: number): MenuItem => ({
       label: "Column alignment",
@@ -637,7 +660,7 @@ export class TableWidget extends WidgetType {
           commit(
             deleteColumn(typed(), col),
             { row, col: Math.min(col, model.header.length - 2) },
-            widths && deleteWidth(widths, col),
+            widths ? deleteWidth(widths, col) : undefined,
           ),
       },
       {
@@ -669,12 +692,16 @@ export class TableWidget extends WidgetType {
       const columns: MenuItem[] = [
         {
           label: "Insert column left",
-          action: () => commit(insertColumn(t(), col), at({ row, col }), widths && insertWidth(widths, col)),
+          action: () => commit(insertColumn(t(), col), at({ row, col }), widths ? insertWidth(widths, col) : undefined),
         },
         {
           label: "Insert column right",
           action: () =>
-            commit(insertColumn(t(), col + 1), at({ row, col: col + 1 }), widths && insertWidth(widths, col + 1)),
+            commit(
+              insertColumn(t(), col + 1),
+              at({ row, col: col + 1 }),
+              widths ? insertWidth(widths, col + 1) : undefined,
+            ),
         },
         {
           label: "Delete column",
@@ -684,7 +711,7 @@ export class TableWidget extends WidgetType {
             commit(
               deleteColumn(t(), col),
               { row, col: Math.min(col, model.header.length - 2) },
-              widths && deleteWidth(widths, col),
+              widths ? deleteWidth(widths, col) : undefined,
             ),
         },
         { label: "", separator: true },
@@ -997,12 +1024,15 @@ export class TableWidget extends WidgetType {
     // task as the edit, so a microtask runs once it's in the page.
     queueMicrotask(() => {
       const f = tableFocus.get(view);
-      if (!f || !wrap.isConnected || from() !== f.from) return;
+      if (!f || !wrap.isConnected) return;
+      // The widget starts at its widths comment, if any, else at the table.
+      if ((f.to ?? f.from) < from() || f.from > tableFrom()) return;
       tableFocus.delete(view);
       focusCell(
         cellAt(Math.max(-1, Math.min(f.row, model.rows.length - 1)), Math.min(f.col, model.header.length - 1)),
         f.caret,
       );
+      if (f.notice) showNotice(f.notice);
     });
     controllers.set(wrap, {
       update(nextSource, nextWidthsLine) {
@@ -1041,8 +1071,9 @@ export class TableWidget extends WidgetType {
       },
       focus(pos) {
         const start = tableFrom();
-        if (pos < start || pos >= start + source.length) return false;
-        const lines = source.slice(0, pos - start).split("\n");
+        // A caret on the hidden widths comment line enters the header row.
+        if (pos < from() || pos >= start + source.length) return false;
+        const lines = source.slice(0, Math.max(0, pos - start)).split("\n");
         const row = lines.length < 3 ? -1 : Math.min(model.rows.length - 1, lines.length - 3);
         focusCell(cellAt(row, 0), "start");
         return true;

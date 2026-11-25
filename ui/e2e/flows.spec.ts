@@ -840,5 +840,57 @@ test("a cell's chevron menu and shortcuts add, clear and delete, and the floatin
   await table.getByRole("button", { name: "More table options", exact: true }).click();
   await page.getByRole("menuitem", { name: "Delete table", exact: true }).click();
   await expect(page.locator(".cm-table-wrap")).toHaveCount(0);
-  await expect.poll(() => readMockFile(page, "Cell menu.md")).toBe("# Cell menu\n\n\nAfter table.\n");
+  await expect.poll(() => readMockFile(page, "Cell menu.md")).toBe("# Cell menu\n\nAfter table.\n");
+});
+
+test("arrowing into a table with saved widths enters its header and keeps the widths comment", async ({ page }) => {
+  await openVault(page);
+  await page.evaluate(async () => {
+    const m = (window as unknown as { __mosaic: { mockInvoke(c: string, a: object): Promise<unknown> } }).__mosaic;
+    await m.mockInvoke("create_file", {
+      path: "Widths keys.md",
+      content: "# Widths keys\n\nIntro\n\n<!-- widths 40 60 -->\n| A | B |\n| --- | --- |\n| 1 | 2 |\n\nAfter\n",
+      root: null,
+    });
+  });
+  await openMockPath(page, "Widths keys.md");
+  const table = page.locator(".cm-table-wrap");
+  await page.locator(".cm-line", { hasText: "Intro" }).click();
+  await page.keyboard.press("End");
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("ArrowDown");
+  await expect(table.locator("th").first()).toBeFocused();
+  await page.keyboard.type("X");
+  await expect.poll(() => readMockFile(page, "Widths keys.md")).toContain("<!-- widths 40 60 -->\n| XA");
+});
+
+test("a table changed outside the editor while a cell is focused keeps that cell focused and says so", async ({
+  page,
+}) => {
+  await openVault(page);
+  const content = "# Outside\n\n| A | B |\n| --- | --- |\n| 1 | 2 |\n\nAfter\n";
+  await page.evaluate(async (text) => {
+    const m = (window as unknown as { __mosaic: { mockInvoke(c: string, a: object): Promise<unknown> } }).__mosaic;
+    await m.mockInvoke("create_file", { path: "Outside.md", content: text, root: null });
+  }, content);
+  await openMockPath(page, "Outside.md");
+  const table = page.locator(".cm-table-wrap");
+  await table.locator("td").first().click();
+  // An agent edits another cell of the same table.
+  await page.evaluate(
+    async (text) => {
+      const m = (
+        window as unknown as {
+          __mosaic: { mockInvoke(c: string, a: object): Promise<unknown>; external(p: string[]): void };
+        }
+      ).__mosaic;
+      await m.mockInvoke("write_file", { path: "Outside.md", content: text, expectedHash: null });
+      m.external(["Outside.md"]);
+    },
+    content.replace("| 1 | 2 |", "| 1 | 22 |"),
+  );
+  await expect(table.locator("td").nth(1)).toHaveText("22");
+  await expect(table.locator("td").first()).toBeFocused();
+  await expect(table.getByRole("status")).toHaveText("This table was changed outside the editor.");
+  expect(await readMockFile(page, "Outside.md")).toBe(content.replace("| 1 | 2 |", "| 1 | 22 |"));
 });

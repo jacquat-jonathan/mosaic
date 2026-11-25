@@ -333,3 +333,18 @@ describe("table widths", () => {
     expect(spec.changes.slice(1).every((c) => c.from > comment.length)).toBe(true);
   });
 });
+
+describe("table widths comment is never repaired behind the user's back", () => {
+  test("adding a column to a table whose comment doesn't match leaves the comment alone", async () => {
+    const view = fakeView();
+    const stale = "<!-- widths 20 30 50 -->";
+    const dom = new TableWidget("| A | B |\n| --- | --- |\n| one | two |", stale).toDOM(view);
+    document.body.append(dom);
+    await Promise.resolve();
+    dom
+      .querySelector<HTMLButtonElement>('[aria-label="Insert column 3"]')!
+      .dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    const spec = vi.mocked(view.dispatch).mock.calls[0][0] as { changes: { from: number }[] };
+    expect(spec.changes.every((c) => c.from > stale.length)).toBe(true);
+  });
+});

@@ -956,6 +956,11 @@ button.secondary {
   visibility: visible;
   opacity: 1;
 }
+.table-notice {
+  margin: 4px 0 0;
+  font: 12px var(--font-ui);
+  color: var(--muted);
+}
 .table-toolbar-divider {
   align-self: stretch;
   width: 1px;

@@ -19,6 +19,8 @@ import "./editorControls.css";
 
 const BLOCK_MIME = "application/x-mosaic-block";
 const HIDE_DELAY = 250;
+/** Width of a table's row-handle gutter (`.cm-table-inner` left padding). */
+const TABLE_GUTTER = 26;
 
 /** Applies a move as the smallest change, as one undo step, with the caret `offset` into the moved block. */
 function applyMove(view: EditorView, source: Block, gap: number, offset = 0): number | null {
@@ -106,6 +108,8 @@ class BlockHandles {
     view.scrollDOM.addEventListener("mousemove", this.onMouseMove);
     view.scrollDOM.addEventListener("mouseleave", this.onMouseLeave);
     this.overlay.addEventListener("mouseenter", this.cancelHide);
+    // CodeMirror handles mousedown in its scroller (and cancels it, which would stop a drag).
+    this.overlay.addEventListener("mousedown", (event) => event.stopPropagation());
     this.add.addEventListener("mousedown", this.keepFocus);
     this.add.addEventListener("click", this.onAdd);
     this.handle.addEventListener("click", this.onSelect);
@@ -174,7 +178,9 @@ class BlockHandles {
     const at = view.coordsAtPos(line.from + indent, 1);
     const lineTop = view.lineBlockAt(block.from).top + view.documentTop;
     const top = at ? (at.top + at.bottom) / 2 - 12 : lineTop + 4;
-    const left = (at && indent ? at.left : this.textLeft()) - 48;
+    // A table keeps its own row handles in the gutter, so its block handle goes further out.
+    const gutter = block.kind === "Table" ? 48 + TABLE_GUTTER : 48;
+    const left = Math.max(scroller.left + 2, (at && indent ? at.left : this.textLeft()) - gutter);
     this.overlay.style.top = `${top - scroller.top + view.scrollDOM.scrollTop}px`;
     this.overlay.style.left = `${left - scroller.left + view.scrollDOM.scrollLeft}px`;
     this.overlay.hidden = false;
@@ -343,7 +349,10 @@ class BlockHandles {
     }
     const scroller = this.view.scrollDOM.getBoundingClientRect();
     const content = this.view.contentDOM.getBoundingClientRect();
-    const left = Number.parseFloat(this.overlay.style.left) + 48;
+    const left =
+      this.dragging?.kind === "ListItem"
+        ? Number.parseFloat(this.overlay.style.left) + 48
+        : this.textLeft() - scroller.left + this.view.scrollDOM.scrollLeft;
     this.dropLine.style.top = `${target.y + this.view.documentTop - scroller.top + this.view.scrollDOM.scrollTop - 1}px`;
     this.dropLine.style.left = `${left}px`;
     this.dropLine.style.width = `${Math.max(40, content.right - scroller.left - left - this.padRight())}px`;

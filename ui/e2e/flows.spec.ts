@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, type Locator, test, type Page } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -895,6 +895,19 @@ test("a table changed outside the editor while a cell is focused keeps that cell
   expect(await readMockFile(page, "Outside.md")).toBe(content.replace("| 1 | 2 |", "| 1 | 22 |"));
 });
 
+/** Drags a block handle onto `target` with gradual pointer moves (WebKit starts a drag only then). */
+async function dragHandle(page: Page, handle: Locator, target: Locator, place: "top" | "bottom") {
+  const from = (await handle.boundingBox())!;
+  const to = (await target.boundingBox())!;
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  await page.mouse.down();
+  for (let i = 1; i <= 5; i++) await page.mouse.move(from.x + from.width / 2 + i * 2, from.y + from.height / 2 + i * 2);
+  const y = place === "top" ? to.y + 2 : to.y + to.height - 2;
+  await page.mouse.move(to.x + 4, (from.y + y) / 2, { steps: 4 });
+  await page.mouse.move(to.x + 4, y, { steps: 4 });
+  await page.mouse.up();
+}
+
 async function blockNote(page: Page, file: string, content: string) {
   await openVault(page);
   await page.evaluate(
@@ -914,9 +927,7 @@ test("every block has a + and a drag handle; dragging moves it and keeps the not
   await editor.getByText("First para.").hover();
   await expect(handle).toBeVisible();
   await expect(page.getByRole("button", { name: "Add a block below", exact: true })).toBeVisible();
-  const third = editor.getByText("Third para.");
-  const box = await third.boundingBox();
-  await handle.dragTo(third, { targetPosition: { x: 4, y: box!.height - 2 } });
+  await dragHandle(page, handle, editor.getByText("Third para."), "bottom");
   await expect
     .poll(() => readMockFile(page, "Blocks.md"))
     .toBe("# Blocks\n\nSecond para.\n\nThird para.\n\nFirst para.\n");
@@ -933,18 +944,15 @@ test("a heading drags with its section, numbered sections are renumbered", async
   await editor.getByText("2. Beta").hover();
   const handle = page.getByRole("button", { name: "Move section", exact: true });
   await expect(handle).toBeVisible();
-  const alpha = editor.getByText("1. Alpha");
-  await handle.dragTo(alpha, { targetPosition: { x: 4, y: 2 } });
+  await dragHandle(page, handle, editor.getByText("1. Alpha"), "top");
   await expect
     .poll(() => readMockFile(page, "Sections.md"))
     .toBe("## 1. Beta\n\nBeta text.\n\n## 2. Alpha\n\nAlpha text.\n");
 });
 
-test("list items move with their children; the focused handle moves a block with the arrow keys", async ({
-  page,
-}) => {
+test("list items move with their children; the focused handle moves a block with the arrow keys", async ({ page }) => {
   const editor = await blockNote(page, "List.md", "# List\n\n- one\n  - child\n- two\n- three\n");
-  await editor.getByText("one", { exact: true }).hover();
+  await editor.locator(".cm-line", { hasText: "one" }).hover();
   const handle = page.getByRole("button", { name: "Move block", exact: true });
   await handle.focus();
   await handle.press("ArrowDown");
@@ -966,6 +974,7 @@ test("+ opens the slash menu on a new paragraph; Escape takes it away again", as
   await page.getByRole("button", { name: "Add a block below", exact: true }).click();
   await expect(menu).toBeVisible();
   await page.keyboard.type("quote");
+  await expect(menu.locator("li[aria-selected]")).toContainText("Quote");
   await page.keyboard.press("Enter");
   await page.keyboard.type("Quoted");
   await expect.poll(() => readMockFile(page, "Plus.md")).toBe("# Plus\n\nFirst.\n\n> Quoted\n\nLast.\n");

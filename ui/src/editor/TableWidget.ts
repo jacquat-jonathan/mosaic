@@ -10,7 +10,6 @@ import { MIN_COLUMN_WIDTH, resizeTableColumn, loadTableWidths, saveTableWidths, 
 import {
   deleteColumn,
   deleteRow,
-  formatTable,
   insertColumn,
   insertRow,
   parseTable,
@@ -20,7 +19,9 @@ import {
   moveRow,
   moveColumn,
   type TableModel,
+  updateTable,
 } from "./tableEdit";
+import { textChanges } from "./textDiff";
 import { cellMarkdown, renderCellMarkdown } from "./tableCell";
 import { editTableSource } from "./tableSource";
 import { editorScope, editorButton } from "./designSystemDom";
@@ -421,7 +422,7 @@ export class TableWidget extends WidgetType {
       }
       const start = from();
       structural = next.header.length !== model.header.length || next.rows.length !== model.rows.length;
-      const insert = formatTable(next);
+      const insert = updateTable(source, next);
       if (insert === source) {
         if (focus) focusCell(cellAt(focus.row, focus.col));
         return;
@@ -438,7 +439,8 @@ export class TableWidget extends WidgetType {
       if (focus) tableFocus.set(view, { from: start, ...focus });
       else tableFocus.delete(view);
       view.dispatch({
-        changes: { from: start, to: start + source.length, insert },
+        // Only the changed cells and lines, so undo, other selections and outside edits map cleanly.
+        changes: textChanges(source, insert).map((c) => ({ from: start + c.from, to: start + c.to, insert: c.insert })),
         annotations: [
           Transaction.userEvent.of(focus ? "input.table" : "input.type"),
           ...(focus ? [isolateHistory.of("full")] : []),
@@ -533,7 +535,7 @@ export class TableWidget extends WidgetType {
         e.preventDefault();
         const start = from();
         const t = typed();
-        const length = unchanged(t) ? source.length : formatTable(t).length;
+        const length = unchanged(t) ? source.length : updateTable(source, t).length;
         commit(t);
         view.dispatch({ selection: { anchor: Math.min(view.state.doc.length, start + length + 1) } });
         view.focus();

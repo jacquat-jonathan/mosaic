@@ -199,6 +199,12 @@ test("table widget edits cells, opens its menu and exposes add controls", async 
   expect(addView.dispatch).toHaveBeenCalled();
 });
 
+/** The table text after a dispatched table edit (the widget sits at position 0 of the fake view). */
+function applied(source: string, spec: unknown) {
+  const changes = (spec as { changes: { from: number; to: number; insert: string }[] }).changes;
+  return [...changes].reverse().reduce((s, c) => s.slice(0, c.from) + c.insert + s.slice(c.to), source);
+}
+
 test("table toolbar preserves drafts on alignment, spreadsheet paste grows the table, and read-only tables hide editing", async () => {
   const view = fakeView();
   const widget = new TableWidget("| A | B |\n| --- | --- |\n| one | two |\n");
@@ -210,9 +216,9 @@ test("table toolbar preserves drafts on alignment, spreadsheet paste grows the t
   cell.innerHTML = "<strong>draft</strong>";
   cell.dispatchEvent(new InputEvent("input", { bubbles: true }));
   expect(view.dispatch).toHaveBeenCalledTimes(1);
-  new TableWidget(
-    (vi.mocked(view.dispatch).mock.calls[0][0] as { changes: { insert: string } }).changes.insert,
-  ).updateDOM(dom);
+  const drafted = applied("| A | B |\n| --- | --- |\n| one | two |\n", vi.mocked(view.dispatch).mock.calls[0][0]);
+  expect(drafted).toBe("| A | B |\n| --- | --- |\n| **draft** | two |\n");
+  new TableWidget(drafted).updateDOM(dom);
   vi.mocked(view.dispatch).mockClear();
   const align = dom.querySelector<HTMLSelectElement>('[aria-label="Column alignment"]')!;
   align.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
@@ -221,9 +227,9 @@ test("table toolbar preserves drafts on alignment, spreadsheet paste grows the t
   expect(view.dispatch).not.toHaveBeenCalled();
   align.value = "right";
   align.dispatchEvent(new Event("change", { bubbles: true }));
-  expect(vi.mocked(view.dispatch).mock.calls[0][0]).toMatchObject({
-    changes: { insert: expect.stringContaining("**draft**") },
-  });
+  expect(applied(drafted, vi.mocked(view.dispatch).mock.calls[0][0])).toBe(
+    "| A | B |\n| --: | --- |\n| **draft** | two |\n",
+  );
   widget.destroy(dom);
 
   const pasteView = fakeView();
@@ -235,9 +241,9 @@ test("table toolbar preserves drafts on alignment, spreadsheet paste grows the t
   Object.defineProperty(event, "clipboardData", { value: { getData: () => "left\tright\nnext\trow\n" } });
   pasteDom.querySelector("td")!.dispatchEvent(event);
   expect(event.defaultPrevented).toBe(true);
-  expect(vi.mocked(pasteView.dispatch).mock.calls[0][0]).toMatchObject({
-    changes: { insert: expect.stringContaining("right") },
-  });
+  expect(applied("| A |\n| --- |\n| one |\n", vi.mocked(pasteView.dispatch).mock.calls[0][0])).toBe(
+    "| A    |       |\n| ---- | ----- |\n| left | right |\n| next | row   |\n",
+  );
   paste.destroy(pasteDom);
 
   const readonly = fakeView(EditorState.create({ doc: "", extensions: [EditorState.readOnly.of(true)] }));

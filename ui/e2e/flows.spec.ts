@@ -994,3 +994,31 @@ test("a table is a block too: its handle shows beside it", async ({ page }) => {
   await page.locator(".cm-table-wrap td").first().hover();
   await expect(page.getByRole("button", { name: "Move block", exact: true })).toBeVisible();
 });
+
+test("the table toolbar works where clicked buttons don't take focus (macOS WebKit)", async ({ page }) => {
+  // As in Safari and the macOS app: pressing a button or select doesn't focus it; focus just leaves.
+  await page.addInitScript(() =>
+    window.addEventListener("mousedown", (event) => {
+      const target = (event.target as HTMLElement).closest?.("button, select");
+      if (!target || event.defaultPrevented) return;
+      event.preventDefault();
+      (document.activeElement as HTMLElement | null)?.blur?.();
+    }),
+  );
+  await openVault(page);
+  await page.evaluate(async () => {
+    const m = (window as unknown as { __mosaic: { mockInvoke(c: string, a: object): Promise<unknown> } }).__mosaic;
+    await m.mockInvoke("create_file", {
+      path: "Mac table.md",
+      content: "# Mac table\n\n| a | b |\n| --- | --- |\n| 1 | 2 |\n\nAfter.\n",
+      root: null,
+    });
+  });
+  await openMockPath(page, "Mac table.md");
+  await page.locator(".cm-table-wrap td").first().click();
+  const toolbar = page.getByRole("group", { name: "Table editing", exact: true });
+  await toolbar.getByRole("button", { name: "Distribute columns", exact: true }).click();
+  await expect.poll(() => readMockFile(page, "Mac table.md")).toContain("<!-- widths 50 50 -->");
+  await toolbar.getByRole("button", { name: "Markdown", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Back to table", exact: true })).toBeVisible();
+});

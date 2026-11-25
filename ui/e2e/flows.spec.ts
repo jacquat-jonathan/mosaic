@@ -696,7 +696,9 @@ test("tables keep rich cells, save while typing, reorder with handles, and offer
   await expect(table.locator("td strong,td b")).toContainText("Apple");
 });
 
-test("columns move onto adjacent handles and resize beyond the pane with local scrolling", async ({ page }) => {
+test("columns move onto adjacent handles; resizing stays within the page and is saved in the note", async ({
+  page,
+}) => {
   await openVault(page);
   await page.evaluate(async () => {
     const m = (window as unknown as { __mosaic: { mockInvoke(c: string, a: object): Promise<unknown> } }).__mosaic;
@@ -713,20 +715,27 @@ test("columns move onto adjacent handles and resize beyond the pane with local s
     .dragTo(table.getByRole("button", { name: "Column 2 options", exact: true }));
   await expect(table.locator("th")).toHaveText(["Qty", "Name", "Owner"]);
   await expect(table.locator("td")).toHaveText(["3", "Apple", "Sam"]);
+  // The table spans the editor: as wide as its scroller, never wider.
+  const scroll = table.locator(".cm-table-scroll");
+  const fits = () => scroll.evaluate((el) => el.scrollWidth - el.clientWidth);
+  await expect.poll(fits).toBeLessThanOrEqual(1);
   const resize = table.getByRole("separator", { name: "Resize column 2", exact: true });
   const before = Number(await resize.getAttribute("aria-valuenow"));
-  // Keyboard growth must remain possible after the table fills its pane.
   await resize.focus();
   for (let i = 0; i < 30; i++) await resize.press("Shift+ArrowRight");
-  expect(Number(await resize.getAttribute("aria-valuenow"))).toBeGreaterThan(before + 1000);
-  const scroll = table.locator(".cm-table-scroll");
-  await expect.poll(() => scroll.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeGreaterThan(400);
-  await scroll.evaluate((el) => {
-    el.scrollLeft = el.scrollWidth;
-  });
+  // Column 2 grew at column 3's expense; the table didn't.
+  expect(Number(await resize.getAttribute("aria-valuenow"))).toBeGreaterThan(before + 10);
+  await expect.poll(fits).toBeLessThanOrEqual(1);
   await expect(table.getByRole("button", { name: "Column 3 options", exact: true })).toBeInViewport();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-  await expect.poll(() => readMockFile(page, "Wide table.md")).toMatch(/\| Qty\s*\| Name\s*\| Owner\s*\|/);
+  // Widths travel with the note, as a comment directly above the table, hidden in the editor.
+  await expect
+    .poll(() => readMockFile(page, "Wide table.md"))
+    .toMatch(/\n<!-- widths \d+ \d+ \d+ -->\n\| Qty\s*\| Name\s*\| Owner\s*\|/);
+  await expect(page.locator(".cm-content")).not.toContainText("widths");
+  // A narrower window reflows the table instead of overflowing.
+  await page.setViewportSize({ width: 700, height: 800 });
+  await expect.poll(fits).toBeLessThanOrEqual(1);
   // A cell's context menu stays short; structural commands live one level down.
   await table.locator("td").last().click({ button: "right" });
   const menu = page.getByRole("menu");

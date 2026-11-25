@@ -884,12 +884,6 @@ button.secondary {
   padding: 6px 0 2px;
   cursor: text;
 }
-.cm-table-inner {
-  display: inline-grid;
-  grid-template-columns: auto 18px;
-  gap: 4px;
-  max-width: 100%;
-}
 .cm-table-wrap th,
 .cm-table-wrap td {
   min-width: 3em;
@@ -905,7 +899,10 @@ button.secondary {
 .cm-table-wrap:focus-within .table-add {
   opacity: 1;
 }
+/* Tables always span the editor's width and wrap their text; they never scroll sideways.
+   Saved widths (a <!-- widths --> comment above the table) switch to fixed percentages. */
 .cm-table-wrap table {
+  width: 100%;
   border-collapse: collapse;
   font-size: 14.5px;
 }
@@ -913,6 +910,8 @@ button.secondary {
 .cm-table-wrap td {
   border: 1px solid var(--border);
   padding: 5px 12px;
+  overflow-wrap: anywhere;
+  vertical-align: top;
 }
 .cm-table-wrap th {
   background: var(--bg-side);
@@ -2736,17 +2735,11 @@ textarea:focus-visible {
   text-align: left;
 }
 
-/* Per-note table widths are presentation preferences, outside Markdown. */
-.cm-table-inner {
-  position: relative;
-  max-width: none;
-}
 .cm-table-wrap table.resized {
   table-layout: fixed;
 }
 .cm-table-wrap table.resized th,
 .cm-table-wrap table.resized td {
-  overflow-wrap: anywhere;
   min-width: 0;
   box-sizing: border-box;
 }
@@ -2762,6 +2755,7 @@ textarea:focus-visible {
   z-index: 2;
 }
 .table-resize:hover,
+.table-resize.dragging,
 .table-resize:focus-visible {
   background: var(--accent);
   opacity: 0.55;
@@ -4105,7 +4099,10 @@ pre.template-preview {
 
 /* Tables stay visual while typing. Handles own structure; cells own text. */
 .cm-table-inner {
-  display: inline-block;
+  position: relative;
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
   padding: 26px 10px 10px 26px;
 }
 .cm-table-wrap {

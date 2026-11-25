@@ -924,6 +924,9 @@ async function blockNote(page: Page, file: string, content: string) {
 test("every block has a + and a drag handle; dragging moves it and keeps the note's shape", async ({ page }) => {
   const editor = await blockNote(page, "Blocks.md", "# Blocks\n\nFirst para.\n\nSecond para.\n\nThird para.\n");
   const handle = page.getByRole("button", { name: "Move block", exact: true });
+  // Nothing shows until a block is hovered.
+  await page.mouse.move(1, 1);
+  await expect(handle).toBeHidden();
   await editor.getByText("First para.").hover();
   await expect(handle).toBeVisible();
   await expect(page.getByRole("button", { name: "Add a block below", exact: true })).toBeVisible();

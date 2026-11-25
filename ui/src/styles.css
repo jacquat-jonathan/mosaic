@@ -571,6 +571,10 @@ button.secondary {
   gap: 2px;
   height: 24px;
 }
+.cm-block-actions[hidden],
+.cm-block-drop[hidden] {
+  display: none;
+}
 .cm-block-add,
 .cm-block-handle {
   height: 24px;

@@ -55,6 +55,8 @@ const callout: RendererExtension = {
   name: "blockquote",
   renderer(token) {
     const quote = token as Tokens.Blockquote;
+    // A quote inside a quote stays a quote, as in the editor.
+    if ((quote as Tokens.Blockquote & { nested?: boolean }).nested) return false;
     const header = parseCalloutHeader(quote.raw.split("\n", 1)[0]);
     if (!header) return false;
     // The header shares its paragraph with any body lines right below it: cut its line off and
@@ -62,8 +64,11 @@ const callout: RendererExtension = {
     const newline = quote.text.indexOf("\n");
     const body = newline < 0 ? "" : quote.text.slice(newline + 1);
     const style = CALLOUT_KINDS[header.kind];
-    const title = header.title ? marked.parseInline(header.title, { async: false }) : escapeText(header.defaultTitle);
-    const inner = body.trim() ? this.parser.parse(marked.lexer(body)) : "";
+    const breaks = this.parser.options.breaks;
+    const title = header.title
+      ? marked.parseInline(header.title, { async: false, breaks })
+      : escapeText(header.defaultTitle);
+    const inner = body.trim() ? this.parser.parse(marked.lexer(body, { breaks })) : "";
     return (
       `<div class="callout callout-${header.kind}" data-callout="${escapeAttr(header.type)}">` +
       `<div class="callout-title"><span class="callout-icon" aria-hidden="true">${escapeText(style.icon)}</span>` +
@@ -72,7 +77,16 @@ const callout: RendererExtension = {
   },
 };
 
-const marked = new Marked({ gfm: true, breaks: false, extensions: [mathBlock, mathInline, highlight, callout] });
+const marked = new Marked({
+  gfm: true,
+  breaks: false,
+  extensions: [mathBlock, mathInline, highlight, callout],
+  walkTokens(token) {
+    if (token.type !== "blockquote") return;
+    for (const child of (token as Tokens.Blockquote).tokens)
+      if (child.type === "blockquote") (child as Tokens.Blockquote & { nested?: boolean }).nested = true;
+  },
+});
 
 function withWikiLinks(src: string, resolve?: (target: string) => string | null): string {
   return src.replace(/(!?)\[\[([^[\]\n]+?)\]\]/g, (_m, bang: string, inner: string) => {

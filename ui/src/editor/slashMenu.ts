@@ -1,4 +1,4 @@
-import type { CompletionContext, CompletionResult, Completion } from "@codemirror/autocomplete";
+import type { Completion, CompletionContext, CompletionResult, CompletionSection } from "@codemirror/autocomplete";
 import type { EditorView } from "@codemirror/view";
 import { syntaxTree } from "@codemirror/language";
 
@@ -183,6 +183,11 @@ export const insertions: Insertion[] = [
   },
 ];
 
+/** Groups in menu order (plain-string sections would be sorted by name). */
+export const sections: Record<string, CompletionSection> = Object.fromEntries(
+  ["Basic", "Panels", "Blocks", "Links & media"].map((name, rank) => [name, { name, rank }]),
+);
+
 /** A slash at the start of an otherwise empty block opens the insertion menu. */
 export function slashCompletion(ctx: CompletionContext): CompletionResult | null {
   if (ctx.state.readOnly || !ctx.state.selection.main.empty) return null;
@@ -209,7 +214,7 @@ export function slashCompletion(ctx: CompletionContext): CompletionResult | null
     options: insertions.map((item) => ({
       label: item.label,
       detail: item.detail,
-      section: item.group,
+      section: sections[item.group] ?? item.group,
       type: `mosaic-slash:${item.icon}`,
       hint: item.hint,
       apply(view: EditorView, _completion: Completion, _from: number, to: number) {

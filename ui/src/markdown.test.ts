@@ -55,3 +55,9 @@ test("plain quotes stay quotes, and panel titles are sanitised", () => {
   expect(html).toContain("callout-custom");
   expect(html).not.toContain("onerror");
 });
+
+test("a callout nested in a quote stays a quote, as in the editor", () => {
+  const html = markdownToHtml("> Outer\n>\n> > [!info] Inner\n> > text\n");
+  expect(html).not.toContain("callout");
+  expect(html.match(/<blockquote>/g)).toHaveLength(2);
+});

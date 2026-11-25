@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 import { EditorState, type TransactionSpec } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
-import { CompletionContext } from "@codemirror/autocomplete";
+import { CompletionContext, type CompletionSection } from "@codemirror/autocomplete";
 import { markdown } from "@codemirror/lang-markdown";
 import { slashCompletion } from "./slashMenu";
 
@@ -28,9 +28,11 @@ test("slash commands are grouped and include the agreed text, block, link and me
   expect(options.map((option) => option.label)).toEqual(
     expect.arrayContaining(["Info panel", "Custom panel", "Math block", "Wikilink", "Web link", "Embed file"]),
   );
-  expect(new Set(options.map((option) => option.section))).toEqual(
-    new Set(["Basic", "Panels", "Blocks", "Links & media"]),
+  // Sections carry a rank, so the menu shows them in this order rather than alphabetically.
+  const ranked = [...new Set(options.map((option) => option.section as CompletionSection))].sort(
+    (a, b) => Number(a.rank ?? 0) - Number(b.rank ?? 0),
   );
+  expect(ranked.map((section) => section.name)).toEqual(["Basic", "Panels", "Blocks", "Links & media"]);
   expect(options.every((option) => option.type?.startsWith("mosaic-slash:"))).toBe(true);
 });
 

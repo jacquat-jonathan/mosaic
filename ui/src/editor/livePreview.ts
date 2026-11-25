@@ -21,6 +21,7 @@ import { outlineNumber } from "./outline";
 import { MATH_INLINE_RE } from "../markdown";
 import {
   BulletWidget,
+  CalloutMarkerWidget,
   OutlineNumberWidget,
   CanvasEmbedWidget,
   CheckboxWidget,
@@ -39,6 +40,7 @@ import { PdfViewer } from "../viewers/PdfViewer";
 import { editTableSource, tableSource, TableSourceButton } from "./tableSource";
 import { focusTableAtSelection } from "./TableWidget";
 import { parseWidths } from "./tableWidths";
+import { CALLOUT_KINDS, parseCalloutHeader } from "../callouts";
 
 const hide = Decoration.replace({});
 const mark = (cls: string, attrs?: Record<string, string>) => Decoration.mark({ class: cls, attributes: attrs });
@@ -329,9 +331,38 @@ function buildInline(state: EditorState, blocks: Blocks, rangeFrom: number, rang
           code.push({ from, to });
           out.push(mark("cm-link", { "data-href": doc.sliceString(from, to).replace(/^<|>$/g, "") }).range(from, to));
           return false;
-        case "Blockquote":
-          lines(from, to, "cm-quote");
+        case "Blockquote": {
+          const first = doc.lineAt(from);
+          const header = ref.node.parent?.name === "Blockquote" ? null : parseCalloutHeader(first.text);
+          if (!header) {
+            lines(from, to, "cm-quote");
+            break;
+          }
+          // A panel: every line is part of one tinted box; the `[!type]` marker becomes its icon.
+          const last = doc.lineAt(to > from && doc.lineAt(to).from === to ? to - 1 : to);
+          for (let n = first.number; n <= last.number; n++) {
+            const l = doc.line(n);
+            if (l.to < from0 || l.from > to0) continue;
+            let cls = `cm-callout cm-callout-${header.kind}`;
+            if (n === first.number) cls += " cm-callout-first";
+            if (n === last.number) cls += " cm-callout-last";
+            out.push(line(cls).range(l.from));
+          }
+          const markerFrom = first.from + header.markerFrom;
+          const markerTo = first.from + header.markerTo;
+          // Only the marker itself reveals its source, so typing the title or body never moves the line.
+          if (!selectionTouches(state, markerFrom, markerTo)) {
+            const style = CALLOUT_KINDS[header.kind];
+            const widget = new CalloutMarkerWidget(
+              header.kind,
+              style.icon,
+              header.defaultTitle,
+              header.title ? "" : header.defaultTitle,
+            );
+            out.push(Decoration.replace({ widget }).range(markerFrom, markerTo));
+          }
           break;
+        }
         case "QuoteMark":
           if (!lineTouches(state, from)) {
             const after = doc.sliceString(to, to + 1) === " " ? to + 1 : to;

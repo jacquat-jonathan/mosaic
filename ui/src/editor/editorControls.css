@@ -96,7 +96,7 @@
 .mosaic-ds.note-editor-controls .cm-tooltip-autocomplete ul li[aria-selected] {
   background: var(--mds-surface-selected) !important;
 }
-.mosaic-ds.note-editor-controls :is(.cm-completionDetail, .cm-slash-detail) {
+.mosaic-ds.note-editor-controls :is(.cm-completionDetail, .cm-slash-hint) {
   color: var(--mds-text-muted);
   font-size: var(--mds-text-small);
 }

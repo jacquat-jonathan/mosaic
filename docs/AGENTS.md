@@ -125,6 +125,10 @@ still apply. Unknown placeholders are preserved; supported ones are `{{title}}`,
   `<!-- widths 20 30 50 -->`: one whole percentage per column, adding up to 100. Keep it with its
   table when you move the table. After adding or removing a column you may delete it (the table then
   uses automatic widths); a comment whose count doesn't match the table is ignored.
+- Panels are callouts: `> [!info] Optional title` on the first line, then `> body` lines (any
+  Markdown). Types `info`, `note`, `success`, `warning`, `error` and `decision` get their own colour
+  and icon; GitHub alerts (`[!NOTE]`, `[!WARNING]`…) and Obsidian names (`tip`, `danger`…) work too.
+  `> [!custom] 🚀 Title` (or any other type) is a neutral panel showing its title.
 - Math: `$inline$` and `$$` blocks (KaTeX).
 - Diagrams and charts inside notes, as fenced code blocks:
   - ` ```mermaid ` — flowcharts, sequence, class, ER, state, Gantt, mindmaps…

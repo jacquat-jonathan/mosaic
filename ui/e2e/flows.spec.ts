@@ -995,6 +995,26 @@ test("a table is a block too: its handle shows beside it", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Move block", exact: true })).toBeVisible();
 });
 
+test("the slash menu inserts a panel, which renders with its colour and icon", async ({ page }) => {
+  const editor = await blockNote(page, "Panel.md", "# Panel\n\nFirst.\n");
+  await editor.getByText("First.").click();
+  await page.keyboard.press("End");
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("/warn");
+  const menu = page.locator(".cm-slash-menu");
+  await expect(menu.locator("li[aria-selected]")).toContainText("Warning panel");
+  await expect(menu.locator("li[aria-selected] .cm-slash-hint")).toHaveText("> [!warning]");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("Mind the gap");
+  await expect.poll(() => readMockFile(page, "Panel.md")).toBe("# Panel\n\nFirst.\n\n> [!warning]\n> Mind the gap\n");
+  const panel = editor.locator(".cm-callout-warning");
+  await expect(panel).toHaveCount(2);
+  await expect(editor.locator(".cm-callout-icon")).toHaveAttribute("aria-label", "Warning");
+  await expect(editor.locator(".cm-callout-default-title")).toHaveText("Warning");
+  await expect(editor).not.toContainText("[!warning]");
+});
+
 test("the table toolbar works where clicked buttons don't take focus (macOS WebKit)", async ({ page }) => {
   // As in Safari and the macOS app: pressing a button or select doesn't focus it; focus just leaves.
   await page.addInitScript(() =>

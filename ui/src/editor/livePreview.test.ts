@@ -152,3 +152,50 @@ plain code
     }
   },
 );
+
+test("a callout renders as a panel; its marker shows as an icon unless the caret is on the marker", () => {
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      disconnect() {}
+    },
+  );
+  vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() }));
+  const context = {
+    path: "Panel.md",
+    resolve: vi.fn(() => null),
+    linkCandidates: vi.fn(() => []),
+  } as unknown as EditorContext;
+  const doc = "Intro\n\n> [!warning] Mind the gap\n> Body line\n\n> Plain quote\n";
+  const parent = document.body.appendChild(document.createElement("div"));
+  const view = new EditorView({
+    parent,
+    state: EditorState.create({
+      doc,
+      selection: { anchor: doc.indexOf("Body") + 2 },
+      extensions: [editorContext.of(context), markdown({ base: markdownLanguage }), livePreview()],
+    }),
+  });
+  try {
+    forceParsing(view, doc.length, 1000);
+    const panel = [...parent.querySelectorAll(".cm-callout")];
+    expect(panel).toHaveLength(2);
+    expect(panel[0].className).toContain("cm-callout-warning");
+    expect(panel[0].className).toContain("cm-callout-first");
+    expect(panel[1].className).toContain("cm-callout-last");
+    // The caret on the body (or on the title) leaves the marker rendered: the line doesn't change.
+    expect(parent.querySelector(".cm-callout-icon")?.getAttribute("aria-label")).toBe("Warning");
+    expect(panel[0].textContent).not.toContain("[!warning]");
+    view.dispatch({ selection: { anchor: doc.indexOf("Mind") + 1 } });
+    expect(parent.querySelector(".cm-callout-icon")).toBeTruthy();
+    // On the marker itself, its source shows for editing.
+    view.dispatch({ selection: { anchor: doc.indexOf("[!warning]") + 3 } });
+    expect(parent.querySelector(".cm-callout-icon")).toBeNull();
+    expect(parent.querySelector(".cm-callout-first")?.textContent).toContain("[!warning]");
+    // A plain quote stays a quote.
+    expect(parent.querySelector(".cm-quote")?.textContent).toContain("Plain quote");
+  } finally {
+    view.destroy();
+  }
+});

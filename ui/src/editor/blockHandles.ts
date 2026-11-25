@@ -19,8 +19,8 @@ import "./editorControls.css";
 
 const BLOCK_MIME = "application/x-mosaic-block";
 const HIDE_DELAY = 250;
-/** Width of a table's row-handle gutter (`.cm-table-inner` left padding). */
-const TABLE_GUTTER = 26;
+/** How far left of the text a table's buttons start, so they end just inside its handle corner. */
+const TABLE_CORNER = 44;
 
 /** Applies a move as the smallest change, as one undo step, with the caret `offset` into the moved block. */
 function applyMove(view: EditorView, source: Block, gap: number, offset = 0): number | null {
@@ -177,10 +177,15 @@ class BlockHandles {
     const indent = /^[ \t]*/.exec(line.text)?.[0].length ?? 0;
     const at = view.coordsAtPos(line.from + indent, 1);
     const lineTop = view.lineBlockAt(block.from).top + view.documentTop;
-    const top = at ? (at.top + at.bottom) / 2 - 12 : lineTop + 4;
-    // A table keeps its own row handles in the gutter, so its block handle goes further out.
-    const gutter = block.kind === "Table" ? 48 + TABLE_GUTTER : 48;
-    const left = Math.max(scroller.left + 2, (at && indent ? at.left : this.textLeft()) - gutter);
+    let top = at ? (at.top + at.bottom) / 2 - 12 : lineTop + 4;
+    let left = (at && indent ? at.left : this.textLeft()) - 48;
+    if (block.kind === "Table") {
+      // A table keeps its row handles in the left gutter and its column handles along the top:
+      // the block's buttons go in the free corner above the row handles.
+      top = lineTop + 1;
+      left = this.textLeft() - TABLE_CORNER;
+    }
+    left = Math.max(scroller.left + 2, left);
     this.overlay.style.top = `${top - scroller.top + view.scrollDOM.scrollTop}px`;
     this.overlay.style.left = `${left - scroller.left + view.scrollDOM.scrollLeft}px`;
     this.overlay.hidden = false;

@@ -121,6 +121,10 @@ still apply. Unknown placeholders are preserved; supported ones are `{{title}}`,
   comment before a trailing `^block-id`. Queries expose `workflow`, e.g.
   `task:open workflow=blocked show:workflow,due`. Calendar and query task labels omit the comment.
   Changing a card's state keeps its parent/nesting; completing a parent doesn't complete its subtasks.
+- Tables: GFM pipe tables. Mosaic may put a widths comment on the line directly above a table,
+  `<!-- widths 20 30 50 -->`: one whole percentage per column, adding up to 100. Keep it with its
+  table when you move the table. After adding or removing a column you may delete it (the table then
+  uses automatic widths); a comment whose count doesn't match the table is ignored.
 - Math: `$inline$` and `$$` blocks (KaTeX).
 - Diagrams and charts inside notes, as fenced code blocks:
   - ` ```mermaid ` — flowcharts, sequence, class, ER, state, Gantt, mindmaps…

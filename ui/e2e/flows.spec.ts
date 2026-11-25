@@ -820,7 +820,8 @@ test("a cell's chevron menu and shortcuts add, clear and delete, and the floatin
   expect((await page.locator(".cm-content").boundingBox())!.y).toBe(before!.y);
   const chevron = table.getByRole("button", { name: "Cell options", exact: true });
   await chevron.click();
-  await page.getByRole("menuitem", { name: "Add column right", exact: true }).click();
+  // The item's name includes its shortcut hint (⌃⌥→).
+  await page.getByRole("menuitem", { name: /^Add column right/ }).click();
   await expect(table.locator("th")).toHaveCount(3);
   await expect(table.locator("td").nth(1)).toBeFocused();
   await page.keyboard.press("Control+Alt+ArrowDown");

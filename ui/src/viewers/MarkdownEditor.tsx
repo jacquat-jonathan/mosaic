@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { setNoteView } from "../editor/noteViews";
-import type { EditorView } from "@codemirror/view";
+import { EditorView } from "@codemirror/view";
+import { NoteToolbar } from "../editor/NoteToolbar";
+import { toolbarState, type ToolbarState } from "../editor/formatCommands";
 import { CodeMirror } from "../editor/CodeMirror";
 import { markdownExtensions } from "../editor/setup";
 import { refreshPreview, FRONTMATTER_RE } from "../editor/livePreview";
@@ -134,8 +136,18 @@ export function MarkdownEditor({ buffer }: { buffer: Buffer }) {
   const path = buffer.path;
   const readOnly = (buffer.content?.length ?? 0) > LARGE_FILE_BYTES;
   const view = useRef<EditorView | null>(null);
+  const [toolbarView, setToolbarView] = useState<EditorView | null>(null);
+  const [toolbar, setToolbar] = useState<ToolbarState>({ block: 0, list: null });
   const extensions = useMemo(
-    () => markdownExtensions(editorContextFor(path), (text) => useWorkspace.getState().edit(path, text), readOnly),
+    () => [
+      markdownExtensions(editorContextFor(path), (text) => useWorkspace.getState().edit(path, text), readOnly),
+      // The toolbar shows the caret line's text style and list kind.
+      EditorView.updateListener.of((update) => {
+        if (!update.docChanged && !update.selectionSet) return;
+        const next = toolbarState(update.state);
+        setToolbar((current) => (current.block === next.block && current.list === next.list ? current : next));
+      }),
+    ],
     [path, readOnly],
   );
 
@@ -152,6 +164,7 @@ export function MarkdownEditor({ buffer }: { buffer: Buffer }) {
           <Notice tone="warning">This file is larger than 5 MB and opened read-only.</Notice>
         </DesignSystemScope>
       )}
+      {!readOnly && <NoteToolbar view={toolbarView} state={toolbar} />}
       <CodeMirror
         className="md-editor"
         doc={buffer.content ?? ""}
@@ -159,6 +172,8 @@ export function MarkdownEditor({ buffer }: { buffer: Buffer }) {
         extensions={extensions}
         onView={(v) => {
           view.current = v;
+          setToolbarView(v);
+          if (v) setToolbar(toolbarState(v.state));
           setNoteView(path, v);
           // Start below the properties block so it opens rendered, like Obsidian.
           const fm = v && FRONTMATTER_RE.exec(v.state.doc.toString());

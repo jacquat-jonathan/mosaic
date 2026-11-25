@@ -1003,6 +1003,10 @@ test("the slash menu inserts a panel, which renders with its colour and icon", a
   await page.keyboard.press("Enter");
   await page.keyboard.type("/warn");
   const menu = page.locator(".cm-slash-menu");
+  // Wait for the menu to finish filtering on the last letter, and for CodeMirror's short guard against
+  // accepting an option the moment it appears.
+  await expect(menu.locator("li")).toHaveCount(1);
+  await page.waitForTimeout(150);
   await expect(menu.locator("li[aria-selected]")).toContainText("Warning panel");
   await expect(menu.locator("li[aria-selected] .cm-slash-hint")).toHaveText("> [!warning]");
   await page.keyboard.press("Enter");
@@ -1013,6 +1017,71 @@ test("the slash menu inserts a panel, which renders with its colour and icon", a
   await expect(editor.locator(".cm-callout-icon")).toHaveAttribute("aria-label", "Warning");
   await expect(editor.locator(".cm-callout-default-title")).toHaveText("Warning");
   await expect(editor).not.toContainText("[!warning]");
+});
+
+test("moving and typing in a list never shifts its lines; Home and Backspace work after hidden bullets", async ({
+  page,
+}) => {
+  const editor = await blockNote(
+    page,
+    "Steady.md",
+    "# Steady\n\n- first item\n- second item\n  - nested\n- third\n\nAfter.\n",
+  );
+  const lines = () =>
+    editor
+      .locator(".cm-line")
+      .evaluateAll((els) => els.slice(2, 6).map((l) => [l.textContent, Math.round(l.getBoundingClientRect().left)]));
+  const before = await lines();
+  expect(before.map(([text]) => text)).toEqual(["• first item", "• second item", "  ◦ nested", "• third"]);
+  await editor.getByText("After.").click();
+  for (const key of ["ArrowUp", "ArrowUp", "ArrowLeft", "ArrowLeft", "ArrowUp", "ArrowRight", "ArrowUp"]) {
+    await page.keyboard.press(key);
+    expect(await lines()).toEqual(before);
+  }
+  await page.keyboard.press("End");
+  await page.keyboard.type(` it's "quoted" *x* _y_ \`z\``);
+  await expect.poll(async () => (await lines())[1][0]).toBe('• second item it\'s "quoted" x y z');
+  // Home goes to the start of the item's text, not in front of its hidden "- ".
+  await page.keyboard.press("Home");
+  await page.keyboard.type("A ");
+  await expect.poll(() => readMockFile(page, "Steady.md")).toContain('\n- A second item it\'s "quoted" *x* _y_ `z`\n');
+  // Backspace at the start of the text removes the bullet: the text joins the item above as its next line.
+  await page.keyboard.press("Home");
+  await page.keyboard.press("Backspace");
+  await expect.poll(() => readMockFile(page, "Steady.md")).toContain("\n- first item\n  A second item");
+});
+
+test("the fixed toolbar sets text styles, marks and lists, and stays put while the note scrolls", async ({ page }) => {
+  const filler = Array.from({ length: 80 }, (_, i) => `Line ${i + 1}.`).join("\n\n");
+  const editor = await blockNote(page, "Toolbar.md", `Make this a heading\n\nSome words here\n\n${filler}\n`);
+  const toolbar = page.getByRole("toolbar", { name: "Format text" });
+  const style = toolbar.getByRole("combobox", { name: "Text style" });
+  await editor.getByText("Make this a heading").click();
+  await expect(style).toHaveValue("0");
+  await style.selectOption("2");
+  await expect.poll(() => readMockFile(page, "Toolbar.md")).toMatch(/^## Make this a heading\n/);
+  await expect(style).toHaveValue("2");
+  await style.selectOption("0");
+  await expect.poll(() => readMockFile(page, "Toolbar.md")).toMatch(/^Make this a heading\n/);
+
+  await editor.getByText("Some words here").click();
+  await page.keyboard.press("Home");
+  await page.keyboard.press("Shift+End");
+  await toolbar.getByRole("button", { name: "Strikethrough" }).click();
+  await expect.poll(() => readMockFile(page, "Toolbar.md")).toContain("\n~~Some words here~~\n");
+  await toolbar.getByRole("button", { name: "Bullet list" }).click();
+  await expect.poll(() => readMockFile(page, "Toolbar.md")).toContain("\n- ~~Some words here~~\n");
+  await expect(toolbar.getByRole("button", { name: "Bullet list" })).toHaveAttribute("aria-pressed", "true");
+  await toolbar.getByRole("button", { name: "Checklist" }).click();
+  await expect.poll(() => readMockFile(page, "Toolbar.md")).toContain("\n- [ ] ~~Some words here~~\n");
+
+  // Scroll the note well down: the toolbar stays where it is.
+  const top = await toolbar.boundingBox();
+  await editor.getByText("Some words here").hover();
+  for (let i = 0; i < 10; i++) await page.mouse.wheel(0, 400);
+  await expect.poll(() => page.locator(".md-editor .cm-scroller").evaluate((el) => el.scrollTop)).toBeGreaterThan(1000);
+  await expect(toolbar).toBeInViewport();
+  expect(await toolbar.boundingBox()).toEqual(top);
 });
 
 test("the table toolbar works where clicked buttons don't take focus (macOS WebKit)", async ({ page }) => {

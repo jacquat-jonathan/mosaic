@@ -62,9 +62,26 @@ export function selectionTouches(state: EditorState, from: number, to: number): 
   );
 }
 
+/**
+ * Whether a line's own markup (`#`, `-`, `>`, `[ ]`, `---`) shows as source. Only a caret strictly inside
+ * the marker or a selection over it does: a caret elsewhere on the line leaves the line exactly as rendered,
+ * so moving or typing in it never shifts its text.
+ */
+export function markerTouched(state: EditorState, from: number, to: number): boolean {
+  return state.selection.ranges.some((r) => (r.empty ? r.head > from && r.head < to : r.from < to && r.to > from));
+}
+
 function lineTouches(state: EditorState, pos: number): boolean {
   const l = state.doc.lineAt(pos);
   return selectionTouches(state, l.from, l.to);
+}
+
+/** How deeply a list mark is nested: 0 in a top-level list. */
+function listDepth(mark: SyntaxNode): number {
+  let depth = -1;
+  for (let n: SyntaxNode | null = mark.parent; n; n = n.parent)
+    if (n.name === "BulletList" || n.name === "OrderedList") depth++;
+  return Math.max(0, depth);
 }
 
 interface Span {
@@ -290,10 +307,10 @@ function buildInline(state: EditorState, blocks: Blocks, rangeFrom: number, rang
           break;
         case "HeaderMark": {
           const parent = node.parent?.name ?? "";
-          if (parent.startsWith("ATX") && !lineTouches(state, from)) {
-            const after = doc.sliceString(to, to + 1) === " " ? to + 1 : to;
+          const after = doc.sliceString(to, to + 1) === " " ? to + 1 : to;
+          if (parent.startsWith("ATX") && !markerTouched(state, from, after)) {
             out.push(hide.range(from, after));
-          } else if (parent.startsWith("Setext") && !lineTouches(state, from)) {
+          } else if (parent.startsWith("Setext") && !markerTouched(state, from, to)) {
             out.push(hide.range(from, to));
           }
           break;
@@ -363,25 +380,26 @@ function buildInline(state: EditorState, blocks: Blocks, rangeFrom: number, rang
           }
           break;
         }
-        case "QuoteMark":
-          if (!lineTouches(state, from)) {
-            const after = doc.sliceString(to, to + 1) === " " ? to + 1 : to;
-            out.push(hide.range(from, after));
-          }
+        case "QuoteMark": {
+          const after = doc.sliceString(to, to + 1) === " " ? to + 1 : to;
+          if (!markerTouched(state, from, after)) out.push(hide.range(from, after));
           break;
+        }
         case "HorizontalRule":
-          if (!lineTouches(state, from)) out.push(Decoration.replace({ widget: new RuleWidget() }).range(from, to));
+          if (!markerTouched(state, from, to))
+            out.push(Decoration.replace({ widget: new RuleWidget() }).range(from, to));
           break;
         case "ListMark": {
           const mk = doc.sliceString(from, to);
           const task = node.nextSibling?.name === "Task";
-          if (task && !lineTouches(state, from)) {
+          const after = doc.sliceString(to, to + 1) === " " ? to + 1 : to;
+          if (markerTouched(state, from, after)) break;
+          if (task) {
             // The task checkbox replaces the bullet.
-            const after = doc.sliceString(to, to + 1) === " " ? to + 1 : to;
             out.push(hide.range(from, after));
-          } else if (/^[-*+]$/.test(mk) && !lineTouches(state, from)) {
-            out.push(Decoration.replace({ widget: new BulletWidget() }).range(from, to));
-          } else if (/^\d+[.)]$/.test(mk) && !lineTouches(state, from)) {
+          } else if (/^[-*+]$/.test(mk)) {
+            out.push(Decoration.replace({ widget: new BulletWidget(listDepth(node)) }).range(from, to));
+          } else if (/^\d+[.)]$/.test(mk)) {
             const label = outlineNumber(node, (a, b) => doc.sliceString(a, b));
             if (label) out.push(Decoration.replace({ widget: new OutlineNumberWidget(label) }).range(from, to));
           }
@@ -389,7 +407,7 @@ function buildInline(state: EditorState, blocks: Blocks, rangeFrom: number, rang
         }
         case "TaskMarker": {
           const checked = /x/i.test(doc.sliceString(from, to));
-          if (!lineTouches(state, from)) {
+          if (!markerTouched(state, from, to)) {
             out.push(Decoration.replace({ widget: new CheckboxWidget(checked, from) }).range(from, to));
           }
           const lineEnd = doc.lineAt(from).to;
@@ -428,7 +446,7 @@ function buildInline(state: EditorState, blocks: Blocks, rangeFrom: number, rang
         case "Comment":
           if (
             /^<!--\s*mosaic:state=(new|blocked|in-progress|in-qa|done)\s*-->$/.test(doc.sliceString(from, to)) &&
-            !lineTouches(state, from)
+            !markerTouched(state, from, to)
           )
             out.push(hide.range(from, to));
           code.push({ from, to });

@@ -879,16 +879,10 @@ button.secondary {
   font-size: 14px;
 }
 .cm-table-wrap {
+  position: relative;
   max-width: 100%;
-  overflow: hidden;
   padding: 6px 0 2px;
   cursor: text;
-}
-.cm-table-inner {
-  display: inline-grid;
-  grid-template-columns: auto 18px;
-  gap: 4px;
-  max-width: 100%;
 }
 .cm-table-wrap th,
 .cm-table-wrap td {
@@ -905,34 +899,105 @@ button.secondary {
 .cm-table-wrap:focus-within .table-add {
   opacity: 1;
 }
+/* Tables always span the editor's width and wrap their text; they never scroll sideways.
+   Saved widths (a <!-- widths --> comment above the table) switch to fixed percentages. */
 .cm-table-wrap table {
+  width: 100%;
   border-collapse: collapse;
   font-size: 14.5px;
 }
 .cm-table-wrap th,
 .cm-table-wrap td {
   border: 1px solid var(--border);
-  padding: 5px 12px;
+  /* Whole words stay whole when sizing columns (the editor's lines break anywhere). */
+  word-break: normal;
+  overflow-wrap: break-word;
+  vertical-align: top;
 }
 .cm-table-wrap th {
-  background: var(--bg-side);
+  background: color-mix(in srgb, var(--fg) 7%, var(--bg));
   font-weight: 600;
+  text-align: left;
 }
+.cm-table-wrap th,
+.cm-table-wrap td {
+  padding: 8px 10px;
+  line-height: 1.6;
+}
+/* The table toolbar floats under the table while it is being edited, over the text below,
+   so focusing a table never moves the note. */
 .table-toolbar {
+  position: absolute;
+  top: calc(100% - 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
-  margin: 0 0 4px 26px;
-  padding: 6px 8px;
-  width: fit-content;
-  max-width: calc(100% - 26px);
+  justify-content: center;
+  gap: 4px;
+  padding: 4px 6px;
+  width: max-content;
+  /* May be a little wider than a narrow table, but never wider than the window. */
+  max-width: min(calc(100% + 120px), calc(100vw - 32px));
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 8px;
   background: var(--bg-side);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.25);
   font: 12px var(--font-ui);
   color: var(--muted);
-  white-space: normal;
+  white-space: nowrap;
+  visibility: hidden;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+/* Hovering keeps it shown too: in macOS WebKit a clicked button doesn't take focus, so pressing one would
+   otherwise hide the toolbar before the click lands. */
+.cm-table-wrap:focus-within > .table-toolbar,
+.table-toolbar:is(:hover, :focus-within) {
+  visibility: visible;
+  opacity: 1;
+}
+.table-notice {
+  margin: 4px 0 0;
+  font: 12px var(--font-ui);
+  color: var(--muted);
+}
+.table-toolbar-divider {
+  align-self: stretch;
+  width: 1px;
+  margin: 2px 2px;
+  background: var(--border);
+}
+.table-cell-menu {
+  position: absolute;
+  z-index: 4;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-side);
+  color: var(--muted);
+  cursor: pointer;
+}
+.table-cell-menu::before {
+  content: "";
+  display: block;
+  width: 6px;
+  height: 6px;
+  margin: 3px auto 0;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg);
+}
+.table-cell-menu:hover {
+  color: var(--fg);
+  border-color: var(--accent);
+}
+.cm-table-wrap:not(:focus-within) .table-cell-menu {
+  display: none;
 }
 .table-toolbar[hidden] {
   display: none;
@@ -946,16 +1011,6 @@ button.secondary {
   background: var(--bg-side);
   border: 1px solid var(--border);
   border-radius: 5px;
-}
-.table-position {
-  margin-right: 6px;
-  padding-right: 10px;
-  border-right: 1px solid var(--border);
-  font-size: 11px;
-}
-.table-toolbar-label {
-  color: var(--fg);
-  font-weight: 500;
 }
 .table-toolbar button[aria-label="Bold"] {
   font-weight: 700;
@@ -2736,18 +2791,13 @@ textarea:focus-visible {
   text-align: left;
 }
 
-/* Per-note table widths are presentation preferences, outside Markdown. */
-.cm-table-inner {
-  position: relative;
-  max-width: none;
-}
 .cm-table-wrap table.resized {
   table-layout: fixed;
 }
 .cm-table-wrap table.resized th,
 .cm-table-wrap table.resized td {
-  overflow-wrap: anywhere;
   min-width: 0;
+  overflow-wrap: anywhere;
   box-sizing: border-box;
 }
 .table-resize {
@@ -2762,6 +2812,7 @@ textarea:focus-visible {
   z-index: 2;
 }
 .table-resize:hover,
+.table-resize.dragging,
 .table-resize:focus-visible {
   background: var(--accent);
   opacity: 0.55;
@@ -4105,14 +4156,18 @@ pre.template-preview {
 
 /* Tables stay visual while typing. Handles own structure; cells own text. */
 .cm-table-inner {
-  display: inline-block;
+  position: relative;
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
   padding: 26px 10px 10px 26px;
 }
 .cm-table-wrap {
   padding-top: 8px;
 }
+/* The handles live in the margin, so the table lines up with the text around it. */
 .cm-table-scroll {
-  max-width: 100%;
+  margin: 0 -10px 0 -26px;
   overflow-x: auto;
 }
 .table-axis,

@@ -2,7 +2,7 @@
 import { EditorState } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
 import { act, cleanup } from "@testing-library/react";
-import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { blockRenderers } from "./blocks";
 import { editorContext, type EditorContext } from "./context";
 import {
@@ -175,7 +175,7 @@ test("table widget edits cells, opens its menu and exposes add controls", async 
   document.body.append(table);
   await Promise.resolve();
   expect(table.querySelectorAll("th,td")).toHaveLength(4);
-  expect(table.querySelectorAll('[role="separator"]')).toHaveLength(2);
+  expect(table.querySelectorAll('[role="separator"]')).toHaveLength(1);
   const cell = table.querySelector("td") as HTMLElement;
   cell.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
   cell.textContent = "changed";
@@ -199,6 +199,12 @@ test("table widget edits cells, opens its menu and exposes add controls", async 
   expect(addView.dispatch).toHaveBeenCalled();
 });
 
+/** The table text after a dispatched table edit (the widget sits at position 0 of the fake view). */
+function applied(source: string, spec: unknown) {
+  const changes = (spec as { changes: { from: number; to: number; insert: string }[] }).changes;
+  return [...changes].reverse().reduce((s, c) => s.slice(0, c.from) + c.insert + s.slice(c.to), source);
+}
+
 test("table toolbar preserves drafts on alignment, spreadsheet paste grows the table, and read-only tables hide editing", async () => {
   const view = fakeView();
   const widget = new TableWidget("| A | B |\n| --- | --- |\n| one | two |\n");
@@ -210,9 +216,9 @@ test("table toolbar preserves drafts on alignment, spreadsheet paste grows the t
   cell.innerHTML = "<strong>draft</strong>";
   cell.dispatchEvent(new InputEvent("input", { bubbles: true }));
   expect(view.dispatch).toHaveBeenCalledTimes(1);
-  new TableWidget(
-    (vi.mocked(view.dispatch).mock.calls[0][0] as { changes: { insert: string } }).changes.insert,
-  ).updateDOM(dom);
+  const drafted = applied("| A | B |\n| --- | --- |\n| one | two |\n", vi.mocked(view.dispatch).mock.calls[0][0]);
+  expect(drafted).toBe("| A | B |\n| --- | --- |\n| **draft** | two |\n");
+  new TableWidget(drafted).updateDOM(dom);
   vi.mocked(view.dispatch).mockClear();
   const align = dom.querySelector<HTMLSelectElement>('[aria-label="Column alignment"]')!;
   align.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
@@ -221,9 +227,9 @@ test("table toolbar preserves drafts on alignment, spreadsheet paste grows the t
   expect(view.dispatch).not.toHaveBeenCalled();
   align.value = "right";
   align.dispatchEvent(new Event("change", { bubbles: true }));
-  expect(vi.mocked(view.dispatch).mock.calls[0][0]).toMatchObject({
-    changes: { insert: expect.stringContaining("**draft**") },
-  });
+  expect(applied(drafted, vi.mocked(view.dispatch).mock.calls[0][0])).toBe(
+    "| A | B |\n| --: | --- |\n| **draft** | two |\n",
+  );
   widget.destroy(dom);
 
   const pasteView = fakeView();
@@ -235,9 +241,9 @@ test("table toolbar preserves drafts on alignment, spreadsheet paste grows the t
   Object.defineProperty(event, "clipboardData", { value: { getData: () => "left\tright\nnext\trow\n" } });
   pasteDom.querySelector("td")!.dispatchEvent(event);
   expect(event.defaultPrevented).toBe(true);
-  expect(vi.mocked(pasteView.dispatch).mock.calls[0][0]).toMatchObject({
-    changes: { insert: expect.stringContaining("right") },
-  });
+  expect(applied("| A |\n| --- |\n| one |\n", vi.mocked(pasteView.dispatch).mock.calls[0][0])).toBe(
+    "| A    |       |\n| ---- | ----- |\n| left | right |\n| next | row   |\n",
+  );
   paste.destroy(pasteDom);
 
   const readonly = fakeView(EditorState.create({ doc: "", extensions: [EditorState.readOnly.of(true)] }));
@@ -247,4 +253,98 @@ test("table toolbar preserves drafts on alignment, spreadsheet paste grows the t
   expect(readonlyDom.querySelector("select")).toBeNull();
   expect(readonlyDom.querySelector<HTMLElement>("td")?.contentEditable).toBe("false");
   readonlyWidget.destroy(readonlyDom);
+});
+
+describe("table widths", () => {
+  beforeEach(() => {
+    // jsdom has no layout: give the table and each cell a width.
+    vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) {
+      const width = this.matches("table") ? 1000 : this.matches("th,td") ? 500 : 0;
+      return new DOMRect(0, 0, width, 20);
+    });
+  });
+  afterEach(() => vi.restoreAllMocks());
+  const source = "| A | B |\n| --- | --- |\n| one | two |";
+  const comment = "<!-- widths 30 70 -->";
+
+  test("a widths comment sets percentage columns", async () => {
+    const dom = new TableWidget(source, comment).toDOM(fakeView());
+    document.body.append(dom);
+    await Promise.resolve();
+    expect([...dom.querySelectorAll("col")].map((c) => (c as HTMLElement).style.width)).toEqual(["30%", "70%"]);
+    expect(dom.querySelector("table")!.classList.contains("resized")).toBe(true);
+    // Only inner borders can be dragged: the table always spans the page.
+    expect(dom.querySelectorAll(".table-resize")).toHaveLength(1);
+  });
+
+  test("a comment that doesn't match the table is ignored", async () => {
+    const dom = new TableWidget(source, "<!-- widths 20 30 50 -->").toDOM(fakeView());
+    document.body.append(dom);
+    await Promise.resolve();
+    expect(dom.querySelector("table")!.classList.contains("resized")).toBe(false);
+  });
+
+  test("resizing writes the comment above the table as one change", async () => {
+    const view = fakeView();
+    const dom = new TableWidget(source, comment).toDOM(view);
+    document.body.append(dom);
+    await Promise.resolve();
+    dom
+      .querySelector(".table-resize")!
+      .dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+    expect(vi.mocked(view.dispatch).mock.calls[0][0]).toMatchObject({
+      changes: [{ from: 0, to: comment.length, insert: "<!-- widths 31 69 -->" }],
+    });
+  });
+
+  test("the first resize adds the comment; resetting removes it", async () => {
+    const view = fakeView();
+    const dom = new TableWidget(source).toDOM(view);
+    document.body.append(dom);
+    await Promise.resolve();
+    const handle = dom.querySelector(".table-resize")!;
+    handle.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+    expect(vi.mocked(view.dispatch).mock.calls[0][0]).toMatchObject({
+      changes: [{ from: 0, to: 0, insert: "<!-- widths 51 49 -->\n" }],
+    });
+
+    const view2 = fakeView();
+    const dom2 = new TableWidget(source, comment).toDOM(view2);
+    document.body.append(dom2);
+    await Promise.resolve();
+    dom2.querySelector(".table-resize")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true }));
+    expect(vi.mocked(view2.dispatch).mock.calls[0][0]).toMatchObject({
+      changes: [{ from: 0, to: comment.length + 1, insert: "" }],
+    });
+  });
+
+  test("adding a column updates the widths and the table in one change", async () => {
+    const view = fakeView();
+    const dom = new TableWidget(source, comment).toDOM(view);
+    document.body.append(dom);
+    await Promise.resolve();
+    dom
+      .querySelector<HTMLButtonElement>('[aria-label="Insert column 3"]')!
+      .dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(view.dispatch).toHaveBeenCalledTimes(1);
+    const spec = vi.mocked(view.dispatch).mock.calls[0][0] as { changes: { from: number; insert: string }[] };
+    expect(spec.changes[0]).toEqual({ from: 0, to: comment.length, insert: "<!-- widths 20 47 33 -->" });
+    // The table text itself starts after the comment line.
+    expect(spec.changes.slice(1).every((c) => c.from > comment.length)).toBe(true);
+  });
+});
+
+describe("table widths comment is never repaired behind the user's back", () => {
+  test("adding a column to a table whose comment doesn't match leaves the comment alone", async () => {
+    const view = fakeView();
+    const stale = "<!-- widths 20 30 50 -->";
+    const dom = new TableWidget("| A | B |\n| --- | --- |\n| one | two |", stale).toDOM(view);
+    document.body.append(dom);
+    await Promise.resolve();
+    dom
+      .querySelector<HTMLButtonElement>('[aria-label="Insert column 3"]')!
+      .dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    const spec = vi.mocked(view.dispatch).mock.calls[0][0] as { changes: { from: number }[] };
+    expect(spec.changes.every((c) => c.from > stale.length)).toBe(true);
+  });
 });

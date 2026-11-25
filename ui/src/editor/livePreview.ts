@@ -38,6 +38,7 @@ import { PdfViewer } from "../viewers/PdfViewer";
 
 import { editTableSource, tableSource, TableSourceButton } from "./tableSource";
 import { focusTableAtSelection } from "./TableWidget";
+import { parseWidths } from "./tableWidths";
 
 const hide = Decoration.replace({});
 const mark = (cls: string, attrs?: Record<string, string>) => Decoration.mark({ class: cls, attributes: attrs });
@@ -192,13 +193,21 @@ function buildBlocks(state: EditorState): Blocks {
           code.push({ from, to });
           const source = state.field(tableSource, false);
           if (!source || source.from !== doc.lineAt(from).from) {
-            const start = doc.lineAt(from).from;
+            const first = doc.lineAt(from);
+            const tableStart = first.from;
             const end = doc.lineAt(to).to;
+            // A `<!-- widths … -->` line directly above belongs to the table and is hidden with it.
+            const above = first.number > 1 ? doc.line(first.number - 1) : null;
+            const widths =
+              above && above.from >= bodyStart && parseWidths(above.text) && !inside(blocked, above.from, above.to)
+                ? above
+                : null;
+            const start = widths ? widths.from : tableStart;
             out.push(
-              Decoration.replace({ widget: new TableWidget(doc.sliceString(start, end)), block: true }).range(
-                start,
-                end,
-              ),
+              Decoration.replace({
+                widget: new TableWidget(doc.sliceString(tableStart, end), widths?.text ?? ""),
+                block: true,
+              }).range(start, end),
             );
             blocked.push({ from: start, to: end });
           } else {

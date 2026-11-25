@@ -1,16 +1,22 @@
 import { type EditorView, WidgetType } from "@codemirror/view";
-import { syntaxTree } from "@codemirror/language";
-import { Transaction } from "@codemirror/state";
+import { type ChangeDesc, Transaction } from "@codemirror/state";
 import { undo, redo, isolateHistory } from "@codemirror/commands";
-import { useVault } from "../state/vault";
 import { useUi, type MenuItem } from "../state/ui";
 import { treeDragActive, treeDragData } from "../dragOut";
 import { editorContext } from "./context";
-import { MIN_COLUMN_WIDTH, resizeTableColumn, loadTableWidths, saveTableWidths, tableWidthKey } from "./tableWidths";
+import {
+  MIN_COLUMN_PX,
+  deleteWidth,
+  insertWidth,
+  moveWidth,
+  parseWidths,
+  resizeBorder,
+  usableWidths,
+  widthsComment,
+} from "./tableWidths";
 import {
   deleteColumn,
   deleteRow,
-  formatTable,
   insertColumn,
   insertRow,
   parseTable,
@@ -20,17 +26,57 @@ import {
   moveRow,
   moveColumn,
   type TableModel,
+  updateTable,
 } from "./tableEdit";
+import { textChanges } from "./textDiff";
 import { cellMarkdown, renderCellMarkdown } from "./tableCell";
 import { editTableSource } from "./tableSource";
 import { editorScope, editorButton } from "./designSystemDom";
 import "./editorControls.css";
 
-const tableFocus = new WeakMap<EditorView, { from: number; row: number; col: number; caret?: "start" | "end" }>();
+/**
+ * A cell to focus once its table is drawn again. `from`–`to` is where the table's widget may now
+ * start (after a reload the exact start is ambiguous); `notice` says why it was redrawn.
+ */
+const tableFocus = new WeakMap<
+  EditorView,
+  { from: number; to?: number; row: number; col: number; caret?: "start" | "end"; notice?: string }
+>();
 const controllers = new WeakMap<
   HTMLElement,
-  { update(source: string): boolean; destroy(): void; focus(pos: number): boolean }
+  { update(source: string, widthsLine: string): boolean; destroy(): void; focus(pos: number): boolean }
 >();
+
+type TableFocus = { from: number; row: number; col: number };
+
+/** The table cell that has focus, if any, so a reload from disk can put the caret back in it. */
+export function rememberTableFocus(view: EditorView): TableFocus | null {
+  const cell = (document.activeElement as HTMLElement | null)?.closest<HTMLElement>("th, td");
+  const wrap = cell?.closest<HTMLElement>(".cm-table-wrap");
+  if (!cell || !wrap || !view.dom.contains(wrap)) return null;
+  return { from: view.posAtDOM(wrap), row: Number(cell.dataset.row), col: Number(cell.dataset.col) };
+}
+
+/**
+ * After a reload: if the table was redrawn (its text changed), focus the same cell of the new one,
+ * clamped to its size. A table whose text didn't change kept its DOM, caret included.
+ */
+export function restoreTableFocus(view: EditorView, focus: TableFocus, changes: ChangeDesc) {
+  if ((document.activeElement as HTMLElement | null)?.closest("th, td")) return;
+  const entry = {
+    from: changes.mapPos(focus.from, -1),
+    to: changes.mapPos(focus.from, 1),
+    row: focus.row,
+    col: focus.col,
+    notice: "This table was changed outside the editor.",
+  };
+  tableFocus.set(view, entry);
+  // The redrawn table claims it in a microtask queued during the reload. If the table is gone,
+  // forget it so a later table drawn there isn't focused.
+  queueMicrotask(() => {
+    if (tableFocus.get(view) === entry) tableFocus.delete(view);
+  });
+}
 
 /** Keyboard navigation into a rendered table enters its cell editor instead of revealing pipes. */
 export function focusTableAtSelection(view: EditorView) {
@@ -39,20 +85,28 @@ export function focusTableAtSelection(view: EditorView) {
     if (controllers.get(dom)?.focus(view.state.selection.main.head)) break;
 }
 
+/**
+ * A rendered GFM table. `widthsLine` is the `<!-- widths … -->` comment line directly above it, if
+ * any; the widget then covers that line too (it starts the widget's range) and keeps it up to date.
+ */
 export class TableWidget extends WidgetType {
-  constructor(readonly source: string) {
+  constructor(
+    readonly source: string,
+    readonly widthsLine = "",
+  ) {
     super();
   }
   eq(o: TableWidget) {
-    return o.source === this.source;
+    return o.source === this.source && o.widthsLine === this.widthsLine;
   }
   updateDOM(dom: HTMLElement) {
-    return controllers.get(dom)?.update(this.source) ?? false;
+    return controllers.get(dom)?.update(this.source, this.widthsLine) ?? false;
   }
   toDOM(view: EditorView) {
     const wrap = document.createElement("div");
     wrap.className = "cm-table-wrap";
     let source = this.source;
+    let widthsLine = this.widthsLine;
     let model = parseTable(source);
     let pendingSource: string | null = null;
     let structural = false;
@@ -91,11 +145,12 @@ export class TableWidget extends WidgetType {
     editorScope(toolbar);
     toolbar.setAttribute("role", "group");
     toolbar.setAttribute("aria-label", "Table editing");
-    const tableLabel = document.createElement("span");
-    tableLabel.className = "table-toolbar-label";
-    tableLabel.textContent = "Table";
-    const position = document.createElement("span");
-    position.className = "table-position";
+    // A small chevron in the corner of the cell being edited opens that cell's menu.
+    const cellMenu = document.createElement("button");
+    cellMenu.className = "table-cell-menu";
+    cellMenu.setAttribute("aria-label", "Cell options");
+    cellMenu.title = "Cell options";
+    cellMenu.hidden = true;
     const alignSelect = document.createElement("select");
     alignSelect.setAttribute("aria-label", "Column alignment");
     alignSelect.className = "mds-input";
@@ -107,8 +162,18 @@ export class TableWidget extends WidgetType {
     }
     const updateToolbar = (row: number, col: number) => {
       active = { row, col };
-      position.textContent = `${row < 0 ? "Header" : `Row ${row + 1}`} · Column ${col + 1}`;
       alignSelect.value = model.align[col] ?? "left";
+      placeCellMenu();
+    };
+    /** Puts the cell chevron in the top-right corner of the active cell. */
+    const placeCellMenu = () => {
+      const cell = cellEls[active.row + 1]?.[active.col];
+      if (!cell || view.state.readOnly) return;
+      const bounds = inner.getBoundingClientRect();
+      const rect = cell.getBoundingClientRect();
+      cellMenu.hidden = false;
+      cellMenu.style.left = `${rect.right - bounds.left - 22}px`;
+      cellMenu.style.top = `${rect.top - bounds.top + 4}px`;
     };
     const addRow = (parent: HTMLElement, cells: string[], row: number) => {
       const tr = document.createElement("tr");
@@ -198,11 +263,14 @@ export class TableWidget extends WidgetType {
     const scroll = document.createElement("div");
     scroll.className = "cm-table-scroll";
     scroll.append(inner);
-    wrap.append(toolbar, scroll);
+    wrap.append(scroll, toolbar);
 
+    /** Start of the widget: the widths comment line if there is one, else the table. */
     const from = () => view.posAtDOM(wrap);
-    let widths: number[] | null = null;
-    let widthKey = "";
+    /** Start of the table's own text. */
+    const tableFrom = () => from() + (widthsLine ? widthsLine.length + 1 : 0);
+    /** Column widths in percent, or null for automatic widths. */
+    let widths = usableWidths(parseWidths(widthsLine), model.header.length);
     const colgroup = document.createElement("colgroup");
     model.header.forEach(() => colgroup.append(document.createElement("col")));
     table.prepend(colgroup);
@@ -266,43 +334,84 @@ export class TableWidget extends WidgetType {
     scroll.addEventListener("pointerleave", clearNearby);
     scroll.addEventListener("scroll", clearNearby, { passive: true });
     const applyWidths = () => {
-      if (!widths) return;
-      const current = widths;
-      table.classList.add("resized");
-      table.style.width = `${current.reduce((a, b) => a + b, 0)}px`;
+      table.classList.toggle("resized", !!widths);
       [...colgroup.children].forEach((col, i) => {
-        (col as HTMLElement).style.width = `${current[i]}px`;
+        (col as HTMLElement).style.width = widths ? `${widths[i]}%` : "";
       });
       handles.forEach((handle, i) => {
-        handle.setAttribute("aria-valuenow", String(Math.round(current[i])));
-        handle.setAttribute("aria-valuetext", `${Math.round(current[i])} pixels`);
+        const value = widths ? Math.round(widths[i]) : Math.round(measuredWidths()[i]);
+        handle.setAttribute("aria-valuenow", String(value));
+        handle.setAttribute("aria-valuetext", `${value} percent`);
       });
       positionHandles();
+      if (wrap.contains(document.activeElement)) placeCellMenu();
     };
-    const naturalWidths = () => {
-      table.classList.remove("resized");
-      table.style.width = "max-content";
-      [...colgroup.children].forEach((col) => {
-        (col as HTMLElement).style.width = "";
-      });
-      return cellEls[0].map((cell) => Math.max(MIN_COLUMN_WIDTH, cell.getBoundingClientRect().width));
+    /** The columns' current share of the table, in percent, as laid out. */
+    const measuredWidths = () => {
+      const total = table.getBoundingClientRect().width || 1;
+      return cellEls[0].map((cell) => (cell.getBoundingClientRect().width / total) * 100);
     };
-    const resetWidths = () => {
-      widths = naturalWidths();
-      saveTableWidths(widthKey, widths);
+    const minPercent = () => (MIN_COLUMN_PX / (table.getBoundingClientRect().width || 1)) * 100;
+    /** The comment line for `next` widths, or "" to remove it. */
+    const widthsChange = (next: number[] | null) => {
+      const line = next ? widthsComment(next) : "";
+      const start = from();
+      if (line === widthsLine) return [];
+      if (!widthsLine) return [{ from: start, to: start, insert: `${line}\n` }];
+      if (!line) return [{ from: start, to: start + widthsLine.length + 1, insert: "" }];
+      return [{ from: start, to: start + widthsLine.length, insert: line }];
+    };
+    /** Writes new widths to the note as one undo step. */
+    const saveWidths = (next: number[] | null) => {
+      if (view.state.readOnly || !wrap.isConnected) return;
+      widths = next;
       applyWidths();
+      const changes = widthsChange(next);
+      if (!changes.length) return;
+      pendingWidths = next ? widthsComment(next) : "";
+      view.dispatch({
+        changes,
+        annotations: [Transaction.userEvent.of("input.table"), isolateHistory.of("full")],
+      });
     };
-    const currentWidths = () => (widths ??= naturalWidths());
+    let pendingWidths: string | null = null;
+    /** A short message under the table, e.g. why it was redrawn while being edited. */
+    const showNotice = (text: string) => {
+      const notice = document.createElement("div");
+      notice.className = "table-notice";
+      notice.setAttribute("role", "status");
+      notice.textContent = text;
+      wrap.append(notice);
+      setTimeout(() => notice.remove(), 4000);
+    };
+    /** Removes the table (and its widths comment) with the line break after it, as one undo step. */
+    const deleteTable = () => {
+      if (view.state.readOnly || !wrap.isConnected) return;
+      const start = from();
+      const doc = view.state.doc;
+      let end = tableFrom() + source.length;
+      if (doc.sliceString(end, end + 1) === "\n") end++;
+      // A blank line on both sides would leave two in a row: take the one after the table too.
+      if (doc.sliceString(start - 2, start) === "\n\n" && doc.sliceString(end, end + 1) === "\n") end++;
+      replaced = true;
+      view.dispatch({
+        changes: { from: start, to: end, insert: "" },
+        selection: { anchor: start },
+        annotations: [Transaction.userEvent.of("delete.table"), isolateHistory.of("full")],
+      });
+      view.focus();
+    };
+    const resetWidths = () => saveWidths(null);
     if (!view.state.readOnly)
-      model.header.forEach((_, col) => {
+      model.header.slice(0, -1).forEach((_, col) => {
         const handle = document.createElement("button");
         handle.className = "table-resize";
         handle.setAttribute("aria-label", `Resize column ${col + 1}`);
         handle.title = "Drag to resize · Arrow keys adjust · Double-click to reset widths";
         handle.setAttribute("role", "separator");
         handle.setAttribute("aria-orientation", "vertical");
-        handle.setAttribute("aria-valuemin", "64");
-        handle.setAttribute("aria-valuemax", String(Number.MAX_SAFE_INTEGER));
+        handle.setAttribute("aria-valuemin", "0");
+        handle.setAttribute("aria-valuemax", "100");
         let startX = 0,
           startWidths: number[] = [],
           dragging = false;
@@ -311,20 +420,22 @@ export class TableWidget extends WidgetType {
           e.preventDefault();
           e.stopPropagation();
           startX = e.clientX;
-          startWidths = [...currentWidths()];
+          startWidths = widths ?? measuredWidths();
           dragging = true;
+          handle.classList.add("dragging");
           handle.setPointerCapture(e.pointerId);
         });
         handle.addEventListener("pointermove", (e) => {
           if (!dragging) return;
-          widths = resizeTableColumn(startWidths, col, e.clientX - startX);
+          const total = table.getBoundingClientRect().width || 1;
+          widths = resizeBorder(startWidths, col, ((e.clientX - startX) / total) * 100, minPercent());
           applyWidths();
         });
         const finish = () => {
-          if (dragging) {
-            dragging = false;
-            saveTableWidths(widthKey, widths);
-          }
+          if (!dragging) return;
+          dragging = false;
+          handle.classList.remove("dragging");
+          saveWidths(widths);
         };
         handle.addEventListener("pointerup", finish);
         handle.addEventListener("pointercancel", finish);
@@ -338,28 +449,19 @@ export class TableWidget extends WidgetType {
             resetWidths();
             return;
           }
-          widths = resizeTableColumn(currentWidths(), col, (e.key === "ArrowRight" ? 1 : -1) * (e.shiftKey ? 40 : 10));
-          saveTableWidths(widthKey, widths);
-          applyWidths();
+          const step = (e.key === "ArrowRight" ? 1 : -1) * (e.shiftKey ? 5 : 1);
+          saveWidths(resizeBorder(widths ?? measuredWidths(), col, step, minPercent()));
         });
         handles.push(handle);
         inner.append(handle);
       });
-    const observer = new ResizeObserver(applyWidths);
+    const observer = new ResizeObserver(() => {
+      positionHandles();
+      if (wrap.contains(document.activeElement)) placeCellMenu();
+    });
     observer.observe(wrap);
     queueMicrotask(() => {
-      if (!wrap.isConnected) return;
-      let ordinal = 0;
-      syntaxTree(view.state).iterate({
-        to: from(),
-        enter(node) {
-          if (node.name === "Table" && node.from < from()) ordinal++;
-        },
-      });
-      widthKey = tableWidthKey(useVault.getState().vault?.root ?? "", view.state.facet(editorContext).path, ordinal);
-      widths = loadTableWidths(widthKey, model.header.length) ?? naturalWidths();
-      saveTableWidths(widthKey, widths);
-      applyWidths();
+      if (wrap.isConnected) applyWidths();
     });
     const cellAt = (row: number, col: number) => cellEls[row + 1]?.[col];
     const posOf = (el: Element) => ({
@@ -382,25 +484,21 @@ export class TableWidget extends WidgetType {
       sel?.removeAllRanges();
       sel?.addRange(range);
     };
-    const resizeColumns = (at: number, insert: boolean) => {
-      if (!widths) return;
-      if (insert) widths.splice(at, 0, 160);
-      else widths.splice(at, 1);
-      saveTableWidths(widthKey, widths);
-    };
     const unchanged = (t: TableModel) => JSON.stringify(t) === JSON.stringify(model);
     // Structural changes redraw the table; text edits retain the live DOM and caret.
     let replaced = false;
     /** Writes to the note and preserves the live cell, restoring focus after a structural redraw. */
-    const commit = (next: TableModel, focus?: { row: number; col: number }) => {
+    const commit = (next: TableModel, focus?: { row: number; col: number }, nextWidths?: number[] | null) => {
       if (view.state.readOnly || replaced || !wrap.isConnected) return;
       if (unchanged(next)) {
         if (focus) focusCell(cellAt(focus.row, focus.col));
         return;
       }
-      const start = from();
+      const start = tableFrom();
       structural = next.header.length !== model.header.length || next.rows.length !== model.rows.length;
-      const insert = formatTable(next);
+      // Widths follow columns that are added, removed or moved; stale widths are dropped.
+      if (nextWidths === undefined && widths && next.header.length !== widths.length) nextWidths = null;
+      const insert = updateTable(source, next);
       if (insert === source) {
         if (focus) focusCell(cellAt(focus.row, focus.col));
         return;
@@ -414,15 +512,21 @@ export class TableWidget extends WidgetType {
           ? current
           : null;
       pendingSource = insert;
-      if (focus) tableFocus.set(view, { from: start, ...focus });
+      if (nextWidths !== undefined) pendingWidths = nextWidths ? widthsComment(nextWidths) : "";
+      if (focus) tableFocus.set(view, { from: from(), ...focus });
       else tableFocus.delete(view);
       view.dispatch({
-        changes: { from: start, to: start + source.length, insert },
+        // Only the changed cells and lines, so undo, other selections and outside edits map cleanly.
+        changes: [
+          ...(nextWidths !== undefined ? widthsChange(nextWidths) : []),
+          ...textChanges(source, insert).map((c) => ({ from: start + c.from, to: start + c.to, insert: c.insert })),
+        ],
         annotations: [
           Transaction.userEvent.of(focus ? "input.table" : "input.type"),
           ...(focus ? [isolateHistory.of("full")] : []),
         ],
       });
+      if (nextWidths !== undefined) widths = nextWidths;
       if (structural) replaced = true;
       else if (focus) {
         tableFocus.delete(view);
@@ -501,6 +605,11 @@ export class TableWidget extends WidgetType {
         e.stopPropagation();
         tableFocus.set(view, { from: from(), row, col });
         if (!(e.shiftKey ? redo : undo)(view)) tableFocus.delete(view);
+      } else if (e.ctrlKey && e.altKey && (e.key === "ArrowRight" || e.key === "ArrowDown")) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.key === "ArrowRight") addColumnRight(row, col);
+        else addRowBelow(row, col);
       } else if (e.key === "Tab") {
         e.preventDefault();
         move(row, col, 0, e.shiftKey ? -1 : 1);
@@ -510,9 +619,9 @@ export class TableWidget extends WidgetType {
       } else if (e.key === "Escape") {
         // Back to the note, on the line after the table.
         e.preventDefault();
-        const start = from();
+        const start = tableFrom();
         const t = typed();
-        const length = unchanged(t) ? source.length : formatTable(t).length;
+        const length = unchanged(t) ? source.length : updateTable(source, t).length;
         commit(t);
         view.dispatch({ selection: { anchor: Math.min(view.state.doc.length, start + length + 1) } });
         view.focus();
@@ -530,6 +639,43 @@ export class TableWidget extends WidgetType {
       }
       if (!next || !wrap.contains(next)) commit(typed());
     });
+    const addColumnRight = (row: number, col: number) =>
+      commit(insertColumn(typed(), col + 1), { row, col: col + 1 }, widths ? insertWidth(widths, col + 1) : undefined);
+    const addRowBelow = (row: number, col: number) => commit(insertRow(typed(), row + 1), { row: row + 1, col });
+    const alignmentMenu = (col: number): MenuItem => ({
+      label: "Column alignment",
+      children: (["left", "center", "right"] as const).map((a) => ({
+        label: a[0].toUpperCase() + a.slice(1),
+        checked: (model.align[col] ?? "left") === a,
+        action: () => commit(setAlign(typed(), col, a === "left" ? null : a), { row: active.row, col }),
+      })),
+    });
+    /** The menu of the cell chevron: what Confluence offers for one cell. */
+    const cellMenuFor = (row: number, col: number): MenuItem[] => [
+      alignmentMenu(col),
+      { label: "", separator: true },
+      { label: "Add column right", shortcut: "⌃⌥→", action: () => addColumnRight(row, col) },
+      { label: "Add row below", shortcut: "⌃⌥↓", action: () => addRowBelow(row, col) },
+      { label: "", separator: true },
+      { label: "Clear cell", action: () => commit(setCell(typed(), row, col, ""), { row, col }) },
+      {
+        label: "Delete column",
+        danger: true,
+        disabled: model.header.length <= 1,
+        action: () =>
+          commit(
+            deleteColumn(typed(), col),
+            { row, col: Math.min(col, model.header.length - 2) },
+            widths ? deleteWidth(widths, col) : undefined,
+          ),
+      },
+      {
+        label: "Delete row",
+        danger: true,
+        disabled: row < 0,
+        action: () => commit(deleteRow(typed(), row), { row: Math.min(row, model.rows.length - 2), col }),
+      },
+    ];
     const menuFor = (row: number, col: number, axis?: "row" | "column"): MenuItem[] => {
       const t = () => typed();
       const at = (focus: { row: number; col: number }) => focus;
@@ -552,26 +698,27 @@ export class TableWidget extends WidgetType {
       const columns: MenuItem[] = [
         {
           label: "Insert column left",
-          action: () => {
-            resizeColumns(col, true);
-            commit(insertColumn(t(), col), at({ row, col }));
-          },
+          action: () => commit(insertColumn(t(), col), at({ row, col }), widths ? insertWidth(widths, col) : undefined),
         },
         {
           label: "Insert column right",
-          action: () => {
-            resizeColumns(col + 1, true);
-            commit(insertColumn(t(), col + 1), at({ row, col: col + 1 }));
-          },
+          action: () =>
+            commit(
+              insertColumn(t(), col + 1),
+              at({ row, col: col + 1 }),
+              widths ? insertWidth(widths, col + 1) : undefined,
+            ),
         },
         {
           label: "Delete column",
           disabled: model.header.length <= 1,
           danger: true,
-          action: () => {
-            resizeColumns(col, false);
-            commit(deleteColumn(t(), col), { row, col: Math.min(col, model.header.length - 2) });
-          },
+          action: () =>
+            commit(
+              deleteColumn(t(), col),
+              { row, col: Math.min(col, model.header.length - 2) },
+              widths ? deleteWidth(widths, col) : undefined,
+            ),
         },
         { label: "", separator: true },
         { label: "Move column left", disabled: col === 0, action: () => reorder("column", col, col - 1) },
@@ -600,7 +747,7 @@ export class TableWidget extends WidgetType {
         {
           label: "Edit as Markdown",
           action: () => {
-            const start = from();
+            const start = tableFrom();
             commit(typed());
             view.dispatch({
               effects: editTableSource.of({ from: start, to: start + source.length }),
@@ -614,12 +761,11 @@ export class TableWidget extends WidgetType {
     const reorder = (kind: "row" | "column", index: number, boundary: number) => {
       const next = kind === "row" ? moveRow(typed(), index, boundary) : moveColumn(typed(), index, boundary);
       const destination = boundary > index ? boundary - 1 : boundary;
-      if (kind === "column" && widths) {
-        const [width] = widths.splice(index, 1);
-        widths.splice(destination, 0, width);
-        saveTableWidths(widthKey, widths);
-      }
-      commit(next, kind === "row" ? { row: destination, col: active.col } : { row: active.row, col: destination });
+      commit(
+        next,
+        kind === "row" ? { row: destination, col: active.col } : { row: active.row, col: destination },
+        kind === "column" && widths ? moveWidth(widths, index, boundary) : undefined,
+      );
     };
     let dragging: { kind: "row" | "column"; index: number } | null = null;
     const clearDrop = () =>
@@ -689,10 +835,10 @@ export class TableWidget extends WidgetType {
         button.textContent = "+";
         button.addEventListener("mousedown", (event) => event.preventDefault());
         button.addEventListener("click", () => {
-          if (kind === "column") resizeColumns(index, true);
           commit(
             kind === "row" ? insertRow(typed(), index) : insertColumn(typed(), index),
             kind === "row" ? { row: index, col: active.col } : { row: active.row, col: index },
+            kind === "column" && widths ? insertWidth(widths, index) : undefined,
           );
         });
         axes.push({ el: button, kind: kind === "row" ? "insert-row" : "insert-column", index });
@@ -766,8 +912,10 @@ export class TableWidget extends WidgetType {
       const sourceButton = editorButton(document.createElement("button"));
       sourceButton.textContent = "Markdown";
       sourceButton.title = "Edit table as Markdown";
+      // Keep the cell focused (macOS WebKit doesn't focus a clicked button), so the toolbar stays up.
+      sourceButton.addEventListener("mousedown", (event) => event.preventDefault());
       sourceButton.addEventListener("click", () => {
-        const start = from();
+        const start = tableFrom();
         commit(typed());
         view.dispatch({
           effects: editTableSource.of({ from: start, to: start + source.length }),
@@ -789,7 +937,37 @@ export class TableWidget extends WidgetType {
         button.addEventListener("click", () => formatCells(command));
         formatButtons.push(button);
       }
-      toolbar.append(tableLabel, position, ...formatButtons, alignSelect, sourceButton);
+      const distribute = editorButton(document.createElement("button"));
+      distribute.textContent = "Distribute columns";
+      distribute.title = "Give every column the same width";
+      distribute.addEventListener("mousedown", (event) => event.preventDefault());
+      distribute.addEventListener("click", () => saveWidths(model.header.map(() => 100 / model.header.length)));
+      const more = editorButton(document.createElement("button"));
+      more.textContent = "⋯";
+      more.setAttribute("aria-label", "More table options");
+      more.title = "More table options";
+      more.addEventListener("mousedown", (event) => event.preventDefault());
+      more.addEventListener("click", () => {
+        const rect = more.getBoundingClientRect();
+        useUi.getState().showMenu(rect.left, rect.bottom, [
+          { label: "Automatic column widths", disabled: !widths, action: resetWidths },
+          { label: "Copy as Markdown", action: () => void navigator.clipboard?.writeText(source) },
+          { label: "", separator: true },
+          { label: "Delete table", danger: true, action: deleteTable },
+        ]);
+      });
+      const divider = () => {
+        const el = document.createElement("span");
+        el.className = "table-toolbar-divider";
+        return el;
+      };
+      toolbar.append(...formatButtons, divider(), alignSelect, distribute, divider(), sourceButton, more);
+      cellMenu.addEventListener("mousedown", (event) => event.preventDefault());
+      cellMenu.addEventListener("click", () => {
+        const rect = cellMenu.getBoundingClientRect();
+        useUi.getState().showMenu(rect.left, rect.bottom + 4, cellMenuFor(active.row, active.col));
+      });
+      inner.append(cellMenu);
       updateToolbar(-1, 0);
     } else toolbar.hidden = true;
     table.addEventListener("copy", (event) => {
@@ -831,8 +1009,9 @@ export class TableWidget extends WidgetType {
       const { row, col } = posOf(cell);
       updateToolbar(row, col);
       const next = pasteCells(typed(), row, col, text);
-      while (widths && widths.length < next.header.length) resizeColumns(widths.length, true);
-      commit(next, { row, col });
+      let grown = widths;
+      while (grown && grown.length < next.header.length) grown = insertWidth(grown, grown.length);
+      commit(next, { row, col }, grown === widths ? undefined : grown);
     });
     wrap.addEventListener("contextmenu", (e) => {
       if (view.state.readOnly) return;
@@ -853,15 +1032,29 @@ export class TableWidget extends WidgetType {
     // task as the edit, so a microtask runs once it's in the page.
     queueMicrotask(() => {
       const f = tableFocus.get(view);
-      if (!f || !wrap.isConnected || from() !== f.from) return;
+      if (!f || !wrap.isConnected) return;
+      // The widget starts at its widths comment, if any, else at the table.
+      if ((f.to ?? f.from) < from() || f.from > tableFrom()) return;
       tableFocus.delete(view);
       focusCell(
         cellAt(Math.max(-1, Math.min(f.row, model.rows.length - 1)), Math.min(f.col, model.header.length - 1)),
         f.caret,
       );
+      if (f.notice) showNotice(f.notice);
     });
     controllers.set(wrap, {
-      update(nextSource) {
+      update(nextSource, nextWidthsLine) {
+        if (nextWidthsLine !== widthsLine) {
+          // Only our own widths write is absorbed; an outside change redraws the table.
+          if (nextWidthsLine !== pendingWidths || (nextSource !== source && nextSource !== pendingSource)) return false;
+          widthsLine = nextWidthsLine;
+          pendingWidths = null;
+          widths = usableWidths(parseWidths(widthsLine), parseTable(nextSource).header.length);
+          if (nextSource === source) {
+            applyWidths();
+            return true;
+          }
+        }
         if (structural || nextSource !== pendingSource) return false;
         source = nextSource;
         model = parseTable(source);
@@ -885,9 +1078,10 @@ export class TableWidget extends WidgetType {
         observer.disconnect();
       },
       focus(pos) {
-        const start = from();
-        if (pos < start || pos >= start + source.length) return false;
-        const lines = source.slice(0, pos - start).split("\n");
+        const start = tableFrom();
+        // A caret on the hidden widths comment line enters the header row.
+        if (pos < from() || pos >= start + source.length) return false;
+        const lines = source.slice(0, Math.max(0, pos - start)).split("\n");
         const row = lines.length < 3 ? -1 : Math.min(model.rows.length - 1, lines.length - 3);
         focusCell(cellAt(row, 0), "start");
         return true;

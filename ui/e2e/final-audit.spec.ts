@@ -294,6 +294,8 @@ async function editorNote(page: Page) {
     });
     await m.useWorkspace.getState().open("Editor UI.md", { newTab: true });
   });
+  // The table toolbar floats under a table while one of its cells is being edited.
+  await page.locator(".cm-table-wrap td").first().click();
   await expect(page.getByRole("group", { name: "Table editing", exact: true })).toBeVisible();
 }
 test("note table and search controls keep note fonts and keyboard behavior", async ({ page }) => {
@@ -303,8 +305,10 @@ test("note table and search controls keep note fonts and keyboard behavior", asy
   await expect(page.locator(".cm-table-wrap td").first()).toHaveCSS("font-size", "14.5px");
   await toolbar.getByRole("button", { name: "Markdown", exact: true }).click();
   await page.getByRole("button", { name: "Back to table", exact: true }).click();
+  await page.locator(".cm-table-wrap td").first().click();
   await expect(toolbar).toBeVisible();
   await page.locator(".cm-content .cm-line").last().click();
+  await expect(toolbar).toBeHidden();
   await page.keyboard.press("Meta+f");
   const search = page.locator(".cm-search");
   await expect(search).toHaveCSS("font-size", "14px");
@@ -325,6 +329,8 @@ test("note editor controls follow themes and fit compact scaled panes", async ({
   for (const theme of ["Light", "Dark", "System"]) {
     await page.getByRole("radio", { name: theme, exact: true }).check();
     await open();
+    // The table toolbar shows while a cell is being edited.
+    await page.locator(".cm-table-wrap td").first().click();
     const toolbar = page.getByRole("group", { name: "Table editing", exact: true });
     await expect(toolbar).toHaveCSS("color", theme === "Light" ? "rgb(29, 31, 38)" : "rgb(228, 229, 234)");
     if (theme !== "System") await page.screenshot({ path: info.outputPath(`editor-${theme.toLowerCase()}.png`) });
@@ -334,6 +340,7 @@ test("note editor controls follow themes and fit compact scaled panes", async ({
   await page.getByRole("slider", { name: "Interface scale", exact: true }).press("End");
   await open();
   await page.setViewportSize({ width: 320, height: 900 });
+  await page.locator(".cm-table-wrap td").first().click();
   const toolbar = page.getByRole("group", { name: "Table editing", exact: true });
   await expect.poll(() => toolbar.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
   await page.locator(".cm-content").focus();

@@ -53,7 +53,7 @@ export function parseTable(source: string): TableModel {
 }
 
 /** A cell's text as Markdown: pipes escaped, line breaks turned into spaces. */
-const cellSource = (s: string) => s.replace(/\r?\n/g, " ").replace(/\|/g, "\\|").trim();
+export const cellSource = (s: string) => s.replace(/\r?\n/g, " ").replace(/\|/g, "\\|").trim();
 
 export function formatTable(t: TableModel): string {
   const cols = t.header.length;
@@ -75,6 +75,53 @@ export function formatTable(t: TableModel): string {
     return dashes;
   });
   return [row(all[0]), `| ${rule.join(" | ")} |`, ...all.slice(1).map(row)].join("\n");
+}
+
+const ruleCell = (align: Align, width: number) => {
+  const dashes = "-".repeat(Math.max(3, width));
+  if (align === "center") return `:${dashes.slice(2)}:`;
+  if (align === "right") return `${dashes.slice(1)}:`;
+  if (align === "left") return `:${dashes.slice(1)}`;
+  return dashes;
+};
+
+/**
+ * Writes `next` back over the table `source` while keeping every line whose cells didn't change
+ * byte for byte (moved rows included), so an edit changes only the lines it touched instead of
+ * re-padding the whole table. Changed rows are padded to the column widths of the rule line when
+ * they fit. A change in the number of columns rewrites the table with `formatTable`.
+ */
+export function updateTable(source: string, next: TableModel): string {
+  const trailing = /\n*$/.exec(source)?.[0] ?? "";
+  const lines = source.split("\n").filter((l) => l.trim());
+  const prev = parseTable(source);
+  const cols = next.header.length;
+  if (cols !== prev.header.length || lines.length < 2) return formatTable(next) + trailing;
+  const ruleCells = splitRow(lines[1]);
+  const widths = Array.from({ length: cols }, (_, c) => Math.max(3, (ruleCells[c] ?? "").length));
+  const pad = (s: string, c: number) => {
+    const extra = widths[c] - [...s].length;
+    if (extra <= 0) return s;
+    if (next.align[c] === "right") return " ".repeat(extra) + s;
+    if (next.align[c] === "center") return " ".repeat(Math.floor(extra / 2)) + s + " ".repeat(Math.ceil(extra / 2));
+    return s + " ".repeat(extra);
+  };
+  const write = (cells: string[]) => `| ${cells.map((s, c) => pad(cellSource(s), c)).join(" | ")} |`;
+  const same = (a: string[], b: string[]) => a.length === b.length && a.every((v, i) => v === b[i]);
+  const header = same(prev.header, next.header) ? lines[0] : write(next.header);
+  const rule =
+    prev.align.every((a, c) => a === next.align[c]) && ruleCells.length === cols
+      ? lines[1]
+      : `| ${widths.map((w, c) => ruleCell(next.align[c], w)).join(" | ")} |`;
+  const original = lines.slice(2);
+  const used = new Set<number>();
+  const take = (i: number) => (used.add(i), original[i]);
+  const rows = next.rows.map((cells, i) => {
+    if (i < prev.rows.length && !used.has(i) && same(prev.rows[i], cells)) return take(i);
+    const match = prev.rows.findIndex((r, j) => !used.has(j) && same(r, cells));
+    return match >= 0 ? take(match) : write(cells);
+  });
+  return [header, rule, ...rows].join("\n") + trailing;
 }
 
 const clone = (t: TableModel): TableModel => ({

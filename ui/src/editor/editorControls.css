@@ -7,10 +7,11 @@
   color: var(--mds-text);
   font: var(--mds-text-body) / 1.5 var(--mds-font-ui);
 }
-.mosaic-ds.table-toolbar .table-position {
-  border-color: var(--mds-border);
-  font-size: var(--mds-text-small);
-  overflow-wrap: anywhere;
+.mosaic-ds.table-toolbar select.mds-input {
+  width: auto;
+}
+.mosaic-ds.table-toolbar .table-toolbar-divider {
+  background: var(--mds-border);
 }
 .mosaic-ds.table-toolbar :is(button, select) {
   min-width: 0;

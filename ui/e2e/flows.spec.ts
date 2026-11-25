@@ -594,6 +594,9 @@ test("edit a table with visible row, column and alignment controls", async ({ pa
   });
   await openMockPath(page, "Table editing.md");
   const table = page.locator(".cm-table-wrap");
+  // No toolbar until a cell is being edited, so a table reads like the note around it.
+  await expect(table.getByRole("group", { name: "Table editing" })).toBeHidden();
+  await table.locator("td").first().click();
   await expect(table.getByRole("group", { name: "Table editing" })).toBeVisible();
   await table.getByRole("button", { name: "Header row options" }).click();
   await page.keyboard.press("Escape");
@@ -696,7 +699,9 @@ test("tables keep rich cells, save while typing, reorder with handles, and offer
   await expect(table.locator("td strong,td b")).toContainText("Apple");
 });
 
-test("columns move onto adjacent handles and resize beyond the pane with local scrolling", async ({ page }) => {
+test("columns move onto adjacent handles; resizing stays within the page and is saved in the note", async ({
+  page,
+}) => {
   await openVault(page);
   await page.evaluate(async () => {
     const m = (window as unknown as { __mosaic: { mockInvoke(c: string, a: object): Promise<unknown> } }).__mosaic;
@@ -713,20 +718,27 @@ test("columns move onto adjacent handles and resize beyond the pane with local s
     .dragTo(table.getByRole("button", { name: "Column 2 options", exact: true }));
   await expect(table.locator("th")).toHaveText(["Qty", "Name", "Owner"]);
   await expect(table.locator("td")).toHaveText(["3", "Apple", "Sam"]);
+  // The table spans the editor: as wide as its scroller, never wider.
+  const scroll = table.locator(".cm-table-scroll");
+  const fits = () => scroll.evaluate((el) => el.scrollWidth - el.clientWidth);
+  await expect.poll(fits).toBeLessThanOrEqual(1);
   const resize = table.getByRole("separator", { name: "Resize column 2", exact: true });
   const before = Number(await resize.getAttribute("aria-valuenow"));
-  // Keyboard growth must remain possible after the table fills its pane.
   await resize.focus();
   for (let i = 0; i < 30; i++) await resize.press("Shift+ArrowRight");
-  expect(Number(await resize.getAttribute("aria-valuenow"))).toBeGreaterThan(before + 1000);
-  const scroll = table.locator(".cm-table-scroll");
-  await expect.poll(() => scroll.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeGreaterThan(400);
-  await scroll.evaluate((el) => {
-    el.scrollLeft = el.scrollWidth;
-  });
+  // Column 2 grew at column 3's expense; the table didn't.
+  expect(Number(await resize.getAttribute("aria-valuenow"))).toBeGreaterThan(before + 10);
+  await expect.poll(fits).toBeLessThanOrEqual(1);
   await expect(table.getByRole("button", { name: "Column 3 options", exact: true })).toBeInViewport();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-  await expect.poll(() => readMockFile(page, "Wide table.md")).toMatch(/\| Qty\s*\| Name\s*\| Owner\s*\|/);
+  // Widths travel with the note, as a comment directly above the table, hidden in the editor.
+  await expect
+    .poll(() => readMockFile(page, "Wide table.md"))
+    .toMatch(/\n<!-- widths \d+ \d+ \d+ -->\n\| Qty\s*\| Name\s*\| Owner\s*\|/);
+  await expect(page.locator(".cm-content")).not.toContainText("widths");
+  // A narrower window reflows the table instead of overflowing.
+  await page.setViewportSize({ width: 700, height: 800 });
+  await expect.poll(fits).toBeLessThanOrEqual(1);
   // A cell's context menu stays short; structural commands live one level down.
   await table.locator("td").last().click({ button: "right" });
   const menu = page.getByRole("menu");
@@ -786,4 +798,127 @@ test("table drag handles move rows and columns, rectangle selection clears cells
   await expect(table.locator("td")).toHaveText(["x|y", "new", "next", "last"]);
   await expect(table.locator("img")).toHaveCount(0);
   await expect.poll(() => readMockFile(page, "Table moves.md")).toContain("x\\|y");
+});
+
+test("a cell's chevron menu and shortcuts add, clear and delete, and the floating toolbar manages the table", async ({
+  page,
+}) => {
+  await openVault(page);
+  await page.evaluate(async () => {
+    const m = (window as unknown as { __mosaic: { mockInvoke(c: string, a: object): Promise<unknown> } }).__mosaic;
+    await m.mockInvoke("create_file", {
+      path: "Cell menu.md",
+      content: "# Cell menu\n\n| Name | Qty |\n| --- | --- |\n| Apple | 3 |\n\nAfter table.\n",
+      root: null,
+    });
+  });
+  await openMockPath(page, "Cell menu.md");
+  const table = page.locator(".cm-table-wrap");
+  const before = await page.locator(".cm-content").boundingBox();
+  await table.locator("td").first().click();
+  // Focusing a table shows its toolbar without moving the note.
+  expect((await page.locator(".cm-content").boundingBox())!.y).toBe(before!.y);
+  const chevron = table.getByRole("button", { name: "Cell options", exact: true });
+  await chevron.click();
+  // The item's name includes its shortcut hint (⌃⌥→).
+  await page.getByRole("menuitem", { name: /^Add column right/ }).click();
+  await expect(table.locator("th")).toHaveCount(3);
+  await expect(table.locator("td").nth(1)).toBeFocused();
+  await page.keyboard.press("Control+Alt+ArrowDown");
+  await expect(table.locator("tbody tr")).toHaveCount(2);
+  await table.locator("td").nth(1).click();
+  await table.getByRole("button", { name: "Cell options", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Delete column", exact: true }).click();
+  await expect(table.locator("th")).toHaveCount(2);
+  await table.locator("td").first().click();
+  await table.getByRole("button", { name: "Cell options", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Clear cell", exact: true }).click();
+  await expect(table.locator("td").first()).toHaveText("");
+  // Distribute writes equal widths into the note.
+  await table.getByRole("button", { name: "Distribute columns", exact: true }).click();
+  await expect.poll(() => readMockFile(page, "Cell menu.md")).toContain("<!-- widths 50 50 -->\n| Name");
+  await table.getByRole("button", { name: "More table options", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Delete table", exact: true }).click();
+  await expect(page.locator(".cm-table-wrap")).toHaveCount(0);
+  await expect.poll(() => readMockFile(page, "Cell menu.md")).toBe("# Cell menu\n\nAfter table.\n");
+});
+
+test("arrowing into a table with saved widths enters its header and keeps the widths comment", async ({ page }) => {
+  await openVault(page);
+  await page.evaluate(async () => {
+    const m = (window as unknown as { __mosaic: { mockInvoke(c: string, a: object): Promise<unknown> } }).__mosaic;
+    await m.mockInvoke("create_file", {
+      path: "Widths keys.md",
+      content: "# Widths keys\n\nIntro\n\n<!-- widths 40 60 -->\n| A | B |\n| --- | --- |\n| 1 | 2 |\n\nAfter\n",
+      root: null,
+    });
+  });
+  await openMockPath(page, "Widths keys.md");
+  const table = page.locator(".cm-table-wrap");
+  await page.locator(".cm-line", { hasText: "Intro" }).click();
+  await page.keyboard.press("End");
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("ArrowDown");
+  await expect(table.locator("th").first()).toBeFocused();
+  await page.keyboard.type("X");
+  await expect.poll(() => readMockFile(page, "Widths keys.md")).toContain("<!-- widths 40 60 -->\n| XA");
+});
+
+test("a table changed outside the editor while a cell is focused keeps that cell focused and says so", async ({
+  page,
+}) => {
+  await openVault(page);
+  const content = "# Outside\n\n| A | B |\n| --- | --- |\n| 1 | 2 |\n\nAfter\n";
+  await page.evaluate(async (text) => {
+    const m = (window as unknown as { __mosaic: { mockInvoke(c: string, a: object): Promise<unknown> } }).__mosaic;
+    await m.mockInvoke("create_file", { path: "Outside.md", content: text, root: null });
+  }, content);
+  await openMockPath(page, "Outside.md");
+  const table = page.locator(".cm-table-wrap");
+  await table.locator("td").first().click();
+  // An agent edits another cell of the same table.
+  await page.evaluate(
+    async (text) => {
+      const m = (
+        window as unknown as {
+          __mosaic: { mockInvoke(c: string, a: object): Promise<unknown>; external(p: string[]): void };
+        }
+      ).__mosaic;
+      await m.mockInvoke("write_file", { path: "Outside.md", content: text, expectedHash: null });
+      m.external(["Outside.md"]);
+    },
+    content.replace("| 1 | 2 |", "| 1 | 22 |"),
+  );
+  await expect(table.locator("td").nth(1)).toHaveText("22");
+  await expect(table.locator("td").first()).toBeFocused();
+  await expect(table.getByRole("status")).toHaveText("This table was changed outside the editor.");
+  expect(await readMockFile(page, "Outside.md")).toBe(content.replace("| 1 | 2 |", "| 1 | 22 |"));
+});
+
+test("the table toolbar works where clicked buttons don't take focus (macOS WebKit)", async ({ page }) => {
+  // As in Safari and the macOS app: pressing a button or select doesn't focus it; focus just leaves.
+  await page.addInitScript(() =>
+    window.addEventListener("mousedown", (event) => {
+      const target = (event.target as HTMLElement).closest?.("button, select");
+      if (!target || event.defaultPrevented) return;
+      event.preventDefault();
+      (document.activeElement as HTMLElement | null)?.blur?.();
+    }),
+  );
+  await openVault(page);
+  await page.evaluate(async () => {
+    const m = (window as unknown as { __mosaic: { mockInvoke(c: string, a: object): Promise<unknown> } }).__mosaic;
+    await m.mockInvoke("create_file", {
+      path: "Mac table.md",
+      content: "# Mac table\n\n| a | b |\n| --- | --- |\n| 1 | 2 |\n\nAfter.\n",
+      root: null,
+    });
+  });
+  await openMockPath(page, "Mac table.md");
+  await page.locator(".cm-table-wrap td").first().click();
+  const toolbar = page.getByRole("group", { name: "Table editing", exact: true });
+  await toolbar.getByRole("button", { name: "Distribute columns", exact: true }).click();
+  await expect.poll(() => readMockFile(page, "Mac table.md")).toContain("<!-- widths 50 50 -->");
+  await toolbar.getByRole("button", { name: "Markdown", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Back to table", exact: true })).toBeVisible();
 });

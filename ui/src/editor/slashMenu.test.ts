@@ -26,9 +26,11 @@ test("slash menu only opens in an empty Markdown block", () => {
 test("slash commands are grouped and include the agreed text, block, link and media helpers", () => {
   const options = completion("/")!.options;
   expect(options.map((option) => option.label)).toEqual(
-    expect.arrayContaining(["Callout", "Math block", "Wikilink", "Web link", "Embed file"]),
+    expect.arrayContaining(["Info panel", "Custom panel", "Math block", "Wikilink", "Web link", "Embed file"]),
   );
-  expect(new Set(options.map((option) => option.section))).toEqual(new Set(["Basic", "Blocks", "Links & media"]));
+  expect(new Set(options.map((option) => option.section))).toEqual(
+    new Set(["Basic", "Panels", "Blocks", "Links & media"]),
+  );
   expect(options.every((option) => option.type?.startsWith("mosaic-slash:"))).toBe(true);
 });
 
@@ -83,4 +85,53 @@ test("a table inserted at the end keeps a blank separator after it", () => {
   option.apply(view, option, result.from, 6);
   expect(state.doc.toString()).toBe("| Column 1 | Column 2 |\n| --- | --- |\n|  |  |\n\n");
   expect(state.selection.main.head).toBe(state.doc.length);
+});
+
+function apply(label: string) {
+  let state = EditorState.create({ doc: "Before\n\n/", selection: { anchor: 9 }, extensions: [markdown()] });
+  const result = slashCompletion(new CompletionContext(state, 9, false))!;
+  const option = result.options.find((o) => o.label === label)!;
+  const view = {
+    get state() {
+      return state;
+    },
+    dispatch(spec: TransactionSpec) {
+      state = state.update(spec).state;
+    },
+  } as EditorView;
+  if (typeof option.apply !== "function") throw new Error("Expected an insertion command");
+  option.apply(view, option, result.from, 9);
+  return { state, option };
+}
+
+test("panels insert a callout with the caret on its body line; a custom panel selects its title", () => {
+  for (const [label, type] of [
+    ["Info panel", "info"],
+    ["Note panel", "note"],
+    ["Success panel", "success"],
+    ["Warning panel", "warning"],
+    ["Error panel", "error"],
+    ["Decision", "decision"],
+  ]) {
+    const { state, option } = apply(label);
+    expect(state.doc.toString()).toBe(`Before\n\n> [!${type}]\n> `);
+    expect(state.selection.main.head).toBe(state.doc.length);
+    expect((option as { hint?: string }).hint).toBe(`> [!${type}]`);
+  }
+  const { state } = apply("Custom panel");
+  expect(state.doc.toString()).toBe("Before\n\n> [!custom] Title\n> ");
+  expect(state.sliceDoc(state.selection.main.from, state.selection.main.to)).toBe("Title");
+});
+
+test("most options show the Markdown you could type instead", () => {
+  const options = completion("/")!.options as { label: string; hint?: string }[];
+  const hint = (label: string) => options.find((o) => o.label === label)?.hint;
+  expect(hint("Heading 2")).toBe("##");
+  expect(hint("Bullet list")).toBe("-");
+  expect(hint("Code block")).toBe("```");
+});
+
+test("a slash inside a quote or panel doesn't open the menu", () => {
+  expect(completion("> /")).toBeNull();
+  expect(completion("> [!info]\n> /")).toBeNull();
 });

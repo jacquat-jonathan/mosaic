@@ -43,7 +43,7 @@ import { editorContext, type EditorContext } from "./context";
 import { livePreview } from "./livePreview";
 import "./blocks"; // registers the diagram renderers used by code blocks
 import { prefs, useSettings } from "../state/settings";
-import { slashCompletion, slashIcon } from "./slashMenu";
+import { slashCompletion, slashHint, slashIcon } from "./slashMenu";
 import { blockHandles } from "./blockHandles";
 import { selectionFormatting } from "./selectionToolbar";
 
@@ -268,7 +268,10 @@ export function markdownExtensions(ctx: EditorContext, onChange: (text: string) 
       tooltipClass: (state) =>
         /^\s*\/[\w -]*$/.test(state.doc.lineAt(state.selection.main.head).text) ? "cm-slash-menu" : "",
       optionClass: (completion) => (completion.type?.startsWith("mosaic-slash:") ? "cm-slash-option" : ""),
-      addToOptions: [{ position: 20, render: (completion) => slashIcon(completion.type) }],
+      addToOptions: [
+        { position: 20, render: (completion) => slashIcon(completion.type) },
+        { position: 90, render: (completion) => slashHint(completion) },
+      ],
     }),
     Prec.highest(keymap.of([...completionKeymap, { key: "Tab", run: acceptCompletion }])),
     livePreview(),

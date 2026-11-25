@@ -448,6 +448,43 @@ export class RuleWidget extends WidgetType {
   }
 }
 
+/** A panel's `[!type]` marker, shown as its icon (and its default title when it has none). */
+export class CalloutMarkerWidget extends WidgetType {
+  constructor(
+    readonly kind: string,
+    readonly icon: string,
+    readonly label: string,
+    readonly defaultTitle: string,
+  ) {
+    super();
+  }
+  eq(other: CalloutMarkerWidget) {
+    return (
+      other.kind === this.kind &&
+      other.icon === this.icon &&
+      other.label === this.label &&
+      other.defaultTitle === this.defaultTitle
+    );
+  }
+  toDOM() {
+    const el = document.createElement("span");
+    el.className = "cm-callout-marker";
+    const icon = document.createElement("span");
+    icon.className = "cm-callout-icon";
+    icon.textContent = this.icon;
+    icon.setAttribute("role", "img");
+    icon.setAttribute("aria-label", this.label);
+    el.append(icon);
+    if (this.defaultTitle) {
+      const title = document.createElement("span");
+      title.className = "cm-callout-default-title";
+      title.textContent = this.defaultTitle;
+      el.append(title);
+    }
+    return el;
+  }
+}
+
 export { TableWidget } from "./TableWidget";
 
 /** Hosts a React component inside the editor (PDF pages, canvases…). */

@@ -12,18 +12,104 @@ interface Insertion {
   /** Leave the Markdown block behind the caret so live preview renders it immediately. */
   placeAfter?: boolean;
   icon: string;
+  /** The Markdown you could type instead, shown at the right of the option. */
+  hint?: string;
 }
 
+const panel = (type: string, label: string, detail: string, icon: string): Insertion => {
+  const text = `> [!${type}]\n> `;
+  return { label, detail, group: "Panels", icon, text, cursor: text.length, hint: `> [!${type}]` };
+};
+
 export const insertions: Insertion[] = [
-  { label: "Heading 1", detail: "Largest section heading", group: "Basic", icon: "H1", text: "# ", cursor: 2 },
-  { label: "Heading 2", detail: "Second-level section heading", group: "Basic", icon: "H2", text: "## ", cursor: 3 },
-  { label: "Heading 3", detail: "Third-level section heading", group: "Basic", icon: "H3", text: "### ", cursor: 4 },
-  { label: "Bullet list", detail: "Start an unordered list", group: "Basic", icon: "•", text: "- ", cursor: 2 },
-  { label: "Numbered list", detail: "Start an ordered list", group: "Basic", icon: "1.", text: "1. ", cursor: 3 },
-  { label: "Checkbox", detail: "Add a checklist item", group: "Basic", icon: "✓", text: "- [ ] ", cursor: 6 },
-  { label: "Quote", detail: "Add a blockquote for emphasis", group: "Basic", icon: "❝", text: "> ", cursor: 2 },
-  { label: "Callout", detail: "Add a highlighted note", group: "Basic", icon: "!", text: "> [!note]\n> ", cursor: 12 },
-  { label: "Divider", detail: "Separate content with a rule", group: "Basic", icon: "—", text: "---\n\n", cursor: 5 },
+  {
+    label: "Heading 1",
+    detail: "Largest section heading",
+    group: "Basic",
+    icon: "H1",
+    text: "# ",
+    cursor: 2,
+    hint: "#",
+  },
+  {
+    label: "Heading 2",
+    detail: "Second-level section heading",
+    group: "Basic",
+    icon: "H2",
+    text: "## ",
+    cursor: 3,
+    hint: "##",
+  },
+  {
+    label: "Heading 3",
+    detail: "Third-level section heading",
+    group: "Basic",
+    icon: "H3",
+    text: "### ",
+    cursor: 4,
+    hint: "###",
+  },
+  {
+    label: "Bullet list",
+    detail: "Start an unordered list",
+    group: "Basic",
+    icon: "•",
+    text: "- ",
+    cursor: 2,
+    hint: "-",
+  },
+  {
+    label: "Numbered list",
+    detail: "Start an ordered list",
+    group: "Basic",
+    icon: "1.",
+    text: "1. ",
+    cursor: 3,
+    hint: "1.",
+  },
+  {
+    label: "Checkbox",
+    detail: "Add a checklist item",
+    group: "Basic",
+    icon: "✓",
+    text: "- [ ] ",
+    cursor: 6,
+    hint: "[]",
+  },
+  {
+    label: "Quote",
+    detail: "Add a blockquote for emphasis",
+    group: "Basic",
+    icon: "❝",
+    text: "> ",
+    cursor: 2,
+    hint: ">",
+  },
+  {
+    label: "Divider",
+    detail: "Separate content with a rule",
+    group: "Basic",
+    icon: "—",
+    text: "---\n\n",
+    cursor: 5,
+    hint: "---",
+  },
+  panel("info", "Info panel", "Highlight information in a blue panel", "i"),
+  panel("note", "Note panel", "Add a side note in a purple panel", "✎"),
+  panel("success", "Success panel", "Call out a tip or a result in green", "✓"),
+  panel("warning", "Warning panel", "Warn about something in amber", "!"),
+  panel("error", "Error panel", "Flag a problem or a risk in red", "×"),
+  panel("decision", "Decision", "Record a decision that was made", "⇢"),
+  {
+    label: "Custom panel",
+    detail: "A neutral panel with a title you choose",
+    group: "Panels",
+    icon: "◆",
+    text: "> [!custom] Title\n> ",
+    cursor: 12,
+    select: [12, 17],
+    hint: "> [!custom]",
+  },
   {
     label: "Table",
     detail: "Insert a two-column table",
@@ -40,6 +126,7 @@ export const insertions: Insertion[] = [
     icon: "<>",
     text: "```\n\n```\n",
     cursor: 4,
+    hint: "```",
   },
   {
     label: "Math block",
@@ -48,6 +135,7 @@ export const insertions: Insertion[] = [
     icon: "∑",
     text: "$$\n\n$$\n",
     cursor: 3,
+    hint: "$$",
   },
   {
     label: "Mermaid diagram",
@@ -73,6 +161,7 @@ export const insertions: Insertion[] = [
     text: "[[Note]]",
     cursor: 6,
     select: [2, 6],
+    hint: "[[",
   },
   {
     label: "Web link",
@@ -122,6 +211,7 @@ export function slashCompletion(ctx: CompletionContext): CompletionResult | null
       detail: item.detail,
       section: item.group,
       type: `mosaic-slash:${item.icon}`,
+      hint: item.hint,
       apply(view: EditorView, _completion: Completion, _from: number, to: number) {
         const followingNewline = item.placeAfter && view.state.sliceDoc(to, to + 1) === "\n";
         const insert = item.placeAfter && !followingNewline ? `${item.text}\n` : item.text;
@@ -131,6 +221,16 @@ export function slashCompletion(ctx: CompletionContext): CompletionResult | null
       },
     })),
   };
+}
+
+/** The Markdown shortcut shown at the right of a slash option, e.g. `##` for Heading 2. */
+export function slashHint(completion: Completion): HTMLElement | null {
+  const hint = (completion as Completion & { hint?: string }).hint;
+  if (!hint) return null;
+  const el = document.createElement("kbd");
+  el.className = "cm-slash-hint";
+  el.textContent = hint;
+  return el;
 }
 
 export function slashIcon(type?: string): HTMLElement | null {

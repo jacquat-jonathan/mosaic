@@ -1,5 +1,6 @@
+// @vitest-environment jsdom
 import { expect, test } from "vitest";
-import { inlineMarkdownToHtml, markdownToHtml } from "./markdown";
+import { inlineMarkdownToHtml, markdownToHtml, renderMarkdown } from "./markdown";
 
 test("inline and display math render with KaTeX, like in notes", () => {
   expect(markdownToHtml("Area: $\\pi r^2$")).toContain('class="katex"');
@@ -28,4 +29,29 @@ test("==highlights== render as marks, with formatting inside", () => {
 
 test("renders inline Markdown without a paragraph for table cells", () => {
   expect(inlineMarkdownToHtml("*soft* and **strong**")).toBe("<em>soft</em> and <strong>strong</strong>");
+});
+
+test("panels render from callouts, with the header line split off its paragraph", () => {
+  const html = markdownToHtml("> [!warning] Mind **this**\n> Body text\n> - item\n");
+  expect(html).toContain('<div class="callout callout-warning" data-callout="warning">');
+  expect(html).toMatch(/<div class="callout-title">.*<span>Mind <strong>this<\/strong><\/span><\/div>/);
+  expect(html).toMatch(/<div class="callout-body"><p>Body text<\/p>\s*<ul>\s*<li>item<\/li>/);
+  expect(html).not.toContain("[!warning]");
+});
+
+test("a panel without a title shows its type's name; a header-only panel has no body", () => {
+  const html = markdownToHtml("> [!tip]\n>\n> After a blank line\n");
+  expect(html).toContain("callout-success");
+  expect(html).toContain("<span>Success</span>");
+  expect(html).toContain('<div class="callout-body"><p>After a blank line</p>');
+  const empty = markdownToHtml("> [!note]\n");
+  expect(empty).toContain("<span>Note</span>");
+  expect(empty).not.toContain("callout-body");
+});
+
+test("plain quotes stay quotes, and panel titles are sanitised", () => {
+  expect(markdownToHtml("> Just a quote\n")).toContain("<blockquote>");
+  const html = renderMarkdown('> [!custom] <img src=x onerror="alert(1)"> Title\n> body\n');
+  expect(html).toContain("callout-custom");
+  expect(html).not.toContain("onerror");
 });

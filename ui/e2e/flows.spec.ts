@@ -924,6 +924,9 @@ async function blockNote(page: Page, file: string, content: string) {
 test("every block has a + and a drag handle; dragging moves it and keeps the note's shape", async ({ page }) => {
   const editor = await blockNote(page, "Blocks.md", "# Blocks\n\nFirst para.\n\nSecond para.\n\nThird para.\n");
   const handle = page.getByRole("button", { name: "Move block", exact: true });
+  // Nothing shows until a block is hovered.
+  await page.mouse.move(1, 1);
+  await expect(handle).toBeHidden();
   await editor.getByText("First para.").hover();
   await expect(handle).toBeVisible();
   await expect(page.getByRole("button", { name: "Add a block below", exact: true })).toBeVisible();
@@ -990,4 +993,24 @@ test("a table is a block too: its handle shows beside it", async ({ page }) => {
   await blockNote(page, "Table block.md", "# T\n\n| a | b |\n| --- | --- |\n| 1 | 2 |\n\nAfter.\n");
   await page.locator(".cm-table-wrap td").first().hover();
   await expect(page.getByRole("button", { name: "Move block", exact: true })).toBeVisible();
+});
+
+test("the slash menu inserts a panel, which renders with its colour and icon", async ({ page }) => {
+  const editor = await blockNote(page, "Panel.md", "# Panel\n\nFirst.\n");
+  await editor.getByText("First.").click();
+  await page.keyboard.press("End");
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("/warn");
+  const menu = page.locator(".cm-slash-menu");
+  await expect(menu.locator("li[aria-selected]")).toContainText("Warning panel");
+  await expect(menu.locator("li[aria-selected] .cm-slash-hint")).toHaveText("> [!warning]");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("Mind the gap");
+  await expect.poll(() => readMockFile(page, "Panel.md")).toBe("# Panel\n\nFirst.\n\n> [!warning]\n> Mind the gap\n");
+  const panel = editor.locator(".cm-callout-warning");
+  await expect(panel).toHaveCount(2);
+  await expect(editor.locator(".cm-callout-icon")).toHaveAttribute("aria-label", "Warning");
+  await expect(editor.locator(".cm-callout-default-title")).toHaveText("Warning");
+  await expect(editor).not.toContainText("[!warning]");
 });

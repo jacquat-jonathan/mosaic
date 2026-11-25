@@ -1,10 +1,11 @@
 // Static Markdown → HTML for places that aren't the editor (canvas cards, embeds). Output is always
 // sanitised: vault content may come from anywhere (including AI agents) and must never run code here.
 
-import { Marked, type TokenizerAndRendererExtension } from "marked";
+import { Marked, type RendererExtension, type TokenizerAndRendererExtension, type Tokens } from "marked";
 import DOMPurify from "dompurify";
 import { parseWikiLink, linkLabel } from "./links";
 import { renderMath } from "./editor/render";
+import { CALLOUT_KINDS, parseCalloutHeader } from "./callouts";
 
 /** Inline math `$…$`, as in notes: no space inside the dollars, and `$5` prices don't count. */
 export const MATH_INLINE_RE = /(?<![\\$])\$(?![\s$])([^$\n]+?)(?<![\s\\])\$(?!\d)/g;
@@ -46,9 +47,32 @@ const highlight: TokenizerAndRendererExtension = {
   },
 };
 
-const marked = new Marked({ gfm: true, breaks: false, extensions: [mathBlock, mathInline, highlight] });
-
 const escapeAttr = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+const escapeText = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+/** Panels: a blockquote whose first line is `[!type] title` (see callouts.ts); others render as quotes. */
+const callout: RendererExtension = {
+  name: "blockquote",
+  renderer(token) {
+    const quote = token as Tokens.Blockquote;
+    const header = parseCalloutHeader(quote.raw.split("\n", 1)[0]);
+    if (!header) return false;
+    // The header shares its paragraph with any body lines right below it: cut its line off and
+    // render the rest of the quote's text as the body.
+    const newline = quote.text.indexOf("\n");
+    const body = newline < 0 ? "" : quote.text.slice(newline + 1);
+    const style = CALLOUT_KINDS[header.kind];
+    const title = header.title ? marked.parseInline(header.title, { async: false }) : escapeText(header.defaultTitle);
+    const inner = body.trim() ? this.parser.parse(marked.lexer(body)) : "";
+    return (
+      `<div class="callout callout-${header.kind}" data-callout="${escapeAttr(header.type)}">` +
+      `<div class="callout-title"><span class="callout-icon" aria-hidden="true">${escapeText(style.icon)}</span>` +
+      `<span>${title}</span></div>${inner ? `<div class="callout-body">${inner}</div>` : ""}</div>\n`
+    );
+  },
+};
+
+const marked = new Marked({ gfm: true, breaks: false, extensions: [mathBlock, mathInline, highlight, callout] });
 
 function withWikiLinks(src: string, resolve?: (target: string) => string | null): string {
   return src.replace(/(!?)\[\[([^[\]\n]+?)\]\]/g, (_m, bang: string, inner: string) => {
@@ -74,7 +98,7 @@ export function markdownToHtml(src: string, resolve?: (target: string) => string
 /** `breaks`: every line break is kept (diagram shape labels are written line by line). */
 export function renderMarkdown(src: string, resolve?: (target: string) => string | null, breaks = false): string {
   return DOMPurify.sanitize(markdownToHtml(src, resolve, breaks), {
-    ADD_ATTR: ["data-target"],
+    ADD_ATTR: ["data-target", "data-callout"],
     FORBID_TAGS: ["style", "iframe", "form"],
   });
 }

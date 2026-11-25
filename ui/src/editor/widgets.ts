@@ -398,14 +398,20 @@ export class OutlineNumberWidget extends WidgetType {
   }
 }
 
+/** Bullets change with depth, like Confluence: •, ◦, ▪, then again. */
+export const BULLETS = ["•", "◦", "▪"];
+
 export class BulletWidget extends WidgetType {
-  eq() {
-    return true;
+  constructor(readonly depth = 0) {
+    super();
+  }
+  eq(other: BulletWidget) {
+    return other.depth === this.depth;
   }
   toDOM() {
     const el = document.createElement("span");
     el.className = "cm-bullet";
-    el.textContent = "•";
+    el.textContent = BULLETS[this.depth % BULLETS.length];
     return el;
   }
 }

@@ -110,3 +110,55 @@
   background: var(--mds-surface-subtle);
   color: var(--mds-text-muted);
 }
+/* The note's fixed formatting toolbar, above the scrolling editor. */
+.mosaic-ds .note-toolbar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--mds-border);
+  background: var(--mds-surface);
+  overflow-x: auto;
+  scrollbar-width: none;
+  font: var(--mds-text-body) / 1.4 var(--mds-font-ui);
+}
+.mosaic-ds .note-toolbar .note-toolbar-block {
+  width: auto;
+  min-height: 28px;
+  margin-right: 4px;
+}
+.mosaic-ds .note-toolbar .note-toolbar-button {
+  min-width: 30px;
+  min-height: 28px;
+  padding: 0 7px;
+  color: var(--mds-text);
+}
+.mosaic-ds .note-toolbar .note-toolbar-button[aria-pressed="true"] {
+  background: var(--mds-surface-selected);
+}
+.mosaic-ds .note-toolbar .strong {
+  font-weight: 700;
+}
+.mosaic-ds .note-toolbar .emphasis {
+  font-style: italic;
+}
+.mosaic-ds .note-toolbar .strike {
+  text-decoration: line-through;
+}
+.mosaic-ds .note-toolbar .code {
+  font-family: var(--mds-font-mono, ui-monospace, monospace);
+  font-size: var(--mds-text-small);
+}
+.mosaic-ds .note-toolbar-divider {
+  flex: none;
+  width: 1px;
+  height: 18px;
+  margin: 0 6px;
+  background: var(--mds-border);
+}
+.mosaic-ds .note-toolbar :is(button, select):focus-visible {
+  outline: var(--mds-focus-width) solid var(--mds-accent);
+  outline-offset: var(--mds-focus-offset);
+}

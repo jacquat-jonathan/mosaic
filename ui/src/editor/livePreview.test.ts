@@ -199,3 +199,46 @@ test("a callout renders as a panel; its marker shows as an icon unless the caret
     view.destroy();
   }
 });
+
+test("a caret anywhere on a list, heading, quote or task line leaves its markup rendered", () => {
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      disconnect() {}
+    },
+  );
+  vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() }));
+  const context = {
+    path: "Lines.md",
+    resolve: vi.fn(() => null),
+    linkCandidates: vi.fn(() => []),
+  } as unknown as EditorContext;
+  const doc = "## Title\n\n- one\n  - two\n    - three\n      - four\n- [ ] task\n\n> quote\n";
+  const parent = document.body.appendChild(document.createElement("div"));
+  const view = new EditorView({
+    parent,
+    state: EditorState.create({
+      doc,
+      extensions: [editorContext.of(context), markdown({ base: markdownLanguage }), livePreview()],
+    }),
+  });
+  const lines = () => [...parent.querySelectorAll(".cm-line")].map((l) => l.textContent);
+  try {
+    forceParsing(view, doc.length, 1000);
+    const rendered = lines();
+    // Bullets change with depth and come round again.
+    expect(rendered.slice(2, 6)).toEqual(["• one", "  ◦ two", "    ▪ three", "      • four"]);
+    for (const word of ["Title", "one", "two", "task", "quote"]) {
+      for (const offset of [0, 1, word.length]) {
+        view.dispatch({ selection: { anchor: doc.indexOf(word) + offset } });
+        expect(lines()).toEqual(rendered);
+      }
+    }
+    // Selecting over the markup shows it, to edit or copy.
+    view.dispatch({ selection: { anchor: 0, head: 4 } });
+    expect(lines()[0]).toBe("## Title");
+  } finally {
+    view.destroy();
+  }
+});

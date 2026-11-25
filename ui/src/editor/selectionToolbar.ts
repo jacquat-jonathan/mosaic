@@ -200,8 +200,8 @@ const selectionTooltip = showTooltip.compute(["selection"], (state) => {
 export const selectionFormatting: Extension = [
   selectionTooltip,
   keymap.of([
-    { key: "Mod-b", run: (view) => toggleSelectionMark(view, "**") },
-    { key: "Mod-i", run: (view) => toggleSelectionMark(view, "*") },
-    { key: "Mod-k", run: addWebLink },
+    { key: "Mod-b", run: (view) => !view.state.readOnly && toggleSelectionMark(view, "**") },
+    { key: "Mod-i", run: (view) => !view.state.readOnly && toggleSelectionMark(view, "*") },
+    { key: "Mod-k", run: (view) => !view.state.readOnly && addWebLink(view) },
   ]),
 ];

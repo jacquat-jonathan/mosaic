@@ -1003,6 +1003,10 @@ test("the slash menu inserts a panel, which renders with its colour and icon", a
   await page.keyboard.press("Enter");
   await page.keyboard.type("/warn");
   const menu = page.locator(".cm-slash-menu");
+  // Wait for the menu to finish filtering on the last letter, and for CodeMirror's short guard against
+  // accepting an option the moment it appears.
+  await expect(menu.locator("li")).toHaveCount(1);
+  await page.waitForTimeout(150);
   await expect(menu.locator("li[aria-selected]")).toContainText("Warning panel");
   await expect(menu.locator("li[aria-selected] .cm-slash-hint")).toHaveText("> [!warning]");
   await page.keyboard.press("Enter");
@@ -1071,6 +1075,11 @@ test("the fixed toolbar sets text styles, marks and lists, and stays put while t
   await toolbar.getByRole("button", { name: "Checklist" }).click();
   await expect.poll(() => readMockFile(page, "Toolbar.md")).toContain("\n- [ ] ~~Some words here~~\n");
 
-  await editor.getByText("Line 70.").scrollIntoViewIfNeeded();
+  // Scroll the note well down: the toolbar stays where it is.
+  const top = await toolbar.boundingBox();
+  await editor.getByText("Some words here").hover();
+  for (let i = 0; i < 10; i++) await page.mouse.wheel(0, 400);
+  await expect.poll(() => page.locator(".md-editor .cm-scroller").evaluate((el) => el.scrollTop)).toBeGreaterThan(1000);
   await expect(toolbar).toBeInViewport();
+  expect(await toolbar.boundingBox()).toEqual(top);
 });

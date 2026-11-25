@@ -894,3 +894,85 @@ test("a table changed outside the editor while a cell is focused keeps that cell
   await expect(table.getByRole("status")).toHaveText("This table was changed outside the editor.");
   expect(await readMockFile(page, "Outside.md")).toBe(content.replace("| 1 | 2 |", "| 1 | 22 |"));
 });
+
+async function blockNote(page: Page, file: string, content: string) {
+  await openVault(page);
+  await page.evaluate(
+    async ([path, text]) => {
+      const m = (window as unknown as { __mosaic: { mockInvoke(c: string, a: object): Promise<unknown> } }).__mosaic;
+      await m.mockInvoke("create_file", { path, content: text, root: null });
+    },
+    [file, content],
+  );
+  await openMockPath(page, file);
+  return page.locator(".md-editor .cm-content");
+}
+
+test("every block has a + and a drag handle; dragging moves it and keeps the note's shape", async ({ page }) => {
+  const editor = await blockNote(page, "Blocks.md", "# Blocks\n\nFirst para.\n\nSecond para.\n\nThird para.\n");
+  const handle = page.getByRole("button", { name: "Move block", exact: true });
+  await editor.getByText("First para.").hover();
+  await expect(handle).toBeVisible();
+  await expect(page.getByRole("button", { name: "Add a block below", exact: true })).toBeVisible();
+  const third = editor.getByText("Third para.");
+  const box = await third.boundingBox();
+  await handle.dragTo(third, { targetPosition: { x: 4, y: box!.height - 2 } });
+  await expect
+    .poll(() => readMockFile(page, "Blocks.md"))
+    .toBe("# Blocks\n\nSecond para.\n\nThird para.\n\nFirst para.\n");
+  // One undo step puts it back.
+  await editor.click();
+  await page.keyboard.press("ControlOrMeta+z");
+  await expect
+    .poll(() => readMockFile(page, "Blocks.md"))
+    .toBe("# Blocks\n\nFirst para.\n\nSecond para.\n\nThird para.\n");
+});
+
+test("a heading drags with its section, numbered sections are renumbered", async ({ page }) => {
+  const editor = await blockNote(page, "Sections.md", "## 1. Alpha\n\nAlpha text.\n\n## 2. Beta\n\nBeta text.\n");
+  await editor.getByText("2. Beta").hover();
+  const handle = page.getByRole("button", { name: "Move section", exact: true });
+  await expect(handle).toBeVisible();
+  const alpha = editor.getByText("1. Alpha");
+  await handle.dragTo(alpha, { targetPosition: { x: 4, y: 2 } });
+  await expect
+    .poll(() => readMockFile(page, "Sections.md"))
+    .toBe("## 1. Beta\n\nBeta text.\n\n## 2. Alpha\n\nAlpha text.\n");
+});
+
+test("list items move with their children; the focused handle moves a block with the arrow keys", async ({
+  page,
+}) => {
+  const editor = await blockNote(page, "List.md", "# List\n\n- one\n  - child\n- two\n- three\n");
+  await editor.getByText("one", { exact: true }).hover();
+  const handle = page.getByRole("button", { name: "Move block", exact: true });
+  await handle.focus();
+  await handle.press("ArrowDown");
+  await expect.poll(() => readMockFile(page, "List.md")).toBe("# List\n\n- two\n- one\n  - child\n- three\n");
+  await handle.press("ArrowDown");
+  await expect.poll(() => readMockFile(page, "List.md")).toBe("# List\n\n- two\n- three\n- one\n  - child\n");
+});
+
+test("+ opens the slash menu on a new paragraph; Escape takes it away again", async ({ page }) => {
+  const editor = await blockNote(page, "Plus.md", "# Plus\n\nFirst.\n\nLast.\n");
+  await editor.getByText("First.").hover();
+  await page.getByRole("button", { name: "Add a block below", exact: true }).click();
+  const menu = page.locator(".cm-slash-menu");
+  await expect(menu).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(menu).toBeHidden();
+  await expect.poll(() => readMockFile(page, "Plus.md")).toBe("# Plus\n\nFirst.\n\nLast.\n");
+  await editor.getByText("First.").hover();
+  await page.getByRole("button", { name: "Add a block below", exact: true }).click();
+  await expect(menu).toBeVisible();
+  await page.keyboard.type("quote");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("Quoted");
+  await expect.poll(() => readMockFile(page, "Plus.md")).toBe("# Plus\n\nFirst.\n\n> Quoted\n\nLast.\n");
+});
+
+test("a table is a block too: its handle shows beside it", async ({ page }) => {
+  await blockNote(page, "Table block.md", "# T\n\n| a | b |\n| --- | --- |\n| 1 | 2 |\n\nAfter.\n");
+  await page.locator(".cm-table-wrap td").first().hover();
+  await expect(page.getByRole("button", { name: "Move block", exact: true })).toBeVisible();
+});

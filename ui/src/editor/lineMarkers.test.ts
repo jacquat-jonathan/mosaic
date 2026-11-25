@@ -86,3 +86,17 @@ test("Backspace at the start of the content removes a heading's or list's markup
     expect(view.state.doc.toString()).toBe(after);
   }
 });
+
+test("a heading inside a list item or quote: the caret stays after its #, and Backspace removes only the #", () => {
+  for (const [doc, text, after] of [
+    ["Intro\n- # two\n", "two", "Intro\n- two\n"],
+    ["Intro\n> ## Title\n", "Title", "Intro\n> Title\n"],
+  ]) {
+    const view = editor(doc, 0);
+    select(view, doc.indexOf("\n") + 1);
+    expect(view.state.selection.main.head).toBe(doc.indexOf(text));
+    expect(deleteHeadingMark(view)).toBe(true);
+    expect(view.state.doc.toString()).toBe(after);
+    expect(view.state.selection.main.head).toBe(after.indexOf(text));
+  }
+});

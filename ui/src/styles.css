@@ -952,7 +952,10 @@ button.secondary {
   opacity: 0;
   transition: opacity 0.12s;
 }
-.cm-table-wrap:focus-within > .table-toolbar {
+/* Hovering keeps it shown too: in macOS WebKit a clicked button doesn't take focus, so pressing one would
+   otherwise hide the toolbar before the click lands. */
+.cm-table-wrap:focus-within > .table-toolbar,
+.table-toolbar:is(:hover, :focus-within) {
   visibility: visible;
   opacity: 1;
 }

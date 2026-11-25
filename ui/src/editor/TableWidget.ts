@@ -912,6 +912,8 @@ export class TableWidget extends WidgetType {
       const sourceButton = editorButton(document.createElement("button"));
       sourceButton.textContent = "Markdown";
       sourceButton.title = "Edit table as Markdown";
+      // Keep the cell focused (macOS WebKit doesn't focus a clicked button), so the toolbar stays up.
+      sourceButton.addEventListener("mousedown", (event) => event.preventDefault());
       sourceButton.addEventListener("click", () => {
         const start = tableFrom();
         commit(typed());

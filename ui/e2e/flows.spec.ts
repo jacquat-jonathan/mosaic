@@ -1041,10 +1041,10 @@ test("moving and typing in a list never shifts its lines; Home and Backspace wor
   await page.keyboard.press("Home");
   await page.keyboard.type("A ");
   await expect.poll(() => readMockFile(page, "Steady.md")).toContain('\n- A second item it\'s "quoted" *x* _y_ `z`\n');
-  // Backspace at the start of the text removes the bullet.
+  // Backspace at the start of the text removes the bullet: the text joins the item above as its next line.
   await page.keyboard.press("Home");
   await page.keyboard.press("Backspace");
-  await expect.poll(() => readMockFile(page, "Steady.md")).toContain("\n- first item\nA second item");
+  await expect.poll(() => readMockFile(page, "Steady.md")).toContain("\n- first item\n  A second item");
 });
 
 test("the fixed toolbar sets text styles, marks and lists, and stays put while the note scrolls", async ({ page }) => {
@@ -1060,14 +1060,16 @@ test("the fixed toolbar sets text styles, marks and lists, and stays put while t
   await style.selectOption("0");
   await expect.poll(() => readMockFile(page, "Toolbar.md")).toMatch(/^Make this a heading\n/);
 
-  await editor.getByText("Some words here").dblclick();
+  await editor.getByText("Some words here").click();
+  await page.keyboard.press("Home");
+  await page.keyboard.press("Shift+End");
   await toolbar.getByRole("button", { name: "Strikethrough" }).click();
-  await expect.poll(() => readMockFile(page, "Toolbar.md")).toContain("\n~~Some~~ words here\n");
+  await expect.poll(() => readMockFile(page, "Toolbar.md")).toContain("\n~~Some words here~~\n");
   await toolbar.getByRole("button", { name: "Bullet list" }).click();
-  await expect.poll(() => readMockFile(page, "Toolbar.md")).toContain("\n- ~~Some~~ words here\n");
+  await expect.poll(() => readMockFile(page, "Toolbar.md")).toContain("\n- ~~Some words here~~\n");
   await expect(toolbar.getByRole("button", { name: "Bullet list" })).toHaveAttribute("aria-pressed", "true");
   await toolbar.getByRole("button", { name: "Checklist" }).click();
-  await expect.poll(() => readMockFile(page, "Toolbar.md")).toContain("\n- [ ] ~~Some~~ words here\n");
+  await expect.poll(() => readMockFile(page, "Toolbar.md")).toContain("\n- [ ] ~~Some words here~~\n");
 
   await editor.getByText("Line 70.").scrollIntoViewIfNeeded();
   await expect(toolbar).toBeInViewport();

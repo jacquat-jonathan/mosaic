@@ -1,6 +1,6 @@
 import { type EditorView, WidgetType } from "@codemirror/view";
 import { syntaxTree } from "@codemirror/language";
-import { Transaction } from "@codemirror/state";
+import { type ChangeDesc, MapMode, Transaction } from "@codemirror/state";
 import { undo, redo, isolateHistory } from "@codemirror/commands";
 import { useVault } from "../state/vault";
 import { useUi, type MenuItem } from "../state/ui";
@@ -31,6 +31,27 @@ const controllers = new WeakMap<
   HTMLElement,
   { update(source: string): boolean; destroy(): void; focus(pos: number): boolean }
 >();
+
+type TableFocus = { from: number; row: number; col: number };
+
+/** The table cell that has focus, if any, so a reload from disk can put the caret back in it. */
+export function rememberTableFocus(view: EditorView): TableFocus | null {
+  const cell = (document.activeElement as HTMLElement | null)?.closest<HTMLElement>("th, td");
+  const wrap = cell?.closest<HTMLElement>(".cm-table-wrap");
+  if (!cell || !wrap || !view.dom.contains(wrap)) return null;
+  return { from: view.posAtDOM(wrap), row: Number(cell.dataset.row), col: Number(cell.dataset.col) };
+}
+
+/**
+ * After a reload: if the table was redrawn (its text changed), focus the same cell of the new one,
+ * clamped to its size. A table whose text didn't change kept its DOM, caret included.
+ */
+export function restoreTableFocus(view: EditorView, focus: TableFocus, changes: ChangeDesc) {
+  if ((document.activeElement as HTMLElement | null)?.closest("th, td")) return;
+  const from = changes.mapPos(focus.from, 1, MapMode.TrackDel);
+  if (from === null) return; // the table was deleted
+  tableFocus.set(view, { from, row: focus.row, col: focus.col });
+}
 
 /** Keyboard navigation into a rendered table enters its cell editor instead of revealing pipes. */
 export function focusTableAtSelection(view: EditorView) {

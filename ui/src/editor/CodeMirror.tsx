@@ -1,6 +1,25 @@
 import { useEffect, useRef } from "react";
-import { EditorState, type Extension } from "@codemirror/state";
+import { EditorState, Transaction, type Extension } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
+import { textChanges } from "./textDiff";
+import { rememberTableFocus, restoreTableFocus } from "./TableWidget";
+
+/**
+ * Applies a new version of the note from outside (an agent, a sync) as the smallest set of changes,
+ * so the caret, selection, scroll position and open widgets map through it. The reload isn't an undo
+ * step; the user's own edits stay undoable and are mapped past it.
+ */
+export function applyReload(view: EditorView, doc: string) {
+  const current = view.state.doc.toString();
+  if (current === doc) return;
+  const changes = view.state.changes(textChanges(current, doc));
+  const focus = rememberTableFocus(view);
+  view.dispatch({
+    changes,
+    annotations: [Transaction.addToHistory.of(false), Transaction.remote.of(true)],
+  });
+  if (focus) restoreTableFocus(view, focus, changes);
+}
 
 /**
  * Hosts one CodeMirror view. `doc` is only applied when `version` changes (a reload from disk), so
@@ -39,9 +58,7 @@ export function CodeMirror({
   // biome-ignore lint/correctness/useExhaustiveDependencies: only a new version from outside replaces the document; typing changes `doc` too
   useEffect(() => {
     const v = view.current;
-    if (!v || v.state.doc.toString() === doc) return;
-    const head = Math.min(v.state.selection.main.head, doc.length);
-    v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: doc }, selection: { anchor: head } });
+    if (v) applyReload(v, doc);
   }, [version]);
 
   return <div ref={host} className={className} />;

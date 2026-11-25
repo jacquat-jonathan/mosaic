@@ -959,6 +959,12 @@ test("list items move with their children; the focused handle moves a block with
   await expect.poll(() => readMockFile(page, "List.md")).toBe("# List\n\n- two\n- one\n  - child\n- three\n");
   await handle.press("ArrowDown");
   await expect.poll(() => readMockFile(page, "List.md")).toBe("# List\n\n- two\n- three\n- one\n  - child\n");
+  // Back to the top of its list, and down again: the handle still moves the item, not the list.
+  await handle.press("ArrowUp");
+  await handle.press("ArrowUp");
+  await expect.poll(() => readMockFile(page, "List.md")).toBe("# List\n\n- one\n  - child\n- two\n- three\n");
+  await handle.press("ArrowDown");
+  await expect.poll(() => readMockFile(page, "List.md")).toBe("# List\n\n- two\n- one\n  - child\n- three\n");
 });
 
 test("+ opens the slash menu on a new paragraph; Escape takes it away again", async ({ page }) => {

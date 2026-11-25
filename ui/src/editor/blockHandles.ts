@@ -128,14 +128,14 @@ class BlockHandles {
       if (this.dragging) {
         const { from, kind } = this.dragging;
         const mapped = update.changes.mapPos(from, 1);
-        this.dragging = this.allBlocks().find((b) => b.from === mapped && b.kind === kind) ?? null;
+        this.dragging = this.sameBlock(mapped, kind);
         this.dropGap = null;
         this.dropLine.hidden = true;
         if (!this.dragging) this.finishDrag();
       }
       if (this.current) {
         const from = update.changes.mapPos(this.current.from, 1);
-        this.current = this.allBlocks().find((b) => b.from === from) ?? null;
+        this.current = this.sameBlock(from, this.current.kind);
         if (!this.current && !this.dragging) this.hide();
       }
     }
@@ -153,6 +153,11 @@ class BlockHandles {
     this.view.scrollDOM.removeEventListener("mouseleave", this.onMouseLeave);
     this.view.dom.removeEventListener("dragover", this.onDragOver, true);
     this.view.dom.removeEventListener("drop", this.onDrop, true);
+  }
+
+  /** The block of this kind starting at `from` (a list and its first item start at the same place). */
+  private sameBlock(from: number, kind: string): Block | null {
+    return this.allBlocks().find((b) => b.from === from && b.kind === kind) ?? null;
   }
 
   private allBlocks(): Block[] {
@@ -304,7 +309,7 @@ class BlockHandles {
     if (gap === null) return;
     const focus = applyMove(this.view, block, gap);
     if (focus === null) return;
-    const moved = this.allBlocks().find((b) => b.from === focus);
+    const moved = this.sameBlock(focus, block.kind);
     if (moved) this.show(moved);
     this.handle.focus();
   };

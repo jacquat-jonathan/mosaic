@@ -128,11 +128,12 @@ export class TableWidget extends WidgetType {
     editorScope(toolbar);
     toolbar.setAttribute("role", "group");
     toolbar.setAttribute("aria-label", "Table editing");
-    const tableLabel = document.createElement("span");
-    tableLabel.className = "table-toolbar-label";
-    tableLabel.textContent = "Table";
-    const position = document.createElement("span");
-    position.className = "table-position";
+    // A small chevron in the corner of the cell being edited opens that cell's menu.
+    const cellMenu = document.createElement("button");
+    cellMenu.className = "table-cell-menu";
+    cellMenu.setAttribute("aria-label", "Cell options");
+    cellMenu.title = "Cell options";
+    cellMenu.hidden = true;
     const alignSelect = document.createElement("select");
     alignSelect.setAttribute("aria-label", "Column alignment");
     alignSelect.className = "mds-input";
@@ -144,8 +145,18 @@ export class TableWidget extends WidgetType {
     }
     const updateToolbar = (row: number, col: number) => {
       active = { row, col };
-      position.textContent = `${row < 0 ? "Header" : `Row ${row + 1}`} · Column ${col + 1}`;
       alignSelect.value = model.align[col] ?? "left";
+      placeCellMenu();
+    };
+    /** Puts the cell chevron in the top-right corner of the active cell. */
+    const placeCellMenu = () => {
+      const cell = cellEls[active.row + 1]?.[active.col];
+      if (!cell || view.state.readOnly) return;
+      const bounds = inner.getBoundingClientRect();
+      const rect = cell.getBoundingClientRect();
+      cellMenu.hidden = false;
+      cellMenu.style.left = `${rect.right - bounds.left - 22}px`;
+      cellMenu.style.top = `${rect.top - bounds.top + 4}px`;
     };
     const addRow = (parent: HTMLElement, cells: string[], row: number) => {
       const tr = document.createElement("tr");
@@ -235,7 +246,7 @@ export class TableWidget extends WidgetType {
     const scroll = document.createElement("div");
     scroll.className = "cm-table-scroll";
     scroll.append(inner);
-    wrap.append(toolbar, scroll);
+    wrap.append(scroll, toolbar);
 
     /** Start of the widget: the widths comment line if there is one, else the table. */
     const from = () => view.posAtDOM(wrap);
@@ -316,6 +327,7 @@ export class TableWidget extends WidgetType {
         handle.setAttribute("aria-valuetext", `${value} percent`);
       });
       positionHandles();
+      if (wrap.contains(document.activeElement)) placeCellMenu();
     };
     /** The columns' current share of the table, in percent, as laid out. */
     const measuredWidths = () => {
@@ -346,6 +358,20 @@ export class TableWidget extends WidgetType {
       });
     };
     let pendingWidths: string | null = null;
+    /** Removes the table (and its widths comment) with the line break after it, as one undo step. */
+    const deleteTable = () => {
+      if (view.state.readOnly || !wrap.isConnected) return;
+      const start = from();
+      let end = tableFrom() + source.length;
+      if (view.state.doc.sliceString(end, end + 1) === "\n") end++;
+      replaced = true;
+      view.dispatch({
+        changes: { from: start, to: end, insert: "" },
+        selection: { anchor: start },
+        annotations: [Transaction.userEvent.of("delete.table"), isolateHistory.of("full")],
+      });
+      view.focus();
+    };
     const resetWidths = () => saveWidths(null);
     if (!view.state.readOnly)
       model.header.slice(0, -1).forEach((_, col) => {
@@ -400,7 +426,10 @@ export class TableWidget extends WidgetType {
         handles.push(handle);
         inner.append(handle);
       });
-    const observer = new ResizeObserver(() => positionHandles());
+    const observer = new ResizeObserver(() => {
+      positionHandles();
+      if (wrap.contains(document.activeElement)) placeCellMenu();
+    });
     observer.observe(wrap);
     queueMicrotask(() => {
       if (wrap.isConnected) applyWidths();
@@ -547,6 +576,11 @@ export class TableWidget extends WidgetType {
         e.stopPropagation();
         tableFocus.set(view, { from: from(), row, col });
         if (!(e.shiftKey ? redo : undo)(view)) tableFocus.delete(view);
+      } else if (e.ctrlKey && e.altKey && (e.key === "ArrowRight" || e.key === "ArrowDown")) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.key === "ArrowRight") addColumnRight(row, col);
+        else addRowBelow(row, col);
       } else if (e.key === "Tab") {
         e.preventDefault();
         move(row, col, 0, e.shiftKey ? -1 : 1);
@@ -576,6 +610,43 @@ export class TableWidget extends WidgetType {
       }
       if (!next || !wrap.contains(next)) commit(typed());
     });
+    const addColumnRight = (row: number, col: number) =>
+      commit(insertColumn(typed(), col + 1), { row, col: col + 1 }, widths && insertWidth(widths, col + 1));
+    const addRowBelow = (row: number, col: number) => commit(insertRow(typed(), row + 1), { row: row + 1, col });
+    const alignmentMenu = (col: number): MenuItem => ({
+      label: "Column alignment",
+      children: (["left", "center", "right"] as const).map((a) => ({
+        label: a[0].toUpperCase() + a.slice(1),
+        checked: (model.align[col] ?? "left") === a,
+        action: () => commit(setAlign(typed(), col, a === "left" ? null : a), { row: active.row, col }),
+      })),
+    });
+    /** The menu of the cell chevron: what Confluence offers for one cell. */
+    const cellMenuFor = (row: number, col: number): MenuItem[] => [
+      alignmentMenu(col),
+      { label: "", separator: true },
+      { label: "Add column right", shortcut: "⌃⌥→", action: () => addColumnRight(row, col) },
+      { label: "Add row below", shortcut: "⌃⌥↓", action: () => addRowBelow(row, col) },
+      { label: "", separator: true },
+      { label: "Clear cell", action: () => commit(setCell(typed(), row, col, ""), { row, col }) },
+      {
+        label: "Delete column",
+        danger: true,
+        disabled: model.header.length <= 1,
+        action: () =>
+          commit(
+            deleteColumn(typed(), col),
+            { row, col: Math.min(col, model.header.length - 2) },
+            widths && deleteWidth(widths, col),
+          ),
+      },
+      {
+        label: "Delete row",
+        danger: true,
+        disabled: row < 0,
+        action: () => commit(deleteRow(typed(), row), { row: Math.min(row, model.rows.length - 2), col }),
+      },
+    ];
     const menuFor = (row: number, col: number, axis?: "row" | "column"): MenuItem[] => {
       const t = () => typed();
       const at = (focus: { row: number; col: number }) => focus;
@@ -831,7 +902,37 @@ export class TableWidget extends WidgetType {
         button.addEventListener("click", () => formatCells(command));
         formatButtons.push(button);
       }
-      toolbar.append(tableLabel, position, ...formatButtons, alignSelect, sourceButton);
+      const distribute = editorButton(document.createElement("button"));
+      distribute.textContent = "Distribute columns";
+      distribute.title = "Give every column the same width";
+      distribute.addEventListener("mousedown", (event) => event.preventDefault());
+      distribute.addEventListener("click", () => saveWidths(model.header.map(() => 100 / model.header.length)));
+      const more = editorButton(document.createElement("button"));
+      more.textContent = "⋯";
+      more.setAttribute("aria-label", "More table options");
+      more.title = "More table options";
+      more.addEventListener("mousedown", (event) => event.preventDefault());
+      more.addEventListener("click", () => {
+        const rect = more.getBoundingClientRect();
+        useUi.getState().showMenu(rect.left, rect.bottom, [
+          { label: "Automatic column widths", disabled: !widths, action: resetWidths },
+          { label: "Copy as Markdown", action: () => void navigator.clipboard?.writeText(source) },
+          { label: "", separator: true },
+          { label: "Delete table", danger: true, action: deleteTable },
+        ]);
+      });
+      const divider = () => {
+        const el = document.createElement("span");
+        el.className = "table-toolbar-divider";
+        return el;
+      };
+      toolbar.append(...formatButtons, divider(), alignSelect, distribute, divider(), sourceButton, more);
+      cellMenu.addEventListener("mousedown", (event) => event.preventDefault());
+      cellMenu.addEventListener("click", () => {
+        const rect = cellMenu.getBoundingClientRect();
+        useUi.getState().showMenu(rect.left, rect.bottom + 4, cellMenuFor(active.row, active.col));
+      });
+      inner.append(cellMenu);
       updateToolbar(-1, 0);
     } else toolbar.hidden = true;
     table.addEventListener("copy", (event) => {

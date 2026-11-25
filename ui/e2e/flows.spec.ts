@@ -594,6 +594,9 @@ test("edit a table with visible row, column and alignment controls", async ({ pa
   });
   await openMockPath(page, "Table editing.md");
   const table = page.locator(".cm-table-wrap");
+  // No toolbar until a cell is being edited, so a table reads like the note around it.
+  await expect(table.getByRole("group", { name: "Table editing" })).toBeHidden();
+  await table.locator("td").first().click();
   await expect(table.getByRole("group", { name: "Table editing" })).toBeVisible();
   await table.getByRole("button", { name: "Header row options" }).click();
   await page.keyboard.press("Escape");
@@ -795,4 +798,46 @@ test("table drag handles move rows and columns, rectangle selection clears cells
   await expect(table.locator("td")).toHaveText(["x|y", "new", "next", "last"]);
   await expect(table.locator("img")).toHaveCount(0);
   await expect.poll(() => readMockFile(page, "Table moves.md")).toContain("x\\|y");
+});
+
+test("a cell's chevron menu and shortcuts add, clear and delete, and the floating toolbar manages the table", async ({
+  page,
+}) => {
+  await openVault(page);
+  await page.evaluate(async () => {
+    const m = (window as unknown as { __mosaic: { mockInvoke(c: string, a: object): Promise<unknown> } }).__mosaic;
+    await m.mockInvoke("create_file", {
+      path: "Cell menu.md",
+      content: "# Cell menu\n\n| Name | Qty |\n| --- | --- |\n| Apple | 3 |\n\nAfter table.\n",
+      root: null,
+    });
+  });
+  await openMockPath(page, "Cell menu.md");
+  const table = page.locator(".cm-table-wrap");
+  const before = await page.locator(".cm-content").boundingBox();
+  await table.locator("td").first().click();
+  // Focusing a table shows its toolbar without moving the note.
+  expect((await page.locator(".cm-content").boundingBox())!.y).toBe(before!.y);
+  const chevron = table.getByRole("button", { name: "Cell options", exact: true });
+  await chevron.click();
+  await page.getByRole("menuitem", { name: "Add column right", exact: true }).click();
+  await expect(table.locator("th")).toHaveCount(3);
+  await expect(table.locator("td").nth(1)).toBeFocused();
+  await page.keyboard.press("Control+Alt+ArrowDown");
+  await expect(table.locator("tbody tr")).toHaveCount(2);
+  await table.locator("td").nth(1).click();
+  await table.getByRole("button", { name: "Cell options", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Delete column", exact: true }).click();
+  await expect(table.locator("th")).toHaveCount(2);
+  await table.locator("td").first().click();
+  await table.getByRole("button", { name: "Cell options", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Clear cell", exact: true }).click();
+  await expect(table.locator("td").first()).toHaveText("");
+  // Distribute writes equal widths into the note.
+  await table.getByRole("button", { name: "Distribute columns", exact: true }).click();
+  await expect.poll(() => readMockFile(page, "Cell menu.md")).toContain("<!-- widths 50 50 -->\n| Name");
+  await table.getByRole("button", { name: "More table options", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Delete table", exact: true }).click();
+  await expect(page.locator(".cm-table-wrap")).toHaveCount(0);
+  await expect.poll(() => readMockFile(page, "Cell menu.md")).toBe("# Cell menu\n\n\nAfter table.\n");
 });

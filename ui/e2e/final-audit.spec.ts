@@ -294,6 +294,8 @@ async function editorNote(page: Page) {
     });
     await m.useWorkspace.getState().open("Editor UI.md", { newTab: true });
   });
+  // The table toolbar floats under a table while one of its cells is being edited.
+  await page.locator(".cm-table-wrap td").first().click();
   await expect(page.getByRole("group", { name: "Table editing", exact: true })).toBeVisible();
 }
 test("note table and search controls keep note fonts and keyboard behavior", async ({ page }) => {
@@ -303,8 +305,10 @@ test("note table and search controls keep note fonts and keyboard behavior", asy
   await expect(page.locator(".cm-table-wrap td").first()).toHaveCSS("font-size", "14.5px");
   await toolbar.getByRole("button", { name: "Markdown", exact: true }).click();
   await page.getByRole("button", { name: "Back to table", exact: true }).click();
+  await page.locator(".cm-table-wrap td").first().click();
   await expect(toolbar).toBeVisible();
   await page.locator(".cm-content .cm-line").last().click();
+  await expect(toolbar).toBeHidden();
   await page.keyboard.press("Meta+f");
   const search = page.locator(".cm-search");
   await expect(search).toHaveCSS("font-size", "14px");

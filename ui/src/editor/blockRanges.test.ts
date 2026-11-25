@@ -10,7 +10,7 @@ const texts = (doc: string) => blocksOf(doc).map((b) => doc.slice(b.from, b.to))
 /** Moves the block starting with `start` to before the sibling starting with `before` (null: the end). */
 function move(doc: string, start: string, before: string | null) {
   const blocks = blocksOf(doc);
-  const source = blocks.find((b) => doc.slice(b.from).startsWith(start))!;
+  const source = [...blocks].reverse().find((b) => doc.slice(b.from).startsWith(start))!;
   const { units } = siblingsOf(blocks, source);
   const gap = before === null ? units.length : units.findIndex((u) => doc.slice(u.from).startsWith(before));
   return moveBlock(doc, blocks, source, gap)?.text ?? null;
@@ -44,6 +44,7 @@ describe("blocks", () => {
     expect(texts(doc)).toEqual([
       "# Title",
       "Para one\nstill one",
+      "- a\n  - a1\n- b",
       "- a\n  - a1",
       "  - a1",
       "- b",
@@ -51,9 +52,10 @@ describe("blocks", () => {
       "```js\ncode\n```",
     ]);
     const blocks = blocksOf(doc);
-    expect(blocks[2].group).toBe(blocks[4].group);
-    expect(blocks[3].group).not.toBe(blocks[2].group);
-    expect(blockAt(blocks, doc.indexOf("a1"))?.to).toBe(blocks[3].to);
+    expect(blocks[2].group).toBe(-1);
+    expect(blocks[3].group).toBe(blocks[5].group);
+    expect(blocks[4].group).not.toBe(blocks[3].group);
+    expect(blockAt(blocks, doc.indexOf("a1"))?.to).toBe(blocks[4].to);
     expect(blockAt(blocks, doc.indexOf("| 1"))?.kind).toBe("Table");
   });
 });
@@ -67,6 +69,13 @@ describe("moving a block", () => {
 
   test("a single newline next to the moved block becomes a blank line, so nothing merges", () => {
     expect(move("# H\nPara\n\nOther\n", "Other", "Para")).toBe("# H\n\nOther\n\nPara\n");
+  });
+
+  test("blocks move past a list, and a section ending in a list takes it along", () => {
+    expect(move("A\n\n- x\n\nB\n", "B", "A")).toBe("B\n\nA\n\n- x\n");
+    expect(move("A\n\n- x\n", "A", null)).toBe("- x\n\nA\n");
+    expect(move("# One\n\nText\n\n- x\n\n# Two\n", "# One", null)).toBe("# Two\n\n# One\n\nText\n\n- x\n");
+    expect(move("A\n\n1. x\n2. y\n\nB\n", "1. x", null)).toBe("A\n\n1. y\n2. x\n\nB\n");
   });
 
   test("moving onto its own place is not a move", () => {
@@ -104,7 +113,7 @@ describe("moving a block", () => {
   test("stepping skips places a section can't go", () => {
     const doc = "# One\n\nText\n\n# Two\n\nMore\n";
     const blocks = blocksOf(doc);
-    const two = blocks.find((b) => doc.slice(b.from).startsWith("# Two"))!;
+    const two = [...blocks].reverse().find((b) => doc.slice(b.from).startsWith("# Two"))!;
     const siblings = siblingsOf(blocks, two);
     expect(stepGap(siblings, -1)).toBe(0);
     expect(stepGap(siblings, 1)).toBeNull();
@@ -115,7 +124,7 @@ describe("the + beside a block", () => {
   const insert = (doc: string, start: string) => {
     const s = state(doc);
     const blocks = blockRanges(s);
-    const block = blocks.find((b) => doc.slice(b.from).startsWith(start))!;
+    const block = [...blocks].reverse().find((b) => doc.slice(b.from).startsWith(start))!;
     const ins = insertionAfter(s.doc, blocks, block);
     return { text: doc.slice(0, ins.from) + ins.insert + doc.slice(ins.from), ins };
   };

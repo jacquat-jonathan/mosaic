@@ -77,7 +77,8 @@ test("text typed after the + slash is kept when the menu closes", async () => {
 
 test("+ beside a list item adds an item, without a slash", () => {
   const view = editor("- a\n- b\n");
-  addBelow(view, blockRanges(view.state)[0]);
+  // [0] is the whole list; [1] its first item.
+  addBelow(view, blockRanges(view.state)[1]);
   expect(view.state.doc.toString()).toBe("- a\n- \n- b\n");
   expect(view.state.selection.main.head).toBe(6);
 });

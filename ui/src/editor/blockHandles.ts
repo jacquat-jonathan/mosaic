@@ -124,6 +124,15 @@ class BlockHandles {
   update(update: ViewUpdate) {
     if (update.docChanged) {
       this.blocks = null;
+      // The note changed under a drag (an agent, a sync): follow the dragged block, or drop the drag.
+      if (this.dragging) {
+        const { from, kind } = this.dragging;
+        const mapped = update.changes.mapPos(from, 1);
+        this.dragging = this.allBlocks().find((b) => b.from === mapped && b.kind === kind) ?? null;
+        this.dropGap = null;
+        this.dropLine.hidden = true;
+        if (!this.dragging) this.finishDrag();
+      }
       if (this.current) {
         const from = update.changes.mapPos(this.current.from, 1);
         this.current = this.allBlocks().find((b) => b.from === from) ?? null;
@@ -342,9 +351,13 @@ class BlockHandles {
   }
 
   private onDragOver = (event: DragEvent) => {
-    if (!this.dragging || !event.dataTransfer?.types.includes(BLOCK_MIME)) return;
+    if (!event.dataTransfer?.types.includes(BLOCK_MIME)) return;
     event.preventDefault();
     event.stopPropagation();
+    if (!this.dragging) {
+      event.dataTransfer.dropEffect = "none";
+      return;
+    }
     const target = this.gapAt(event.clientY);
     this.dropGap = target?.gap ?? null;
     event.dataTransfer.dropEffect = target ? "move" : "none";
@@ -369,9 +382,10 @@ class BlockHandles {
   }
 
   private onDrop = (event: DragEvent) => {
-    if (!this.dragging || !event.dataTransfer?.types.includes(BLOCK_MIME)) return;
+    if (!event.dataTransfer?.types.includes(BLOCK_MIME)) return;
     event.preventDefault();
     event.stopPropagation();
+    if (!this.dragging) return;
     const block = this.dragging;
     const gap = this.dropGap;
     this.finishDrag();

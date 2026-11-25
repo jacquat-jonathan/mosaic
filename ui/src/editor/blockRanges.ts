@@ -3,8 +3,8 @@
 // only the moved text and the separators around it, so the file an agent reads keeps its shape.
 //
 // Top-level blocks are the children of the Markdown document (paragraphs, headings, tables, code,
-// quotes, rules…). Lists aren't blocks themselves: each list item is, with its nested items, and it
-// moves among the items of its own list. A heading drags with its section.
+// quotes, rules, whole lists…). Each list item is a block too, with its nested items, and it moves
+// among the items of its own list. A heading drags with its section.
 
 import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
 import type { EditorState, Text } from "@codemirror/state";
@@ -70,7 +70,10 @@ export function blockRanges(state: EditorState): Block[] {
   for (let node = tree.topNode.firstChild; node; node = node.nextSibling) {
     if (node.to <= skip || (skip && node.from < skip)) continue;
     if (LIST.has(node.name)) {
+      // The list is a top-level block too, so blocks around it move past it and a section ending
+      // in a list takes it along; its items come after it and are the ones under the pointer.
       widths = null;
+      out.push({ ...lineRange(doc, node), kind: node.name, group: -1, heading: 0, depth: 0 });
       items(node, 1);
       continue;
     }

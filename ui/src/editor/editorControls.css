@@ -45,20 +45,19 @@
   outline: var(--mds-focus-width) solid var(--mds-accent);
   outline-offset: var(--mds-focus-offset);
 }
-.mosaic-ds.cm-section-actions .mds-button {
-  height: 24px;
+.mosaic-ds.cm-block-actions .mds-button {
   min-height: 0;
   padding: 0;
   color: var(--mds-text-muted);
 }
-.mosaic-ds.cm-section-actions .cm-section-add {
+.mosaic-ds.cm-block-actions .cm-block-add {
   font: 500 18px / 1 var(--mds-font-ui);
-  background: var(--mds-surface-subtle);
 }
-.mosaic-ds.cm-section-actions .cm-section-handle::before {
-  background: var(--mds-text-muted);
+.mosaic-ds.cm-block-actions .mds-button:hover {
+  background: var(--mds-surface-hover);
+  color: var(--mds-text);
 }
-.mosaic-ds.cm-section-actions .mds-button:focus-visible {
+.mosaic-ds.cm-block-actions .mds-button:focus-visible {
   outline: var(--mds-focus-width) solid var(--mds-accent);
   outline-offset: var(--mds-focus-offset);
 }

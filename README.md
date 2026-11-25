@@ -34,8 +34,10 @@ Links you click open in your browser.
 - **Markdown live preview:** formatting renders as you type; wikilinks `[[…]]`, embeds `![[…]]`,
   frontmatter properties, tags, tasks, tables, KaTeX math, and Mermaid, Graphviz and Vega-Lite
   blocks. Type `/` on an empty line to insert headings, lists, tables, code or diagrams.
-  Drag a table column boundary to resize neighboring columns while keeping the table width steady;
-  widths are remembered in app storage.
+  Tables fill the page width; drag a column boundary to trade width with the neighboring column.
+  Widths are saved in the note as a hidden comment above the table. Hover any block for a `+`
+  (add a block below) and a handle to drag it, a heading with its section and a list item with its
+  nested items.
 - **Visuals:** JSON Canvas boards (`.canvas`, Obsidian's format), Excalidraw drawings
   (`.excalidraw`), charts (`.vl.json`) and graphs (`.dot`).
 - **Other files:** sandboxed HTML preview and source editing, with separate per-vault script/internet

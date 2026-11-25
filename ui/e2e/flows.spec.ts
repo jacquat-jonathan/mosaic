@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, type Locator, test, type Page } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -893,6 +893,106 @@ test("a table changed outside the editor while a cell is focused keeps that cell
   await expect(table.locator("td").first()).toBeFocused();
   await expect(table.getByRole("status")).toHaveText("This table was changed outside the editor.");
   expect(await readMockFile(page, "Outside.md")).toBe(content.replace("| 1 | 2 |", "| 1 | 22 |"));
+});
+
+/** Drags a block handle onto `target` with gradual pointer moves (WebKit starts a drag only then). */
+async function dragHandle(page: Page, handle: Locator, target: Locator, place: "top" | "bottom") {
+  const from = (await handle.boundingBox())!;
+  const to = (await target.boundingBox())!;
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  await page.mouse.down();
+  for (let i = 1; i <= 5; i++) await page.mouse.move(from.x + from.width / 2 + i * 2, from.y + from.height / 2 + i * 2);
+  const y = place === "top" ? to.y + 2 : to.y + to.height - 2;
+  await page.mouse.move(to.x + 4, (from.y + y) / 2, { steps: 4 });
+  await page.mouse.move(to.x + 4, y, { steps: 4 });
+  await page.mouse.up();
+}
+
+async function blockNote(page: Page, file: string, content: string) {
+  await openVault(page);
+  await page.evaluate(
+    async ([path, text]) => {
+      const m = (window as unknown as { __mosaic: { mockInvoke(c: string, a: object): Promise<unknown> } }).__mosaic;
+      await m.mockInvoke("create_file", { path, content: text, root: null });
+    },
+    [file, content],
+  );
+  await openMockPath(page, file);
+  return page.locator(".md-editor .cm-content");
+}
+
+test("every block has a + and a drag handle; dragging moves it and keeps the note's shape", async ({ page }) => {
+  const editor = await blockNote(page, "Blocks.md", "# Blocks\n\nFirst para.\n\nSecond para.\n\nThird para.\n");
+  const handle = page.getByRole("button", { name: "Move block", exact: true });
+  // Nothing shows until a block is hovered.
+  await page.mouse.move(1, 1);
+  await expect(handle).toBeHidden();
+  await editor.getByText("First para.").hover();
+  await expect(handle).toBeVisible();
+  await expect(page.getByRole("button", { name: "Add a block below", exact: true })).toBeVisible();
+  await dragHandle(page, handle, editor.getByText("Third para."), "bottom");
+  await expect
+    .poll(() => readMockFile(page, "Blocks.md"))
+    .toBe("# Blocks\n\nSecond para.\n\nThird para.\n\nFirst para.\n");
+  // One undo step puts it back.
+  await editor.click();
+  await page.keyboard.press("ControlOrMeta+z");
+  await expect
+    .poll(() => readMockFile(page, "Blocks.md"))
+    .toBe("# Blocks\n\nFirst para.\n\nSecond para.\n\nThird para.\n");
+});
+
+test("a heading drags with its section, numbered sections are renumbered", async ({ page }) => {
+  const editor = await blockNote(page, "Sections.md", "## 1. Alpha\n\nAlpha text.\n\n## 2. Beta\n\nBeta text.\n");
+  await editor.getByText("2. Beta").hover();
+  const handle = page.getByRole("button", { name: "Move section", exact: true });
+  await expect(handle).toBeVisible();
+  await dragHandle(page, handle, editor.getByText("1. Alpha"), "top");
+  await expect
+    .poll(() => readMockFile(page, "Sections.md"))
+    .toBe("## 1. Beta\n\nBeta text.\n\n## 2. Alpha\n\nAlpha text.\n");
+});
+
+test("list items move with their children; the focused handle moves a block with the arrow keys", async ({ page }) => {
+  const editor = await blockNote(page, "List.md", "# List\n\n- one\n  - child\n- two\n- three\n");
+  await editor.locator(".cm-line", { hasText: "one" }).hover();
+  const handle = page.getByRole("button", { name: "Move block", exact: true });
+  await handle.focus();
+  await handle.press("ArrowDown");
+  await expect.poll(() => readMockFile(page, "List.md")).toBe("# List\n\n- two\n- one\n  - child\n- three\n");
+  await handle.press("ArrowDown");
+  await expect.poll(() => readMockFile(page, "List.md")).toBe("# List\n\n- two\n- three\n- one\n  - child\n");
+  // Back to the top of its list, and down again: the handle still moves the item, not the list.
+  await handle.press("ArrowUp");
+  await handle.press("ArrowUp");
+  await expect.poll(() => readMockFile(page, "List.md")).toBe("# List\n\n- one\n  - child\n- two\n- three\n");
+  await handle.press("ArrowDown");
+  await expect.poll(() => readMockFile(page, "List.md")).toBe("# List\n\n- two\n- one\n  - child\n- three\n");
+});
+
+test("+ opens the slash menu on a new paragraph; Escape takes it away again", async ({ page }) => {
+  const editor = await blockNote(page, "Plus.md", "# Plus\n\nFirst.\n\nLast.\n");
+  await editor.getByText("First.").hover();
+  await page.getByRole("button", { name: "Add a block below", exact: true }).click();
+  const menu = page.locator(".cm-slash-menu");
+  await expect(menu).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(menu).toBeHidden();
+  await expect.poll(() => readMockFile(page, "Plus.md")).toBe("# Plus\n\nFirst.\n\nLast.\n");
+  await editor.getByText("First.").hover();
+  await page.getByRole("button", { name: "Add a block below", exact: true }).click();
+  await expect(menu).toBeVisible();
+  await page.keyboard.type("quote");
+  await expect(menu.locator("li[aria-selected]")).toContainText("Quote");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("Quoted");
+  await expect.poll(() => readMockFile(page, "Plus.md")).toBe("# Plus\n\nFirst.\n\n> Quoted\n\nLast.\n");
+});
+
+test("a table is a block too: its handle shows beside it", async ({ page }) => {
+  await blockNote(page, "Table block.md", "# T\n\n| a | b |\n| --- | --- |\n| 1 | 2 |\n\nAfter.\n");
+  await page.locator(".cm-table-wrap td").first().hover();
+  await expect(page.getByRole("button", { name: "Move block", exact: true })).toBeVisible();
 });
 
 test("the table toolbar works where clicked buttons don't take focus (macOS WebKit)", async ({ page }) => {

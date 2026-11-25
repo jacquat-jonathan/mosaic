@@ -104,7 +104,7 @@ function headingNumber(text: string, heading: OutlineHeading): { from: number; t
  * After one of them moves, keep every numbered sibling in display order while preserving whether
  * each heading used a dot or a closing parenthesis.
  */
-function renumberMovedSection(text: string, focus: number): SectionEdit {
+export function renumberMovedSection(text: string, focus: number): SectionEdit {
   const headings = parse(text);
   const moved = headings.find((heading) => heading.offset === focus);
   if (!moved || !headingNumber(text, moved)) return { text, focus };

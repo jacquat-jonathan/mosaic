@@ -1,6 +1,7 @@
 // The editor of each open note, so commands can act on the active one (e.g. "Add a property").
 
 import type { EditorView } from "@codemirror/view";
+import { textChanges } from "./textDiff";
 import { FRONTMATTER_RE } from "./livePreview";
 import { insertSiblingSection, moveSection, moveSectionTo } from "../views/outline";
 
@@ -79,7 +80,7 @@ function applySectionEdit(path: string, edit: ReturnType<typeof moveSection>): b
   if (!view || !edit) return false;
   const doc = view.state.doc.toString();
   view.dispatch({
-    changes: { from: 0, to: doc.length, insert: edit.text },
+    changes: textChanges(doc, edit.text),
     selection: edit.select ?? { anchor: edit.focus },
     scrollIntoView: true,
     userEvent: "move.section",

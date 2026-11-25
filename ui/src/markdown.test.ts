@@ -61,3 +61,9 @@ test("a callout nested in a quote stays a quote, as in the editor", () => {
   expect(html).not.toContain("callout");
   expect(html.match(/<blockquote>/g)).toHaveLength(2);
 });
+
+test("a callout inside a panel stays a quote inside it", () => {
+  const html = markdownToHtml("> [!note] Outer\n> > [!info] Inner\n");
+  expect(html.match(/class="callout /g)).toHaveLength(1);
+  expect(html).toContain("<blockquote>");
+});

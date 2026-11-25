@@ -68,7 +68,10 @@ const callout: RendererExtension = {
     const title = header.title
       ? marked.parseInline(header.title, { async: false, breaks })
       : escapeText(header.defaultTitle);
-    const inner = body.trim() ? this.parser.parse(marked.lexer(body, { breaks })) : "";
+    const tokens = body.trim() ? marked.lexer(body, { breaks }) : [];
+    // Quotes inside a panel stay quotes (this lexing skips walkTokens).
+    for (const t of tokens) if (t.type === "blockquote") (t as Tokens.Blockquote & { nested?: boolean }).nested = true;
+    const inner = tokens.length ? this.parser.parse(tokens) : "";
     return (
       `<div class="callout callout-${header.kind}" data-callout="${escapeAttr(header.type)}">` +
       `<div class="callout-title"><span class="callout-icon" aria-hidden="true">${escapeText(style.icon)}</span>` +

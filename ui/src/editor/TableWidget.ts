@@ -63,12 +63,18 @@ export function rememberTableFocus(view: EditorView): TableFocus | null {
  */
 export function restoreTableFocus(view: EditorView, focus: TableFocus, changes: ChangeDesc) {
   if ((document.activeElement as HTMLElement | null)?.closest("th, td")) return;
-  tableFocus.set(view, {
+  const entry = {
     from: changes.mapPos(focus.from, -1),
     to: changes.mapPos(focus.from, 1),
     row: focus.row,
     col: focus.col,
     notice: "This table was changed outside the editor.",
+  };
+  tableFocus.set(view, entry);
+  // The redrawn table claims it in a microtask queued during the reload. If the table is gone,
+  // forget it so a later table drawn there isn't focused.
+  queueMicrotask(() => {
+    if (tableFocus.get(view) === entry) tableFocus.delete(view);
   });
 }
 

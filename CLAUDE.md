@@ -14,12 +14,27 @@ Repository development instructions live in [AGENTS.md](AGENTS.md); follow them 
 - The reviewer's reply is `APPROVE` or `REJECT`. On `REJECT`, address the listed problems
   and call it again before proceeding.
 
+## Branches
+
+- Delete the `claude/...` branch you worked on once its work is merged into `main`. Check
+  when you merge its pull request yourself, when the user says it was merged, and at the
+  start of a session (list the remote `claude/*` branches). A branch counts as merged when
+  its pull request shows as merged on GitHub or its commits are in `origin/main`. Delete
+  only branches Claude created.
+- Delete it locally (`git branch -D <branch>`, after switching off it) and on GitHub
+  (`git push origin --delete <branch>`).
+- Cloud sessions cannot delete remote branches: the push is refused. Still delete the local
+  branch, then tell the user which merged remote branches are left so they can delete them.
+
 ## Claude Code cloud sessions
 
 Cloud sessions run on Linux as `root`; CI and the app target macOS. The environment's setup
 script has installed the pinned Rust, Node and pnpm, Tauri's Linux libraries and the
 dependencies.
 
+- Do not prepare a release here: a cloud session cannot push the release tag, so releases are
+  done from a local Claude Code session. If asked for one, say so before doing anything
+  (see [docs/RELEASING.md](docs/RELEASING.md)).
 - Put the pinned Node first on `PATH` before any `node` or `pnpm` command; the image's
   default Node is a different version and `scripts/check-toolchain.sh` rejects it:
   `export PATH=/opt/node-mosaic/bin:$PATH`.

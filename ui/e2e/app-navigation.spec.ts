@@ -87,7 +87,8 @@ test("window strip follows themes, retains native drag regions and fits narrow w
   await expect(page.locator(".settings-workspace")).not.toHaveClass(/mosaic-ds/);
 });
 
-test("feedback button next to the version opens a prefilled GitHub issue", async ({ page }) => {
+test("feedback button pinned to the sidebar bottom opens a prefilled GitHub issue", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 420 });
   await page.goto("/");
   await page.getByRole("button", { name: "Open folder…", exact: true }).click();
   await page.evaluate(() => {
@@ -98,12 +99,41 @@ test("feedback button next to the version opens a prefilled GitHub issue", async
     };
   });
   const strip = page.getByRole("banner", { name: "Window title", exact: true });
-  const button = strip.getByRole("button", { name: "Feedback", exact: true });
+  await expect(strip.getByRole("button")).toHaveCount(0);
+  const sidebar = page.getByRole("complementary", { name: "notes sidebar", exact: true });
+  const button = sidebar.getByRole("button", { name: "Send feedback", exact: true });
+  // A short window makes the tree scroll; the footer stays at the very bottom of the sidebar, in view.
+  const tree = sidebar.locator(".tree");
+  await expect.poll(() => tree.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
   await expect(button).toBeInViewport();
+  const footer = sidebar.locator(".sidebar-footer");
+  const [footerBox, sidebarBox, treeBox] = await Promise.all([
+    footer.boundingBox(),
+    sidebar.boundingBox(),
+    tree.boundingBox(),
+  ]);
+  expect(Math.abs(footerBox!.y + footerBox!.height - (sidebarBox!.y + sidebarBox!.height))).toBeLessThanOrEqual(1);
+  expect(treeBox!.y + treeBox!.height).toBeLessThanOrEqual(footerBox!.y + 1);
+  await expect(footer).toHaveCSS("border-top-style", "solid");
   await button.click();
   const dialog = page.getByRole("dialog", { name: "Send feedback", exact: true });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByLabel("Title")).toBeFocused();
+  // Bug/Idea is sized to its two options, like the theme setting, not stretched across the dialog.
+  const kinds = dialog.getByRole("radiogroup", { name: "Feedback type", exact: true });
+  const options = await kinds
+    .locator("label")
+    .evaluateAll((labels) => labels.reduce((sum, label) => sum + label.getBoundingClientRect().width, 0));
+  const group = await kinds.evaluate((element) => {
+    const style = getComputedStyle(element);
+    const chrome =
+      Number.parseFloat(style.paddingLeft) +
+      Number.parseFloat(style.paddingRight) +
+      Number.parseFloat(style.borderLeftWidth) +
+      Number.parseFloat(style.borderRightWidth);
+    return element.getBoundingClientRect().width - chrome;
+  });
+  expect(Math.abs(group - options)).toBeLessThanOrEqual(1);
   await dialog.getByRole("radio", { name: "Idea", exact: true }).check({ force: true });
   await dialog.getByLabel("Title").fill("Board view");
   await dialog.getByLabel("Message").fill("Columns & cards");

@@ -52,8 +52,10 @@ export const api = {
   setBookmarks: (paths: string[]) => cmd.setBookmarks(paths),
   copy: (from: string, to: string) => cmd.copyPath(from, to),
   importFile,
-  list: (dir = "", recursive = false) => cmd.listDir(dir, recursive),
+  list: (dir = "", recursive = false, includeHidden = false) => cmd.listDir(dir, recursive, includeHidden),
   read: (path: string) => cmd.readFile(path),
+  /** A hidden file, view-only, while "Show hidden files and folders" is on (see hidden.ts). */
+  readHidden: (path: string) => cmd.readHiddenFile(path),
   create: (path: string, content = "", root?: string) => cmd.createFile(path, content, root ?? null),
   templateConfig: () => cmd.templateConfig(),
   // The core serializes every field; `#[serde(default)]` only makes them optional when it reads.
@@ -287,6 +289,8 @@ export async function onIndexProgress(cb: (p: IndexProgress) => void): Promise<(
 export interface VaultChanges {
   session?: VaultSession;
   paths: string[];
+  /** Changed hidden paths, reported only while "Show hidden files and folders" is on. */
+  hidden_paths?: string[];
   root_missing: boolean;
 }
 

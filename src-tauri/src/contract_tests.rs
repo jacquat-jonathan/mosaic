@@ -203,6 +203,7 @@ fn event_payloads_serialize_through_tauri_emitter() {
             session: session.clone(),
             changes: mosaic_core::watch::Changes {
                 paths: vec!["Note.md".into()],
+                hidden_paths: vec![],
                 root_missing: false,
             },
         },

@@ -355,6 +355,7 @@ names in Notes are proposals for the slice, not commitments.
 | `last_vault` | excluded (vault scope: the server is bound to one vault) | |
 | `list_dir` | `list_files` | |
 | `read_file` | `read_file` | |
+| `read_hidden_file` | excluded (hard: hidden files such as `.claude/` are shown to the person only, view-only, when they turn on Show hidden files and folders; agents never see hidden paths) | |
 | `create_file` | `create_file` | |
 | `template_config` | `get_template_config` | |
 | `vault_preferences` | `get_vault_preferences` | |

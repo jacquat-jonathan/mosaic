@@ -1,5 +1,6 @@
 //! Watches a vault for changes made outside the app (AI tools, the CLI, other editors, sync), keeps
-//! the index current and reports vault-relative paths. Hidden paths such as `.obsidian/` are ignored.
+//! the index current and reports vault-relative paths. Hidden paths such as `.obsidian/` are never
+//! indexed; they are reported separately, and only while the app shows hidden files.
 
 use crate::api::Workspace;
 use crate::error::{Error, Result};
@@ -8,9 +9,9 @@ use notify::RecursiveMode;
 use notify_debouncer_full::{DebounceEventResult, Debouncer, RecommendedCache, new_debouncer};
 use serde::Serialize;
 use std::collections::BTreeSet;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 /// ~100 ms keeps the change-to-screen budget well inside one second.
 pub const DEBOUNCE: Duration = Duration::from_millis(100);
@@ -19,12 +20,41 @@ pub const DEBOUNCE: Duration = Duration::from_millis(100);
 pub struct Changes {
     /// Vault-relative paths that were created, modified, removed or renamed.
     pub paths: Vec<String>,
+    /// Changed hidden paths the app shows ("Show hidden files and folders"), never `.git/` or
+    /// `.mosaic/`. Empty while that preference is off. Kept apart from `paths`: they are not
+    /// indexed and don't trigger workflows.
+    pub hidden_paths: Vec<String>,
     /// Set when the vault folder itself disappeared (unmounted disk, moved folder).
     pub root_missing: bool,
 }
 
 /// How often a vault watcher marks the index as kept current (see `Workspace::heartbeat`).
 pub const HEARTBEAT: Duration = Duration::from_secs(2);
+
+/// How long the watcher trusts its last read of the "Show hidden files and folders" preference, so
+/// a busy hidden folder (`.next/`, `.venv/`) doesn't make it read settings.json on every batch.
+const SHOW_HIDDEN_TTL: Duration = Duration::from_secs(2);
+
+/// The watcher's cached copy of `VaultPreferences::show_hidden_files`.
+#[derive(Default)]
+struct ShowHidden(Mutex<Option<(Instant, bool)>>);
+
+impl ShowHidden {
+    fn get(&self, ws: &Workspace) -> bool {
+        let mut cached = self.0.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some((at, on)) = *cached
+            && at.elapsed() < SHOW_HIDDEN_TTL
+        {
+            return on;
+        }
+        let on = ws
+            .vault_preferences()
+            .map(|p| p.show_hidden_files)
+            .unwrap_or(false);
+        *cached = Some((Instant::now(), on));
+        on
+    }
+}
 
 /// Stops watching when dropped.
 pub struct Watcher {
@@ -48,8 +78,14 @@ pub fn watch(ws: Arc<Workspace>, on_change: impl Fn(Changes) + Send + 'static) -
     let root = ws.vault.root().to_path_buf();
     let handler_ws = ws.clone();
     let start = || -> Result<_> {
+        let show_hidden = ShowHidden::default();
         let mut debouncer = new_debouncer(DEBOUNCE, None, move |res: DebounceEventResult| {
-            handle_events(&handler_ws, res, &on_change);
+            handle_events(
+                &handler_ws,
+                res,
+                &|| show_hidden.get(&handler_ws),
+                &on_change,
+            );
         })
         .map_err(|e| Error::io("vault watcher", std::io::Error::other(e.to_string())))?;
         debouncer
@@ -84,7 +120,12 @@ pub fn watch(ws: Arc<Workspace>, on_change: impl Fn(Changes) + Send + 'static) -
 
 /// A lost/overflowed event is not evidence that the index is current. Keep change notifications
 /// flowing even if indexing fails, so successful file edits remain visible and usable.
-fn handle_events(ws: &Workspace, result: DebounceEventResult, on_change: &impl Fn(Changes)) {
+fn handle_events(
+    ws: &Workspace,
+    result: DebounceEventResult,
+    show_hidden: &dyn Fn() -> bool,
+    on_change: &impl Fn(Changes),
+) {
     let events = match result {
         Ok(events) => events,
         Err(_) => {
@@ -95,21 +136,15 @@ fn handle_events(ws: &Workspace, result: DebounceEventResult, on_change: &impl F
     if events.iter().any(|e| e.need_rescan()) {
         ws.watcher_failed(IndexProblem::WatcherEvent, "overflow");
     }
-    let mut paths = BTreeSet::new();
-    for event in &events {
-        for path in &event.paths {
-            if let Some(relative) = ws.vault.relative(path)
-                && !relative.is_empty()
-            {
-                paths.insert(relative);
-            }
-        }
+    let (paths, mut hidden_paths) = partition(ws, events.iter().flat_map(|e| &e.paths));
+    if !hidden_paths.is_empty() && !show_hidden() {
+        hidden_paths.clear();
     }
     let root_missing = !ws.vault.root().is_dir();
     if root_missing {
         ws.watcher_failed(IndexProblem::WatcherEvent, "root_missing");
     }
-    if paths.is_empty() && !root_missing {
+    if paths.is_empty() && hidden_paths.is_empty() && !root_missing {
         return;
     }
     for path in &paths {
@@ -117,8 +152,29 @@ fn handle_events(ws: &Workspace, result: DebounceEventResult, on_change: &impl F
     }
     on_change(Changes {
         paths: paths.into_iter().collect(),
+        hidden_paths: hidden_paths.into_iter().collect(),
         root_missing,
     });
+}
+
+/// Splits changed absolute paths into vault paths and hidden paths the app can show. Paths outside
+/// the vault, the root itself and internal ones (`.git/`, `.mosaic/`) are dropped.
+fn partition<'a>(
+    ws: &Workspace,
+    changed: impl IntoIterator<Item = &'a std::path::PathBuf>,
+) -> (BTreeSet<String>, BTreeSet<String>) {
+    let mut paths = BTreeSet::new();
+    let mut hidden = BTreeSet::new();
+    for path in changed {
+        if let Some(relative) = ws.vault.relative(path) {
+            if !relative.is_empty() {
+                paths.insert(relative);
+            }
+        } else if let Some(relative) = ws.vault.relative_shown(path) {
+            hidden.insert(relative);
+        }
+    }
+    (paths, hidden)
 }
 
 /// Watches settings.json and each vault's bookmarks and rules, which agents also write (bookmarks
@@ -255,6 +311,7 @@ mod tests {
         handle_events(
             &ws,
             Err(vec![notify::Error::generic("private path hidden")]),
+            &|| false,
             &|_| {},
         );
         assert_eq!(
@@ -273,6 +330,7 @@ mod tests {
                 notify::Event::new(notify::EventKind::Other).set_flag(notify::event::Flag::Rescan),
                 Instant::now(),
             )]),
+            &|| false,
             &|_| {},
         );
         assert_eq!(ws.index_health().diagnostic.unwrap().error_code, "overflow");
@@ -289,6 +347,56 @@ mod tests {
         assert_eq!(
             ws.index_health().status,
             crate::index_health::IndexStatus::Healthy
+        );
+    }
+
+    fn changed(paths: &[std::path::PathBuf]) -> DebounceEventResult {
+        let mut event = notify::Event::new(notify::EventKind::Any);
+        for path in paths {
+            event = event.add_path(path.clone());
+        }
+        Ok(vec![notify_debouncer_full::DebouncedEvent::new(
+            event,
+            Instant::now(),
+        )])
+    }
+
+    #[test]
+    fn hidden_changes_are_reported_apart_only_when_shown_and_never_indexed() {
+        let dir = tempfile::tempdir().unwrap();
+        let ws = Workspace::new(
+            Vault::open(dir.path()).unwrap(),
+            Index::in_memory().unwrap(),
+        );
+        let root = ws.vault.root().to_path_buf();
+        let paths = [
+            root.join("note.md"),
+            root.join(".claude/settings.json"),
+            root.join("a/.github/ci.yml"),
+            root.join(".git/index"),
+            root.join(".mosaic/planner.sqlite3"),
+            root.join("a/.mosaic-x.tmp"),
+            root.join(".DS_Store"),
+        ];
+        let (plain, hidden) = partition(&ws, &paths);
+        assert_eq!(plain.into_iter().collect::<Vec<_>>(), vec!["note.md"]);
+        assert_eq!(
+            hidden.into_iter().collect::<Vec<_>>(),
+            vec![".claude/settings.json", "a/.github/ci.yml"]
+        );
+
+        let seen = Mutex::new(Vec::new());
+        let record = |c: Changes| seen.lock().unwrap().push(c);
+        handle_events(&ws, changed(&paths[1..]), &|| true, &record);
+        handle_events(&ws, changed(&paths[1..]), &|| false, &record);
+        handle_events(&ws, changed(&paths[3..]), &|| true, &record);
+        let seen = seen.into_inner().unwrap();
+        // Shown: reported apart from `paths`; off, or only internal paths: nothing at all.
+        assert_eq!(seen.len(), 1);
+        assert!(seen[0].paths.is_empty());
+        assert_eq!(
+            seen[0].hidden_paths,
+            vec![".claude/settings.json", "a/.github/ci.yml"]
         );
     }
 

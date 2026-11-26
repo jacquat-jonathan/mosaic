@@ -95,8 +95,13 @@ export const commands = {
 	planner_unavailable?: PlannerUnavailable | null,
 } | null>("current_vault"),
 	lastVault: () => __TAURI_INVOKE<string | null>("last_vault"),
-	listDir: (dir: string, recursive: boolean) => __TAURI_INVOKE<Entry[]>("list_dir", { dir, recursive }),
+	listDir: (dir: string, recursive: boolean, includeHidden: boolean) => __TAURI_INVOKE<Entry[]>("list_dir", { dir, recursive, includeHidden }),
 	readFile: (path: string) => __TAURI_INVOKE<FileContent_Serialize>("read_file", { path }),
+	/**
+	 *  A hidden file (`.claude/settings.json`) for view-only display, while "Show hidden files and
+	 *  folders" is on. The MCP server and CLI have no such command.
+	 */
+	readHiddenFile: (path: string) => __TAURI_INVOKE<FileContent_Serialize>("read_hidden_file", { path }),
 	createFile: (path: string, content: string, root: string | null) => __TAURI_INVOKE<Written_Serialize>("create_file", { path, content, root }),
 	templateConfig: () => __TAURI_INVOKE<TemplateConfig>("template_config"),
 	vaultPreferences: () => __TAURI_INVOKE<VaultPreferences>("vault_preferences"),
@@ -1163,6 +1168,12 @@ export type VaultPreferences = {
 	attachment_location?: AttachmentLocation,
 	attachment_folder?: string,
 	show_attachments_in_tree?: boolean,
+	/**
+	 *  Shows hidden (dot-prefixed) files and folders such as `.claude/` in the app's file tree,
+	 *  view-only. `.git/` and Mosaic's own `.mosaic/` stay hidden (`vault::is_internal`). Agents,
+	 *  the CLI and the index never see hidden files, whatever this says.
+	 */
+	show_hidden_files?: boolean,
 	/**
 	 *  Allows scripts by default in sandboxed HTML previews. Individual previews may override this
 	 *  for the current app session. Internet access is configured separately.

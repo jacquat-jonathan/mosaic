@@ -20,6 +20,7 @@ export const DEFAULT_VAULT_PREFS: VaultPreferences = {
   attachment_location: "next-to-note",
   attachment_folder: "",
   show_attachments_in_tree: false,
+  show_hidden_files: false,
   allow_html_scripts: false,
   allow_html_internet: false,
   link_style: "wiki",

@@ -22,6 +22,10 @@ pub struct VaultPreferences {
     pub attachment_location: String,
     pub attachment_folder: String,
     pub show_attachments_in_tree: bool,
+    /// Shows hidden (dot-prefixed) files and folders such as `.claude/` in the app's file tree,
+    /// view-only. `.git/` and Mosaic's own `.mosaic/` stay hidden (`vault::is_internal`). Agents,
+    /// the CLI and the index never see hidden files, whatever this says.
+    pub show_hidden_files: bool,
     /// Allows scripts by default in sandboxed HTML previews. Individual previews may override this
     /// for the current app session. Internet access is configured separately.
     pub allow_html_scripts: bool,
@@ -44,6 +48,7 @@ pub struct VaultPreferences {
 /// Left out on purpose: `agents_folder` (where scheduled agents and their `may-change` live; an
 /// agent could point it at a folder it may write and so grant itself permissions),
 /// `allow_html_scripts` and `allow_html_internet` (the HTML preview sandbox's security),
+/// `show_hidden_files` (it decides what the person's app reveals, and gives agents nothing),
 /// `version` and `legacy_migrated` (bookkeeping), and preferences a newer Mosaic wrote.
 pub const AGENT_PREFERENCES: &[&str] = &[
     "daily_notes_enabled",
@@ -119,6 +124,7 @@ impl Default for VaultPreferences {
             attachment_location: "next-to-note".into(),
             attachment_folder: String::new(),
             show_attachments_in_tree: false,
+            show_hidden_files: false,
             allow_html_scripts: false,
             allow_html_internet: false,
             link_style: "wiki".into(),

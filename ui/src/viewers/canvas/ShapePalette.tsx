@@ -4,6 +4,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { X } from "lucide-react";
 import { Button, IconButton } from "../../design-system/components";
+import { dismissOnEscape, useDismissLayer } from "../../design-system/dismiss";
 import { DesignSystemScope } from "../../views/DesignSystemScope";
 import { createPortal } from "react-dom";
 import { SHAPES, SHAPE_GROUPS, ShapePreview, type ShapeName } from "../../diagrams/shapes";
@@ -41,26 +42,20 @@ export function ShapePalette({
     window.addEventListener("resize", place);
     return () => window.removeEventListener("resize", place);
   }, [anchor]);
+  // The Shape button counts as inside: it toggles the palette closed itself.
+  useDismissLayer({
+    open: true,
+    inside: () => [ref.current, returnFocusRef.current],
+    onDismiss: (reason) => {
+      // A press elsewhere leaves focus where it landed; Escape returns it to the Shape button.
+      if (reason === "outside") restore.current = false;
+      close.current();
+    },
+  });
   useEffect(() => {
     restore.current = true;
     ref.current?.querySelector<HTMLButtonElement>(".palette-tile")?.focus({ preventScroll: true });
-    const onDown = (event: MouseEvent) => {
-      if (!ref.current?.contains(event.target as Node) && !returnFocusRef.current?.contains(event.target as Node)) {
-        restore.current = false;
-        close.current();
-      }
-    };
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        close.current();
-      }
-    };
-    window.addEventListener("mousedown", onDown);
-    window.addEventListener("keydown", onKey, true);
     return () => {
-      window.removeEventListener("mousedown", onDown);
-      window.removeEventListener("keydown", onKey, true);
       if (restore.current) returnFocusRef.current?.focus();
     };
   }, [returnFocusRef]);
@@ -81,7 +76,7 @@ export function ShapePalette({
     </Button>
   );
   return createPortal(
-    <div ref={ref} style={{ position: "fixed", zIndex: 70, ...position }}>
+    <div ref={ref} style={{ position: "fixed", zIndex: 70, ...position }} onKeyDown={dismissOnEscape}>
       <DesignSystemScope className="canvas-palette" role="dialog" aria-label="Shapes and icons">
         <header>
           <h3>Shapes and icons</h3>

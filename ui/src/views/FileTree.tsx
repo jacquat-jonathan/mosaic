@@ -117,6 +117,7 @@ export function FileTreeToolbar() {
             r.left,
             r.bottom + 4,
             NEW_KINDS.map((k) => ({ label: k.label, action: () => void newOfKind("", k) })),
+            e.currentTarget,
           );
         }}
       >

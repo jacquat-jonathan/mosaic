@@ -149,12 +149,13 @@ interface UiState {
   showSearch(q?: string): void;
   setSwitcher(open: boolean): void;
   toggleRightPanel(): void;
-  menu: { x: number; y: number; items: MenuItem[] } | null;
+  menu: { x: number; y: number; items: MenuItem[]; trigger?: Element } | null;
   confirm: Confirm | null;
   prompt: Prompt | null;
   askText(opts: Omit<Prompt, "resolve">): Promise<string | null>;
   answerText(value: string | null): void;
-  showMenu(x: number, y: number, items: MenuItem[]): void;
+  /** Opens the menu. With the button that opened it as `trigger`, the same button closes it again. */
+  showMenu(x: number, y: number, items: MenuItem[], trigger?: Element): void;
   hideMenu(): void;
   ask(opts: Omit<Confirm, "resolve">): Promise<boolean>;
   answer(ok: boolean): void;
@@ -242,7 +243,8 @@ export const useUi = create<UiState>((set, get) => ({
     get().prompt?.resolve(value);
     set({ prompt: null });
   },
-  showMenu: (x, y, items) => set({ menu: { x, y, items } }),
+  showMenu: (x, y, items, trigger) =>
+    set({ menu: trigger && get().menu?.trigger === trigger ? null : { x, y, items, trigger } }),
   hideMenu: () => set({ menu: null }),
   ask: (opts) => new Promise<boolean>((resolve) => set({ confirm: { ...opts, resolve } })),
   answer(ok) {

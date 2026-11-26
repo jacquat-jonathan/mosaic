@@ -234,6 +234,7 @@ function PaneView({ pane, topLeft, topRight }: { pane: Pane; topLeft: boolean; t
               commands()
                 .filter((c) => ids.includes(c.id) && (c.when?.() ?? true))
                 .map((c) => ({ label: c.label, action: c.run, danger: c.id === "delete" })),
+              e.currentTarget,
             );
           }}
         >

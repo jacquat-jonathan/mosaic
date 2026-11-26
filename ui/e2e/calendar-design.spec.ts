@@ -210,6 +210,8 @@ test("failed imported calendars keep working events and the calendar list availa
     .setInputFiles({ name: "broken.ics", mimeType: "text/calendar", buffer: Buffer.from("invalid calendar") });
   await expect(page.getByRole("alert").filter({ hasText: "Invalid iCalendar file" })).toBeVisible();
   await expect(working).toBeVisible();
+  // Clicking Retry outside the Calendars dropdown closed it; the list is still there when reopened.
+  await page.locator(".calendar-chooser summary").click();
   await expect(page.getByRole("checkbox", { name: "Team calendar 🔒", exact: true })).toBeVisible();
 });
 for (const [route, label] of [

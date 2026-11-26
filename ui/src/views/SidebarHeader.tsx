@@ -88,16 +88,21 @@ export function SidebarHeader({ vault }: { vault: { root: string; name: string }
           : []),
       ];
       const bounds = button.getBoundingClientRect();
-      useUi.getState().showMenu(bounds.left, bounds.bottom + 4, items);
+      useUi.getState().showMenu(bounds.left, bounds.bottom + 4, items, button);
     } catch (cause) {
       if (current() && button.isConnected) {
         setProblem(errorMessage(cause));
         const bounds = button.getBoundingClientRect();
-        useUi.getState().showMenu(bounds.left, bounds.bottom + 4, [
-          { label: "Open folder as vault…", action: () => void act(() => openVaultFolder(current), true) },
-          { label: "Create new vault…", action: () => void act(() => createVault(current), true) },
-          { label: "Reveal vault in Finder", action: () => void act(() => revealInFinder("")) },
-        ]);
+        useUi.getState().showMenu(
+          bounds.left,
+          bounds.bottom + 4,
+          [
+            { label: "Open folder as vault…", action: () => void act(() => openVaultFolder(current), true) },
+            { label: "Create new vault…", action: () => void act(() => createVault(current), true) },
+            { label: "Reveal vault in Finder", action: () => void act(() => revealInFinder("")) },
+          ],
+          button,
+        );
       }
     } finally {
       lock.current = false;

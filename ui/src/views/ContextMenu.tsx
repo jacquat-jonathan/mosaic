@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Check, ChevronRight } from "lucide-react";
+import { dismissOnEscape, useDismissLayer } from "../design-system/dismiss";
 import { useUi, type MenuItem } from "../state/ui";
 import { DesignSystemScope } from "./DesignSystemScope";
 import "./contextMenu.css";
@@ -9,18 +10,22 @@ export function ContextMenu() {
   const hide = useUi((s) => s.hideMenu);
   const ref = useRef<HTMLDivElement>(null);
   const restore = useRef(true);
+  // The trigger counts as inside, so pressing it again toggles the menu closed instead of reopening it.
+  useDismissLayer({
+    open: !!menu,
+    inside: () => [ref.current, menu?.trigger],
+    onDismiss: (reason) => {
+      // A press elsewhere leaves focus where it landed; Escape returns it to the opener.
+      if (reason === "outside") restore.current = false;
+      hide();
+    },
+  });
   useLayoutEffect(() => {
     if (!menu) return;
     const previous = document.activeElement;
     restore.current = true;
-    const close = (event: Event) => {
-      if (!ref.current?.contains(event.target as Node)) {
-        restore.current = false;
-        hide();
-      }
-    };
     const key = (event: KeyboardEvent) => {
-      if (event.key === "Escape" || event.key === "Tab") {
+      if (event.key === "Tab") {
         event.preventDefault();
         hide();
       }
@@ -29,11 +34,9 @@ export function ContextMenu() {
       restore.current = false;
       hide();
     };
-    window.addEventListener("mousedown", close);
     window.addEventListener("keydown", key);
     window.addEventListener("blur", blur);
     return () => {
-      window.removeEventListener("mousedown", close);
       window.removeEventListener("keydown", key);
       window.removeEventListener("blur", blur);
       if (restore.current && previous instanceof HTMLElement && previous.isConnected) previous.focus();
@@ -41,7 +44,7 @@ export function ContextMenu() {
   }, [menu, hide]);
   if (!menu) return null;
   return (
-    <div ref={ref}>
+    <div ref={ref} onKeyDown={dismissOnEscape}>
       <DesignSystemScope>
         <MenuList key={`${menu.x},${menu.y}`} items={menu.items} x={menu.x} y={menu.y} onDone={hide} focusOnOpen />
       </DesignSystemScope>

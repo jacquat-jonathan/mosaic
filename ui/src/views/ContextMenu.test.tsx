@@ -39,3 +39,35 @@ test("nested keyboard menus skip disabled items, activate once and restore focus
   expect(useUi.getState().menu).toBeNull();
   expect(document.activeElement).toBe(opener);
 });
+
+test("a press outside closes the menu without moving focus, and its trigger toggles it", () => {
+  render(
+    <>
+      <button type="button">Elsewhere</button>
+      <button type="button">More</button>
+      <ContextMenu />
+    </>,
+  );
+  const trigger = screen.getByRole("button", { name: "More" });
+  const open = () => act(() => useUi.getState().showMenu(10, 10, [{ label: "Rename", action: () => {} }], trigger));
+  open();
+  fireEvent.pointerDown(screen.getByRole("menuitem", { name: "Rename" }));
+  expect(useUi.getState().menu).not.toBeNull();
+
+  // Pressing the trigger again closes the menu instead of reopening it.
+  fireEvent.pointerDown(trigger);
+  expect(useUi.getState().menu).not.toBeNull();
+  open();
+  expect(useUi.getState().menu).toBeNull();
+
+  open();
+  const elsewhere = screen.getByRole("button", { name: "Elsewhere" });
+  elsewhere.focus();
+  fireEvent.pointerDown(elsewhere);
+  expect(useUi.getState().menu).toBeNull();
+  expect(document.activeElement).toBe(elsewhere);
+
+  open();
+  fireEvent.keyDown(screen.getByRole("menuitem", { name: "Rename" }), { key: "Escape" });
+  expect(useUi.getState().menu).toBeNull();
+});

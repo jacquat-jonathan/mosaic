@@ -196,7 +196,7 @@ export function BookmarksPanel() {
                 event.preventDefault();
                 if (!busy) {
                   opener.current = event.currentTarget.querySelector<HTMLButtonElement>(".bookmark-actions");
-                  useUi.getState().showMenu(event.clientX, event.clientY, items());
+                  useUi.getState().showMenu(event.clientX, event.clientY, items(), event.currentTarget);
                 }
               }}
             >

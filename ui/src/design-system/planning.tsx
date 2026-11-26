@@ -1,6 +1,7 @@
-import { useEffect, useId, useRef, useState, type CSSProperties, type HTMLAttributes, type ReactNode } from "react";
+import { useId, useRef, useState, type CSSProperties, type HTMLAttributes, type ReactNode } from "react";
 import { ChevronDown, ChevronRight, ArrowUp, ArrowDown, Plus, LockKeyhole } from "lucide-react";
 import { Badge, Button, IconButton, MenuButton } from "./components";
+import { dismissOnEscape, useDismissLayer } from "./dismiss";
 
 type ColorStyle = CSSProperties & { "--mds-planning-color"?: string };
 const colorStyle = (color?: string): ColorStyle => ({ "--mds-planning-color": color ?? "var(--mds-accent)" });
@@ -280,24 +281,15 @@ export function CalendarChooser({
   const anchor = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const id = useId();
-  useEffect(() => {
-    if (!open) return;
-    const dismiss = (event: PointerEvent) => {
-      if (!anchor.current?.contains(event.target as Node)) setOpen(false);
-    };
-    const dismissOnEscape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
+  // The anchor holds the trigger and the checkboxes: toggling a layer keeps the chooser open.
+  useDismissLayer({
+    open,
+    inside: () => [anchor.current],
+    onDismiss: (reason) => {
       setOpen(false);
-      trigger.current?.focus();
-    };
-    document.addEventListener("pointerdown", dismiss);
-    document.addEventListener("keydown", dismissOnEscape);
-    return () => {
-      document.removeEventListener("pointerdown", dismiss);
-      document.removeEventListener("keydown", dismissOnEscape);
-    };
-  }, [open]);
+      if (reason === "escape") trigger.current?.focus();
+    },
+  });
   return (
     <div
       ref={anchor}
@@ -306,14 +298,7 @@ export function CalendarChooser({
         // WebKit may report null while a pointer moves focus to a checkbox.
         if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget)) setOpen(false);
       }}
-      onKeyDown={(event) => {
-        if (event.key === "Escape" && open) {
-          event.preventDefault();
-          event.stopPropagation();
-          setOpen(false);
-          trigger.current?.focus();
-        }
-      }}
+      onKeyDown={open ? dismissOnEscape : undefined}
     >
       <Button
         ref={trigger}

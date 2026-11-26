@@ -141,6 +141,18 @@ test("print preview handles print errors, close and Escape", async () => {
   await printNote("Notes/Main.md");
   await printNote("Notes/Main.md");
   expect(document.querySelectorAll(".print-root")).toHaveLength(1);
-  window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+  document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
   expect(document.querySelector(".print-root")).toBeNull();
+});
+
+test("print preview closes on a click on the dimmed area, not on a drag out of the page", async () => {
+  await printNote("Notes/Main.md");
+  const root = document.querySelector<HTMLElement>(".print-root")!;
+  const page = root.querySelector<HTMLElement>(".print-page")!;
+  page.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
+  root.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  expect(root.isConnected).toBe(true);
+  root.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
+  root.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  expect(root.isConnected).toBe(false);
 });

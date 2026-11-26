@@ -378,3 +378,18 @@ test("error toast shares themes and wraps in scaled narrow windows", async ({ pa
   await expect.poll(() => alert.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
   await page.screenshot({ path: info.outputPath("error-toast-narrow.png") });
 });
+test("a dialog closes on a click on its backdrop, not after a drag that ends there", async ({ page }) => {
+  await setup(page);
+  await prompt(page);
+  const dialog = page.getByRole("dialog", { name: "Rename file", exact: true });
+  const input = dialog.getByRole("textbox", { name: "Rename file", exact: true });
+  const box = (await input.boundingBox())!;
+  // Selecting the field's text and releasing on the backdrop keeps the dialog.
+  await page.mouse.move(box.x + box.width - 4, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(4, 4, { steps: 4 });
+  await page.mouse.up();
+  await expect(dialog).toBeVisible();
+  await page.mouse.click(4, 4);
+  await expect(dialog).toHaveCount(0);
+});

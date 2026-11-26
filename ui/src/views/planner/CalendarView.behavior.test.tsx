@@ -313,6 +313,37 @@ describe("planner calendar container", () => {
     expect(localStorage.getItem("mosaic:planner-calendar-mode")).toBe("day");
   });
 
+  it("closes the Calendars dropdown outside and on Escape, not while toggling calendars", async () => {
+    render(<CalendarView initialMode="month" />);
+    await screen.findByTestId("month-view");
+    const details = document.querySelector<HTMLDetailsElement>("details.calendar-chooser")!;
+    const summary = details.querySelector("summary")!;
+    const open = () => {
+      details.open = true;
+      fireEvent(details, new Event("toggle"));
+      expect(details.open).toBe(true);
+    };
+    open();
+    fireEvent.pointerDown(screen.getByLabelText("Local events"));
+    fireEvent.click(screen.getByLabelText("Local events"));
+    expect(details.open).toBe(true);
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Today" }));
+    expect(details.open).toBe(false);
+
+    open();
+    fireEvent.keyDown(screen.getByLabelText("Work sessions"), { key: "Escape" });
+    expect(details.open).toBe(false);
+    expect(document.activeElement).toBe(summary);
+
+    // Its dialogs open over it and return focus to the button that opened them.
+    open();
+    const archived = screen.getByRole("button", { name: "Archived local events…" });
+    fireEvent.click(archived);
+    expect(details.open).toBe(true);
+    expect((childProps.archives as { returnFocusRef: { current: unknown } }).returnFocusRef.current).toBe(archived);
+  });
+
   it("executes week event, session, task and overlay interactions", async () => {
     render(<CalendarView initialMode="week" />);
     await screen.findByTestId("week-view");

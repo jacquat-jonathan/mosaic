@@ -347,34 +347,39 @@ function WorkflowCatalog({
                           const opener = event.currentTarget,
                             bounds = opener.getBoundingClientRect();
                           menuOpener.current = opener;
-                          useUi.getState().showMenu(bounds.left, bounds.bottom, [
-                            {
-                              label: "Edit workflow",
-                              action: () => {
-                                if (!current()) return;
-                                if (name === agent.name) onEdit?.();
-                                else useUi.getState().openView("workflow", agent.name);
+                          useUi.getState().showMenu(
+                            bounds.left,
+                            bounds.bottom,
+                            [
+                              {
+                                label: "Edit workflow",
+                                action: () => {
+                                  if (!current()) return;
+                                  if (name === agent.name) onEdit?.();
+                                  else useUi.getState().openView("workflow", agent.name);
+                                },
                               },
-                            },
-                            {
-                              label: "Edit agent source",
-                              action: () => {
-                                if (current())
-                                  return act(() => useWorkspace.getState().open(agent.path, { newTab: true }));
+                              {
+                                label: "Edit agent source",
+                                action: () => {
+                                  if (current())
+                                    return act(() => useWorkspace.getState().open(agent.path, { newTab: true }));
+                                },
                               },
-                            },
-                            ...(agent.on.length
-                              ? [{ label: "Test event trigger…", action: () => testEvent(agent, opener) }]
-                              : []),
-                            { separator: true, label: "" },
-                            {
-                              label: "Delete workflow…",
-                              danger: true,
-                              disabled: running,
-                              detail: running ? "Wait for the current run to finish" : undefined,
-                              action: () => remove(agent, opener),
-                            },
-                          ]);
+                              ...(agent.on.length
+                                ? [{ label: "Test event trigger…", action: () => testEvent(agent, opener) }]
+                                : []),
+                              { separator: true, label: "" },
+                              {
+                                label: "Delete workflow…",
+                                danger: true,
+                                disabled: running,
+                                detail: running ? "Wait for the current run to finish" : undefined,
+                                action: () => remove(agent, opener),
+                              },
+                            ],
+                            opener,
+                          );
                         }}
                       >
                         <Ellipsis aria-hidden="true" />

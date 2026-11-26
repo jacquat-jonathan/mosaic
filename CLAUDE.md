@@ -16,11 +16,15 @@ Repository development instructions live in [AGENTS.md](AGENTS.md); follow them 
 
 ## Branches
 
-- Once your work is merged into `main`, delete the branch you worked on (`claude/...`), on
-  GitHub and locally: `git push origin --delete <branch>` and `git branch -D <branch>`. Delete
-  only your own branches, and only after checking that their commits are in `origin/main`.
-- Cloud sessions cannot delete remote branches (the push is refused). There, tell the user
-  which merged branches are left so they can delete them.
+- Delete the `claude/...` branch you worked on once its work is merged into `main`. Check
+  when you merge its pull request yourself, when the user says it was merged, and at the
+  start of a session (list the remote `claude/*` branches). A branch counts as merged when
+  its pull request shows as merged on GitHub or its commits are in `origin/main`. Delete
+  only branches Claude created.
+- Delete it locally (`git branch -D <branch>`, after switching off it) and on GitHub
+  (`git push origin --delete <branch>`).
+- Cloud sessions cannot delete remote branches: the push is refused. Still delete the local
+  branch, then tell the user which merged remote branches are left so they can delete them.
 
 ## Claude Code cloud sessions
 

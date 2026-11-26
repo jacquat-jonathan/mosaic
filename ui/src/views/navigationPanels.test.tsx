@@ -177,3 +177,18 @@ test("quick switcher ranks, opens recent and searched files, and closes with esc
   await userEvent.keyboard("{Escape}");
   expect(useUi.getState().switcher).toBe(false);
 });
+
+test("a bookmark's actions button toggles its menu, and its row's right-click menu is not tied to the row", () => {
+  useVault.setState({ bookmarks: ["Ideas.md"] });
+  render(<BookmarksPanel />);
+  const actions = screen.getByRole("button", { name: /^Actions for bookmark Ideas/ });
+  fireEvent.click(actions);
+  expect(useUi.getState().menu?.trigger).toBe(actions);
+  fireEvent.click(actions);
+  expect(useUi.getState().menu).toBeNull();
+
+  fireEvent.contextMenu(screen.getByTitle("Ideas.md"));
+  expect(useUi.getState().menu).not.toBeNull();
+  expect(useUi.getState().menu?.trigger).toBeUndefined();
+  useUi.setState({ menu: null });
+});

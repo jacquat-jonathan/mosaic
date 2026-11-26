@@ -196,7 +196,7 @@ export function BookmarksPanel() {
                 event.preventDefault();
                 if (!busy) {
                   opener.current = event.currentTarget.querySelector<HTMLButtonElement>(".bookmark-actions");
-                  useUi.getState().showMenu(event.clientX, event.clientY, items(), event.currentTarget);
+                  useUi.getState().showMenu(event.clientX, event.clientY, items());
                 }
               }}
             >
@@ -235,7 +235,7 @@ export function BookmarksPanel() {
                 onClick={(event) => {
                   opener.current = event.currentTarget;
                   const bounds = event.currentTarget.getBoundingClientRect();
-                  useUi.getState().showMenu(bounds.left, bounds.bottom + 4, items());
+                  useUi.getState().showMenu(bounds.left, bounds.bottom + 4, items(), event.currentTarget);
                 }}
               >
                 <Ellipsis aria-hidden="true" />

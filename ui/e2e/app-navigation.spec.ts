@@ -87,8 +87,10 @@ test("window strip follows themes, retains native drag regions and fits narrow w
   await expect(page.locator(".settings-workspace")).not.toHaveClass(/mosaic-ds/);
 });
 
-test("feedback button pinned to the sidebar bottom opens a prefilled GitHub issue", async ({ page }) => {
-  await page.setViewportSize({ width: 1280, height: 420 });
+test("feedback button pinned to the bottom of the destination rail opens a prefilled GitHub issue", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/");
   await page.getByRole("button", { name: "Open folder…", exact: true }).click();
   await page.evaluate(() => {
@@ -100,21 +102,27 @@ test("feedback button pinned to the sidebar bottom opens a prefilled GitHub issu
   });
   const strip = page.getByRole("banner", { name: "Window title", exact: true });
   await expect(strip.getByRole("button")).toHaveCount(0);
-  const sidebar = page.getByRole("complementary", { name: "notes sidebar", exact: true });
-  const button = sidebar.getByRole("button", { name: "Send feedback", exact: true });
-  // A short window makes the tree scroll; the footer stays at the very bottom of the sidebar, in view.
-  const tree = sidebar.locator(".tree");
-  await expect.poll(() => tree.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
-  await expect(button).toBeInViewport();
-  const footer = sidebar.locator(".sidebar-footer");
-  const [footerBox, sidebarBox, treeBox] = await Promise.all([
-    footer.boundingBox(),
-    sidebar.boundingBox(),
-    tree.boundingBox(),
+  const rail = page.getByRole("navigation", { name: "Destinations", exact: true });
+  const button = rail.getByRole("button", { name: "Send feedback", exact: true });
+  const settings = rail.getByRole("button", { name: "Settings", exact: true });
+  // At the bottom of the rail, well below Settings, with the rail's divider above it.
+  const [buttonBox, railBox, settingsBox] = await Promise.all([
+    button.boundingBox(),
+    rail.boundingBox(),
+    settings.boundingBox(),
   ]);
-  expect(Math.abs(footerBox!.y + footerBox!.height - (sidebarBox!.y + sidebarBox!.height))).toBeLessThanOrEqual(1);
-  expect(treeBox!.y + treeBox!.height).toBeLessThanOrEqual(footerBox!.y + 1);
-  await expect(footer).toHaveCSS("border-top-style", "solid");
+  expect(railBox!.y + railBox!.height - (buttonBox!.y + buttonBox!.height)).toBeLessThanOrEqual(16);
+  expect(buttonBox!.y - (settingsBox!.y + settingsBox!.height)).toBeGreaterThan(200);
+  expect(await button.evaluate((element) => getComputedStyle(element, "::before").height)).toBe("1px");
+  // Still there with the sidebar hidden.
+  await page.getByRole("button", { name: "Hide sidebar", exact: true }).click();
+  await expect(page.locator(".sidebar")).toHaveCount(0);
+  await expect(button).toBeInViewport();
+  // In a short window it stays clear of Settings, with room for its divider.
+  await page.setViewportSize({ width: 1280, height: 320 });
+  const [shortButton, shortSettings] = await Promise.all([button.boundingBox(), settings.boundingBox()]);
+  expect(shortButton!.y - (shortSettings!.y + shortSettings!.height)).toBeGreaterThanOrEqual(8);
+  await page.setViewportSize({ width: 1280, height: 800 });
   await button.click();
   const dialog = page.getByRole("dialog", { name: "Send feedback", exact: true });
   await expect(dialog).toBeVisible();
@@ -216,6 +224,7 @@ test("destination rail follows themes and remains reachable at maximum scale", a
     await page.setViewportSize({ width, height: 900 });
     await expect(nav.getByRole("tab", { name: "Files", exact: true })).toBeInViewport();
     await expect(nav.getByRole("button", { name: "Settings", exact: true })).toBeInViewport();
+    await expect(nav.getByRole("button", { name: "Send feedback", exact: true })).toBeInViewport();
     await expect
       .poll(() => nav.evaluate((element) => element.scrollWidth - element.clientWidth))
       .toBeLessThanOrEqual(1);

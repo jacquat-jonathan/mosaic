@@ -8,7 +8,7 @@ vi.mock("../ipc/api", async (original) => ({
 }));
 import { useFeedback } from "../feedback/store";
 import { FeedbackDialog, FeedbackHost } from "./FeedbackDialog";
-import { SidebarFeedback } from "./SidebarFeedback";
+import { DestinationNavigation } from "./DestinationNavigation";
 import { WindowChrome } from "./WindowChrome";
 
 afterEach(() => {
@@ -19,25 +19,26 @@ afterEach(() => {
 
 const openedUrl = () => new URL(mocks.openExternal.mock.calls[0][0] as string);
 
-test("the sidebar footer's feedback button opens the dialog outside the sidebar and returns focus", () => {
+test("the feedback button at the bottom of the destination rail opens the dialog and returns focus", () => {
   render(
     <>
       <WindowChrome vaultName="Vault" version="0.29.0" />
       <FeedbackHost version="0.29.0" />
-      <aside className="sidebar">
-        <SidebarFeedback />
-      </aside>
+      <DestinationNavigation />
     </>,
   );
   expect(screen.getByText("v0.29.0")).toBeTruthy();
   // The window strip no longer carries a feedback button.
   expect(screen.getAllByRole("button", { name: /feedback/i })).toHaveLength(1);
+  const rail = screen.getByRole("navigation", { name: "Destinations" });
   const button = screen.getByRole("button", { name: "Send feedback" });
+  // Last in the rail, below Settings.
+  expect(rail.lastElementChild).toBe(button);
   expect(button.getAttribute("aria-haspopup")).toBe("dialog");
   // No focus before the click, as in WebKit, which doesn't focus buttons on click.
   fireEvent.click(button);
   const dialog = screen.getByRole("dialog", { name: "Send feedback" });
-  expect(dialog.closest(".sidebar")).toBeNull();
+  expect(rail.contains(dialog)).toBe(false);
   // Bug/Idea uses the same segmented control as the theme setting.
   expect(screen.getByRole("radiogroup", { name: "Feedback type" }).classList.contains("mds-segmented")).toBe(true);
   fireEvent.keyDown(dialog, { key: "Escape" });

@@ -4,7 +4,7 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
-- **Send feedback from the bottom of the sidebar:** the feedback button moved from the corner of the title bar to a **Send feedback** row pinned to the bottom of the left sidebar, where it stays in view however long the file tree is. In the feedback window, the Bug / Idea switch now looks like the Theme switch in Settings instead of stretching across the window.
+- **Send feedback from the bottom of the left bar:** the feedback button moved from the corner of the title bar to the bottom of the bar of icons on the left, below Settings, so it stays in view even with the sidebar hidden. In the feedback window, the Bug / Idea switch now looks like the Theme switch in Settings instead of stretching across the window.
 
 ## 0.30.0 — 2026-11-26
 

@@ -3,7 +3,6 @@ import { api, onIndexProgress } from "./ipc/api";
 import { Welcome } from "./views/Welcome";
 import { WindowChrome } from "./views/WindowChrome";
 import { FeedbackHost } from "./views/FeedbackDialog";
-import { SidebarFeedback } from "./views/SidebarFeedback";
 import { DestinationNavigation } from "./views/DestinationNavigation";
 import { SidebarHeader } from "./views/SidebarHeader";
 import { DesignSystemScope } from "./views/DesignSystemScope";
@@ -194,7 +193,6 @@ function Main() {
                 Indexing {indexing.done.toLocaleString()} / {indexing.total.toLocaleString()}
               </DesignSystemScope>
             )}
-            <SidebarFeedback />
             <Resizer
               side="right"
               label="Resize sidebar"

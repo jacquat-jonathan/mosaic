@@ -71,21 +71,26 @@ export function withHiddenChildren(hidden: Entry[], dir: string, children: Entry
  * by level. The core never walks inside a hidden folder, so this is what bounds the cost of a large
  * `.venv/`: one listing per hidden folder that is open in the tree.
  */
-async function listHiddenInto(hidden: Entry[], dirs: string[], expanded: Set<string>): Promise<Entry[]> {
+async function listHidden(dirs: string[], expanded: Set<string>): Promise<[string, Entry[]][]> {
   const queue = [...dirs];
   const seen = new Set<string>();
+  const listings: [string, Entry[]][] = [];
   while (queue.length) {
     const dir = queue.shift()!;
     if (seen.has(dir)) continue;
     seen.add(dir);
     // A folder that is gone (or can't be read now) has no children to show.
     const children = await api.list(dir, false, true).catch(() => [] as Entry[]);
-    hidden = withHiddenChildren(hidden, dir, children);
+    listings.push([dir, children]);
     for (const child of children)
       if (child.is_dir && isHiddenPath(child.path) && expanded.has(child.path)) queue.push(child.path);
   }
-  return hidden;
+  return listings;
 }
+
+/** `hidden` with each listing of `listHidden` applied in order. */
+const withListings = (hidden: Entry[], listings: [string, Entry[]][]) =>
+  listings.reduce((out, [dir, children]) => withHiddenChildren(out, dir, children), hidden);
 
 interface VaultState {
   vault: VaultInfo | null;
@@ -267,7 +272,7 @@ export const useVault = create<VaultState>((set, get) => {
           const expanded = get().expanded;
           hiddenEntries = listed.filter((e) => isHiddenPath(e.path));
           const open = hiddenEntries.filter((e) => e.is_dir && expanded.has(e.path)).map((e) => e.path);
-          hiddenEntries = await listHiddenInto(hiddenEntries, open, expanded);
+          hiddenEntries = withListings(hiddenEntries, await listHidden(open, expanded));
           if (!current()) return;
         }
         const paths = new Set([...entries, ...hiddenEntries].map((e) => e.path));
@@ -285,8 +290,9 @@ export const useVault = create<VaultState>((set, get) => {
     async refreshHidden(dirs) {
       const current = vaultOperation();
       if (!showHidden() || !dirs.length) return;
-      const hiddenEntries = await listHiddenInto(get().hiddenEntries, dirs, get().expanded);
-      if (current() && showHidden()) set({ hiddenEntries });
+      const listings = await listHidden(dirs, get().expanded);
+      // Applied to the entries as they are now: a refresh may have finished meanwhile.
+      if (current() && showHidden()) set((s) => ({ hiddenEntries: withListings(s.hiddenEntries, listings) }));
     },
 
     toggle(dir, open) {
@@ -295,7 +301,7 @@ export const useVault = create<VaultState>((set, get) => {
       if (shouldOpen) expanded.add(dir);
       else expanded.delete(dir);
       set({ expanded });
-      // Hidden folders are listed when opened, never in advance (see `listHiddenInto`).
+      // Hidden folders are listed when opened, never in advance (see `listHidden`).
       if (shouldOpen && isHiddenPath(dir)) void get().refreshHidden([dir]);
     },
 

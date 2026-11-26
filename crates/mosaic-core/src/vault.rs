@@ -351,8 +351,14 @@ impl Vault {
             } else {
                 format!("{rel}/{name}")
             };
-            if let Some(entry) = self.entry(child_rel, &child.path())? {
-                entries.push(entry);
+            // A hidden entry that can't be read (a dangling or looping link) is skipped: showing
+            // hidden files must never make the ordinary listing fail.
+            let shown_hidden = hidden && is_hidden_path(&child_rel);
+            match self.entry(child_rel, &child.path()) {
+                Ok(Some(entry)) => entries.push(entry),
+                Ok(None) => {}
+                Err(_) if shown_hidden => {}
+                Err(error) => return Err(error),
             }
         }
         entries.sort_by(|a, b| {
@@ -1087,6 +1093,9 @@ mod tests {
             vec![".claude/skills/a/SKILL.md"]
         );
         assert!(v.list_shown(".git", false).is_err());
+        // An unreadable hidden entry is skipped instead of failing the listing.
+        std::os::unix::fs::symlink(".loop", d.path().join(".loop")).unwrap();
+        assert!(!paths(v.list_shown("", false).unwrap()).contains(&".loop".to_string()));
         // The ordinary listing (the index, agents, the CLI) is unchanged.
         assert_eq!(paths(v.list("", true).unwrap()), vec!["a", "a/note.md"]);
     }

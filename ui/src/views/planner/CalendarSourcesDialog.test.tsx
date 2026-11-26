@@ -15,6 +15,7 @@ test("editing a calendar saves metadata, preserves its URL by default and retain
     id: "team",
     name: "Team",
     color: "#6477d4",
+    source_color: null,
     visible: false,
     refresh_minutes: 30,
     last_success: null,
@@ -53,6 +54,25 @@ test("editing a calendar saves metadata, preserves its URL by default and retain
     30,
     "webcal://example.test/replacement.ics",
   );
+});
+test("a feed's own calendar color is shown and explained", async () => {
+  const item: CalendarSubscription = {
+    id: "family",
+    name: "Family",
+    color: "#6477d4",
+    source_color: "#ff2968",
+    visible: true,
+    refresh_minutes: 30,
+    last_success: null,
+    last_error: null,
+    has_cache: true,
+  };
+  render(<CalendarSourcesDialog subscriptions={[item]} onChange={vi.fn()} onClose={vi.fn()} />);
+  expect(screen.getByRole("listitem").style.getPropertyValue("--source-color")).toBe("#ff2968");
+  expect(screen.queryByText(/sets its own calendar color/)).toBeNull();
+  await userEvent.click(screen.getByRole("button", { name: "Edit Family" }));
+  expect(screen.getByLabelText("Color")).toHaveProperty("value", "#6477d4");
+  expect(screen.getByText(/sets its own calendar color/)).toBeTruthy();
 });
 test("subscription failures preserve fields and serialize pending decisions", async () => {
   let reject!: (reason: Error) => void;

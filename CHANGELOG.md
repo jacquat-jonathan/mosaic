@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Subscribed calendars in their own colors:** events from calendars you subscribe to by link are no longer striped. They're filled like your own events, with a thin outline and a small calendar icon in the corner so you can still tell them apart. When the feed sets colors, Mosaic uses them: an event's own color first, then the calendar's (iCloud, Nextcloud and other feeds that include one), then the color you picked for the subscription. Google and Outlook feeds don't include colors, so their events keep the color you picked.
+
 ## 0.30.0 — 2026-11-26
 
 - **A formatting toolbar above every note, and steadier lines:** a toolbar fixed at the top of the note sets the text style (Normal text or Heading 1–6) and adds bold, italic, strikethrough, inline code, links, bullet and numbered lists and checklists. Shortcuts: ⌘⌥0–6 for text styles (Ctrl+Shift+0–6 on Windows and Linux), ⌘⇧X for strikethrough and ⌘E for code. Lines no longer jump when you move the cursor through them or type in them: a list's bullet, a heading's `#` and a quote's `>` stay hidden while you edit the line, Home goes to the start of the text, and Backspace there removes the bullet or turns the heading into text. Bullets change with depth (•, ◦, ▪).

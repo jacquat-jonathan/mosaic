@@ -1,3 +1,4 @@
+use super::ical_color::normalize_color;
 use super::service::PlannerService;
 use super::{
     CreateEvent, PlannerEvent, PlannerStore, bump_store_revision, now, record_activity, sql_error,
@@ -83,6 +84,8 @@ struct ParsedEvent {
     key_timezone: String,
     cancelled: bool,
     revision: ParsedRevision,
+    /// The event's own `COLOR`, normalized; `event.color` keeps an unrecognized value as written.
+    color: Option<String>,
     event: CreateEvent,
 }
 
@@ -268,6 +271,8 @@ fn occurrence_date(value: &str, series_timezone: &str) -> Result<String> {
 struct ParsedCalendar {
     events: Vec<ParsedEvent>,
     warnings: Vec<String>,
+    /// The calendar-level color, see [`calendar_color`].
+    color: Option<String>,
 }
 
 #[derive(Clone, Copy)]
@@ -531,6 +536,10 @@ fn parse_event(
             None
         }
     };
+    let raw_color = get("COLOR")
+        .map(|field| field.2.trim().to_string())
+        .filter(|color| !color.is_empty());
+    let color = raw_color.as_deref().and_then(normalize_color);
     let parsed = ParsedEvent {
         uid,
         recurrence_id,
@@ -550,6 +559,7 @@ fn parse_event(
                 .unwrap_or_default(),
             source_order: order,
         },
+        color: color.clone(),
         event: CreateEvent {
             title,
             description: get("DESCRIPTION")
@@ -578,7 +588,7 @@ fn parse_event(
                 .map(str::to_string)
                 .collect(),
             epic_id: None,
-            color: get("COLOR").map(|field| field.2.trim().to_string()),
+            color: color.or(raw_color),
             all_day: start.0,
             start_value: start.1,
             end_value: end,
@@ -671,6 +681,7 @@ fn parse(content: &str, fallback_timezone: &str) -> Result<ParsedCalendar> {
     // Outlook and Windows tools often prefix feeds with a UTF-8 BOM.
     let content = content.strip_prefix('\u{feff}').unwrap_or(content);
     let lines = unfolded(content);
+    let color = calendar_color(&lines);
     if !lines
         .iter()
         .any(|line| line.eq_ignore_ascii_case("BEGIN:VCALENDAR"))
@@ -830,7 +841,50 @@ fn parse(content: &str, fallback_timezone: &str) -> Result<ParsedCalendar> {
         .collect();
     warnings.sort();
     warnings.dedup();
-    Ok(ParsedCalendar { events, warnings })
+    Ok(ParsedCalendar {
+        events,
+        warnings,
+        color,
+    })
+}
+
+/// The color a feed gives the whole calendar: RFC 7986 `COLOR`, else Apple's
+/// `X-APPLE-CALENDAR-COLOR` (iCloud, Nextcloud and other CalDAV servers), each only as a property
+/// of the `VCALENDAR` itself, never of an event, alarm or time zone inside it.
+fn calendar_color(lines: &[String]) -> Option<String> {
+    let mut stack: Vec<String> = Vec::new();
+    let (mut color, mut apple) = (None, None);
+    for line in lines {
+        let Some((name, _, value)) = property(line) else {
+            continue;
+        };
+        if name.eq_ignore_ascii_case("BEGIN") {
+            stack.push(value.to_ascii_uppercase());
+        } else if name.eq_ignore_ascii_case("END") {
+            if let Some(index) = stack
+                .iter()
+                .rposition(|component| component.eq_ignore_ascii_case(value))
+            {
+                stack.truncate(index);
+            }
+        } else if stack
+            .last()
+            .is_some_and(|component| component == "VCALENDAR")
+        {
+            if color.is_none() && name.eq_ignore_ascii_case("COLOR") {
+                color = normalize_color(value);
+            } else if apple.is_none() && name.eq_ignore_ascii_case("X-APPLE-CALENDAR-COLOR") {
+                apple = normalize_color(value);
+            }
+        }
+    }
+    color.or(apple)
+}
+
+/// The color `content` gives the whole calendar (see [`calendar_color`]), if any.
+pub fn ical_calendar_color(content: &str) -> Option<String> {
+    let content = content.strip_prefix('\u{feff}').unwrap_or(content);
+    calendar_color(&unfolded(content))
 }
 
 pub fn validate_ical(content: &str, fallback_timezone: &str) -> Result<usize> {
@@ -1260,7 +1314,7 @@ pub fn overlay_occurrences(
     content: &str,
     source_id: &str,
     source_name: &str,
-    color: Option<String>,
+    fallback_color: Option<String>,
     from: &str,
     to: &str,
     fallback_timezone: &str,
@@ -1269,7 +1323,9 @@ pub fn overlay_occurrences(
         .map_err(|_| Error::Invalid("overlay from must be an ISO date".into()))?;
     let to_date = NaiveDate::parse_from_str(to, "%Y-%m-%d")
         .map_err(|_| Error::Invalid("overlay to must be an ISO date".into()))?;
-    let parsed_events = parse(content, fallback_timezone)?.events;
+    let parsed = parse(content, fallback_timezone)?;
+    let calendar_color = parsed.color.or(fallback_color);
+    let parsed_events = parsed.events;
     let mut exclusions = HashMap::<String, HashSet<String>>::new();
     let mut explicit_exclusions = HashMap::<String, HashSet<String>>::new();
     for event in &parsed_events {
@@ -1297,7 +1353,8 @@ pub fn overlay_occurrences(
             meeting_url: parsed.event.meeting_url,
             participants: parsed.event.participants,
             epic_id: None,
-            color: color.clone(),
+            // The event's own color, then the calendar's, then the subscription's.
+            color: parsed.color.clone().or_else(|| calendar_color.clone()),
             all_day: parsed.event.all_day,
             start_value: parsed.event.start_value,
             end_value: parsed.event.end_value,
@@ -1345,7 +1402,7 @@ pub fn overlay_occurrences(
                 } else {
                     key
                 },
-                color: color.clone(),
+                color: event.color.clone(),
                 read_only: true,
             });
         }
@@ -1710,5 +1767,120 @@ mod compatibility_tests {
         assert_eq!(items.len(), 2);
         assert!(items.iter().all(|item| item.uid == "series"));
         assert_eq!(items[1].start_value, "2026-11-07T09:00:00.000Z");
+    }
+
+    fn colored_overlays(content: &str, fallback: Option<&str>) -> Vec<(String, Option<String>)> {
+        overlay_occurrences(
+            content,
+            "test",
+            "Test",
+            fallback.map(str::to_string),
+            "2026-11-05",
+            "2026-11-05",
+            "UTC",
+        )
+        .unwrap()
+        .into_iter()
+        .map(|item| (item.uid, item.color))
+        .collect()
+    }
+
+    #[test]
+    fn overlay_colors_come_from_the_event_then_the_calendar_then_the_subscription() {
+        let events = [
+            event("UID:own\nDTSTART:20261105T090000Z\nCOLOR:turquoise"),
+            event("UID:hex\nDTSTART:20261105T100000Z\nCOLOR;VALUE=TEXT:#FF2968FF"),
+            event("UID:inherits\nDTSTART:20261105T110000Z"),
+            event("UID:unknown\nDTSTART:20261105T120000Z\nCOLOR:Blue Category"),
+        ]
+        .join("\n");
+        let color = |items: &[(String, Option<String>)], uid: &str| {
+            items
+                .iter()
+                .find(|item| item.0 == uid)
+                .and_then(|item| item.1.clone())
+        };
+
+        // RFC 7986 COLOR on the calendar.
+        let content = calendar(&format!("COLOR:DarkOrange\n{events}"));
+        let items = colored_overlays(&content, Some("#5b8def"));
+        assert_eq!(color(&items, "own").as_deref(), Some("#40e0d0"));
+        assert_eq!(color(&items, "hex").as_deref(), Some("#ff2968"));
+        assert_eq!(color(&items, "inherits").as_deref(), Some("#ff8c00"));
+        assert_eq!(color(&items, "unknown").as_deref(), Some("#ff8c00"));
+
+        // Apple's calendar color, folded and after the events; COLOR still wins over it.
+        let apple = calendar(&format!("{events}\nX-APPLE-CALENDAR-COLOR:#1B\n ADF8FF"));
+        let items = colored_overlays(&apple, Some("#5b8def"));
+        assert_eq!(color(&items, "inherits").as_deref(), Some("#1badf8"));
+        let both = calendar(&format!(
+            "X-APPLE-CALENDAR-COLOR:#1BADF8\n{events}\nCOLOR:purple"
+        ));
+        let items = colored_overlays(&both, Some("#5b8def"));
+        assert_eq!(color(&items, "inherits").as_deref(), Some("#800080"));
+
+        // Without a usable calendar color the subscription's color applies, then none.
+        let plain = calendar(&format!("COLOR:not-a-color\n{events}"));
+        let items = colored_overlays(&plain, Some("#5b8def"));
+        assert_eq!(color(&items, "own").as_deref(), Some("#40e0d0"));
+        assert_eq!(color(&items, "inherits").as_deref(), Some("#5b8def"));
+        assert_eq!(color(&items, "unknown").as_deref(), Some("#5b8def"));
+        let items = colored_overlays(&plain, None);
+        assert_eq!(color(&items, "inherits"), None);
+    }
+
+    #[test]
+    fn only_properties_of_the_calendar_itself_set_its_color() {
+        let content = calendar(
+            &[
+                "BEGIN:VTIMEZONE\nTZID:Test\nCOLOR:red\nEND:VTIMEZONE".to_string(),
+                event(concat!(
+                    "UID:alarm\nDTSTART:20261105T090000Z\nX-APPLE-CALENDAR-COLOR:#00ff00\n",
+                    "BEGIN:VALARM\nACTION:DISPLAY\nCOLOR:yellow\nTRIGGER:-PT5M\nEND:VALARM",
+                )),
+            ]
+            .join("\n"),
+        );
+        assert_eq!(ical_calendar_color(&content), None);
+        let items = colored_overlays(&content, Some("#5b8def"));
+        assert_eq!(items, [("alarm".to_string(), Some("#5b8def".to_string()))]);
+        assert_eq!(
+            ical_calendar_color(
+                "\u{feff}BEGIN:VCALENDAR\r\nX-APPLE-CALENDAR-COLOR:#0B8043\r\nEND:VCALENDAR\r\n"
+            )
+            .as_deref(),
+            Some("#0b8043")
+        );
+    }
+
+    #[test]
+    fn imported_event_colors_are_normalized_or_kept_as_written() {
+        let content = calendar(
+            &[
+                event("UID:named\nDTSTART:20261105T090000Z\nCOLOR:Turquoise"),
+                event("UID:apple\nDTSTART:20261105T100000Z\nCOLOR:#FF2968FF"),
+                event("UID:other\nDTSTART:20261105T110000Z\nCOLOR:Blue Category"),
+                event("UID:none\nDTSTART:20261105T120000Z"),
+            ]
+            .join("\n"),
+        );
+        let store = PlannerStore::in_memory().unwrap();
+        let preview = store
+            .preview_ical_import("colors", &content, "UTC")
+            .unwrap();
+        let color = |uid: &str| {
+            preview
+                .candidates
+                .iter()
+                .find(|candidate| candidate.source_uid == uid)
+                .unwrap()
+                .event
+                .color
+                .clone()
+        };
+        assert_eq!(color("named").as_deref(), Some("#40e0d0"));
+        assert_eq!(color("apple").as_deref(), Some("#ff2968"));
+        assert_eq!(color("other").as_deref(), Some("Blue Category"));
+        assert_eq!(color("none"), None);
     }
 }

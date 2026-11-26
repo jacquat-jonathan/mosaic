@@ -178,6 +178,7 @@ async fn every_tool_works_and_no_output_holds_a_feed_url() {
             "last_success",
             "name",
             "refresh_minutes",
+            "source_color",
             "visible"
         ],
         "only safe metadata"

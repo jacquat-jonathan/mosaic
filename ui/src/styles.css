@@ -3606,18 +3606,30 @@ pre.template-preview {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Events from subscribed calendars are filled like local events; a thin outline in their color and
+   a small feed mark in the corner set them apart. */
 .planner-event-chip.read-only,
 .planner-month-item.read-only,
 .planner-timed-item.overlay {
   border: 1px solid var(--item-color, var(--muted));
   border-left-width: 4px;
-  background-image: repeating-linear-gradient(
-    135deg,
-    transparent,
-    transparent 6px,
-    color-mix(in srgb, var(--fg) 5%, transparent) 6px,
-    color-mix(in srgb, var(--fg) 5%, transparent) 9px
-  );
+}
+.planner-month-item.read-only {
+  position: relative;
+}
+.planner-month-item.read-only,
+.planner-timed-item.overlay {
+  padding-right: 15px;
+}
+.planner-overlay-mark {
+  flex-shrink: 0;
+  color: var(--muted);
+}
+.planner-month-item.read-only > .planner-overlay-mark,
+.planner-timed-item.overlay > .planner-overlay-mark {
+  position: absolute;
+  top: 3px;
+  right: 3px;
 }
 .planner-event-chip small {
   color: var(--muted);

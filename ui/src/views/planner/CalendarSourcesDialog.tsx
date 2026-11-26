@@ -136,7 +136,11 @@ export function CalendarSourcesDialog({
         <div className="calendar-source-list" role="list" aria-label="Calendar subscriptions">
           {!subscriptions.length && <p className="mds-hint">No external calendars yet.</p>}
           {subscriptions.map((item) => (
-            <article role="listitem" key={item.id} style={{ "--source-color": item.color } as CSSProperties}>
+            <article
+              role="listitem"
+              key={item.id}
+              style={{ "--source-color": item.source_color ?? item.color } as CSSProperties}
+            >
               <div className="calendar-source-info">
                 <label>
                   <input
@@ -241,6 +245,12 @@ export function CalendarSourcesDialog({
               <option value={60}>Hourly</option>
             </Select>
           </div>
+          {editing?.source_color && (
+            <p className="mds-hint">
+              This feed sets its own calendar color, so its events use that instead of the color above. The color above
+              applies again if the feed stops setting one.
+            </p>
+          )}
           {error && <Notice tone="error">{error}</Notice>}
         </form>
       </Dialog>

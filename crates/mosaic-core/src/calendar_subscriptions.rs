@@ -7,7 +7,9 @@
 //! can be replaced in tests.
 
 use crate::api::{AppScope, Context};
-use crate::planner::{OverlayOccurrence, ical_warnings, overlay_occurrences, validate_ical};
+use crate::planner::{
+    OverlayOccurrence, ical_calendar_color, ical_warnings, overlay_occurrences, validate_ical,
+};
 use crate::settings::Settings;
 use crate::{Error, Result};
 use chrono::{DateTime, SecondsFormat, Utc};
@@ -53,6 +55,9 @@ struct Subscription {
     revision: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     secret_id: Option<String>,
+    // The color the feed gives the whole calendar, read at each refresh.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    source_color: Option<String>,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -74,6 +79,8 @@ pub struct SubscriptionView {
     pub id: String,
     pub name: String,
     pub color: String,
+    // The calendar color the feed itself sets (`#rrggbb`); it outranks `color` for its events.
+    pub source_color: Option<String>,
     pub visible: bool,
     pub refresh_minutes: u32,
     pub last_success: Option<String>,
@@ -365,6 +372,7 @@ impl<S: SecretStore, F: FeedFetcher> CalendarSubscriptions<S, F> {
             validator_resource_hash: None,
             revision: 0,
             secret_id: None,
+            source_color: None,
         };
         let refresh = self.refresh_one(&mut subscription, true).await;
         if let Err(error) = refresh {
@@ -601,6 +609,7 @@ impl<S: SecretStore, F: FeedFetcher> CalendarSubscriptions<S, F> {
             id: subscription.id.clone(),
             name: subscription.name.clone(),
             color: subscription.color.clone(),
+            source_color: subscription.source_color.clone(),
             visible: subscription.visible,
             refresh_minutes: subscription.refresh_minutes,
             last_success: subscription.last_success.clone(),
@@ -668,6 +677,10 @@ impl<S: SecretStore, F: FeedFetcher> CalendarSubscriptions<S, F> {
                 .unwrap_or_default();
             subscription.last_error = (!warnings.is_empty())
                 .then(|| format!("Calendar imported with warnings: {}", warnings.join(" ")));
+            // Feeds cached before Mosaic read calendar colors get theirs on the next check.
+            if subscription.source_color.is_none() {
+                subscription.source_color = cached.as_deref().and_then(ical_calendar_color);
+            }
             return Ok(());
         };
         validate_ical(&feed.content, "UTC")?;
@@ -687,6 +700,7 @@ impl<S: SecretStore, F: FeedFetcher> CalendarSubscriptions<S, F> {
         subscription.etag = feed.etag;
         subscription.last_modified = feed.last_modified;
         subscription.validator_resource_hash = Some(feed.url_hash);
+        subscription.source_color = ical_calendar_color(&feed.content);
         subscription.last_success = Some(Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true));
         subscription.last_error = (!warnings.is_empty())
             .then(|| format!("Calendar imported with warnings: {}", warnings.join(" ")));
@@ -820,6 +834,7 @@ fn merge_refresh(
     current.last_success = fetched.last_success.clone();
     current.last_error = fetched.last_error.clone();
     current.cache_file = fetched.cache_file.clone();
+    current.source_color = fetched.source_color.clone();
     current.revision += 1;
     true
 }
@@ -874,6 +889,7 @@ fn invalidate_feed(subscription: &mut Subscription) {
     subscription.validator_resource_hash = None;
     subscription.last_success = None;
     subscription.last_error = None;
+    subscription.source_color = None;
 }
 
 fn due(subscription: &Subscription) -> bool {

@@ -26,6 +26,7 @@ import {
   visibleCalendarHours,
   type ResizeEdge,
 } from "./calendarModel";
+import { SubscribedMark } from "./SubscribedMark";
 import { TASK_DRAG, type TaskDragPreview } from "./UnscheduledTray";
 import { CalendarEventTitle } from "./CalendarEventTitle";
 
@@ -329,6 +330,7 @@ export function WeekView({
                   onClick={() => onOverlay(item)}
                 >
                   <span className="planner-card-title">{item.title}</span>
+                  <SubscribedMark />
                 </button>
               ))}
               {sessions.map((item) => (
@@ -693,6 +695,7 @@ function TimedItem({
         onClick={() => onOverlay(overlay)}
       >
         <CalendarEventTitle>{overlay.title}</CalendarEventTitle>
+        <SubscribedMark />
       </button>
     );
   }

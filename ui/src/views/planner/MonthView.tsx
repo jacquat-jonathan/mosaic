@@ -7,6 +7,7 @@ import type {
   PlannerWorkSession,
 } from "../../ipc/types";
 import { EVENT_DRAG, SESSION_DRAG, isoDay, localDate } from "./calendarModel";
+import { SubscribedMark } from "./SubscribedMark";
 
 type MonthEntry =
   | { kind: "event"; key: string; label: string; color: string; event: EventOccurrence }
@@ -221,6 +222,7 @@ export function MonthView({
                   }}
                 >
                   {entry.label}
+                  <SubscribedMark />
                 </button>
               ) : (
                 <span

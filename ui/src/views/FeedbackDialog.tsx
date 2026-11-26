@@ -1,4 +1,5 @@
 import { type RefObject, useId, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   Button,
   Dialog,
@@ -10,6 +11,7 @@ import {
   TextField,
 } from "../design-system/components";
 import { buildIssueUrl, describeOs, type FeedbackKind, MAX_TITLE_LENGTH } from "../feedback/issueUrl";
+import { useFeedback } from "../feedback/store";
 import { openExternal } from "../ipc/api";
 import { DesignSystemScope } from "./DesignSystemScope";
 import "./feedbackDialog.css";
@@ -18,6 +20,22 @@ const KINDS = [
   { value: "bug", label: "Bug" },
   { value: "idea", label: "Idea" },
 ] as const satisfies readonly { value: FeedbackKind; label: string }[];
+
+/**
+ * Mounted once by the app, outside the sidebar, so the dialog stays open when the sidebar hides and any
+ * entry point can open it with `useFeedback.getState().show()`. Focus returns to the control that opened it,
+ * or else to whatever was focused.
+ */
+export function FeedbackHost({ version }: { version: string }) {
+  const open = useFeedback((state) => state.open);
+  const returnFocus = useFeedback((state) => state.returnFocus);
+  const returnFocusRef = useMemo(() => ({ current: returnFocus }), [returnFocus]);
+  if (!open) return null;
+  return createPortal(
+    <FeedbackDialog version={version} returnFocusRef={returnFocusRef} onClose={() => useFeedback.getState().hide()} />,
+    document.body,
+  );
+}
 
 /** Feedback goes to a prefilled GitHub issue that the person reviews and submits in their browser. */
 export function FeedbackDialog({

@@ -26,21 +26,10 @@
   display: flex;
   align-items: center;
   gap: var(--mds-space-2);
-  /* Only the button takes clicks; the rest of the strip still drags the window. */
+  /* The whole strip, version included, drags the window. */
   pointer-events: none;
 }
 .mosaic-ds.window-chrome .window-version {
   font-size: var(--mds-text-caption);
   font-variant-numeric: tabular-nums;
-}
-.mosaic-ds.window-chrome .window-feedback {
-  pointer-events: auto;
-  width: 24px;
-  height: 22px;
-  padding: 0;
-  color: var(--mds-text-muted);
-}
-.mosaic-ds.window-chrome .window-feedback svg {
-  width: 14px;
-  height: 14px;
 }

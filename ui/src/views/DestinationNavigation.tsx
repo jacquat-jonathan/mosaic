@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { Bell, Bot, CalendarDays, Files, Search, Settings } from "lucide-react";
+import { Bell, Bot, CalendarDays, Files, MessageSquarePlus, Search, Settings } from "lucide-react";
 import { Badge, IconButton } from "../design-system/components";
 import { useUi, type Destination } from "../state/ui";
 import { useWorkspace } from "../state/workspace";
@@ -7,6 +7,7 @@ import { useUpdateFlow } from "../state/updates";
 import { useReview } from "../state/review";
 import { useAttention } from "../state/attention";
 import { useNotifications } from "../state/notifications";
+import { useFeedback } from "../feedback/store";
 import { shortcutOf } from "../commands";
 import { DesignSystemScope } from "./DesignSystemScope";
 import "./destinationNavigation.css";
@@ -147,6 +148,18 @@ export function DestinationNavigation() {
           {updateReady ? "Update ready to install" : "Update available"}
         </span>
       )}
+      {/* Pinned to the bottom of the rail, apart from the destinations, and shown with the sidebar hidden too.
+          The spacer only grows: in a short window the button still keeps its divider clear of Settings. */}
+      <div className="destination-spacer" aria-hidden="true" />
+      <IconButton
+        label="Send feedback"
+        className="destination-feedback"
+        data-section-start="true"
+        aria-haspopup="dialog"
+        onClick={(event) => useFeedback.getState().show(event.currentTarget)}
+      >
+        <MessageSquarePlus aria-hidden="true" />
+      </IconButton>
     </DesignSystemScope>
   );
 }

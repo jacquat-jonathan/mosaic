@@ -87,7 +87,10 @@ test("window strip follows themes, retains native drag regions and fits narrow w
   await expect(page.locator(".settings-workspace")).not.toHaveClass(/mosaic-ds/);
 });
 
-test("feedback button next to the version opens a prefilled GitHub issue", async ({ page }) => {
+test("feedback button pinned to the bottom of the destination rail opens a prefilled GitHub issue", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/");
   await page.getByRole("button", { name: "Open folder…", exact: true }).click();
   await page.evaluate(() => {
@@ -98,12 +101,47 @@ test("feedback button next to the version opens a prefilled GitHub issue", async
     };
   });
   const strip = page.getByRole("banner", { name: "Window title", exact: true });
-  const button = strip.getByRole("button", { name: "Feedback", exact: true });
+  await expect(strip.getByRole("button")).toHaveCount(0);
+  const rail = page.getByRole("navigation", { name: "Destinations", exact: true });
+  const button = rail.getByRole("button", { name: "Send feedback", exact: true });
+  const settings = rail.getByRole("button", { name: "Settings", exact: true });
+  // At the bottom of the rail, well below Settings, with the rail's divider above it.
+  const [buttonBox, railBox, settingsBox] = await Promise.all([
+    button.boundingBox(),
+    rail.boundingBox(),
+    settings.boundingBox(),
+  ]);
+  expect(railBox!.y + railBox!.height - (buttonBox!.y + buttonBox!.height)).toBeLessThanOrEqual(16);
+  expect(buttonBox!.y - (settingsBox!.y + settingsBox!.height)).toBeGreaterThan(200);
+  expect(await button.evaluate((element) => getComputedStyle(element, "::before").height)).toBe("1px");
+  // Still there with the sidebar hidden.
+  await page.getByRole("button", { name: "Hide sidebar", exact: true }).click();
+  await expect(page.locator(".sidebar")).toHaveCount(0);
   await expect(button).toBeInViewport();
+  // In a short window it stays clear of Settings, with room for its divider.
+  await page.setViewportSize({ width: 1280, height: 320 });
+  const [shortButton, shortSettings] = await Promise.all([button.boundingBox(), settings.boundingBox()]);
+  expect(shortButton!.y - (shortSettings!.y + shortSettings!.height)).toBeGreaterThanOrEqual(8);
+  await page.setViewportSize({ width: 1280, height: 800 });
   await button.click();
   const dialog = page.getByRole("dialog", { name: "Send feedback", exact: true });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByLabel("Title")).toBeFocused();
+  // Bug/Idea is sized to its two options, like the theme setting, not stretched across the dialog.
+  const kinds = dialog.getByRole("radiogroup", { name: "Feedback type", exact: true });
+  const options = await kinds
+    .locator("label")
+    .evaluateAll((labels) => labels.reduce((sum, label) => sum + label.getBoundingClientRect().width, 0));
+  const group = await kinds.evaluate((element) => {
+    const style = getComputedStyle(element);
+    const chrome =
+      Number.parseFloat(style.paddingLeft) +
+      Number.parseFloat(style.paddingRight) +
+      Number.parseFloat(style.borderLeftWidth) +
+      Number.parseFloat(style.borderRightWidth);
+    return element.getBoundingClientRect().width - chrome;
+  });
+  expect(Math.abs(group - options)).toBeLessThanOrEqual(1);
   await dialog.getByRole("radio", { name: "Idea", exact: true }).check({ force: true });
   await dialog.getByLabel("Title").fill("Board view");
   await dialog.getByLabel("Message").fill("Columns & cards");
@@ -186,6 +224,7 @@ test("destination rail follows themes and remains reachable at maximum scale", a
     await page.setViewportSize({ width, height: 900 });
     await expect(nav.getByRole("tab", { name: "Files", exact: true })).toBeInViewport();
     await expect(nav.getByRole("button", { name: "Settings", exact: true })).toBeInViewport();
+    await expect(nav.getByRole("button", { name: "Send feedback", exact: true })).toBeInViewport();
     await expect
       .poll(() => nav.evaluate((element) => element.scrollWidth - element.clientWidth))
       .toBeLessThanOrEqual(1);

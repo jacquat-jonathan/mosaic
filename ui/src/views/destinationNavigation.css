@@ -39,6 +39,10 @@
   height: 1px;
   background: var(--mds-border);
 }
+/* Pushes the feedback button to the bottom of the rail; it keeps its section margin and divider. */
+.mosaic-ds.destination-navigation .destination-spacer {
+  flex: 1 0 0;
+}
 .mosaic-ds.destination-navigation [aria-selected="true"],
 .mosaic-ds.destination-navigation [aria-pressed="true"] {
   color: var(--mds-text);

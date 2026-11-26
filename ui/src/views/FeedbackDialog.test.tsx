@@ -1,30 +1,57 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 const mocks = vi.hoisted(() => ({ openExternal: vi.fn() }));
 vi.mock("../ipc/api", async (original) => ({
   ...(await original<typeof import("../ipc/api")>()),
   openExternal: mocks.openExternal,
 }));
-import { FeedbackDialog } from "./FeedbackDialog";
+import { useFeedback } from "../feedback/store";
+import { FeedbackDialog, FeedbackHost } from "./FeedbackDialog";
+import { DestinationNavigation } from "./DestinationNavigation";
 import { WindowChrome } from "./WindowChrome";
 
 afterEach(() => {
   cleanup();
   vi.resetAllMocks();
+  useFeedback.setState({ open: false, returnFocus: null });
 });
 
 const openedUrl = () => new URL(mocks.openExternal.mock.calls[0][0] as string);
 
-test("the window strip's feedback button opens the dialog next to the version", () => {
-  render(<WindowChrome vaultName="Vault" version="0.29.0" />);
+test("the feedback button at the bottom of the destination rail opens the dialog and returns focus", () => {
+  render(
+    <>
+      <WindowChrome vaultName="Vault" version="0.29.0" />
+      <FeedbackHost version="0.29.0" />
+      <DestinationNavigation />
+    </>,
+  );
   expect(screen.getByText("v0.29.0")).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", { name: "Feedback" }));
+  // The window strip no longer carries a feedback button.
+  expect(screen.getAllByRole("button", { name: /feedback/i })).toHaveLength(1);
+  const rail = screen.getByRole("navigation", { name: "Destinations" });
+  const button = screen.getByRole("button", { name: "Send feedback" });
+  // Last in the rail, below Settings.
+  expect(rail.lastElementChild).toBe(button);
+  expect(button.getAttribute("aria-haspopup")).toBe("dialog");
+  // No focus before the click, as in WebKit, which doesn't focus buttons on click.
+  fireEvent.click(button);
   const dialog = screen.getByRole("dialog", { name: "Send feedback" });
-  // Rendered outside the title strip.
-  expect(dialog.closest(".window-chrome")).toBeNull();
+  expect(rail.contains(dialog)).toBe(false);
+  // Bug/Idea uses the same segmented control as the theme setting.
+  expect(screen.getByRole("radiogroup", { name: "Feedback type" }).classList.contains("mds-segmented")).toBe(true);
   fireEvent.keyDown(dialog, { key: "Escape" });
   expect(screen.queryByRole("dialog")).toBeNull();
+  expect(useFeedback.getState().open).toBe(false);
+  expect(document.activeElement).toBe(button);
+});
+
+test("any entry point can open the dialog through the store", () => {
+  render(<FeedbackHost version="0.29.0" />);
+  expect(screen.queryByRole("dialog")).toBeNull();
+  act(() => useFeedback.getState().show());
+  expect(screen.getByRole("dialog", { name: "Send feedback" })).toBeTruthy();
 });
 
 test("submitting a bug opens a prefilled GitHub issue with version and OS, then closes", async () => {

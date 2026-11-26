@@ -3,6 +3,10 @@
   flex-direction: column;
   gap: var(--mds-space-6);
 }
+/* The column would stretch the Bug/Idea control to the full width; size it to its options as in Settings. */
+.mosaic-ds .feedback-form .mds-segmented {
+  align-self: flex-start;
+}
 .mosaic-ds .feedback-form textarea {
   resize: vertical;
   min-height: 96px;

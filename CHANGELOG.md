@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **Send feedback from the bottom of the left bar:** the feedback button moved from the corner of the title bar to the bottom of the bar of icons on the left, below Settings, so it stays in view even with the sidebar hidden. In the feedback window, the Bug / Idea switch now looks like the Theme switch in Settings instead of stretching across the window.
+
 ## 0.30.0 — 2026-11-26
 
 - **A formatting toolbar above every note, and steadier lines:** a toolbar fixed at the top of the note sets the text style (Normal text or Heading 1–6) and adds bold, italic, strikethrough, inline code, links, bullet and numbered lists and checklists. Shortcuts: ⌘⌥0–6 for text styles (Ctrl+Shift+0–6 on Windows and Linux), ⌘⇧X for strikethrough and ⌘E for code. Lines no longer jump when you move the cursor through them or type in them: a list's bullet, a heading's `#` and a quote's `>` stay hidden while you edit the line, Home goes to the start of the text, and Backspace there removes the bullet or turns the heading into text. Bullets change with depth (•, ◦, ▪).

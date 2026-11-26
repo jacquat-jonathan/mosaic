@@ -23,6 +23,8 @@ one-time handoff instructions are not the normal release procedure.
 - Published release tags and downloadable assets are immutable. Ship a new patch
   version for changes. Reusing a failed, unpublished version is an explicit exception
   described below, never an automatic response to CI failure.
+- Release from a local Claude Code session on the Mac, never a cloud session: a cloud session
+  cannot push the release tag, so it cannot start the release workflow.
 
 The workflow currently has no [`run-name`](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#run-name): its Actions title comes from the tagged
 commit message. Tagging `Release X.Y.Z` produces the familiar **Release X.Y.Z** run

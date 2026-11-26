@@ -20,6 +20,9 @@ Cloud sessions run on Linux as `root`; CI and the app target macOS. The environm
 script has installed the pinned Rust, Node and pnpm, Tauri's Linux libraries and the
 dependencies.
 
+- Do not prepare a release here: a cloud session cannot push the release tag, so releases are
+  done from a local Claude Code session. If asked for one, say so before doing anything
+  (see [docs/RELEASING.md](docs/RELEASING.md)).
 - Put the pinned Node first on `PATH` before any `node` or `pnpm` command; the image's
   default Node is a different version and `scripts/check-toolchain.sh` rejects it:
   `export PATH=/opt/node-mosaic/bin:$PATH`.

@@ -24,6 +24,7 @@ fn subscription(id: &str) -> Subscription {
         validator_resource_hash: None,
         revision: 0,
         secret_id: None,
+        source_color: None,
     }
 }
 
@@ -300,6 +301,7 @@ fn malformed_cached_calendars_keep_the_list_and_other_calendars_events() {
         secret_id: None,
         cache_file: "good.ics".into(),
         validator_resource_hash: None,
+        source_color: None,
     };
     let mut items = vec![
         base.clone(),
@@ -370,6 +372,7 @@ fn metadata_never_serializes_a_feed_url() {
         secret_id: None,
         cache_file: "id.ics".into(),
         validator_resource_hash: None,
+        source_color: None,
     };
     let encoded = serde_json::to_string(&subscription).unwrap();
     assert!(!encoded.contains("url"));
@@ -1086,6 +1089,68 @@ mod service_tests {
                 .code(),
             "not_found"
         );
+    }
+
+    #[test]
+    fn refresh_stores_the_feeds_calendar_color_and_events_use_it() {
+        let fixture = Fixture::new();
+        let view = fixture.add();
+        assert_eq!(view.color, "#5b8def");
+        assert_eq!(view.source_color, None);
+        let colored = FEED.replace(
+            "VERSION:2.0\r\n",
+            "VERSION:2.0\r\nX-APPLE-CALENDAR-COLOR:#FF2968FF\r\n",
+        );
+        fixture.respond(feed(&colored, "second"));
+        let views = block_on(fixture.service.refresh(&fixture.root(), true)).unwrap();
+        assert_eq!(views[0].source_color.as_deref(), Some("#ff2968"));
+        let range = fixture
+            .service
+            .overlay_range(&fixture.root(), "2026-11-03", "2026-11-03", "UTC")
+            .unwrap();
+        assert_eq!(
+            range.subscriptions[0].source_color.as_deref(),
+            Some("#ff2968")
+        );
+        assert_eq!(range.occurrences[0].color.as_deref(), Some("#ff2968"));
+
+        // A feed that drops its color falls back to the subscription's.
+        fixture.respond(feed(FEED, "third"));
+        let views = block_on(fixture.service.refresh(&fixture.root(), true)).unwrap();
+        assert_eq!(views[0].source_color, None);
+        let range = fixture
+            .service
+            .overlay_range(&fixture.root(), "2026-11-03", "2026-11-03", "UTC")
+            .unwrap();
+        assert_eq!(range.occurrences[0].color.as_deref(), Some("#5b8def"));
+    }
+
+    #[test]
+    fn an_unchanged_feed_cached_before_colors_were_read_gets_its_color() {
+        let fixture = Fixture::new();
+        let colored = FEED.replace("VERSION:2.0\r\n", "VERSION:2.0\r\nCOLOR:teal\r\n");
+        fixture.respond(feed(&colored, "first"));
+        let root = fixture.root();
+        let view = block_on(
+            fixture
+                .service
+                .add(|| Ok(root), "Team", URL, "#5b8def".into(), 30),
+        )
+        .unwrap();
+        assert_eq!(view.source_color.as_deref(), Some("#008080"));
+        // Forget the stored color, as in settings written by an earlier version.
+        fixture
+            .service
+            .mutate(|store| {
+                for item in store.vault_ids.values_mut().flatten() {
+                    item.source_color = None;
+                }
+                Ok(())
+            })
+            .unwrap();
+        fixture.respond(Ok(None));
+        let views = block_on(fixture.service.refresh(&fixture.root(), true)).unwrap();
+        assert_eq!(views[0].source_color.as_deref(), Some("#008080"));
     }
 
     #[test]

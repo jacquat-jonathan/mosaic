@@ -602,7 +602,7 @@ function AvailableCalendarView({ initialMode }: { initialMode?: CalendarMode }) 
                     checked={item.visible}
                     onChange={(event) => void toggleSubscription(item.id, event.target.checked)}
                   />
-                  <i style={{ background: item.color }} /> {item.name} 🔒
+                  <i style={{ background: item.source_color ?? item.color }} /> {item.name} 🔒
                 </label>
               ))}
               <Button onClick={() => setArchivesOpen(true)}>Archived local events…</Button>

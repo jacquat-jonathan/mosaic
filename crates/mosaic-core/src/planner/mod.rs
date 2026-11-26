@@ -6,6 +6,7 @@ mod epics;
 mod export;
 pub use export::PlannerExportSnapshot;
 mod ical;
+mod ical_color;
 mod recurrence;
 mod schema;
 mod service;
@@ -21,8 +22,8 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 pub use ical::{
-    IcalImportCandidate, IcalImportPreview, IcalImportResult, OverlayOccurrence, ical_warnings,
-    overlay_occurrences, validate_ical,
+    IcalImportCandidate, IcalImportPreview, IcalImportResult, OverlayOccurrence,
+    ical_calendar_color, ical_warnings, overlay_occurrences, validate_ical,
 };
 pub use service::{PlannerService, PlannerUnavailable};
 

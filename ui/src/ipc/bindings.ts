@@ -966,6 +966,7 @@ export type SubscriptionView = {
 	id: string,
 	name: string,
 	color: string,
+	source_color: string | null,
 	visible: boolean,
 	refresh_minutes: number,
 	last_success: string | null,

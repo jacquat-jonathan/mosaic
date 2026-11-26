@@ -158,6 +158,17 @@ describe("month calendar", () => {
     onSessionDelete: vi.fn(),
   });
 
+  it("draws subscribed events in their color with a feed mark", () => {
+    const p = props();
+    p.data = { ...range(), events: [], work_sessions: [], due_markers: [] };
+    p.overlays = [overlay({ color: "#ff2968" })];
+    render(<MonthView {...p} />);
+    const item = screen.getByRole("button", { name: "Read only" });
+    expect(item.className).toContain("read-only");
+    expect(item.style.borderColor).toBe("rgb(255, 41, 104)");
+    expect(item.querySelector("svg.planner-overlay-mark")?.getAttribute("aria-hidden")).toBe("true");
+  });
+
   it("renders mixed entries, workload, overflow and all activation paths", () => {
     const p = props();
     render(<MonthView {...p} />);
@@ -267,6 +278,30 @@ describe("week calendar", () => {
     onSessionResize: vi.fn(),
     onEventDelete: vi.fn(),
     onSessionCancel: vi.fn(),
+  });
+
+  it("draws subscribed events in their color with a feed mark", () => {
+    const p = props();
+    p.data = { ...range(), events: [], work_sessions: [], due_markers: [] };
+    p.overlays = [
+      overlay({ color: "#40e0d0" }),
+      overlay({
+        uid: "all-overlay",
+        title: "External all day",
+        all_day: true,
+        start_value: "2026-10-28",
+        end_value: "2026-10-29",
+        color: "#ff2968",
+      }),
+    ];
+    render(<WeekView {...p} />);
+    const timed = screen.getByRole("button", { name: "Read only" });
+    expect(timed.className).toContain("overlay");
+    expect(timed.style.getPropertyValue("--item-color")).toBe("#40e0d0");
+    expect(timed.querySelector("svg.planner-overlay-mark")).toBeTruthy();
+    const allDay = screen.getByRole("button", { name: "External all day" });
+    expect(allDay.style.borderColor).toBe("rgb(255, 41, 104)");
+    expect(allDay.querySelector("svg.planner-overlay-mark")).toBeTruthy();
   });
 
   it("places the current-time line across the visible week and advances it on the minute", () => {

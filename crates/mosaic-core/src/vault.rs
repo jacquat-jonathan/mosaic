@@ -1,6 +1,8 @@
 //! File-level access to a vault folder. Every path crossing this boundary is vault-relative,
 //! `/`-separated and validated; nothing outside the root (or inside hidden folders such as
-//! `.obsidian/`) can be read or written.
+//! `.obsidian/`) can be read or written. The one exception is the app's view-only listing and
+//! reading of hidden files when the person turns on "Show hidden files and folders"
+//! (`list_shown`, `read_shown`); agents, the CLI and the index never see hidden paths.
 
 use crate::error::{Error, Result};
 use crate::kind::FileKind;
@@ -95,6 +97,22 @@ pub fn hash_bytes(bytes: &[u8]) -> String {
 /// ordinary file-name character, so `a\b.md` is one file in the vault root and `..\x` is not a
 /// traversal (a single, harmless segment).
 pub fn normalize(rel: &str) -> Result<String> {
+    normalize_with(rel, false)
+}
+
+/// `normalize` for a path the app shows when "Show hidden files and folders" is on: hidden
+/// segments such as `.claude` are allowed, except the ones that are never shown (see `is_internal`).
+/// Only the app's read-only listing and viewing use it; every other operation keeps `normalize`.
+pub fn normalize_shown(rel: &str) -> Result<String> {
+    normalize_with(rel, true)
+}
+
+/// Whether a vault-relative path has a hidden (dot-prefixed) segment.
+pub fn is_hidden_path(rel: &str) -> bool {
+    rel.split('/').any(is_hidden)
+}
+
+fn normalize_with(rel: &str, allow_hidden: bool) -> Result<String> {
     let rel = rel.trim();
     let rel = if cfg!(windows) {
         rel.replace('\\', "/")
@@ -111,7 +129,7 @@ pub fn normalize(rel: &str) -> Result<String> {
         match part {
             "" | "." => {}
             ".." => return Err(Error::InvalidPath(format!("{rel} (.. is not allowed)"))),
-            p if p.starts_with('.') => {
+            p if is_hidden(p) && (!allow_hidden || is_internal(p)) => {
                 return Err(Error::InvalidPath(format!(
                     "{rel} (hidden paths are not part of the vault)"
                 )));
@@ -132,6 +150,18 @@ fn mtime_ms(meta: &fs::Metadata) -> u64 {
 
 fn is_hidden(name: &str) -> bool {
     name.starts_with('.')
+}
+
+/// Hidden names that stay hidden even when the app shows hidden files: Git's repository and
+/// Mosaic's own data (`.mosaic/` with the planner database and vault id, `.mosaic-*` temp files
+/// and markers) are not user content and are easily damaged; `.DS_Store` and iCloud placeholders
+/// (`.name.icloud`) are system clutter.
+pub fn is_internal(name: &str) -> bool {
+    name == ".git"
+        || name == ".mosaic"
+        || name.starts_with(".mosaic-")
+        || name == ".DS_Store"
+        || (is_hidden(name) && name.ends_with(".icloud"))
 }
 
 impl Vault {
@@ -169,8 +199,12 @@ impl Vault {
     /// Absolute path for a vault-relative one, refusing anything that escapes the root
     /// (including through symlinks).
     pub fn resolve(&self, rel: &str) -> Result<PathBuf> {
-        let norm = normalize(rel)?;
-        let abs = self.root.join(&norm);
+        self.resolve_norm(&normalize(rel)?)
+    }
+
+    /// `resolve` for a path already normalized (by `normalize` or `normalize_shown`).
+    fn resolve_norm(&self, norm: &str) -> Result<PathBuf> {
+        let abs = self.root.join(norm);
         // Canonicalize the deepest existing ancestor: catches symlinks pointing outside.
         let mut probe = abs.as_path();
         loop {
@@ -217,13 +251,22 @@ impl Vault {
 
     /// Vault-relative form of an absolute path inside the root, if it is part of the vault.
     pub fn relative(&self, abs: &Path) -> Option<String> {
+        self.relative_with(abs, false)
+    }
+
+    /// `relative` that also accepts hidden paths the app can show (`normalize_shown`'s rule).
+    pub fn relative_shown(&self, abs: &Path) -> Option<String> {
+        self.relative_with(abs, true)
+    }
+
+    fn relative_with(&self, abs: &Path, allow_hidden: bool) -> Option<String> {
         let rel = abs.strip_prefix(&self.root).ok()?;
         let mut parts = Vec::new();
         for c in rel.components() {
             match c {
                 Component::Normal(s) => {
                     let s = s.to_str()?;
-                    if is_hidden(s) {
+                    if is_hidden(s) && (!allow_hidden || is_internal(s)) {
                         return None;
                     }
                     parts.push(s);
@@ -268,7 +311,19 @@ impl Vault {
         let norm = normalize(dir)?;
         let abs = self.resolve(&norm)?;
         let mut out = Vec::new();
-        self.list_into(&norm, &abs, recursive, &mut out, 0)?;
+        self.list_into(&norm, &abs, recursive, false, &mut out, 0)?;
+        Ok(out)
+    }
+
+    /// `list` for the app's "Show hidden files and folders": also returns hidden entries (except
+    /// `is_internal` ones), but never walks inside a hidden folder. Listing a hidden folder returns
+    /// its direct children only, so a large `.venv/` or `.next/` costs one entry until it's opened.
+    pub fn list_shown(&self, dir: &str, recursive: bool) -> Result<Vec<Entry>> {
+        let norm = normalize_shown(dir)?;
+        let abs = self.resolve_norm(&norm)?;
+        let recursive = recursive && !is_hidden_path(&norm);
+        let mut out = Vec::new();
+        self.list_into(&norm, &abs, recursive, true, &mut out, 0)?;
         Ok(out)
     }
 
@@ -277,6 +332,7 @@ impl Vault {
         rel: &str,
         abs: &Path,
         recursive: bool,
+        hidden: bool,
         out: &mut Vec<Entry>,
         depth: usize,
     ) -> Result<()> {
@@ -287,7 +343,7 @@ impl Vault {
             let Ok(name) = child.file_name().into_string() else {
                 continue;
             };
-            if is_hidden(&name) {
+            if is_hidden(&name) && (!hidden || is_internal(&name)) {
                 continue;
             }
             let child_rel = if rel.is_empty() {
@@ -305,12 +361,12 @@ impl Vault {
                 .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
         });
         for e in entries {
-            let recurse = recursive && e.is_dir && depth < 64;
+            let recurse = recursive && e.is_dir && depth < 64 && !is_hidden(&e.name);
             let child_rel = e.path.clone();
             out.push(e);
             if recurse {
                 let child_abs = self.root.join(&child_rel);
-                self.list_into(&child_rel, &child_abs, true, out, depth + 1)?;
+                self.list_into(&child_rel, &child_abs, true, hidden, out, depth + 1)?;
             }
         }
         Ok(())
@@ -339,8 +395,32 @@ impl Vault {
         let norm = normalize(rel)?;
         let bytes = self.read_bytes(&norm)?;
         let abs = self.resolve(&norm)?;
-        let meta = fs::metadata(&abs).map_err(|e| Error::io(&norm, e))?;
         let kind = FileKind::of(&abs);
+        Self::content_of(norm, &abs, kind, bytes)
+    }
+
+    /// Reads a file the app shows with "Show hidden files and folders" (`normalize_shown`'s rule),
+    /// with the same symlink and text checks as `read`. Dotfiles without a known extension, such as
+    /// `.gitignore` or `.npmrc`, read as plain text when they are UTF-8. There is deliberately no
+    /// hidden-path write, rename or delete: hidden files are view-only in Mosaic.
+    pub fn read_shown(&self, rel: &str) -> Result<FileContent> {
+        let norm = normalize_shown(rel)?;
+        let abs = self.resolve_norm(&norm)?;
+        if abs.is_dir() {
+            return Err(Error::Invalid(format!("{norm} is a folder")));
+        }
+        let bytes = fs::read(&abs).map_err(|e| Error::io(&norm, e))?;
+        let kind = match FileKind::of(&abs) {
+            FileKind::Other if !bytes.contains(&0) && std::str::from_utf8(&bytes).is_ok() => {
+                FileKind::Text
+            }
+            kind => kind,
+        };
+        Self::content_of(norm, &abs, kind, bytes)
+    }
+
+    fn content_of(norm: String, abs: &Path, kind: FileKind, bytes: Vec<u8>) -> Result<FileContent> {
+        let meta = fs::metadata(abs).map_err(|e| Error::io(&norm, e))?;
         let content = if kind.is_text() {
             Some(String::from_utf8(bytes.clone()).map_err(|_| Error::NotText(norm.clone()))?)
         } else {
@@ -938,6 +1018,131 @@ mod tests {
             .map(|e| e.path)
             .collect();
         assert_eq!(all, vec!["z", "z/inner.md", "A.md", "b.md"]);
+    }
+
+    #[test]
+    fn normalize_shown_allows_hidden_segments_except_internal_ones() {
+        assert_eq!(
+            normalize_shown(".claude/settings.json").unwrap(),
+            ".claude/settings.json"
+        );
+        assert_eq!(
+            normalize_shown("a/.github/ci.yml").unwrap(),
+            "a/.github/ci.yml"
+        );
+        for refused in [
+            ".git/config",
+            "a/.git/HEAD",
+            ".mosaic/vault.json",
+            "a/.mosaic-x.tmp",
+            ".DS_Store",
+            ".a.md.icloud",
+            "../x",
+            ".claude/../../x",
+            "/etc/passwd",
+        ] {
+            assert!(normalize_shown(refused).is_err(), "{refused}");
+        }
+        assert!(is_hidden_path("a/.claude/x") && !is_hidden_path("a/b.md"));
+    }
+
+    #[test]
+    fn list_shown_adds_hidden_entries_without_walking_into_hidden_folders() {
+        let (d, v) = vault();
+        for file in [
+            ".obsidian/app.json",
+            ".claude/skills/a/SKILL.md",
+            ".gitignore",
+            "a/.github/ci.yml",
+            "a/note.md",
+            ".git/HEAD",
+            ".mosaic/vault.json",
+            "a/.mosaic-x.tmp",
+            ".DS_Store",
+            ".b.md.icloud",
+        ] {
+            let path = d.path().join(file);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, "x").unwrap();
+        }
+        let paths = |entries: Vec<Entry>| entries.into_iter().map(|e| e.path).collect::<Vec<_>>();
+        assert_eq!(
+            paths(v.list_shown("", true).unwrap()),
+            vec![
+                ".claude",
+                ".obsidian",
+                "a",
+                "a/.github",
+                "a/note.md",
+                ".gitignore"
+            ]
+        );
+        // A hidden folder lists its direct children only, even when asked to recurse.
+        assert_eq!(
+            paths(v.list_shown(".claude", true).unwrap()),
+            vec![".claude/skills"]
+        );
+        assert_eq!(
+            paths(v.list_shown(".claude/skills/a", false).unwrap()),
+            vec![".claude/skills/a/SKILL.md"]
+        );
+        assert!(v.list_shown(".git", false).is_err());
+        // The ordinary listing (the index, agents, the CLI) is unchanged.
+        assert_eq!(paths(v.list("", true).unwrap()), vec!["a", "a/note.md"]);
+    }
+
+    #[test]
+    fn read_shown_reads_hidden_text_but_nothing_internal_or_outside() {
+        let (d, v) = vault();
+        let outside = tempfile::tempdir().unwrap();
+        fs::write(outside.path().join("secret.txt"), "secret").unwrap();
+        fs::create_dir_all(d.path().join(".claude")).unwrap();
+        fs::create_dir_all(d.path().join(".git")).unwrap();
+        fs::write(d.path().join(".claude/settings.json"), "{}").unwrap();
+        fs::write(d.path().join(".gitignore"), "target/\n").unwrap();
+        fs::write(d.path().join(".claude/blob"), [0u8, 159, 146, 150]).unwrap();
+        fs::write(d.path().join(".git/config"), "[core]").unwrap();
+        std::os::unix::fs::symlink(outside.path(), d.path().join(".escape")).unwrap();
+
+        let json = v.read_shown(".claude/settings.json").unwrap();
+        assert_eq!(
+            (json.kind, json.content.as_deref()),
+            (FileKind::Json, Some("{}"))
+        );
+        // Dotfiles without a known extension read as text when they are UTF-8.
+        let ignore = v.read_shown(".gitignore").unwrap();
+        assert_eq!(ignore.kind, FileKind::Text);
+        assert_eq!(ignore.content.as_deref(), Some("target/\n"));
+        let blob = v.read_shown(".claude/blob").unwrap();
+        assert_eq!((blob.kind, blob.content), (FileKind::Other, None));
+
+        assert!(v.read_shown(".git/config").is_err());
+        assert!(v.read_shown(".claude").is_err());
+        assert!(matches!(
+            v.read_shown(".escape/secret.txt"),
+            Err(Error::InvalidPath(_))
+        ));
+        // Every ordinary operation still refuses hidden paths.
+        assert!(v.read(".claude/settings.json").is_err());
+        assert!(v.write(".claude/settings.json", "x", None).is_err());
+        assert!(v.delete(".claude/settings.json").is_err());
+        assert_eq!(
+            fs::read_to_string(d.path().join(".claude/settings.json")).unwrap(),
+            "{}"
+        );
+    }
+
+    #[test]
+    fn relative_shown_maps_hidden_paths_but_not_internal_ones() {
+        let (_d, v) = vault();
+        let root = v.root().to_path_buf();
+        assert_eq!(v.relative(&root.join(".claude/x.json")), None);
+        assert_eq!(
+            v.relative_shown(&root.join(".claude/x.json")).as_deref(),
+            Some(".claude/x.json")
+        );
+        assert_eq!(v.relative_shown(&root.join(".git/index")), None);
+        assert_eq!(v.relative_shown(&root.join("a/.mosaic/x")), None);
     }
 
     #[test]

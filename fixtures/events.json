@@ -1,6 +1,6 @@
 {
   "index-progress": { "session": { "vault_id": "mock-vault", "root": "/mock/vault", "generation": "0" }, "done": 2, "total": 3, "finished": false, "failed": false },
-  "vault-changed": { "session": { "vault_id": "mock-vault", "root": "/mock/vault", "generation": "0" }, "paths": ["Note.md"], "root_missing": false },
+  "vault-changed": { "session": { "vault_id": "mock-vault", "root": "/mock/vault", "generation": "0" }, "paths": ["Note.md"], "hidden_paths": [], "root_missing": false },
   "history-changed": { "vault_id": "mock-vault", "root": "/mock/vault", "generation": "0" },
   "planner-changed": {
     "session": { "vault_id": "mock-vault", "root": "/mock/vault", "generation": "0" },

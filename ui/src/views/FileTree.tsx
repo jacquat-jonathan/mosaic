@@ -50,6 +50,7 @@ import { kindOf } from "../ipc/kinds";
 import { endTreeDrag, startTreeDrag, treeDragActive } from "../dragOut";
 import { saveVaultPreferences, useVaultPreferences } from "../state/vaultPreferences";
 import { isQuietAttachment } from "../attachments";
+import { isHiddenPath } from "../hidden";
 import { treeAutoScrollStep } from "./treeAutoScroll";
 
 import { FOLDER_COLOR_OPTIONS, IconButton } from "../design-system/components";
@@ -150,10 +151,29 @@ export function FileTreeToolbar() {
   );
 }
 
+/** Siblings as the core lists them: folders first, then case-insensitively by name. */
+const byTreeOrder = (a: Entry, b: Entry) => {
+  if (a.is_dir !== b.is_dir) return a.is_dir ? -1 : 1;
+  const x = a.name.toLowerCase(),
+    y = b.name.toLowerCase();
+  return x < y ? -1 : x > y ? 1 : 0;
+};
+
+/** A hidden row takes no drops: nothing can be moved or imported into a hidden folder. */
+const NO_DROP = {
+  onDragOver: (ev: DragEvent) => ev.stopPropagation(),
+  onDrop: (ev: DragEvent) => ev.stopPropagation(),
+};
+
+/** Hidden paths are view-only (see hidden.ts): moves, renames and deletes leave them out. */
+const changeable = (paths: string[]) => paths.filter((p) => !isHiddenPath(p));
+
 export function FileTree() {
   const entries = useVault((s) => s.entries);
+  const hiddenEntries = useVault((s) => s.hiddenEntries);
   const expanded = useVault((s) => s.expanded);
   const showAttachments = useVaultPreferences((s) => s.value.show_attachments_in_tree);
+  const showHidden = useVaultPreferences((s) => !!s.value.show_hidden_files);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const hoverTimer = useRef<{ dir: string; t: ReturnType<typeof setTimeout> } | null>(null);
   const treeRef = useRef<HTMLDivElement>(null);
@@ -198,14 +218,17 @@ export function FileTree() {
 
   const children = useMemo(() => {
     const map = new Map<string, Entry[]>();
-    for (const e of entries) {
+    const hidden = showHidden ? hiddenEntries : [];
+    for (const e of hidden.length ? [...entries, ...hidden] : entries) {
       if (!showAttachments && isQuietAttachment(e)) continue;
       const parent = parentOf(e.path);
       if (!map.has(parent)) map.set(parent, []);
       map.get(parent)!.push(e);
     }
+    // Hidden entries come from a separate list, so put them in their place among their siblings.
+    if (hidden.length) for (const siblings of map.values()) siblings.sort(byTreeOrder);
     return map;
-  }, [entries, showAttachments]);
+  }, [entries, hiddenEntries, showAttachments, showHidden]);
 
   const rows: { entry: Entry; depth: number }[] = [];
   const walk = (dir: string, depth: number) => {
@@ -289,8 +312,8 @@ export function FileTree() {
     const vault = useVault.getState();
     const sel = [...vault.selected];
     if (ev.key === "Escape") vault.clearSelection();
-    else if (ev.key === "Backspace" && ev.metaKey && sel.length) void deletePaths(sel);
-    else if (ev.key === "Enter" && sel.length === 1) vault.setRenaming(sel[0]);
+    else if (ev.key === "Backspace" && ev.metaKey && changeable(sel).length) void deletePaths(changeable(sel));
+    else if (ev.key === "Enter" && sel.length === 1 && changeable(sel).length) vault.setRenaming(sel[0]);
     else if (ev.key === "a" && ev.metaKey) vault.setSelection(order);
     else if (ev.key === "ArrowDown" || ev.key === "ArrowUp") {
       // ⇧ extends the selection from the anchor; plain arrows move a single selection.
@@ -339,7 +362,13 @@ export function FileTree() {
             open={expanded.has(entry.path)}
             order={order}
             dropping={dropTarget === entry.path}
-            dropProps={entry.is_dir ? drop(entry.path, !expanded.has(entry.path)) : drop(parentOf(entry.path))}
+            dropProps={
+              isHiddenPath(entry.path)
+                ? NO_DROP
+                : entry.is_dir
+                  ? drop(entry.path, !expanded.has(entry.path))
+                  : drop(parentOf(entry.path))
+            }
           />
         ))}
         {rows.length === 0 && (
@@ -448,7 +477,26 @@ function folderColorMenu(path: string): MenuItem {
   };
 }
 
+/** The menu of a hidden file or folder: view-only, so nothing that changes it (see hidden.ts). */
+function hiddenMenu(entry: Entry): MenuItem[] {
+  const ws = useWorkspace.getState();
+  return entry.is_dir
+    ? [
+        { label: "Expand all", action: () => setExpandedDeep(entry.path, true) },
+        { label: "Collapse all", action: () => setExpandedDeep(entry.path, false) },
+        { label: "", separator: true },
+        { label: "Copy vault path", detail: entry.path, action: () => void copyText(entry.path) },
+      ]
+    : [
+        { label: "Open in new tab", shortcut: "⌥-click", action: () => void ws.open(entry.path, { newTab: true }) },
+        { label: "Open to the right", action: () => void openToTheRight(entry.path) },
+        { label: "", separator: true },
+        { label: "Copy vault path", detail: entry.path, action: () => void copyText(entry.path) },
+      ];
+}
+
 async function singleMenu(entry: Entry): Promise<MenuItem[]> {
+  if (isHiddenPath(entry.path)) return hiddenMenu(entry);
   const vault = useVault.getState();
   const bookmarked = vault.bookmarks.includes(entry.path);
   const dir = entry.is_dir ? entry.path : parentOf(entry.path);
@@ -554,6 +602,7 @@ function TreeRow({
   dropProps: Record<string, (ev: DragEvent) => void>;
 }) {
   const renaming = useVault((s) => s.renaming === entry.path);
+  const hidden = isHiddenPath(entry.path);
   const selected = useVault((s) => s.selected.has(entry.path));
   const bookmarked = useVault((s) => s.bookmarks.includes(entry.path));
   const folderColor = useVaultPreferences((s) => (entry.is_dir ? s.value.folder_colors[entry.path] : undefined));
@@ -572,17 +621,18 @@ function TreeRow({
     ev.preventDefault();
     ev.stopPropagation();
     const vault = useVault.getState();
-    const inSelection = vault.selected.has(entry.path) && vault.selected.size > 1;
+    const several = changeable(order.filter((p) => vault.selected.has(p)));
+    const inSelection = !hidden && vault.selected.has(entry.path) && several.length > 1;
     if (!inSelection) vault.select(entry.path, "single");
     const x = ev.clientX,
       y = ev.clientY;
-    if (inSelection) return useUi.getState().showMenu(x, y, multiMenu(order.filter((p) => vault.selected.has(p))));
+    if (inSelection) return useUi.getState().showMenu(x, y, multiMenu(several));
     void singleMenu(entry).then((items) => useUi.getState().showMenu(x, y, items));
   };
 
   return (
     <div
-      className={`tree-row ${active ? "active" : ""} ${selected ? "selected" : ""} ${dropping ? "drop" : ""}`}
+      className={`tree-row ${active ? "active" : ""} ${selected ? "selected" : ""} ${dropping ? "drop" : ""} ${hidden ? "hidden-entry" : ""}`}
       role="treeitem"
       aria-selected={selected}
       aria-level={depth + 1}
@@ -591,11 +641,11 @@ function TreeRow({
       data-folder-color={folderColor}
       aria-label={folderColor ? `${entry.name}, ${folderColor} folder` : undefined}
       style={{ paddingLeft: 8 + depth * 14 }}
-      draggable={!renaming}
+      draggable={!renaming && !hidden}
       onDragStart={(ev) => {
         const vault = useVault.getState();
         if (!vault.selected.has(entry.path)) vault.select(entry.path, "single");
-        dragging = order.filter((p) => useVault.getState().selected.has(p));
+        dragging = changeable(order.filter((p) => useVault.getState().selected.has(p)));
         const data = {
           [DRAG_TYPE]: JSON.stringify(dragging),
           // Dropped into a note, the drag inserts links to the files.

@@ -121,7 +121,7 @@ const SETTING_WORDS: Partial<Record<SettingsSection, string>> = {
   editor:
     "spellcheck source line numbers trash confirmation HTML preview scripts internet network external resources vault security",
   vault:
-    "agents daily notes enable disable file name format folder template new notes attachments folder colors creation discovery current root fixed missing create folder",
+    "agents daily notes enable disable file name format folder template new notes attachments folder colors creation discovery current root fixed missing create folder hidden files dotfiles dot .claude .github",
   templates: "templates defaults folder assignments rules starters preview",
   calendar: "week starts monday sunday new link syntax wiki markdown open note links new tab",
   workspace:

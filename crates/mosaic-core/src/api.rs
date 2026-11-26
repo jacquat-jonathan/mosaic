@@ -944,6 +944,37 @@ impl FileService {
         Ok(entries)
     }
 
+    /// `list` for the app's "Show hidden files and folders" (see `Vault::list_shown`): hidden
+    /// entries too, never walking inside a hidden folder; a hidden `dir` lists its direct children.
+    /// The folder rules apply as in `list` (a rule hiding `Private` hides `Private/.claude`).
+    pub fn list_with_hidden(&self, dir: &str, recursive: bool) -> Result<Vec<Entry>> {
+        let norm = crate::vault::normalize_shown(dir)?;
+        if crate::vault::is_hidden_path(&norm) {
+            if !Context::visible(&self.rules()?, &norm) {
+                return Err(Error::NotFound(norm));
+            }
+        } else {
+            self.check_read(&norm)?;
+        }
+        let rules = self.rules()?;
+        let mut entries = self.vault.list_shown(&norm, recursive)?;
+        entries.retain(|e| Context::visible(&rules, &e.path));
+        Ok(entries)
+    }
+
+    /// Reads a hidden file for the app's view-only display (see `Vault::read_shown`). Ordinary
+    /// paths are refused: they go through `read`, with its review handling.
+    pub fn read_hidden(&self, path: &str) -> Result<FileContent> {
+        let norm = crate::vault::normalize_shown(path)?;
+        if !crate::vault::is_hidden_path(&norm) {
+            return Err(Error::InvalidPath(format!("{norm} is not a hidden path")));
+        }
+        if !Context::visible(&self.rules()?, &norm) {
+            return Err(Error::NotFound(norm));
+        }
+        self.vault.read_shown(&norm)
+    }
+
     pub fn read(&self, path: &str) -> Result<FileContent> {
         self.check_read(path)?;
         let norm = normalize(path)?;
@@ -3577,6 +3608,62 @@ mod tests {
         assert!(matches!(
             w.links
                 .link_mention("Projects/Plan.md", 1, "Home", "Home.md"),
+            Err(Error::NotFound(_))
+        ));
+    }
+
+    #[test]
+    fn shown_hidden_files_follow_folder_rules_and_stay_out_of_every_other_tool() {
+        let (d, w) = agent_ws();
+        for file in [".claude/settings.json", "Projects/.github/ci.yml"] {
+            let path = d.path().join(file);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, "{}").unwrap();
+        }
+        let listed = |w: &Workspace| -> Vec<String> {
+            w.files
+                .list_with_hidden("", true)
+                .unwrap()
+                .into_iter()
+                .map(|e| e.path)
+                .filter(|p| crate::vault::is_hidden_path(p))
+                .collect()
+        };
+        assert_eq!(listed(&w), vec![".claude", ".obsidian", "Projects/.github"]);
+        assert_eq!(
+            w.files
+                .read_hidden(".claude/settings.json")
+                .unwrap()
+                .content
+                .as_deref(),
+            Some("{}")
+        );
+        // Ordinary paths keep going through `read`.
+        assert!(w.files.read_hidden("Ideas.md").is_err());
+        // The ordinary tools agents and the CLI use still treat hidden paths as outside the vault.
+        assert!(w.files.read(".claude/settings.json").is_err());
+        assert!(w.files.list(".claude", false).is_err());
+        assert!(
+            w.files
+                .list("", true)
+                .unwrap()
+                .iter()
+                .all(|e| !crate::vault::is_hidden_path(&e.path))
+        );
+        assert!(
+            w.files
+                .create(".claude/new.md", "x")
+                .is_err_and(|e| matches!(e, Error::InvalidPath(_)))
+        );
+        // A rule hiding a folder hides the hidden files inside it too.
+        let w = w.with_agent_rules(vec![rule("Projects", Access::Hidden)]);
+        assert_eq!(listed(&w), vec![".claude", ".obsidian"]);
+        assert!(matches!(
+            w.files.list_with_hidden("Projects/.github", false),
+            Err(Error::NotFound(_))
+        ));
+        assert!(matches!(
+            w.files.read_hidden("Projects/.github/ci.yml"),
             Err(Error::NotFound(_))
         ));
     }

@@ -453,3 +453,43 @@ describe("tree drag behavior", () => {
     vi.useRealTimers();
   });
 });
+
+describe("hidden files", () => {
+  const hidden = [entry(".claude", true), entry(".claude/settings.json", false, "json"), entry("Folder/.github", true)];
+
+  it("shows hidden entries in place only while the setting is on, view-only", async () => {
+    useVault.setState({ hiddenEntries: hidden, expanded: new Set(["Folder", "Folder/Sub", ".claude"]) });
+    const { rerender } = render(<FileTree />);
+    expect(screen.queryByTitle(".claude")).toBeNull();
+
+    useVaultPreferences.setState({ value: { ...useVaultPreferences.getState().value, show_hidden_files: true } });
+    rerender(<FileTree />);
+    const rows = screen.getAllByRole("treeitem").map((row) => row.getAttribute("data-path"));
+    // Sorted among their siblings: folders first, then by name.
+    expect(rows.slice(0, 3)).toEqual([".claude", ".claude/settings.json", "Attachments"]);
+    expect(rows.indexOf("Folder/.github")).toBe(rows.indexOf("Folder") + 1);
+    const row = screen.getByTitle(".claude/settings.json");
+    expect(row.className).toContain("hidden-entry");
+    expect(row.getAttribute("draggable")).toBe("false");
+
+    const setRenaming = vi.fn();
+    const remove = vi.fn().mockResolvedValue(true);
+    const ask = vi.fn().mockResolvedValue(true);
+    useUi.setState({ ask });
+    useVault.setState({ selected: new Set([".claude/settings.json"]), setRenaming, remove });
+    const tree = screen.getByRole("tree");
+    fireEvent.keyDown(tree, { key: "Enter" });
+    fireEvent.keyDown(tree, { key: "Backspace", metaKey: true });
+    expect(setRenaming).not.toHaveBeenCalled();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(ask).not.toHaveBeenCalled();
+    expect(remove).not.toHaveBeenCalled();
+
+    fireEvent.contextMenu(row, { clientX: 5, clientY: 6 });
+    await waitFor(() => expect(useUi.getState().menu).not.toBeNull());
+    const labels = useUi.getState().menu!.items.map((item) => item.label);
+    expect(labels).toEqual(expect.arrayContaining(["Open in new tab", "Open to the right", "Copy vault path"]));
+    for (const changing of ["Rename", "Move to…", "Move to Trash", "Duplicate", "New note", "Bookmark"])
+      expect(labels).not.toContain(changing);
+  });
+});

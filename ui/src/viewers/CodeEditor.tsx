@@ -36,10 +36,19 @@ function useLanguage(path: string): LanguageSupport | null | undefined {
 }
 
 /** Syntax-highlighted editor for code, JSON, YAML, plain text and HTML source. */
-export function CodeEditor({ buffer, wrap }: { buffer: Buffer; wrap?: boolean }) {
+export function CodeEditor({
+  buffer,
+  wrap,
+  readOnly: viewOnly,
+}: {
+  buffer: Buffer;
+  wrap?: boolean;
+  readOnly?: boolean;
+}) {
   const path = buffer.path;
   const lang = useLanguage(path);
-  const readOnly = (buffer.content?.length ?? 0) > LARGE_FILE_BYTES;
+  const large = (buffer.content?.length ?? 0) > LARGE_FILE_BYTES;
+  const readOnly = large || !!viewOnly;
   const numbers = useSettings((s) => s.sourceLineNumbers);
   const extensions = useMemo(
     () =>
@@ -59,7 +68,11 @@ export function CodeEditor({ buffer, wrap }: { buffer: Buffer; wrap?: boolean })
     );
   return (
     <DesignSystemScope className="code-scroll source-editor-controls" role="region" aria-label="Source editor controls">
-      {readOnly && <Notice tone="warning">This file is larger than 5 MB and opened read-only.</Notice>}
+      {large ? (
+        <Notice tone="warning">This file is larger than 5 MB and opened read-only.</Notice>
+      ) : (
+        viewOnly && <Notice>Hidden files are view-only in Mosaic.</Notice>
+      )}
       <CodeMirror className="code-editor" doc={buffer.content ?? ""} version={buffer.version} extensions={extensions} />
     </DesignSystemScope>
   );

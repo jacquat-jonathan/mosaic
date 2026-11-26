@@ -57,6 +57,10 @@
 .mosaic-ds.files-panel .tree-mark {
   color: var(--mds-text-muted);
 }
+/* Hidden files and folders (shown with "Show hidden files and folders") are view-only, so they recede. */
+.mosaic-ds.files-panel .tree-row.hidden-entry {
+  color: var(--mds-text-muted);
+}
 .mosaic-ds.files-panel .tree-rename {
   padding: 2px var(--mds-space-2);
   border: 1px solid var(--mds-border);

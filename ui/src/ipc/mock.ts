@@ -337,8 +337,8 @@ export function mockPropose(path: string, content: string | null, actor = "claud
 (globalThis as { mosaicMock?: object }).mosaicMock = { propose: mockPropose };
 
 const emit = (name: string, detail: unknown) => {
-  if (name === "vault-changed" || name === "planner-changed")
-    detail = { ...(detail as object), session: mockSession() };
+  if (name === "vault-changed") detail = { hidden_paths: [], ...(detail as object), session: mockSession() };
+  else if (name === "planner-changed") detail = { ...(detail as object), session: mockSession() };
   window.dispatchEvent(new CustomEvent(`mock-${name}`, { detail }));
 };
 
@@ -794,12 +794,88 @@ function seed() {
   add("Projects/notes.txt", "Plain text file.\nSecond line.");
   add("config.json", '{\n  "name": "mosaic",\n  "version": 1\n}\n');
   for (const p of files.keys()) addParents(p);
+  // Shown only with "Show hidden files and folders"; .git and .mosaic never are.
+  hiddenFiles.set(".claude/settings.json", '{\n  "permissions": { "allow": [] }\n}\n');
+  hiddenFiles.set(".claude/commands/review.md", "# Review\n\nReview the current change.\n");
+  hiddenFiles.set(".gitignore", "node_modules/\ndist/\n");
+  hiddenFiles.set(".git/HEAD", "ref: refs/heads/main\n");
+  hiddenFiles.set(".mosaic/vault.json", '{"id":"mock-vault"}');
 }
+/**
+ * Hidden (dot-prefixed) files, kept apart from `files` so every other mock command treats them as
+ * outside the vault, like the core does (crates/mosaic-core/src/vault.rs, `list_shown` / `read_shown`).
+ */
+const hiddenFiles = new Map<string, string>();
 seed();
+
+/** Adds a hidden file to the mock vault (tests). */
+export function mockHiddenFile(path: string, content: string) {
+  hiddenFiles.set(path, content);
+}
+
+const isHiddenName = (name: string) => name.startsWith(".");
+/** Mirrors `vault::is_internal`: never shown, even with hidden files on. */
+const isInternalName = (name: string) =>
+  name === ".git" ||
+  name === ".mosaic" ||
+  name.startsWith(".mosaic-") ||
+  name === ".DS_Store" ||
+  (isHiddenName(name) && name.endsWith(".icloud"));
+const isHiddenMockPath = (p: string) => p.split("/").some(isHiddenName);
+
+function showHiddenOn() {
+  return !!vaultPreferences.get(mockRoot)?.show_hidden_files;
+}
+
+/** `norm` that allows hidden segments except internal ones (`normalize_shown`). */
+function normShown(p: unknown): string {
+  const s = String(p ?? "").replace(/\\/g, "/");
+  const parts = s.split("/").filter((x) => x && x !== ".");
+  if (s.startsWith("/") || parts.includes("..") || parts.some(isInternalName))
+    throw err("invalid_path", `${s} (hidden)`);
+  return parts.join("/");
+}
+
+function hiddenEntry(path: string, isDir: boolean): Entry {
+  return {
+    path,
+    name: path.split("/").pop() ?? path,
+    is_dir: isDir,
+    kind: isDir ? null : kindOf(path),
+    size: isDir ? 0 : (hiddenFiles.get(path)?.length ?? 0),
+    mtime: 0,
+  };
+}
+
+/** `list_shown`: hidden entries too, never walking inside a hidden folder. */
+function listShown(dir: string, recursive: boolean): Entry[] {
+  const shown = new Map<string, boolean>();
+  for (const file of hiddenFiles.keys()) {
+    const parts = file.split("/");
+    if (parts.some(isInternalName)) continue;
+    for (let i = 1; i <= parts.length; i++) {
+      const p = parts.slice(0, i).join("/");
+      if (isHiddenMockPath(p)) shown.set(p, shown.get(p) || i < parts.length);
+    }
+  }
+  const parentOf = (p: string) => p.slice(0, Math.max(0, p.lastIndexOf("/")));
+  const childOf = (p: string) => parentOf(p) === dir;
+  if (isHiddenMockPath(dir)) {
+    if (!shown.get(dir)) throw err("not_found", `not found: ${dir}`);
+    return [...shown].filter(([p]) => childOf(p)).map(([p, isDir]) => hiddenEntry(p, isDir));
+  }
+  const ordinary = list(dir, recursive);
+  const folders = new Set([dir, ...ordinary.filter((e) => e.is_dir).map((e) => e.path)]);
+  const hidden = [...shown]
+    .filter(([p]) => !isHiddenMockPath(parentOf(p)) && (recursive ? folders.has(parentOf(p)) : childOf(p)))
+    .map(([p, isDir]) => hiddenEntry(p, isDir));
+  return [...ordinary, ...hidden];
+}
 
 /** Isolated fixture world: unlike browser startup this contains no sample notes or planner state. */
 export function resetMock() {
   files.clear();
+  hiddenFiles.clear();
   dirs.clear();
   templateConfigs.clear();
   vaultPreferences.clear();
@@ -2202,9 +2278,27 @@ export const mockCommands: typeof commands = {
   lastVault: async () => {
     return null;
   },
-  listDir: async (dir, recursive) => {
-    const a: Record<string, unknown> = { dir, recursive };
+  listDir: async (dir, recursive, includeHidden) => {
+    const a: Record<string, unknown> = { dir, recursive, includeHidden };
+    if (a.includeHidden && showHiddenOn()) return listShown(normShown(a.dir), Boolean(a.recursive));
     return list(norm(a.dir), Boolean(a.recursive));
+  },
+  readHiddenFile: async (path) => {
+    if (!showHiddenOn()) throw err("denied", "Turn on Show hidden files and folders in Settings to view hidden files");
+    const p = normShown(path);
+    if (!isHiddenMockPath(p)) throw err("invalid_path", `${p} is not a hidden path`);
+    const content = hiddenFiles.get(p);
+    if (content === undefined) throw err("not_found", `not found: ${p}`);
+    const kind = kindOf(p);
+    const out: FileContent = {
+      path: p,
+      kind: kind === "other" ? "text" : kind,
+      size: content.length,
+      mtime: 0,
+      hash: hash(content),
+      content: ["image", "pdf"].includes(kind) ? null : content,
+    };
+    return out;
   },
   readFile: async (path) => {
     const a: Record<string, unknown> = { path };
@@ -2799,8 +2893,9 @@ const PARAMS: Record<string, [keyof typeof commands, string[]]> = {
   copy_path: ["copyPath", ["from", "to"]],
   current_vault: ["currentVault", []],
   last_vault: ["lastVault", []],
-  list_dir: ["listDir", ["dir", "recursive"]],
+  list_dir: ["listDir", ["dir", "recursive", "includeHidden"]],
   read_file: ["readFile", ["path"]],
+  read_hidden_file: ["readHiddenFile", ["path"]],
   create_file: ["createFile", ["path", "content", "root"]],
   template_config: ["templateConfig", []],
   vault_preferences: ["vaultPreferences", []],

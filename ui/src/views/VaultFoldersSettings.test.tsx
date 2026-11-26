@@ -153,6 +153,7 @@ test("section reset preserves other vault preferences and supports cancellation"
       "attachment_location",
       "attachment_folder",
       "show_attachments_in_tree",
+      "show_hidden_files",
       "folder_colors",
     ].sort(),
   );
@@ -250,4 +251,21 @@ test("folder colors start collapsed, expand each level, and reveal filtered desc
   expect(screen.getByRole("button", { name: "Expand Projects" }).getAttribute("aria-expanded")).toBe("false");
   expect(saved.folder_colors).toEqual({ "Projects/Mosaic/Design": "purple" });
   expect(api.setVaultPreferences).not.toHaveBeenCalled();
+});
+
+test("the hidden files switch saves the vault preference, and its reset turns it off", async () => {
+  const user = userEvent.setup();
+  render(<VaultFoldersSettings />);
+  const toggle = screen.getByRole("switch", { name: "Show hidden files and folders" });
+  expect(toggle.getAttribute("aria-checked")).toBe("false");
+  await user.click(toggle);
+  await waitFor(() => expect(saved.show_hidden_files).toBe(true));
+  expect(vi.mocked(api.setVaultPreferences)).toHaveBeenLastCalledWith("/vault", { show_hidden_files: true });
+  await waitFor(() =>
+    expect(screen.getByRole("switch", { name: "Show hidden files and folders" }).getAttribute("aria-checked")).toBe(
+      "true",
+    ),
+  );
+  await user.click(screen.getByRole("button", { name: "Reset Show hidden files and folders" }));
+  await waitFor(() => expect(saved.show_hidden_files).toBe(false));
 });

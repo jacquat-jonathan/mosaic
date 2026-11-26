@@ -421,8 +421,32 @@ fn last_vault() -> Option<PathBuf> {
 
 #[tauri::command(async)]
 #[specta::specta]
-fn list_dir(state: State<AppState>, dir: String, recursive: bool) -> CmdResult<Vec<Entry>> {
-    state.get()?.files.list(&dir, recursive)
+fn list_dir(
+    state: State<AppState>,
+    dir: String,
+    recursive: bool,
+    include_hidden: bool,
+) -> CmdResult<Vec<Entry>> {
+    let ws = state.get()?;
+    if include_hidden && ws.vault_preferences()?.show_hidden_files {
+        ws.files.list_with_hidden(&dir, recursive)
+    } else {
+        ws.files.list(&dir, recursive)
+    }
+}
+
+/// A hidden file (`.claude/settings.json`) for view-only display, while "Show hidden files and
+/// folders" is on. The MCP server and CLI have no such command.
+#[tauri::command(async)]
+#[specta::specta]
+fn read_hidden_file(state: State<AppState>, path: String) -> CmdResult<FileContent> {
+    let ws = state.get()?;
+    if !ws.vault_preferences()?.show_hidden_files {
+        return Err(Error::Denied(
+            "Turn on Show hidden files and folders in Settings to view hidden files".into(),
+        ));
+    }
+    ws.files.read_hidden(&path)
 }
 
 #[tauri::command(async)]
@@ -1005,6 +1029,7 @@ pub(crate) fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             last_vault,
             list_dir,
             read_file,
+            read_hidden_file,
             create_file,
             template_config,
             vault_preferences,

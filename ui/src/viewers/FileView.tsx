@@ -45,6 +45,12 @@ export function FileView({ path }: { path: string }) {
 }
 
 function Viewer({ buffer }: { buffer: Buffer }) {
+  // Hidden files (see hidden.ts) are shown as plain source, view-only, whatever their kind.
+  if (buffer.readOnly) {
+    if (buffer.content === null)
+      return <Unsupported path={buffer.path} message="Mosaic shows hidden files only when they are text." />;
+    return <CodeEditor buffer={buffer} wrap={buffer.kind === "text" || buffer.kind === "markdown"} readOnly />;
+  }
   switch (buffer.kind) {
     case "markdown":
       return <MarkdownEditor buffer={buffer} />;

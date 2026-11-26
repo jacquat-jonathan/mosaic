@@ -37,11 +37,12 @@ const FOLDER_KEYS = [
   "attachment_location",
   "attachment_folder",
   "show_attachments_in_tree",
+  "show_hidden_files",
   "folder_colors",
 ] as const;
 type FolderKey = Exclude<
   (typeof FOLDER_KEYS)[number],
-  "show_attachments_in_tree" | "folder_colors" | "daily_notes_enabled" | "daily_format"
+  "show_attachments_in_tree" | "show_hidden_files" | "folder_colors" | "daily_notes_enabled" | "daily_format"
 >;
 const CHOICE_LABELS: Record<string, string> = {
   current: "Current file's folder",
@@ -389,6 +390,7 @@ function VaultFolderContents({ root }: { root: string | null }) {
   const preferences = useVaultPreferences((s) => s.value);
   const actions = useFolderActions(root);
   const id = useId();
+  const hiddenId = useId();
   return (
     <>
       {vault && (
@@ -577,6 +579,30 @@ function VaultFolderContents({ root }: { root: string | null }) {
             onClick={() =>
               void actions.save({ show_attachments_in_tree: DEFAULT_VAULT_PREFS.show_attachments_in_tree })
             }
+          >
+            <RotateCcw aria-hidden="true" />
+          </IconButton>
+        </SettingRow>
+      </SettingsGroup>
+      <SettingsGroup title="Hidden files" description="Vault-specific · File tree visibility">
+        <SettingRow
+          label="Show hidden files and folders"
+          hint="Shows names starting with a dot, such as .claude, view-only. .git and Mosaic's own .mosaic stay hidden; agents never see hidden files."
+          controlId={hiddenId}
+          hintId={`${hiddenId}-hint`}
+        >
+          <Switch
+            id={hiddenId}
+            label="Show hidden files and folders"
+            aria-describedby={`${hiddenId}-hint${actions.error ? ` ${actions.errorId}` : ""}`}
+            checked={!!preferences.show_hidden_files}
+            disabled={actions.disabled}
+            onCheckedChange={(checked) => void actions.save({ show_hidden_files: checked })}
+          />
+          <IconButton
+            label="Reset Show hidden files and folders"
+            disabled={actions.disabled}
+            onClick={() => void actions.save({ show_hidden_files: DEFAULT_VAULT_PREFS.show_hidden_files })}
           >
             <RotateCcw aria-hidden="true" />
           </IconButton>

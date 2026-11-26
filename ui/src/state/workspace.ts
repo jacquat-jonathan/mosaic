@@ -12,6 +12,7 @@ import { vaultPrefs } from "./vaultPreferences";
 import { hasDraft, leaveDraft } from "./drafts";
 import { prefs } from "./settings";
 import { useUi } from "./ui";
+import { HIDDEN_FILES_OFF, isHiddenPath } from "../hidden";
 
 export interface Buffer {
   path: string;
@@ -27,7 +28,12 @@ export interface Buffer {
   error: string | null;
   /** Bumped when content is replaced from disk, so editors know to reload. */
   version: number;
+  /** A hidden file shown with "Show hidden files and folders": view-only, never saved. */
+  readOnly?: boolean;
 }
+
+/** Reads a file for a tab: hidden files through the view-only command (see hidden.ts). */
+const readFor = (path: string) => (isHiddenPath(path) ? api.readHidden(path) : api.read(path));
 
 export interface Pane {
   id: string;
@@ -153,7 +159,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
       return;
     }
     try {
-      const f = await api.read(path);
+      const f = await readFor(path);
       if (!current()) return;
       const prev = get().buffers[path];
       set((s) => ({
@@ -169,6 +175,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
             deleted: false,
             error: null,
             version: (prev?.version ?? 0) + 1,
+            ...(isHiddenPath(path) ? { readOnly: true } : {}),
           },
         },
       }));
@@ -185,8 +192,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
             dirty: false,
             conflict: null,
             deleted: isCoreError(e) && e.code === "not_found",
-            error: errorMessage(e),
+            error: isHiddenPath(path) && isCoreError(e) && e.code === "denied" ? HIDDEN_FILES_OFF : errorMessage(e),
             version: 1,
+            ...(isHiddenPath(path) ? { readOnly: true } : {}),
           },
         },
       }));
@@ -340,7 +348,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
 
     edit(path, content) {
       const b = get().buffers[path];
-      if (!b || b.content === content) return;
+      if (!b || b.readOnly || b.content === content) return;
       updateBuffer(path, { content, dirty: true });
       clearTimeout(saveTimers.get(path));
       saveTimers.set(
@@ -361,7 +369,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
         root = useVault.getState().vault?.root;
       clearTimeout(saveTimers.get(path));
       const b = get().buffers[path];
-      if (!b?.dirty || b.content === null || b.conflict || b.deleted) return;
+      if (!b?.dirty || b.readOnly || b.content === null || b.conflict || b.deleted) return;
       const content = b.content;
       saving.add(key);
       try {
@@ -386,7 +394,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
       if (!b || saving.has(operationKey(path))) return;
       let disk: Awaited<ReturnType<typeof api.read>> | null = null;
       try {
-        disk = await api.read(path);
+        disk = await readFor(path);
       } catch (e) {
         if (!(isCoreError(e) && e.code === "not_found")) return;
       }

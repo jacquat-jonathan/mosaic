@@ -14,6 +14,14 @@ Repository development instructions live in [AGENTS.md](AGENTS.md); follow them 
 - The reviewer's reply is `APPROVE` or `REJECT`. On `REJECT`, address the listed problems
   and call it again before proceeding.
 
+## Branches
+
+- Once your work is merged into `main`, delete the branch you worked on (`claude/...`), on
+  GitHub and locally: `git push origin --delete <branch>` and `git branch -D <branch>`. Delete
+  only your own branches, and only after checking that their commits are in `origin/main`.
+- Cloud sessions cannot delete remote branches (the push is refused). There, tell the user
+  which merged branches are left so they can delete them.
+
 ## Claude Code cloud sessions
 
 Cloud sessions run on Linux as `root`; CI and the app target macOS. The environment's setup

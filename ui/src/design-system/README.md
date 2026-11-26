@@ -278,7 +278,8 @@ those filled variants remain required before their first application adoption.
 **Dialog compatibility strategy:** `Dialog` feature-detects native modal support. Supported
 older WebKit receives an open dialog in a fixed backdrop, explicit focus containment, background
 ARIA hiding (plus inertness when available), scroll blocking, Escape handling, and focus return.
-Prior background state is restored on close. Backdrop clicks do not dismiss either implementation.
+Prior background state is restored on close. A click on the backdrop dismisses either implementation
+(see "Dismissing overlays" below).
 The app's remaining confirmations stay on their existing implementation until Step 28.
 
 ## Provenance
@@ -332,6 +333,17 @@ Approved during the 2026-10-28 design review, before component migration:
 - Consistent 50% disabled opacity without suppressing native disabled semantics.
 - Associated field labels, hints, and error descriptions.
 - Native radio behavior for segmented choices; the group is labelled and arrow keys select.
+- **Dismissing overlays** (`dismiss.tsx`): every dialog, menu, popover and dropdown registers on
+  one stack with `useDismissLayer` (or `openDismissLayer` outside React). Escape and a press
+  outside close only the topmost layer: a menu inside a dialog closes before the dialog, and a
+  confirmation over a dialog closes alone. Menus and dropdowns close as soon as a press starts
+  outside them (the press still reaches its target); modals close on a whole click outside, so a
+  drag out of a field never closes them. List the trigger as inside so pressing it toggles the
+  overlay closed instead of reopening it. Wrap the content in `DismissScope` and mark portalled
+  content with `useDismissRegion` so presses there count as inside. Call `dismissOnEscape` from
+  the overlay root's `onKeyDown` so Escape is used before React ancestors see it; inner handlers
+  that `preventDefault` keep the key. When focus is outside the topmost layer (a menu that did not
+  take focus), Escape closes that layer before anything else sees the key.
 - A single-level menu with disabled-item skipping, arrows, Home/End, Escape, outside-click
   dismissal, and focus return on selection or Escape. Keyboard opening focuses the first
   action (or the last for Arrow Up). Pointer opening focuses the menu surface until the
@@ -344,11 +356,11 @@ Approved during the 2026-10-28 design review, before component migration:
   `returnFocusRef` to restore the opener after mouse activation too (Safari does not focus
   buttons on mouse clicks). Without it, the previously focused element is restored. Native `showModal` is
   available in Safari 15.4+; earlier supported WebKit uses the fallback without raising Mosaic's
-  macOS minimum. Backdrop clicks do not
-  dismiss a dialog; explicit Cancel, the close button, and Escape do. Heading/description,
+  macOS minimum. A click on the backdrop, Escape, explicit Cancel and the close button dismiss
+  a dialog; a drag that starts inside and ends on the backdrop does not. Heading/description,
   body, and footer actions have separate layout regions. `size="wide"` accommodates diffs.
   `initialFocusRef` can focus the main field after the dialog opens, instead of its close button.
-  `dismissible={false}` disables close/Escape during a pending decision. Notice roles can be
+  `dismissible={false}` disables close, Escape and backdrop dismissal during a pending decision. Notice roles can be
   explicitly set to alert when an urgent warning needs announcement.
 - A tooltip surface derived from existing floating surfaces, displayed on hover/focus,
   associated with its child via `aria-describedby`, and dismissible with Escape. Tooltips

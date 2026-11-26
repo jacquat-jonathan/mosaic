@@ -2,6 +2,7 @@ import { PlannerUnavailable } from "./PlannerUnavailable";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Download, RefreshCw, Upload } from "lucide-react";
 import { Button, Notice, SegmentedControl } from "../../design-system/components";
+import { dismissOnEscape, useDismissLayer } from "../../design-system/dismiss";
 import { DesignSystemScope } from "../DesignSystemScope";
 import "./calendarDesign.css";
 import { api, inTauri, onPlannerChanged } from "../../ipc/api";
@@ -146,6 +147,23 @@ function AvailableCalendarView({ initialMode }: { initialMode?: CalendarMode }) 
   const [previewing, setPreviewing] = useState(false);
   const importGeneration = useRef(0);
   const importInput = useRef<HTMLInputElement>(null);
+  // The Calendars dropdown: its checkboxes keep it open; a press outside or Escape closes it.
+  const [calendarsOpen, setCalendarsOpen] = useState(false);
+  const calendars = useRef<HTMLDetailsElement>(null);
+  const calendarsSummary = useRef<HTMLElement>(null);
+  useDismissLayer({
+    open: calendarsOpen,
+    inside: () => [calendars.current],
+    onDismiss: (reason) => {
+      setCalendarsOpen(false);
+      if (reason === "escape") calendarsSummary.current?.focus();
+    },
+  });
+  // The dropdown stays open beneath the dialog, which returns focus to the button that opened it.
+  const openFromCalendars = (button: HTMLElement, open: (value: boolean) => void) => {
+    editorReturn.current = button;
+    open(true);
+  };
   const days = useMemo(() => visibleDays(anchor, mode, sunday), [anchor, mode, sunday]),
     from = isoDay(days[0]),
     to = isoDay(days.at(-1)!);
@@ -568,8 +586,14 @@ function AvailableCalendarView({ initialMode }: { initialMode?: CalendarMode }) 
           <Button onClick={() => setAnchor(atNoon(new Date()))}>Today</Button>
           <h2 className="calendar-title">{title}</h2>
           <span className="spacer" />
-          <details className="calendar-chooser">
-            <summary>Calendars</summary>
+          <details
+            ref={calendars}
+            className="calendar-chooser"
+            open={calendarsOpen}
+            onToggle={(event) => setCalendarsOpen(event.currentTarget.open)}
+            onKeyDown={calendarsOpen ? dismissOnEscape : undefined}
+          >
+            <summary ref={calendarsSummary}>Calendars</summary>
             <div>
               <label>
                 <input
@@ -605,8 +629,12 @@ function AvailableCalendarView({ initialMode }: { initialMode?: CalendarMode }) 
                   <i style={{ background: item.color }} /> {item.name} 🔒
                 </label>
               ))}
-              <Button onClick={() => setArchivesOpen(true)}>Archived local events…</Button>
-              <Button onClick={() => setSourcesOpen(true)}>Manage subscriptions…</Button>
+              <Button onClick={(event) => openFromCalendars(event.currentTarget, setArchivesOpen)}>
+                Archived local events…
+              </Button>
+              <Button onClick={(event) => openFromCalendars(event.currentTarget, setSourcesOpen)}>
+                Manage subscriptions…
+              </Button>
             </div>
           </details>
           <input

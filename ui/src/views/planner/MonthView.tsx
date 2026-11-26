@@ -1,4 +1,5 @@
-import { useEffect, useState, type CSSProperties, type MouseEvent } from "react";
+import { useEffect, useState, type CSSProperties, type MouseEvent, useRef } from "react";
+import { dismissOnEscape, useDismissLayer } from "../../design-system/dismiss";
 import type {
   CalendarOverlayOccurrence,
   CalendarWorkSession,
@@ -51,15 +52,17 @@ export function MonthView({
 }) {
   const [dragPreview, setDragPreview] = useState<DragPreview>(null),
     [contextTarget, setContextTarget] = useState<ContextTarget | null>(null);
+  const contextMenu = useRef<HTMLDivElement>(null);
+  useDismissLayer({
+    open: !!contextTarget,
+    inside: () => [contextMenu.current],
+    onDismiss: () => setContextTarget(null),
+  });
   useEffect(() => {
     if (!contextTarget) return;
     const close = () => setContextTarget(null);
-    window.addEventListener("click", close);
     window.addEventListener("blur", close);
-    return () => {
-      window.removeEventListener("click", close);
-      window.removeEventListener("blur", close);
-    };
+    return () => window.removeEventListener("blur", close);
   }, [contextTarget]);
   const weekdays = days.slice(0, 5).map((day) => day.toLocaleDateString(undefined, { weekday: "short" }));
   const openMenu = (event: MouseEvent, target: ContextItem) => {
@@ -260,10 +263,12 @@ export function MonthView({
       })}
       {contextTarget && (
         <div
+          ref={contextMenu}
           className="planner-session-menu"
           role="menu"
           style={{ left: contextTarget.x, top: contextTarget.y }}
           onClick={(event) => event.stopPropagation()}
+          onKeyDown={dismissOnEscape}
         >
           <button
             role="menuitem"

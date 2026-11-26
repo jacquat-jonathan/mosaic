@@ -1,6 +1,7 @@
 // Export a note as one standalone HTML file (diagrams drawn, images and canvases embedded, math as
 // MathML, so it opens anywhere without Mosaic or the network), or print it ("Save as PDF").
 
+import { openDismissLayer } from "../design-system/dismiss";
 import { api, fileUrl } from "../ipc/api";
 import { kindOf } from "../ipc/kinds";
 import { resolveLink, parseWikiLink } from "../links";
@@ -168,29 +169,35 @@ export async function exportNoteHtml(path: string): Promise<string> {
   return written.path;
 }
 
+let closePreview: (() => void) | null = null;
+
 /**
  * A print preview of the note over the app; "Print / Save as PDF" opens the macOS print dialog.
- * Print CSS shows only the preview's page.
+ * Print CSS shows only the preview's page. Escape or a click on the dimmed area closes it.
  */
 export async function printNote(path: string): Promise<void> {
   const body = await noteBody(path, await noteText(path));
+  closePreview?.();
   document.querySelector(".print-root")?.remove();
   const root = document.createElement("div");
   root.className = "print-root";
   root.innerHTML = `<div class="print-toolbar"><span>${escapeHtml(titleOf(path))}</span><span class="spacer"></span><button class="secondary" data-act="close">Close</button><button class="primary" data-act="print">Print / Save as PDF</button></div><div class="print-page"><style>${exportCss(".print-page")}</style>${body}</div>`;
-  const close = () => root.remove();
+  const close = () => {
+    removeLayer();
+    root.remove();
+    if (closePreview === close) closePreview = null;
+  };
+  const removeLayer = openDismissLayer({
+    modal: true,
+    inside: () => [root.querySelector(".print-toolbar"), root.querySelector(".print-page")],
+    dismiss: close,
+  });
+  closePreview = close;
   root.addEventListener("click", (e) => {
     const act = (e.target as HTMLElement).closest<HTMLElement>("[data-act]")?.dataset.act;
     if (act === "close") close();
     if (act === "print")
       void api.printWindow().catch((err) => useVault.getState().setError(String(err?.message ?? err)));
   });
-  const onKey = (e: KeyboardEvent) => {
-    if (e.key === "Escape") {
-      close();
-      window.removeEventListener("keydown", onKey);
-    }
-  };
-  window.addEventListener("keydown", onKey);
   document.body.appendChild(root);
 }

@@ -66,8 +66,8 @@ function PickerDialog({ spec }: { spec: PickerSpec }) {
             setSel(0);
           }}
           onKeyDown={(e) => {
-            if (e.key === "Escape") close();
-            else if (e.key === "ArrowDown") {
+            // Escape is the dialog's: it closes only the topmost overlay.
+            if (e.key === "ArrowDown") {
               e.preventDefault();
               setSel((s) => Math.max(0, Math.min(s + 1, results.length - 1)));
             } else if (e.key === "ArrowUp") {

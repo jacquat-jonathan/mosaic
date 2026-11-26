@@ -8,6 +8,7 @@ import {
   type MouseEvent,
   type PointerEvent,
 } from "react";
+import { dismissOnEscape, useDismissLayer } from "../../design-system/dismiss";
 import type {
   CalendarOverlayOccurrence,
   CalendarWorkSession,
@@ -141,15 +142,17 @@ export function WeekView({
     document.addEventListener("mousedown", clear, true);
     return () => document.removeEventListener("mousedown", clear, true);
   }, [displayRange]);
+  const contextMenu = useRef<HTMLDivElement>(null);
+  useDismissLayer({
+    open: !!contextTarget,
+    inside: () => [contextMenu.current],
+    onDismiss: () => setContextTarget(null),
+  });
   useEffect(() => {
     if (!contextTarget) return;
     const close = () => setContextTarget(null);
-    window.addEventListener("click", close);
     window.addEventListener("blur", close);
-    return () => {
-      window.removeEventListener("click", close);
-      window.removeEventListener("blur", close);
-    };
+    return () => window.removeEventListener("blur", close);
   }, [contextTarget]);
   useEffect(() => {
     const clear = () => {
@@ -466,10 +469,12 @@ export function WeekView({
       </div>
       {contextTarget && (
         <div
+          ref={contextMenu}
           className="planner-session-menu"
           role="menu"
           style={{ left: contextTarget.x, top: contextTarget.y }}
           onClick={(event) => event.stopPropagation()}
+          onKeyDown={dismissOnEscape}
         >
           <button
             role="menuitem"

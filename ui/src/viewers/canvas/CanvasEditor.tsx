@@ -879,25 +879,30 @@ function CanvasFlow({
             })
           }
           onLayout={layoutCards}
-          onMore={(r) =>
-            useUi.getState().showMenu(r.left, r.bottom + 4, [
-              {
-                label: "Copy as Mermaid",
-                action: () => {
-                  void navigator.clipboard
-                    .writeText(canvasToMermaid(docRef.current))
-                    .catch((e) => useVault.getState().setError(`Couldn't copy: ${errorMessage(e)}`));
+          onMore={(button) =>
+            useUi.getState().showMenu(
+              button.getBoundingClientRect().left,
+              button.getBoundingClientRect().bottom + 4,
+              [
+                {
+                  label: "Copy as Mermaid",
+                  action: () => {
+                    void navigator.clipboard
+                      .writeText(canvasToMermaid(docRef.current))
+                      .catch((e) => useVault.getState().setError(`Couldn't copy: ${errorMessage(e)}`));
+                  },
                 },
-              },
-              { label: "Present", action: present },
-              ...(["svg", "png"] as const).map((format) => ({
-                label: `Export as ${format.toUpperCase()}`,
-                action: () =>
-                  void exportCanvas(path, docRef.current, format).catch((e) =>
-                    useVault.getState().setError(`Couldn't export: ${errorMessage(e)}`),
-                  ),
-              })),
-            ])
+                { label: "Present", action: present },
+                ...(["svg", "png"] as const).map((format) => ({
+                  label: `Export as ${format.toUpperCase()}`,
+                  action: () =>
+                    void exportCanvas(path, docRef.current, format).catch((e) =>
+                      useVault.getState().setError(`Couldn't export: ${errorMessage(e)}`),
+                    ),
+                })),
+              ],
+              button,
+            )
           }
           host={tools}
         />
@@ -993,7 +998,7 @@ function CanvasTools({
   onFile(): void;
   onFit(): void;
   onLayout(direction: "TB" | "LR"): void;
-  onMore(anchor: DOMRect): void;
+  onMore(button: HTMLElement): void;
   host: HTMLElement;
 }) {
   const shapeButton = useRef<HTMLButtonElement>(null);
@@ -1033,10 +1038,15 @@ function CanvasTools({
         title="Arrange the selected cards (or all) along their connections"
         onClick={(e) => {
           const r = e.currentTarget.getBoundingClientRect();
-          useUi.getState().showMenu(r.left, r.bottom + 4, [
-            { label: "Top to bottom", action: () => onLayout("TB") },
-            { label: "Left to right", action: () => onLayout("LR") },
-          ]);
+          useUi.getState().showMenu(
+            r.left,
+            r.bottom + 4,
+            [
+              { label: "Top to bottom", action: () => onLayout("TB") },
+              { label: "Left to right", action: () => onLayout("LR") },
+            ],
+            e.currentTarget,
+          );
         }}
       >
         <Network size={14} /> Layout
@@ -1044,11 +1054,7 @@ function CanvasTools({
       <IconButton label="Fit to view" onClick={onFit}>
         <Maximize size={14} />
       </IconButton>
-      <IconButton
-        label="More"
-        onClick={(e) => onMore(e.currentTarget.getBoundingClientRect())}
-        title="More: copy as Mermaid, export, present"
-      >
+      <IconButton label="More" onClick={(e) => onMore(e.currentTarget)} title="More: copy as Mermaid, export, present">
         <Ellipsis size={14} />
       </IconButton>
     </span>,

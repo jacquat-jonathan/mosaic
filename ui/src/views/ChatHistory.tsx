@@ -126,33 +126,43 @@ function ChatRows({ fallback }: { fallback?: RefObject<HTMLButtonElement | null>
                       if (!current()) return;
                       opener.current = event.currentTarget;
                       const bounds = event.currentTarget.getBoundingClientRect();
-                      useUi.getState().showMenu(bounds.left, bounds.bottom, [
-                        {
-                          label: "Rename",
-                          action: () =>
-                            void act(chat.id, async () => {
-                              const title = await useUi.getState().askText({ title: "Rename chat", value: chat.title });
-                              if (current() && useChat.getState().chats[chat.id] && title?.trim())
-                                useChat.getState().update(chat.id, { title: title.trim() });
-                            }),
-                        },
-                        {
-                          label: "Delete chat",
-                          danger: true,
-                          action: () =>
-                            void act(chat.id, async () => {
-                              const accepted = await useUi
-                                .getState()
-                                .ask({ title: "Delete chat?", body: chat.title, confirmLabel: "Delete", danger: true });
-                              if (!accepted || !current() || !useChat.getState().chats[chat.id]) return;
-                              useChat.getState().remove(chat.id);
-                              const workspace = useWorkspace.getState();
-                              for (const pane of workspace.panes)
-                                if (pane.tabs.includes(viewPath("chat", chat.id)))
-                                  workspace.closeTab(pane.id, viewPath("chat", chat.id));
-                            }),
-                        },
-                      ]);
+                      useUi.getState().showMenu(
+                        bounds.left,
+                        bounds.bottom,
+                        [
+                          {
+                            label: "Rename",
+                            action: () =>
+                              void act(chat.id, async () => {
+                                const title = await useUi
+                                  .getState()
+                                  .askText({ title: "Rename chat", value: chat.title });
+                                if (current() && useChat.getState().chats[chat.id] && title?.trim())
+                                  useChat.getState().update(chat.id, { title: title.trim() });
+                              }),
+                          },
+                          {
+                            label: "Delete chat",
+                            danger: true,
+                            action: () =>
+                              void act(chat.id, async () => {
+                                const accepted = await useUi.getState().ask({
+                                  title: "Delete chat?",
+                                  body: chat.title,
+                                  confirmLabel: "Delete",
+                                  danger: true,
+                                });
+                                if (!accepted || !current() || !useChat.getState().chats[chat.id]) return;
+                                useChat.getState().remove(chat.id);
+                                const workspace = useWorkspace.getState();
+                                for (const pane of workspace.panes)
+                                  if (pane.tabs.includes(viewPath("chat", chat.id)))
+                                    workspace.closeTab(pane.id, viewPath("chat", chat.id));
+                              }),
+                          },
+                        ],
+                        event.currentTarget,
+                      );
                     }}
                   >
                     <Ellipsis aria-hidden="true" />

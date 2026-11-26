@@ -12,6 +12,7 @@ import {
   type SelectHTMLAttributes,
 } from "react";
 import { ChevronDown, X } from "lucide-react";
+import { DismissScope, dismissOnEscape, isTopDismissLayer, useDismissLayer } from "./dismiss";
 
 const classes = (...values: (string | undefined | false)[]) => values.filter(Boolean).join(" ");
 
@@ -302,6 +303,15 @@ export function Dialog({
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const id = useId();
+  // Escape and a click on the backdrop close only the topmost overlay; a busy dialog still blocks.
+  const layer = useDismissLayer({
+    open,
+    modal: true,
+    inside: () => [ref.current],
+    outside: dismissible,
+    escape: dismissible,
+    onDismiss: onClose,
+  });
   const [nativeModal] = useState(
     () =>
       typeof HTMLDialogElement !== "undefined" &&
@@ -328,7 +338,8 @@ export function Dialog({
     const hidden: { node: HTMLElement; ariaHidden: string | null; inert: boolean }[] = [];
     const previousOverflow = document.body.style.overflow;
     const keepFocus = (event: FocusEvent) => {
-      if (!element.contains(event.target as Node)) focusInside();
+      // Only the topmost dialog holds focus; a confirmation over this one takes it.
+      if (!element.contains(event.target as Node) && isTopDismissLayer(layer)) focusInside();
     };
     if (nativeModal) {
       element.showModal();
@@ -369,7 +380,7 @@ export function Dialog({
       if (previousFocus instanceof HTMLElement && previousFocus.isConnected)
         previousFocus.focus({ preventScroll: true });
     };
-  }, [open, returnFocusRef, initialFocusRef, nativeModal]);
+  }, [open, returnFocusRef, initialFocusRef, nativeModal, layer]);
   const dialog = (
     <dialog
       ref={ref}
@@ -381,8 +392,7 @@ export function Dialog({
       tabIndex={-1}
       onKeyDown={(event) => {
         if (event.key === "Escape") {
-          event.preventDefault();
-          if (dismissible) onClose();
+          dismissOnEscape(event);
           return;
         }
         if (event.key !== "Tab" || event.altKey || event.ctrlKey || event.metaKey) return;
@@ -406,7 +416,7 @@ export function Dialog({
       }}
       onCancel={(event) => {
         event.preventDefault();
-        if (dismissible) onClose();
+        if (dismissible && isTopDismissLayer(layer)) onClose();
       }}
     >
       <header className="mds-dialog-header">
@@ -418,8 +428,10 @@ export function Dialog({
           <X />
         </IconButton>
       </header>
-      {children && <div className="mds-dialog-body">{children}</div>}
-      <footer className="mds-dialog-actions">{actions}</footer>
+      <DismissScope layer={layer}>
+        {children && <div className="mds-dialog-body">{children}</div>}
+        <footer className="mds-dialog-actions">{actions}</footer>
+      </DismissScope>
     </dialog>
   );
   return nativeModal ? (
@@ -453,19 +465,20 @@ export function MenuButton({ label, items }: { label: string; items: readonly Me
     setOpen(false);
     trigger.current?.focus();
   };
+  // The anchor holds the trigger, so pressing the trigger of an open menu toggles it closed.
+  useDismissLayer({
+    open,
+    inside: () => [anchor.current],
+    onDismiss: (reason) => (reason === "escape" ? close() : setOpen(false)),
+  });
   useEffect(() => {
     if (!open) return;
     const buttons = menu.current?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)");
     if (initialFocus.current === "menu" || !buttons?.length) menu.current?.focus();
     else buttons[initialFocus.current === "last" ? buttons.length - 1 : 0]?.focus();
-    const outside = (event: PointerEvent) => {
-      if (!anchor.current?.contains(event.target as Node)) setOpen(false);
-    };
-    document.addEventListener("pointerdown", outside);
-    return () => document.removeEventListener("pointerdown", outside);
   }, [open]);
   return (
-    <div ref={anchor} className="mds-menu-anchor">
+    <div ref={anchor} className="mds-menu-anchor" onKeyDown={open ? dismissOnEscape : undefined}>
       <Button
         ref={trigger}
         variant="secondary"
@@ -499,11 +512,6 @@ export function MenuButton({ label, items }: { label: string; items: readonly Me
             if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
           }}
           onKeyDown={(event) => {
-            if (event.key === "Escape") {
-              event.preventDefault();
-              event.stopPropagation();
-              close();
-            }
             if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
               event.preventDefault();
               const buttons = [...event.currentTarget.querySelectorAll<HTMLButtonElement>("button:not(:disabled)")];

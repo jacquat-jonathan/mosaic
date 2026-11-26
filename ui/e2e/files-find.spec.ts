@@ -111,6 +111,11 @@ test("bookmarks support keyboard opening, saved queries, reordering and menu foc
   await actions.click();
   await page.keyboard.press("Escape");
   await expect(actions).toBeFocused();
+  // Its button toggles the menu: a second press closes it instead of reopening it.
+  await actions.click();
+  await expect(page.getByRole("menu")).toBeVisible();
+  await actions.click();
+  await expect(page.getByRole("menu")).toHaveCount(0);
   await panel.getByTitle("Welcome.md", { exact: true }).press("Enter");
   await expect(page.locator(".cm-content")).toContainText("Welcome");
   await expect(panel).toBeVisible();

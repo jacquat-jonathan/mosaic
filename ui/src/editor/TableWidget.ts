@@ -796,7 +796,7 @@ export class TableWidget extends WidgetType {
           kind === "row" ? row : model.rows.length - 1,
           kind === "row" ? model.header.length - 1 : col,
         );
-        useUi.getState().showMenu(rect.left, rect.bottom, menuFor(row, col, kind));
+        useUi.getState().showMenu(rect.left, rect.bottom, menuFor(row, col, kind), button);
       });
       button.addEventListener("keydown", (event) => {
         const previous = kind === "row" ? "ArrowUp" : "ArrowLeft",
@@ -949,12 +949,17 @@ export class TableWidget extends WidgetType {
       more.addEventListener("mousedown", (event) => event.preventDefault());
       more.addEventListener("click", () => {
         const rect = more.getBoundingClientRect();
-        useUi.getState().showMenu(rect.left, rect.bottom, [
-          { label: "Automatic column widths", disabled: !widths, action: resetWidths },
-          { label: "Copy as Markdown", action: () => void navigator.clipboard?.writeText(source) },
-          { label: "", separator: true },
-          { label: "Delete table", danger: true, action: deleteTable },
-        ]);
+        useUi.getState().showMenu(
+          rect.left,
+          rect.bottom,
+          [
+            { label: "Automatic column widths", disabled: !widths, action: resetWidths },
+            { label: "Copy as Markdown", action: () => void navigator.clipboard?.writeText(source) },
+            { label: "", separator: true },
+            { label: "Delete table", danger: true, action: deleteTable },
+          ],
+          more,
+        );
       });
       const divider = () => {
         const el = document.createElement("span");
@@ -965,7 +970,7 @@ export class TableWidget extends WidgetType {
       cellMenu.addEventListener("mousedown", (event) => event.preventDefault());
       cellMenu.addEventListener("click", () => {
         const rect = cellMenu.getBoundingClientRect();
-        useUi.getState().showMenu(rect.left, rect.bottom + 4, cellMenuFor(active.row, active.col));
+        useUi.getState().showMenu(rect.left, rect.bottom + 4, cellMenuFor(active.row, active.col), cellMenu);
       });
       inner.append(cellMenu);
       updateToolbar(-1, 0);

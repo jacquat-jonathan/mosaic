@@ -9,7 +9,7 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "std"
 chrono-tz = "0.10"
 localzone = { version = "0.3.1", default-features = false, features = ["win_zones"] }
 notify = "8"
-notify-debouncer-full = "0.7"
+notify-debouncer-full = "0.8"
 regex = "1.13.1"
 rusqlite = { version = "0.43.0", features = ["backup", "bundled"] }
 serde.workspace = true

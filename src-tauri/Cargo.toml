@@ -44,5 +44,7 @@ objc2 = "=0.6.5"
 objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["std", "NSPasteboard", "NSPasteboardItem"] }
 
 [dev-dependencies]
+# Parses menu shortcuts in tests; the version Tauri's menus already use.
+muda = { version = "0.20", default-features = false }
 tauri = { version = "2.12", features = ["test"] }
 tempfile = "3.27.0"

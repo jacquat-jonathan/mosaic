@@ -9,6 +9,7 @@ mod drag_out;
 mod html_preview;
 mod http;
 mod indexing;
+mod menu;
 #[cfg(feature = "native-smoke")]
 mod native_smoke;
 mod planner;
@@ -1052,7 +1053,9 @@ pub(crate) fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             update::start_update,
             update::cancel_update,
             update::finish_update,
+            menu::sync_menu,
         ])
+        .constant("MENU_COMMANDS", menu::command_ids())
 }
 
 pub fn run() {
@@ -1073,6 +1076,8 @@ pub fn run() {
         .manage(update::UpdateState::default())
         .manage(chat::ChatState::default())
         .manage(tessera::TesseraState::default())
+        .manage(menu::MenuState::default())
+        .on_menu_event(|app, event| menu::on_event(app, event.id().as_ref()))
         .on_window_event(|window, event| {
             if matches!(
                 event,
@@ -1084,6 +1089,8 @@ pub fn run() {
             }
         })
         .setup(|app| {
+            #[cfg(target_os = "macos")]
+            menu::install(app.handle())?;
             if let Some(window) = app.get_webview_window("main") {
                 window_state::restore(&window);
                 #[cfg(feature = "native-smoke")]

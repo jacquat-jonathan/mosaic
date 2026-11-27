@@ -1,13 +1,14 @@
 import { MessageSquarePlus } from "lucide-react";
-import { useRef, useState } from "react";
+import { useRef } from "react";
 import { createPortal } from "react-dom";
 import { IconButton } from "../design-system/components";
+import { useFeedback } from "../feedback/store";
 import { DesignSystemScope } from "./DesignSystemScope";
 import { FeedbackDialog } from "./FeedbackDialog";
 import "./windowChrome.css";
 
 export function WindowChrome({ vaultName, version }: { vaultName: string; version: string }) {
-  const [feedback, setFeedback] = useState(false);
+  const feedback = useFeedback((s) => s.open);
   const button = useRef<HTMLButtonElement>(null);
   return (
     <DesignSystemScope as="header" className="window-chrome" aria-label="Window title" data-tauri-drag-region>
@@ -24,7 +25,7 @@ export function WindowChrome({ vaultName, version }: { vaultName: string; versio
           label="Feedback"
           title="Send feedback"
           aria-haspopup="dialog"
-          onClick={() => setFeedback(true)}
+          onClick={() => useFeedback.getState().show()}
         >
           <MessageSquarePlus />
         </IconButton>
@@ -32,7 +33,7 @@ export function WindowChrome({ vaultName, version }: { vaultName: string; versio
       {/* Outside the strip, so its drag regions and text styles never reach the dialog. */}
       {feedback &&
         createPortal(
-          <FeedbackDialog version={version} returnFocusRef={button} onClose={() => setFeedback(false)} />,
+          <FeedbackDialog version={version} returnFocusRef={button} onClose={() => useFeedback.getState().hide()} />,
           document.body,
         )}
     </DesignSystemScope>

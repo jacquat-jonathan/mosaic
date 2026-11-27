@@ -2504,6 +2504,8 @@ export const mockCommands: typeof commands = {
     }
   },
   printWindow: async () => notInMock("print_window"),
+  // The browser has no native menu bar.
+  syncMenu: async () => {},
   linkMention: async (source, line, text, target) => {
     const a: Record<string, unknown> = { source, line, text, target };
     {
@@ -2817,6 +2819,7 @@ const PARAMS: Record<string, [keyof typeof commands, string[]]> = {
   file_history: ["fileHistory", ["path"]],
   unlinked_mentions: ["unlinkedMentions", ["path"]],
   print_window: ["printWindow", []],
+  sync_menu: ["syncMenu", ["items"]],
   link_mention: ["linkMention", ["source", "line", "text", "target"]],
   get_agent_rules: ["getAgentRules", []],
   set_agent_rules: ["setAgentRules", ["rules"]],

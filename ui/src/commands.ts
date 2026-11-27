@@ -19,7 +19,8 @@ import {
   revealInTree,
 } from "./actions";
 import { isSpecialTab } from "./views/specialTabs";
-import { prefs } from "./state/settings";
+import { DEFAULT_PREFS, prefs, useSettings } from "./state/settings";
+import { useFeedback } from "./feedback/store";
 import { vaultPrefs } from "./state/vaultPreferences";
 
 /** A shortcut: `code` is `KeyboardEvent.code` (layout- and ⌥-independent), e.g. "KeyP" or "Backslash". */
@@ -48,6 +49,8 @@ const KEY_LABELS: Record<string, string> = {
   Enter: "↵",
   BracketLeft: "[",
   BracketRight: "]",
+  Equal: "=",
+  Minus: "-",
 };
 
 /** "⌥⇧⌘P"-style label, in the order macOS menus use. */
@@ -74,6 +77,20 @@ const activeDir = () => {
   return a ? parentOf(a) : "";
 };
 const hasActive = () => active() !== null;
+
+/** Settings › Appearance › Interface scale bounds (see `sanitize`). */
+const ZOOM_MIN = 0.85;
+const ZOOM_MAX = 1.3;
+
+/** Zooms the interface one notch in (1) or out (-1), or back to actual size (0). */
+export function zoom(direction: 1 | -1 | 0) {
+  const scale =
+    direction === 0
+      ? DEFAULT_PREFS.uiScale
+      : // Whole 5% steps: float drift (0.8999…) would fall outside the bounds and reset the scale.
+        Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round((prefs().uiScale + direction * 0.05) * 20) / 20));
+  useSettings.getState().set("uiScale", scale);
+}
 
 let registry: Command[] | null = null;
 
@@ -248,6 +265,10 @@ const buildCommands = (): Command[] => [
     keys: { code: "Comma", meta: true },
     run: () => useUi.getState().openSettings(),
   },
+  { id: "zoom-in", label: "Zoom in", keys: { code: "Equal", meta: true }, run: () => zoom(1) },
+  { id: "zoom-out", label: "Zoom out", keys: { code: "Minus", meta: true }, run: () => zoom(-1) },
+  { id: "zoom-reset", label: "Actual size (reset zoom)", keys: { code: "Digit0", meta: true }, run: () => zoom(0) },
+  { id: "feedback", label: "Send feedback…", run: () => useFeedback.getState().show() },
   { id: "check-updates", label: "Check for updates", run: () => useUi.getState().openSettings("about") },
   { id: "shortcuts", label: "Show keyboard shortcuts", run: () => useUi.getState().openSettings("shortcuts") },
   { id: "connect-ai", label: "Connect AI (MCP / CLI)", run: () => useUi.getState().openSettings("ai") },

@@ -4,6 +4,8 @@ What changed in each version of Mosaic. Settings › About & updates shows the s
 
 ## Unreleased
 
+- **A real menu bar on macOS:** when Mosaic is in front, the menu bar now has Mosaic, File, Edit, View, Window and Help menus, like other Mac apps. They cover settings, updates, new notes and folders, today's daily note, opening and creating vaults, saving, exporting, switching destinations, panels and splits, zoom, full screen and feedback. Each item shows its shortcut, including one you changed in Settings › Shortcuts, and items that can't run right now are dimmed. New: View › Zoom In, Zoom Out and Actual Size (⌘=, ⌘- and ⌘0) scale the interface, and File › Close Window (⇧⌘W) closes the window.
+
 ## 0.30.0 — 2026-11-26
 
 - **A formatting toolbar above every note, and steadier lines:** a toolbar fixed at the top of the note sets the text style (Normal text or Heading 1–6) and adds bold, italic, strikethrough, inline code, links, bullet and numbered lists and checklists. Shortcuts: ⌘⌥0–6 for text styles (Ctrl+Shift+0–6 on Windows and Linux), ⌘⇧X for strikethrough and ⌘E for code. Lines no longer jump when you move the cursor through them or type in them: a list's bullet, a heading's `#` and a quote's `>` stay hidden while you edit the line, Home goes to the start of the text, and Backspace there removes the bullet or turns the heading into text. Bullets change with depth (•, ◦, ▪).

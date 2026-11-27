@@ -3,7 +3,7 @@
 
 import type { IndexProgress, UpdateDone, Written, AgentRule, ChatEvent } from "./types";
 import { assetGeneration, vaultOperation, isCurrentSession, type VaultSession } from "../state/vaultSession";
-import { commands } from "./bindings";
+import { commands, type MenuItemSync } from "./bindings";
 import { mockCommands, mockInvoke } from "./mock";
 import type { VaultPreferences } from "../state/vaultPreferences";
 import type { TemplateConfig, TemplateRequest } from "./types";
@@ -207,6 +207,7 @@ export const api = {
   fileHistory: (path: string) => cmd.fileHistory(path),
   agentRules: () => cmd.getAgentRules(),
   printWindow: () => (inTauri ? cmd.printWindow() : Promise.resolve(window.print())),
+  syncMenu: (items: MenuItemSync[]) => cmd.syncMenu(items),
   unlinkedMentions: (path: string) => cmd.unlinkedMentions(path),
   linkMention: (source: string, line: number, text: string, target: string) =>
     cmd.linkMention(source, line, text, target),
@@ -366,5 +367,7 @@ async function listenTo<T>(name: string, cb: (payload: T) => void): Promise<() =
   return listen<T>(name, (e) => cb(e.payload));
 }
 
+/** A native menu item was chosen; the payload is the command id (see src-tauri/src/menu.rs). */
+export const onMenuCommand = (cb: (id: string) => void) => listenTo<string>("menu-command", cb);
 export const onUpdateLog = (cb: (line: string) => void) => listenTo<string>("update-log", cb);
 export const onUpdateDone = (cb: (d: UpdateDone) => void) => listenTo<UpdateDone>("update-done", cb);

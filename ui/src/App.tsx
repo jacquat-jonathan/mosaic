@@ -12,6 +12,7 @@ import { Workspace } from "./views/Workspace";
 import { ConfirmDialog, ContextMenu, ErrorToast, PromptDialog } from "./views/Overlays";
 import { revealInTree } from "./actions";
 import { useShortcuts } from "./shortcuts";
+import { startMenu } from "./menu";
 import { RIGHT_DEFAULT, SIDEBAR_DEFAULT, useUi } from "./state/ui";
 import { RightPanel } from "./views/RightPanel";
 import { QuickSwitcher } from "./views/QuickSwitcher";
@@ -79,6 +80,7 @@ export function App() {
     keep(startIndexHealth());
     keep(startVaultSync());
     keep(startBookmarkSync());
+    keep(startMenu());
     keep(
       startUpdateListeners().then((off) => {
         if (cancelled) return off;

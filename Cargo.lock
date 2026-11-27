@@ -2722,6 +2722,7 @@ dependencies = [
  "ed25519-dalek",
  "libc",
  "mosaic-core",
+ "muda",
  "objc2",
  "objc2-app-kit",
  "objc2-foundation",

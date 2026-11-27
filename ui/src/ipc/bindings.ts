@@ -180,7 +180,15 @@ export const commands = {
 	cancelUpdate: () => __TAURI_INVOKE<null>("cancel_update"),
 	/**  Quits, then a detached helper waits for this process to exit, swaps in the new build and reopens it. */
 	finishUpdate: () => __TAURI_INVOKE<null>("finish_update"),
+	/**
+	 *  Updates the menu's command items: their shortcuts (from Settings › Shortcuts) and whether they
+	 *  can run. Ids that aren't menu items are skipped; does nothing where there's no menu bar.
+	 */
+	syncMenu: (items: MenuItemSync[]) => __TAURI_INVOKE<void>("sync_menu", { items }),
 };
+
+/* Constants */
+export const MENU_COMMANDS = ["settings","check-updates","new-note","new-folder","daily-note","switcher","open-vault","create-vault","save","export-html","export-pdf","close-tab","search","destination-notes","destination-find","destination-plan","destination-ai","calendar","chat","palette","toggle-left","toggle-right","split-right","split-down","zoom-in","zoom-out","zoom-reset","feedback","shortcuts"] as const;
 
 /* Types */
 /**  What agents may do in a folder (and everything inside it). */
@@ -634,6 +642,15 @@ export type Mention = {
 	context: string,
 	/**  The words as written in the note (e.g. "the plan" for a note called "The Plan"). */
 	text: string,
+};
+
+/**  What the UI says about one command item. */
+export type MenuItemSync = {
+	id: string,
+	/**  Like "Cmd+Shift+KeyN" (key part is a `KeyboardEvent.code`); none removes the shortcut. */
+	accelerator: string | null,
+	/**  Whether the command can run now (e.g. most need a vault). */
+	enabled: boolean,
 };
 
 export type MirrorReport = {

@@ -402,6 +402,7 @@ names in Notes are proposals for the slice, not commitments.
 | `start_update` | excluded (app updates) | |
 | `cancel_update` | excluded (app updates) | |
 | `finish_update` | excluded (app updates) | |
+| `sync_menu` | excluded (window: native menu bar state) | |
 | `import_file` | `import_file` | raw route in the app |
 | `smoke_context` | excluded (native-smoke test harness) | |
 | `smoke_external` | excluded (native-smoke test harness) | |
